@@ -1,0 +1,10 @@
+# Enforce LF line endings (AGENT.md §9: LF endings; .editorconfig)
+* text=auto eol=lf
+
+# Go files are always LF
+*.go text eol=lf
+
+# Binaries
+*.png binary
+*.jpg binary
+*.gif binary
