@@ -125,7 +125,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	if algo == "" {
 		algo = "sha256"
 	}
-	hasher, err := newHasher(algo)
+	hasher, err := cas.NewHasher(algo)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -280,7 +280,7 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
 		return
 	}
-	recomputed, err := hashBytes(h.Algorithm(), data)
+	recomputed, err := cas.HashBytes(h.Algorithm(), data)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

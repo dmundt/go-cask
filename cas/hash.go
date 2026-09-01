@@ -48,6 +48,34 @@ func (h hash) Equal(other Hash) bool {
 	return h.algo == other.Algorithm() && bytes.Equal(h.bytes, other.Bytes())
 }
 
+// HashBytes computes the content address of data with a registered
+// algorithm: it streams through the built-in hasher when available, or uses
+// a one-shot registered HashFunc otherwise. It returns ErrUnknownAlgorithm
+// for an unregistered algorithm.
+func HashBytes(algo string, data []byte) (Hash, error) {
+	if newFn, ok := lookupStreamHash(algo); ok {
+		h := newFn()
+		h.Write(data)
+		return NewHash(algo, h.Sum(nil))
+	}
+	if fn, ok := lookupHash(algo); ok {
+		return fn(data), nil
+	}
+	return nil, fmt.Errorf("cas: %w: %q", ErrUnknownAlgorithm, algo)
+}
+
+// NewHasher returns a streaming hasher for a registered algorithm (the
+// built-ins sha1/sha256). It returns ErrUnknownAlgorithm for algorithms
+// registered only as one-shot HashFunc, which cannot stream — use HashBytes
+// for those.
+func NewHasher(algo string) (hashtype.Hash, error) {
+	newFn, ok := lookupStreamHash(algo)
+	if !ok {
+		return nil, fmt.Errorf("cas: %w: %q does not support streaming", ErrUnknownAlgorithm, algo)
+	}
+	return newFn(), nil
+}
+
 // HashFunc computes the content address of data. Implementations MUST be
 // deterministic and pure: identical input, identical Hash, no side effects.
 type HashFunc func(data []byte) Hash
