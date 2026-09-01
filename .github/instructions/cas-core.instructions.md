@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v6
+version: v7
 ---
 
 # CAS Core — go-cask
@@ -316,6 +316,8 @@ type HashFunc func(data []byte) Hash
 
 func RegisterHash(algo string, fn HashFunc) // runtime pluggable
 func ParseHash(s string) (Hash, error)
+func NewHasher(algo string) (hash.Hash, error) // streaming, built-ins only
+func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 ```
 
 - Built-in algorithms: `sha1`, `sha256` (others registered at runtime, e.g.
@@ -323,6 +325,13 @@ func ParseHash(s string) (Hash, error)
 - `NewStore(raw, codec, algo)` resolves the algorithm at construction;
   `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot
   path (library-design §3).
+- `NewHasher` returns a streaming hasher for a registered algorithm (the
+  built-ins, which register `hash.Hash` constructors); algorithms registered
+  only as one-shot `HashFunc` cannot stream — use `HashBytes` for those.
+  `HashBytes` uses the streaming hasher when available and falls back to the
+  one-shot `HashFunc` otherwise. These helpers serve the HTTP layer and CLI
+  (hash-on-write uploads, verify recomputation) without duplicating the
+  algorithm switch.
 - The registry is populated at init; guard with a mutex once registration can
   occur after startup.
 
@@ -768,7 +777,7 @@ The stable API the core promises (library-design §1):
 
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
-| Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`                   |
+| Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
 | Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`), `MemoryRawStore`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
 | Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` (+ optional `SmartCache[T]`, `CacheMonitor[T]`) |
