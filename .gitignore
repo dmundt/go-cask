@@ -1,0 +1,15 @@
+# Go
+/bin/
+*.test
+*.out
+coverage.out
+*.prof
+
+# Local store / test artifacts
+/objects/
+*.tmp
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
