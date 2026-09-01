@@ -1,0 +1,49 @@
+{{define "object"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a> · <a href="/viewer/objects">Objects</a> · <a href="/viewer/graph/{{.Hash}}">Graph</a></p></nav>
+<h1>Object</h1>
+<dl id="object-meta">
+<dt>Hash</dt><dd>{{.Hash}}</dd>
+<dt>Algorithm</dt><dd>{{.Algorithm}}</dd>
+<dt>Type</dt><dd>{{.Type}}</dd>
+<dt>Size</dt><dd>{{.Size}} bytes</dd>
+</dl>
+<section id="ref-list">
+<h2>References</h2>
+{{if .References}}
+<table>
+<thead><tr><th scope="col">Reference</th><th scope="col">Type</th></tr></thead>
+<tbody>
+{{range .References}}<tr><td><a href="/viewer/objects/{{.Hash}}">{{.Short}}</a>{{if .Broken}} <strong>(missing)</strong>{{end}}</td><td>{{.Type}}</td></tr>{{end}}
+</tbody>
+</table>
+{{else}}<p>no references (untyped store)</p>{{end}}
+</section>
+<section aria-label="Actions">
+{{if or (eq .Role "operator") (eq .Role "admin")}}
+<form method="post" action="/viewer/objects/{{.Hash}}/verify" hx-post="/viewer/objects/{{.Hash}}/verify" hx-target="#action-result">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button type="submit">Verify</button>
+</form>
+{{end}}
+{{if eq .Role "admin"}}
+<form method="post" action="/viewer/objects/{{.Hash}}/delete" hx-post="/viewer/objects/{{.Hash}}/delete" hx-target="#action-result" hx-confirm="Delete this object?">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button type="submit">Delete</button>
+</form>
+{{end}}
+<div id="action-result"></div>
+</section>
+<section>
+<h2>Raw bytes</h2>
+<div id="hexdump"
+     hx-get="/viewer/objects/{{.Hash}}/raw" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">
+<p>loading hexdump…</p>
+</div>
+</section>
+</main></body>
+</html>{{end}}
+
+{{define "hexdump"}}{{template "hexdump-table" .}}{{end}}

@@ -1,0 +1,22 @@
+{{define "objects"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a></p></nav>
+<h1>Objects</h1>
+<form method="get" action="/viewer/objects">
+<label for="q">Search</label>
+<input id="q" name="q" type="search" value="{{.Query}}" placeholder="hash or type"
+       hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-target="#object-list" hx-push-url="true">
+<label for="algo">Algorithm</label>
+<select id="algo" name="algo" hx-get="/viewer/objects" hx-trigger="change" hx-target="#object-list" hx-push-url="true">
+<option value="">all</option>
+<option value="sha256"{{if eq .Algo "sha256"}} selected{{end}}>sha256</option>
+<option value="sha1"{{if eq .Algo "sha1"}} selected{{end}}>sha1</option>
+</select>
+</form>
+<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}</div>
+</main></body>
+</html>{{end}}
+
+{{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}{{end}}

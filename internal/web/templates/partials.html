@@ -1,0 +1,50 @@
+{{define "head"}}<meta charset="utf-8">
+<title>CASK viewer</title>
+<script src="/viewer/static/htmx.min.js"></script>{{end}}
+
+{{define "stat-cards"}}
+<section aria-label="Store overview">
+<p><strong>{{.ObjectCount}}</strong> objects · <strong>{{.TotalSize}}</strong> bytes total · <strong>{{len .Algorithms}}</strong> algorithm(s)</p>
+</section>
+{{end}}
+
+{{define "algo-table"}}
+<table>
+<caption>By algorithm</caption>
+<thead><tr><th scope="col">Algorithm</th><th scope="col">Objects</th><th scope="col">Bytes</th></tr></thead>
+<tbody>
+{{range .Algorithms}}<tr><td>{{.Algo}}</td><td>{{.Count}}</td><td>{{.Size}}</td></tr>{{else}}<tr><td colspan="3">empty store</td></tr>{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{define "sample-table"}}
+<table id="sample-table">
+<caption>Sample objects</caption>
+<thead><tr><th scope="col">Hash</th><th scope="col">Size</th></tr></thead>
+<tbody>
+{{range .Sample}}<tr><td><a href="/viewer/objects/{{.Hash}}">{{.Short}}{{if .Type}} ({{.Type}}){{end}}</a></td><td>{{.Size}}</td></tr>{{end}}
+</tbody>
+</table>
+{{if .HasSample}}<p><a href="/viewer/objects">see all objects</a></p>{{end}}
+{{end}}
+
+{{define "object-table"}}
+<table id="object-table">
+<caption>Objects</caption>
+<thead><tr><th scope="col">Hash</th><th scope="col">Type</th><th scope="col">Size</th></tr></thead>
+<tbody>
+{{range .Objects}}<tr><td><a href="/viewer/objects/{{.Hash}}">{{.Short}}</a></td><td>{{.Type}}</td><td>{{.Size}}</td></tr>{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{define "hexdump-table"}}
+<table id="hexdump">
+<caption>Hexdump</caption>
+<thead><tr><th scope="col">Offset</th><th scope="col">Hex</th><th scope="col">ASCII</th></tr></thead>
+<tbody>
+{{range .}}<tr><td>{{.Offset}}</td><td>{{.Hex}}</td><td>{{.ASCII}}</td></tr>{{end}}
+</tbody>
+</table>
+{{end}}
