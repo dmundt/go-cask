@@ -35,7 +35,8 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum || { echo "go.mod/go.sum not tidy"; exit 1; }
+          git diff --exit-code go.mod
+          if [ -f go.sum ]; then git diff --exit-code go.sum; fi # std-lib-only module has no go.sum
 
       - name: go vet
         if: hashFiles('**/*.go') != ''
@@ -59,10 +60,12 @@ jobs:
       - name: Fuzz smoke
         if: hashFiles('**/*.go') != ''
         run: |
-          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/...
+          # -fuzz cannot target multiple packages, and ./cas/... now matches
+          # cas + cas/extra; the fuzz targets live in package cas only.
+          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
 
       - name: Benchstat gate (when a baseline is committed)
         if: hashFiles('.benchmark-baseline.txt') != '' && hashFiles('**/*.go') != ''
