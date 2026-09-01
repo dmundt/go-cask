@@ -137,7 +137,9 @@ caching, metrics, and mark-and-sweep GC — exercising the maintenance and
 caching machinery.
 
 **Aspects covered.** Custom `Codec[T]` (gzip-wrapped `JSONCodec[T]`),
-`RegisterHash` with a std-lib-only custom algorithm (e.g. `sha256-double`),
+`RegisterHash` with a std-lib-only custom algorithm (e.g. `sha256double` —
+the name must obey the hash-string validation pattern of defaults §2, so
+the earlier illustrative `sha256-double` is not used),
 `PutDedup` (dedup reporting), `CachedStore[T]`/`LRUCache[T]`,
 `CacheMonitor[T]` metrics, `GC` (reachable = manifest-referenced artifacts),
 `Stats`.
@@ -149,7 +151,7 @@ examples/artifact-cache/
 ├── main.go      # CLI: put, get, gc, stats, monitor
 ├── manifest.go  # Manifest object referencing artifact hashes
 ├── codec.go     # gzipCodec[T] wrapping JSONCodec[T]
-├── hasher.go    # RegisterHash("sha256-double", ...)
+├── hasher.go    # RegisterHash("sha256double", ...)
 └── main_test.go # dedup, cache hit-rate, GC deletes only unreferenced
 ```
 
