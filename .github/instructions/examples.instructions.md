@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API and its public client SDK, and the embedded viewer (templates + htmx).
-version: v2
+description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API and its public client SDK, and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
+version: v3
 ---
 
 # Examples — go-cask
@@ -82,8 +82,28 @@ When creating or extending an example, follow these rules:
 7. **Idiomatic Go.** `gofmt`, doc comments on exported identifiers,
    `context.Context` first, wrapped errors, table-driven tests where
    assertions exist (coding-guidelines §2, §7).
-8. **Documented.** Every example has a package comment explaining what it
-   demonstrates and how to run it; where useful, a short `README.md`.
+8. **Documented — a `README.md` in the example folder is REQUIRED.** Every
+   example MUST ship a `README.md` next to its code (in addition to the
+   package comment) that teaches the example. It MUST contain:
+   - **What it demonstrates** — the primary aspect (§4) and acceptance
+     criteria, in one short paragraph;
+   - **Cas core parts used** — the exact components/APIs exercised (e.g.
+     `Store[T]`, `JSONCodec[T]`, `FSRawStore` fan-out, `Verify`, `GC`,
+     `LRUCache[T]`, `SmartCache[T]`), as a list or table;
+   - **What it extends** — everything the example adds on top of the core
+     (custom `Codec[T]`, `RegisterHash` algorithms, own `Object[T]` types,
+     own repository/resolver pattern, HTTP surface), and explicitly what it
+     does NOT modify (the `cas`/`gitlike` libraries stay untouched);
+   - **Code walkthrough** — how the code is structured (files and their
+     roles) and the key flow, so a reader can follow it file by file;
+   - **A Mermaid diagram** — one `mermaid` flowchart (or class diagram)
+     visualizing the example's flow/architecture; the diagram MUST be
+     balanced (AGENT.md §9);
+   - **How to run** — the exact `go run`/`go test` commands and expected
+     output shape.
+   The README lives at `examples/<name>/README.md`; keep it focused and
+   concrete — it is documentation for app authors copying the pattern
+   (examples §1).
 9. **Coverage.** The set of examples as a whole MUST keep covering the
    aspect matrix (§4). A new example that duplicates an existing aspect
    without adding a new one is discouraged unless it is a better teaching
@@ -113,7 +133,8 @@ miniature Git built on CASK.
 examples/versioned-files/
 ├── main.go      # CLI: add, commit, log, cat, graph, verify, stats
 ├── repo.go      # thin helpers over gitlike.Repository (head ref, index)
-└── main_test.go # round-trip: add → commit → log → cat; verify
+├── main_test.go # round-trip: add → commit → log → cat; verify
+└── README.md    # required per §2 rule 8: core used/extended, walkthrough, mermaid
 ```
 
 **Key behaviors.**
@@ -154,7 +175,8 @@ examples/artifact-cache/
 ├── manifest.go  # Manifest object referencing artifact hashes
 ├── codec.go     # gzipCodec[T] wrapping JSONCodec[T]
 ├── hasher.go    # RegisterHash("sha256double", ...)
-└── main_test.go # dedup, cache hit-rate, GC deletes only unreferenced
+├── main_test.go # dedup, cache hit-rate, GC deletes only unreferenced
+└── README.md    # required per §2 rule 8: core used/extended, walkthrough, mermaid
 ```
 
 **Key behaviors.**
@@ -189,7 +211,8 @@ examples/notes/
 ├── types.go      # Note, Tag, Attachment (Object[T] implementations)
 ├── repo.go       # own Repository, Resolver, ResolvedObject, parseType
 ├── main.go       # demo: create notes/tags/attachments, resolve, walk, prefetch
-└── main_test.go  # cross-type resolution, lazy load, prefetch warms cache
+├── main_test.go  # cross-type resolution, lazy load, prefetch warms cache
+└── README.md     # required per §2 rule 8: core used/extended, walkthrough, mermaid
 ```
 
 **Key behaviors.**
@@ -270,7 +293,8 @@ examples/viewer-app/
 │   ├── dashboard.html
 │   ├── object.html
 │   └── partials.html
-└── main_test.go      # httptest: login flow, role checks, search swap
+├── main_test.go      # httptest: login flow, role checks, search swap
+└── README.md         # required per §2 rule 8: core used/extended, walkthrough, mermaid
 ```
 
 **Key behaviors.**
@@ -340,8 +364,9 @@ When asked to "create an example" or "show how to X":
       example APIs
 - [ ] Examples use only documented public APIs of `cas`/`gitlike`; the
       libraries themselves are untouched
-- [ ] Each example is documented (package comment / README) and covered by
-      tests where behavior can be asserted
+- [ ] Each example ships a `README.md` with the §2 rule 8 content (core used,
+      extended, code walkthrough, Mermaid diagram, how to run) plus a package
+      comment, and is covered by tests where behavior can be asserted
 - [ ] The aspect matrix (§4) stays complete — every aspect of the
       implementation is demonstrated by at least one example
 - [ ] The viewer example complies with `viewer-security.instructions.md` and
