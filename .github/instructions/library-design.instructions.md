@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v2
+version: v3
 ---
 
 # Library Design — go-cask
@@ -22,8 +22,8 @@ version: v2
   identifiers. Every exported name must earn its place; if it can live in a
   subpackage or an example, it does.
 - **Stable core surface** (the API the docs promise):
-  `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `RawStore`,
-  `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`),
+  `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes`,
+  `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`),
   `MemoryRawStore`, `StoreStats`, `Codec`, `JSONCodec`, `Object`, `Store`,
   `Walker`, `CachedObject`, `CachedStore`, `LRUCache`.
 - **Optional machinery** (`SmartCache`, `CacheMonitor`) MAY move to a

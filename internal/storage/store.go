@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/dmundt/go-cask/cas"
 )
@@ -111,6 +112,15 @@ func (s *Store) GC(ctx context.Context, reachable map[string]bool) (int64, error
 	}
 	s.mu.Unlock()
 	return before.ObjectCount - after.ObjectCount, nil
+}
+
+// Prune deletes unreachable objects older than minAge (age = file mtime ≈
+// first-Put time); dryRun returns the would-be-deleted set without deleting
+// (dry-run is the safe default). Reachability is root-only at the byte
+// layer — the store cannot interpret references (cas-core §4.11); apps that
+// need graph-aware retention compute a reachable set and use GC.
+func (s *Store) Prune(ctx context.Context, roots []cas.Hash, minAge time.Duration, dryRun bool) ([]cas.Hash, error) {
+	return s.raw.Prune(ctx, roots, minAge, dryRun)
 }
 
 // countingReader counts the bytes read through it.

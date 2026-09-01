@@ -1,23 +1,12 @@
 package api
 
-import (
-	"crypto/sha1"
-	"crypto/sha256"
-	"fmt"
-	"hash"
+import "io"
 
-	"github.com/dmundt/go-cask/cas"
-)
-
-// newHasherFor returns a streaming hasher for a registered algorithm (the
-// built-ins sha256/sha1; anything else is unknown, R-01).
-func newHasherFor(algo string) (hash.Hash, error) {
-	switch algo {
-	case "sha256":
-		return sha256.New(), nil
-	case "sha1":
-		return sha1.New(), nil
-	default:
-		return nil, fmt.Errorf("%w: %q", cas.ErrUnknownAlgorithm, algo)
-	}
+// spoolAndHash copies r into w while hashing it, returning the byte count.
+// The hash is available from the hasher after the copy (hash-on-write,
+// R-01). Hashing itself uses cas.NewHasher / cas.HashBytes (cas-core §4.2).
+func spoolAndHash(w io.Writer, hasher interface {
+	Write([]byte) (int, error)
+}, r io.Reader) (int64, error) {
+	return io.Copy(io.MultiWriter(w, hasher), r)
 }
