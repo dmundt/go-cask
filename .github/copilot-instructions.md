@@ -74,7 +74,7 @@ Related specs that also constrain work in this repo:
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
   designed-but-deferred possible extensions (packfiles, compression layer,
-  chunking).
+  encryption layer, chunking).
 - `.github/instructions/consistency.instructions.md` — the consistency model:
   broken/dangling object detection, mark-and-sweep GC from roots,
   age-based pruning (retention), informed by Git/IPFS/restic without
