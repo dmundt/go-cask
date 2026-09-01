@@ -1,4 +1,0 @@
-2026/09/01 19:07:52 WARN viewer enabled admin_token=A4E6-6988-DAFC
-2026/09/01 19:07:52 INFO cask web listening addr=127.0.0.1:18083 store=D:\Sources\Github\dmundt\go-cask\.smoke\objects viewer=true
-2026/09/01 19:08:00 INFO viewer login role=admin ip=127.0.0.1
-2026/09/01 19:08:00 INFO viewer login role=admin ip=127.0.0.1
