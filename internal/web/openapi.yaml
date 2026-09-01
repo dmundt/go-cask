@@ -1,0 +1,135 @@
+openapi: 3.0.3
+info:
+  title: CASK viewer API
+  description: >
+    The browser-facing hypermedia surface of the embedded technical viewer
+    (/viewer/*, HTML + htmx fragments). Session-cookie auth; 401/403 are
+    empty bodies. Mutations (POST) carry a per-session CSRF token. The
+    programmatic data API is a separate namespace (/api/cas/v1).
+  version: 1.0.0
+servers:
+  - url: /viewer
+paths:
+  /login:
+    get:
+      summary: Login page (startup-token form)
+      responses:
+        '200': { description: HTML login form }
+    post:
+      summary: Authenticate with the startup token (or a configured role token)
+      description: Throttled (5 failures/IP/min with backoff); issues a session cookie.
+      responses:
+        '303': { description: Redirect to the dashboard }
+        '401': { description: Invalid token }
+        '429': { description: Too many login attempts }
+  /:
+    get:
+      summary: Dashboard — stat cards, algorithm table, sample objects, search
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML dashboard }
+  /dashboard:
+    get:
+      summary: Dashboard panels (htmx refresh fragment)
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML fragment }
+  /objects:
+    get:
+      summary: Object list (filter by algorithm, search by hash/type)
+      parameters:
+        - name: algo
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML page (or table fragment for htmx) }
+  /objects/{hash}:
+    get:
+      summary: Object detail — metadata, references, actions, lazy hexdump
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML object detail }
+        '400': { description: Malformed hash }
+  /objects/{hash}/raw:
+    get:
+      summary: Raw bytes as a lazy-loaded hexdump fragment
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML hexdump fragment }
+  /objects/{hash}/verify:
+    post:
+      summary: Verify object integrity (operator)
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: Result fragment }
+  /objects/{hash}/delete:
+    post:
+      summary: Delete object (admin)
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: Result fragment }
+  /graph/{hash}:
+    get:
+      summary: Reachable object graph
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML graph page }
+  /stats:
+    get:
+      summary: Full statistics page
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML stats page }
+  /gc:
+    get:
+      summary: GC form page (admin)
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: HTML form }
+    post:
+      summary: Run mark-and-sweep GC from the given roots (admin)
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: Result fragment }
+  /openapi.yaml:
+    get:
+      summary: This OpenAPI document
+      security: [ sessionAuth: [] ]
+      responses:
+        '200': { description: OpenAPI 3.0 document (text/yaml) }
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: cask_session
+security: []

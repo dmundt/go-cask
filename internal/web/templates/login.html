@@ -1,0 +1,12 @@
+{{define "login"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<h1>CASK viewer</h1>
+<form method="post" action="/viewer/login">
+<label for="token">Token</label>
+<input id="token" name="token" type="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+</main></body>
+</html>{{end}}

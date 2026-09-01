@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library (in-process) or the CAS API (remote), plus the embedded server via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v3
+version: v4
 ---
 
 # CLI — go-cask
@@ -56,7 +56,7 @@ Store operations speak to the store in one of two modes:
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
 | `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
-| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-rate n] [-burst n]` | start the embedded server: CAS API + OpenAPI (viewer when enabled) per backend-architecture §3–§6; viewer disabled by default (viewer-security); config-file support (`-config`) is deferred — flags only |
+| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-rate n] [-burst n] [-viewer] [-allow-insecure-bind]` | start the embedded server: CAS API + OpenAPI, plus the viewer when `-viewer` (disabled by default, viewer-security); enabling the viewer prints a one-time startup admin token and refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) is deferred — flags only |
 | `version`                     | print the library version and Go version                        |
 
 - Hash arguments are validated with `ParseHash` before use; malformed → usage
@@ -90,7 +90,7 @@ Store operations speak to the store in one of two modes:
 
 - Flags: single-dash long names (`-store`, `-api`, `-token`, `-algo`,
   `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-bind`,
-  `-tokens`, `-rate`, `-burst`, `-config` (deferred),
+  `-tokens`, `-rate`, `-burst`, `-viewer`, `-allow-insecure-bind`, `-config` (deferred),
   `-bind`).
 - Streams: `put`/`get` stream bytes; the CLI never buffers large objects
   (performance P-05).

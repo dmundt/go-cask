@@ -1,0 +1,16 @@
+{{define "stats"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a></p></nav>
+<h1>Statistics</h1>
+<p><strong>{{.ObjectCount}}</strong> objects · <strong>{{.TotalSize}}</strong> bytes total</p>
+<table>
+<caption>By algorithm</caption>
+<thead><tr><th scope="col">Algorithm</th><th scope="col">Objects</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><td>{{.Algo}}</td><td>{{.Count}}</td></tr>{{else}}<tr><td colspan="2">empty store</td></tr>{{end}}
+</tbody>
+</table>
+</main></body>
+</html>{{end}}
