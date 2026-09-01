@@ -35,7 +35,8 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum || { echo "go.mod/go.sum not tidy"; exit 1; }
+          git diff --exit-code go.mod
+          if [ -f go.sum ]; then git diff --exit-code go.sum; fi # std-lib-only module has no go.sum
 
       - name: go vet
         if: hashFiles('**/*.go') != ''
@@ -45,7 +46,9 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           fail=0
-          for pkg in ./cas/... ./examples/gitlike/...; do
+          # One package per invocation so each package's coverage line is
+          # gated individually (./cas/... would mask cas behind cas/extra).
+          for pkg in ./cas ./cas/extra ./examples/gitlike; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
@@ -59,10 +62,12 @@ jobs:
       - name: Fuzz smoke
         if: hashFiles('**/*.go') != ''
         run: |
-          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/...
-          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/...
+          # -fuzz cannot target multiple packages, and ./cas/... now matches
+          # cas + cas/extra; the fuzz targets live in package cas only.
+          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
 
       - name: Benchstat gate (when a baseline is committed)
         if: hashFiles('.benchmark-baseline.txt') != '' && hashFiles('**/*.go') != ''
@@ -81,7 +86,7 @@ jobs:
           done
           for ref in $(grep -rho '[a-z0-9-]*\.instructions\.md' . | sort -u); do
             case "$ref" in
-              guidelines.instructions.md|go-coding-guidelines.instructions.md) continue ;; # known false positives
+              guidelines.instructions.md|go-coding-guidelines.instructions.md|.instructions.md) continue ;; # known false positives (pattern literals in AGENT.md)
             esac
             [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
           done

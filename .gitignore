@@ -4,6 +4,7 @@
 *.out
 coverage.out
 *.prof
+.gocache/
 
 # Local store / test artifacts
 /objects/
