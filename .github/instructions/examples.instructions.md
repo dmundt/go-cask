@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API and its public client SDK, and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v3
+version: v4
 ---
 
 # Examples — go-cask
@@ -10,15 +10,15 @@ version: v3
 > **which** examples exist. It proposes five non-trivial examples that together
 > exercise every aspect of the implementation:
 >
-> 1. `examples/versioned-files` — Git-like versioned file store (the `gitlike`
+> 1. `examples/files` — Git-like versioned file store (the `gitlike`
 >    layer)
-> 2. `examples/artifact-cache` — content-addressed build artifact cache
+> 2. `examples/artifacts` — content-addressed build artifact cache
 >    (custom codec + hash, caching, GC)
 > 3. `examples/notes` — document graph app with its own object types (the
 >    "apps build their own repository" pattern, lazy loading)
-> 4. `examples/cas-api` — CAS HTTP API server + the public client SDK
+> 4. `examples/api` — CAS HTTP API server + the public client SDK
 >    (streaming, auth, OpenAPI)
-> 5. `examples/viewer-app` — embedded technical viewer (nested Go templates +
+> 5. `examples/viewer` — embedded technical viewer (nested Go templates +
 >    htmx, dashboard, security)
 >
 > Examples are runnable reference programs: they demonstrate the documented
@@ -116,7 +116,7 @@ When creating or extending an example, follow these rules:
 
 ## 3. Proposed Examples
 
-### 3.1 `examples/versioned-files` — Git-like versioned file store
+### 3.1 `examples/files` — Git-like versioned file store
 
 **Goal.** A small CLI that stores file trees as content-addressed objects and
 commits them, using the `gitlike` layer end to end — the closest thing to a
@@ -130,7 +130,7 @@ miniature Git built on CASK.
 **Structure.**
 
 ```text
-examples/versioned-files/
+examples/files/
 ├── main.go      # CLI: add, commit, log, cat, graph, verify, stats
 ├── repo.go      # thin helpers over gitlike.Repository (head ref, index)
 ├── main_test.go # round-trip: add → commit → log → cat; verify
@@ -152,7 +152,7 @@ examples/versioned-files/
 across commits does not create duplicate blobs; `verify` passes after a clean
 commit and reports a mismatch after a stored file is corrupted on disk.
 
-### 3.2 `examples/artifact-cache` — content-addressed build artifact cache
+### 3.2 `examples/artifacts` — content-addressed build artifact cache
 
 **Goal.** A build-artifact cache that stores outputs under their content hash,
 with a custom codec (gzip), a custom registered hash algorithm, bounded
@@ -170,7 +170,7 @@ the earlier illustrative `sha256-double` is not used),
 **Structure.**
 
 ```text
-examples/artifact-cache/
+examples/artifacts/
 ├── main.go      # CLI: put, get, gc, stats, monitor
 ├── manifest.go  # Manifest object referencing artifact hashes
 ├── codec.go     # gzipCodec[T] wrapping JSONCodec[T]
@@ -228,7 +228,7 @@ examples/notes/
 not loaded until accessed; after prefetch the cache reports hits; broken
 references are detected and reported without crashing.
 
-### 3.4 `examples/cas-api` — CAS HTTP API server using the public client SDK
+### 3.4 `examples/api` — CAS HTTP API server using the public client SDK
 
 **Goal.** A standalone server exposing the CAS HTTP API (`/api/cas/v1`) per
 `cas-api.instructions.md`, plus the **public `client/` SDK** that other
@@ -247,7 +247,7 @@ backend-architecture §2. The example demonstrates it:
 
 ```text
 client/                # public CAS API client SDK (Put/Get/Meta/List/Stats/Verify)
-examples/cas-api/
+examples/api/
 ├── server/
 │   ├── main.go        # net/http server, pattern routing, bearer middleware
 │   └── server_test.go # httptest: round-trip, roles, streaming
@@ -269,7 +269,7 @@ examples/cas-api/
 a viewer-role token gets 403 on `DELETE`; large payloads stream without
 buffering; `GET /api/cas/v1/openapi.yaml` is served and matches the routes.
 
-### 3.5 `examples/viewer-app` — embedded viewer (nested templates + htmx)
+### 3.5 `examples/viewer` — embedded viewer (nested templates + htmx)
 
 **Goal.** A runnable application embedding the technical viewer per
 `viewer-design.instructions.md`: a dashboard (stat cards, algorithm table,
@@ -285,7 +285,7 @@ role enforcement, CSRF on mutations, backend consuming the CAS API layer.
 **Structure.**
 
 ```text
-examples/viewer-app/
+examples/viewer/
 ├── main.go           # routes + handlers (dashboard, objects, detail, stats)
 ├── auth.go           # startup token, session middleware, roles, CSRF
 ├── templates/        # embedded with embed.FS (nested defines)
@@ -316,7 +316,7 @@ JS anywhere in the example.
 
 ## 4. Aspect Coverage Matrix
 
-| Aspect                                            | versioned-files | artifact-cache | notes | cas-api | viewer-app |
+| Aspect                                            | files | artifacts | notes | api | viewer |
 | ------------------------------------------------- | :-------------: | :------------: | :---: | :-----: | :--------: |
 | `Hash` / pluggable algorithms                     | ✓ (sha256)      | ✓ (custom)     | ✓     | ✓ (algo) | ✓          |
 | `FSRawStore` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | ✓          |
