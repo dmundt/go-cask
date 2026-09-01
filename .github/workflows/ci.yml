@@ -44,13 +44,13 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: go vet ./...
 
-      - name: Test -race + coverage gate (cas/ + examples/gitlike/ >= 90%)
+      - name: Test -race + coverage gate (cas/ + client/ + gitlike >= 90%)
         if: hashFiles('**/*.go') != ''
         run: |
           fail=0
           # One package per invocation so each package's coverage line is
           # gated individually (./cas/... would mask cas behind cas/extra).
-          for pkg in ./cas ./cas/extra ./examples/gitlike; do
+          for pkg in ./cas ./cas/extra ./client ./examples/gitlike; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
