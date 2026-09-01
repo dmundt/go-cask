@@ -123,8 +123,8 @@ Rules:
   remote mode, on the CAS API client interface) — never on a concrete
   backend. Two implementations:
   1. **in-process** — handlers call the library directly;
-  2. **remote** — handlers call the CAS API client SDK
-     (`examples/cas-api/client`), which speaks the documented HTTP contract.
+  2. **remote** — handlers call the public CAS API client SDK
+     (`client/`), which speaks the documented HTTP contract.
 - The seam keeps the viewer backend identical whether the store is local or a
   remote CAS API server (viewer-api §1).
 

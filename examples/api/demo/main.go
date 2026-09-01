@@ -1,10 +1,10 @@
-// Command cas-api-demo round-trips a file through a running CAS API server
+// Command api-demo round-trips a file through a running CAS API server
 // using the public client SDK (client/), demonstrating streaming upload and
 // download, dedup, and metadata.
 //
 // Usage:
 //
-//	go run ./examples/cas-api/demo -api http://127.0.0.1:8080 \
+//	go run ./examples/api/demo -api http://127.0.0.1:8080 \
 //	    -token operator -file ./data.txt
 package main
 
@@ -25,7 +25,7 @@ func main() {
 	)
 	flag.Parse()
 	if *file == "" {
-		fmt.Fprintln(os.Stderr, "usage: cas-api-demo -api <url> -token <tok> -file <path>")
+		fmt.Fprintln(os.Stderr, "usage: api-demo -api <url> -token <tok> -file <path>")
 		os.Exit(2)
 	}
 

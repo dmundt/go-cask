@@ -1,4 +1,4 @@
-# cas-api — CAS HTTP API server + public client SDK
+# api — CAS HTTP API server + public client SDK
 
 **What it demonstrates.** A standalone server exposing the CAS HTTP API
 (`/api/cas/v1`) per `cas-api.instructions.md` (R-01…R-14), plus the **public
@@ -69,16 +69,16 @@ flowchart LR
 
 ```text
 # terminal 1 — server (tokens: viewer=viewer, operator=operator, admin=admin)
-go run ./examples/cas-api/server -store ./objects -bind 127.0.0.1:8080
+go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080
 
 # terminal 2 — demo round-trip via the SDK
-go run ./examples/cas-api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md
+go run ./examples/api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md
 
 # explore
 curl -H "Authorization: Bearer operator" http://127.0.0.1:8080/api/cas/v1/stats
 curl -H "Authorization: Bearer viewer" http://127.0.0.1:8080/api/cas/v1/openapi.yaml
 
-go test ./examples/cas-api/... ./client/...
+go test ./examples/api/... ./client/...
 ```
 
 The demo prints `stored <hash> deduplicated=…`, `fetched N bytes`, meta and

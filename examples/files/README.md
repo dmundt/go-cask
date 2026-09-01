@@ -1,4 +1,4 @@
-# versioned-files — a miniature Git on CASK
+# files — a miniature Git on CASK
 
 **What it demonstrates.** A runnable CLI that stores file trees as
 content-addressed objects and commits them, using the `gitlike` example layer
@@ -56,12 +56,12 @@ flowchart LR
 ## How to run
 
 ```text
-go run ./examples/versioned-files -store ./objects add a.txt b.txt
-go run ./examples/versioned-files -store ./objects commit -m "initial"
-go run ./examples/versioned-files -store ./objects log
-go run ./examples/versioned-files -store ./objects stats
-go run ./examples/versioned-files -store ./objects verify
-go test ./examples/versioned-files/...
+go run ./examples/files -store ./objects add a.txt b.txt
+go run ./examples/files -store ./objects commit -m "initial"
+go run ./examples/files -store ./objects log
+go run ./examples/files -store ./objects stats
+go run ./examples/files -store ./objects verify
+go test ./examples/files/...
 ```
 
 `add` prints the tree hash, `commit` the commit hash, `stats` a
