@@ -25,7 +25,7 @@ domains.
 ```text
 cas/       core library (package cas) — generic, app-agnostic
 examples/  runnable example programs (incl. the gitlike reference object model)
-cmd/       entry points: caskd (server), cask (CLI)
+cmd/       entry point: cask (CLI; `cask web` starts the CAS API + viewer server)
 viewer/    embedded technical viewer (browser UI)
 docs/      documentation
 .github/   specification set + CI (see below)

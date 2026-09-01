@@ -216,8 +216,8 @@ contradicting statements in the folder.
 | `AGENT.md` (this file)                           | Meta-guide: style, terminology, precedence for this folder.     |
 | `cas-core.instructions.md`                 | The canonical core library spec — every component contract, flows,   |
 |                                            | concurrency, and the extension contract for extensions/clients.      |
-| `backend-architecture.instructions.md`           | Server-side architecture: binaries, HTTP wiring, middleware,     |
-|                                                  | config, lifecycle, deployment shapes.                            |
+| `backend-architecture.instructions.md`           | Server-side architecture: the `cask web` server, HTTP wiring,      |
+|                                                  | middleware, config, lifecycle, deployment shapes.                  |
 | `frontend-architecture.instructions.md`          | Browser-facing architecture: hypermedia rendering, nested        |
 |                                                  | templates, htmx model, URL-as-state, embedding.                  |
 | `coding-guidelines.instructions.md`              | Idiomatic Go, std-lib only, no CSS/JS, templates + htmx, docs.  |
@@ -229,7 +229,7 @@ contradicting statements in the folder.
 | `defaults.instructions.md`                       | Canonical defaults & behavior reference (all constants, grouped). |
 | `versioning.instructions.md`                     | Library Git versioning: semver tags, Go module v2+ rules, release process. |
 | `branch-naming.instructions.md`                  | Simple Git branch concept: main + short-lived typed branches, patterns, lifecycle. |
-| `cli.instructions.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local/remote modes. |
+| `cli.instructions.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local/remote modes, the `web` server subcommand. |
 | `object-versioning.instructions.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
 | `viewer-security.instructions.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
 | `viewer-design.instructions.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
