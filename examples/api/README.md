@@ -45,6 +45,9 @@ buffering; `GET /api/cas/v1/openapi.yaml` is served and matches the routes.
   refill, idle expiry and a max-entries guard.
 - `server/hash.go` — `newHasher`/`hashBytes` (sha256/sha1), `spoolAndHash`,
   `envelopeType`.
+- `server/openapi.yaml` — the OpenAPI document as a separate file, embedded
+  via `//go:embed` and served at `/api/cas/v1/openapi.yaml` (api-design §13:
+  OpenAPI never lives in an inline Go string).
 - `server/main.go` — flags (`-store`, `-bind`, `-tokens`, rate-limit
   knobs), graceful shutdown.
 - `demo/main.go` — uses the SDK: `Put` a file, `GetBytes` it back, `Meta`,

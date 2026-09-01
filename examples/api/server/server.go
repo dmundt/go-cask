@@ -345,7 +345,7 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) openapi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-	fmt.Fprint(w, openapiYAML)
+	w.Write(openapiYAML)
 }
 
 // parseHashParam validates {hash} with ParseHash → 400 on malformed.

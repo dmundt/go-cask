@@ -1,7 +1,7 @@
 ---
 title: CAS API — go-cask
 description: Swagger/OpenAPI documentation and requirements of the CAS HTTP API (/api/cas/v1) — the JSON data API of the content-addressed object store, consumed by the viewer backend and by other clients (CLI, SDK, services).
-version: v1
+version: v2
 ---
 
 # CAS API — go-cask
@@ -59,7 +59,9 @@ best-effort).
   (pattern `^[a-z0-9]+:[0-9a-f]+$`) before any storage access; malformed →
   400.
 - **Self-documenting**: `GET /api/cas/v1/openapi.yaml` serves this OpenAPI
-  document; it MUST match the implemented routes exactly.
+  document; it MUST match the implemented routes exactly. The served
+  document lives in a **separate embedded file** (`openapi.yaml` via
+  `//go:embed`, per api-design §13) — never an inline Go string.
 
 ---
 
