@@ -46,7 +46,9 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           fail=0
-          for pkg in ./cas/... ./examples/gitlike/...; do
+          # One package per invocation so each package's coverage line is
+          # gated individually (./cas/... would mask cas behind cas/extra).
+          for pkg in ./cas ./cas/extra ./examples/gitlike; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
