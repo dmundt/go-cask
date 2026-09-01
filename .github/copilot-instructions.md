@@ -90,7 +90,7 @@ Related specs that also constrain work in this repo:
   on-demand `release/vX.Y`; patterns, examples, lifecycle.
 - `.github/instructions/cli.instructions.md` — the `cmd/cask` CLI contract:
   subcommands, flags, output format, exit codes, local (`-store`) and remote
-  (`-api`) modes.
+  (`-api`) modes, and the `web` server subcommand (CAS API + viewer).
 - `.github/instructions/object-versioning.instructions.md` — object-model
   semver: versioned type names (`type@major`), coexisting model versions in
   one store, compatibility rules and migration.
@@ -112,8 +112,9 @@ Related specs that also constrain work in this repo:
   file naming, frontmatter, document structure, terminology, precedence, and
   the maintenance checklist that keeps every instruction file consistent.
 - `.github/instructions/backend-architecture.instructions.md` — server-side
-  architecture: binary layout, HTTP wiring, middleware pipeline, storage
-  backend selection, config, lifecycle, deployment shapes.
+  architecture: the single `cmd/cask` binary and its `cask web` server, HTTP
+  wiring, middleware pipeline, storage backend selection, config, lifecycle,
+  deployment shapes.
 - `.github/instructions/frontend-architecture.instructions.md` — browser-facing
   architecture: hypermedia-driven rendering, nested templates, htmx
   interaction model, URL-as-state, embedding.

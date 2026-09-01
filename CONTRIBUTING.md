@@ -22,8 +22,7 @@ repository.
 | ----------- | ----------------------------------------------------------- |
 | `cas/`      | The generic core library (package `cas`) — see `cas-core`   |
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
-| `cmd/caskd` | The server: CAS API + viewer in one binary                  |
-| `cmd/cask`  | The CLI (spec: `cli.instructions.md`)                       |
+| `cmd/cask`  | The single entry point: CLI store ops + server (`cask web` serves CAS API + viewer) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |
 | `viewer/`   | The embedded technical viewer (`viewer-design`, `viewer-security`) |
 | `.github/instructions/` | The specification set (21 files)                    |
@@ -35,8 +34,8 @@ go build ./...
 go vet ./...
 go test -race ./...            # correctness + the lock-free read path
 go test -bench=. -benchmem     # performance (performance spec §5)
-go run ./cmd/caskd             # server (CAS API + viewer, disabled by default)
-go run ./cmd/cask              # CLI
+go run ./cmd/cask web          # server (CAS API + viewer, disabled by default)
+go run ./cmd/cask              # CLI store operations
 gofmt -l .                     # must be empty
 ```
 
