@@ -61,6 +61,7 @@ spec instead of restating the design (AGENT.md §4: no duplicated drift).
 | --------- | ---------- | --------------- |
 | **Packfiles** | Git-style packing: group small loose objects into immutable `pack-<ts>.pack` files plus a `.idx` index — O(packs) `List`/`Stats`, pack-level GC, streaming reads via `io.SectionReader`. | cas-core §8 (follow-up 4); performance §9 (format, write policy, acceptance criteria) |
 | **Compression layer** | `CompressedStore` wrapping `RawStore` with gzip via `io.Pipe`, transparent to everything above the byte layer. | cas-core §8 (follow-up 5) |
+| **Encryption layer** | `EncryptedCodec[T]` wrapping `Codec[T]` with authenticated encryption (AES-256-GCM); the application supplies the key — the core never generates or stores keys. | cas-core §8 (follow-up 8); cas-core §4.6/§7.2 (codec recipe) |
 | **Content-defined chunking** | Rolling-hash chunking of very large blobs for chunk-granular dedup. | performance §10 |
 
 Rule for extending this catalog: an extension is listed only once a real
