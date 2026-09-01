@@ -1,12 +1,13 @@
 ---
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
-version: v1
+version: v2
 ---
 
 # Go Coding Guidelines — go-cask
 
-> Applies to **all Go code** in this repository (`cas/`, `cmd/`, `viewer/`).
+> Applies to **all Go code** in this repository (`cas/`, `client/`,
+> `internal/`, `cmd/`).
 > Complements `.github/instructions/cas-core.instructions.md` (what to
 > build) and `.github/instructions/viewer-security.instructions.md` (how the
 > viewer must be secured). Where this file conflicts with an older sketch in
@@ -139,8 +140,8 @@ Consequences for this repo:
   is the XSS boundary; never write raw HTML to the response outside a template.
 - Layout pattern: template composition via `{{define "base"}}` /
   `{{template "content" .}}`, or `template.ParseFS` over an `embed.FS`.
-  Templates live in `viewer/templates/` (or next to their handlers) and are
-  embedded into the binary.
+  Templates live in `internal/web/templates/` (or next to their handlers) and
+  are embedded into the binary.
 - **Use the latest template capabilities** available in 1.27:
   - `template.ParseFS` over `embed.FS` for embedding (no runtime file I/O),
   - composition via `{{define}}` / `{{template}}` / `{{block}}`,
@@ -249,9 +250,15 @@ Consequences for this repo:
 
 ## 9. Project Structure & Conventions
 
-- Layout: `cas/` (core library, `package cas` — per the architecture doc),
-  `cmd/` (thin `main` packages only), `viewer/` (the viewer: handlers +
-  embedded templates + htmx), `docs/`.
+- Layout: `cas/` (public core library, `package cas`), `client/` (public CAS
+  API client SDK, `package client`), `internal/` (implementation detail:
+  `api`, `web` — the viewer —, `auth`, `storage`, `index`; NOT importable
+  outside the module), `cmd/` (thin `main` packages only), `examples/`,
+  `docs/` (backend-architecture §2).
+- `internal/` is the home of every implementation detail: server handlers,
+  middleware, config wiring. It is private by construction — Go rejects
+  imports of `internal/` from outside the module, so the public surface
+  stays exactly `cas/` + `client/`.
 - HTTP middleware (authn, CSRF, and the **IP-based rate limiter**) is shared
   code wrapped around the HTTP surfaces. The rate limiter is a std-lib token
   bucket per caller IP (`sync.Mutex`/`atomic` + `time`), configured per
@@ -276,10 +283,10 @@ Consequences for this repo:
 
 ---
 
-## 10. Frontend Boundary (`viewer/`)
+## 10. Frontend Boundary (`internal/web/`)
 
-- The viewer backend serves `html/template` pages and htmx fragments over
-  `net/http`.
+- The viewer backend (`internal/web/`) serves `html/template` pages and htmx
+  fragments over `net/http`.
 - No build step, no npm, no static asset pipeline: templates are embedded with
   `embed.FS`; htmx is one pinned file (vendored locally preferred; a CDN URL
   is acceptable only with an integrity attribute).

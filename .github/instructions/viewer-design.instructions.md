@@ -6,7 +6,7 @@ version: v2
 
 # Viewer Design — go-cask
 
-> The viewer is the embedded technical browser UI in `viewer/`. It is built for
+> The viewer is the embedded technical browser UI, implemented in `internal/web/`. It is built for
 > the **developer or admin** who needs to browse the CAS and understand its
 > internals. This document defines **how** it is built (hypermedia-driven,
 > nested Go templates + htmx only, raw HTML) and **what** it shows: a
@@ -184,7 +184,7 @@ composition and htmx swaps (e.g. `stats-panel` appears on the dashboard, on
 ### Conventions
 
 - one template per view + small reusable partials; templates in
-  `viewer/templates/`, embedded with `embed.FS`
+  `internal/web/templates/`, embedded with `embed.FS`
 - minimal logic in templates: `{{if}}`, `{{range}}`, `{{with}}`, pipelines;
   all computation in Go handlers, pre-shaped data passed in
 - a registered `template.FuncMap` with pure view helpers, e.g.:
@@ -383,7 +383,7 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
       (`<caption>`/`<th scope>`), one purpose per page, no dead ends
 - [ ] Every requirement of `viewer-security.instructions.md` implemented
       (secure by default, localhost, authn/authz, sessions, CSRF, audit)
-- [ ] No CSS, no hand-written JS anywhere in `viewer/`
+- [ ] No CSS, no hand-written JS anywhere in `internal/web/`
 - [ ] HTML rendered only by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [ ] Full pages and htmx fragments share the same partials (incl.
