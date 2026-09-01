@@ -1,4 +1,4 @@
-# artifact-cache — content-addressed build artifact cache
+# artifacts — content-addressed build artifact cache
 
 **What it demonstrates.** A build-artifact cache that stores outputs under
 the hash of their content with a custom gzip codec, a custom registered hash
@@ -63,11 +63,11 @@ flowchart LR
 ## How to run
 
 ```text
-go run ./examples/artifact-cache -store ./objects put app v1.bin
-go run ./examples/artifact-cache -store ./objects put app v2.bin   # v1 becomes garbage
-go run ./examples/artifact-cache -store ./objects gc               # deletes v1
-go run ./examples/artifact-cache -store ./objects stats
-go test ./examples/artifact-cache/...
+go run ./examples/artifacts -store ./objects put app v1.bin
+go run ./examples/artifacts -store ./objects put app v2.bin   # v1 becomes garbage
+go run ./examples/artifacts -store ./objects gc               # deletes v1
+go run ./examples/artifacts -store ./objects stats
+go test ./examples/artifacts/...
 ```
 
 `put` prints `sha256double:… deduplicated: true/false`; `gc` prints the

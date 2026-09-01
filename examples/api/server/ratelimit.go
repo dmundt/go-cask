@@ -1,4 +1,4 @@
-// Package main implements the cas-api example: a standalone CAS HTTP API
+// Package main implements the api example: a standalone CAS HTTP API
 // server (examples spec §3.4) implementing the /api/cas/v1 contract
 // (cas-api.instructions.md, R-01…R-14): content-addressed store with dedup,
 // streaming uploads/downloads, bearer-token role auth, IP-based rate

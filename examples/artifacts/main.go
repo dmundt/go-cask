@@ -1,11 +1,11 @@
-// Package main implements the artifact-cache example: a content-addressed
+// Package main implements the artifacts example: a content-addressed
 // build-artifact cache with a custom gzip codec, a custom registered hash
 // algorithm (sha256double), bounded LRU caching with a monitor, and
 // mark-and-sweep GC from manifests (examples spec §3.2).
 //
 // Usage:
 //
-//	go run ./examples/artifact-cache [-store <dir>] <command> [args]
+//	go run ./examples/artifacts [-store <dir>] <command> [args]
 //
 // Commands: put <name> <file>, get <hash>, gc, stats, monitor <hash...>.
 package main
@@ -24,7 +24,7 @@ import (
 	"github.com/dmundt/go-cask/cas/extra"
 )
 
-const usage = `usage: artifact-cache [-store <dir>] <command> [args]
+const usage = `usage: artifacts [-store <dir>] <command> [args]
 
 commands:
   put <name> <file>    store an artifact under name (dedup-aware); updates the manifest

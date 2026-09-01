@@ -1,10 +1,10 @@
-// Command cas-api-server is a standalone CAS HTTP API server
-// (examples/cas-api): it serves /api/cas/v1 per cas-api.instructions.md
+// Command api-server is a standalone CAS HTTP API server
+// (examples/api): it serves /api/cas/v1 per cas-api.instructions.md
 // with bearer-token role auth and IP-based rate limiting.
 //
 // Usage:
 //
-//	go run ./examples/cas-api/server -store ./objects \
+//	go run ./examples/api/server -store ./objects \
 //	    -tokens "viewer=v_tok,operator=o_tok,admin=a_tok" -bind 127.0.0.1:8080
 package main
 
@@ -55,7 +55,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		slog.Info("cas-api listening", "addr", *bind, "store", *store)
+		slog.Info("api listening", "addr", *bind, "store", *store)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("serve", "err", err)
 			os.Exit(1)

@@ -1,4 +1,4 @@
-// Command versioned-files is a miniature Git built on the gitlike example
+// Command files is a miniature Git built on the gitlike example
 // layer: it stores file trees as content-addressed objects, commits them,
 // and can log, cat, graph, verify and summarize the store — the closest
 // thing to a tiny Git on CASK (examples spec §3.1).
@@ -9,7 +9,7 @@
 //
 // Usage:
 //
-//	go run ./examples/versioned-files [-store <dir>] <command> [args]
+//	go run ./examples/files [-store <dir>] <command> [args]
 //
 // Commands: add <file...>, commit -m <msg>, log, cat <hash>, graph,
 // verify, stats.
@@ -28,7 +28,7 @@ import (
 	"github.com/dmundt/go-cask/examples/gitlike"
 )
 
-const usage = `usage: versioned-files [-store <dir>] <command> [args]
+const usage = `usage: files [-store <dir>] <command> [args]
 
 commands:
   add <file...>     store files as blobs and build a tree (prints the tree hash)
@@ -112,7 +112,7 @@ func (a *app) commit(ctx context.Context, msg string) (cas.Hash, error) {
 	c := &gitlike.Commit{
 		Tree:    tree,
 		Parent:  parent,
-		Author:  "versioned-files",
+		Author:  "files",
 		Message: msg,
 		Time:    time.Now(),
 	}
