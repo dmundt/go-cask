@@ -2,7 +2,7 @@ name: CI
 
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build
-#   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + gitlike/, fuzz smoke
+#   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + examples/gitlike/, fuzz smoke
 #   performance §5         — benchstat gate against a committed baseline
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
@@ -41,11 +41,11 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: go vet ./...
 
-      - name: Test -race + coverage gate (cas/ + gitlike/ >= 90%)
+      - name: Test -race + coverage gate (cas/ + examples/gitlike/ >= 90%)
         if: hashFiles('**/*.go') != ''
         run: |
           fail=0
-          for pkg in ./cas/... ./gitlike/...; do
+          for pkg in ./cas/... ./examples/gitlike/...; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"

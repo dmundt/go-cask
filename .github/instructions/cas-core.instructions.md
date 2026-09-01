@@ -89,7 +89,7 @@ These invariants are testable and tested — see the CAS laws in
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │ Application / domain layer (per app, NOT part of the core)       │
-│   Example package gitlike/: Blob, Tree, Commit, Tag,             │
+│   Example package examples/gitlike/: Blob, Tree, Commit, Tag,    │
 │     Repository, Resolver, ResolvedObject, WalkGraph,             │
 │     CachedRepository, Preloader                                  │
 │   Other apps: Note, Job, Document, ... (same pattern)            │
@@ -119,7 +119,7 @@ wraps the typed layer without changing either.
 
 **Generic core vs. example layer.** The `cas` package contains only generic
 primitives. The git-like model is a **specific example** in a separate package
-(`gitlike/`); apps build their own object types and their own
+(`examples/gitlike/`); apps build their own object types and their own
 repository/resolver combinations from `Store[T]` — they MUST NOT be added to
 the generic core (§4.12).
 
@@ -586,7 +586,7 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 
 ### 4.12 Example layer: `gitlike` (NOT generic core)
 
-The git-like model is a **specific example** in its own package (`gitlike/`,
+The git-like model is a **specific example** in its own package (`examples/gitlike/`,
 `package gitlike`), demonstrating how apps layer typed objects on the generic
 core. It is not part of `cas`. Applications define their own `Object[T]`
 types; this set is the reference example:

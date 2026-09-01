@@ -148,7 +148,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 - CI: `go test -race ./...`; fuzz smoke runs; `benchstat` gate
   (performance §5).
 - **Coverage — as high as practical**:
-  - `cas/` core AND `gitlike/`: **≥ 90%** statement coverage (excluding
+  - `cas/` core AND `examples/gitlike/`: **≥ 90%** statement coverage (excluding
     generated code); every exported identifier must be exercised at least
     once; any untested branch requires a comment explaining why.
   - HTTP surfaces: **every route** covered by `httptest` (§2 traceability);
@@ -169,7 +169,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 - [ ] `-race` concurrent test green (lock-free read path proven)
 - [ ] corruption test proves `Verify` fails on a flipped byte
 - [ ] golden hash vectors assert exact digests
-- [ ] coverage ≥ 90% on `cas/` + `gitlike/`; every exported identifier
+- [ ] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every exported identifier
       exercised; untested branches commented
 - [ ] every HTTP route tested (success + 400/401/403/404/429)
 - [ ] new requirements come with their test (traceability is review-gated)

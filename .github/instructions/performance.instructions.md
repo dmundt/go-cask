@@ -84,7 +84,7 @@ Rules:
 
 ## 5. Benchmark Suite & CI Gates
 
-Benchmarks live next to the code (`cas/`, `gitlike/` where meaningful):
+Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 
 | Benchmark                  | Cases                                        |
 | -------------------------- | -------------------------------------------- |

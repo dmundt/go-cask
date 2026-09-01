@@ -20,9 +20,9 @@ domains.
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic
-gitlike/   example package — Git-like object model on top of cas
-cmd/       entry points: caskd (server), cask (CLI)
+examples/gitlike/   example package — Git-like object model on top of cas
 examples/  runnable example programs
+cmd/       entry points: caskd (server), cask (CLI)
 viewer/    embedded technical viewer (browser UI)
 docs/      documentation
 .github/   specification set + CI (see below)
@@ -33,7 +33,7 @@ docs/      documentation
 ```go
 import (
     "github.com/dmundt/go-cask/cas"
-    "github.com/dmundt/go-cask/gitlike"
+    "github.com/dmundt/go-cask/examples/gitlike"
 )
 
 raw, _ := cas.NewFSRawStore("./objects")          // backend

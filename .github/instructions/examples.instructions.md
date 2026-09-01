@@ -56,8 +56,14 @@ When creating or extending an example, follow these rules:
    module (no separate `go.mod` unless genuinely required). A runnable demo is
    `package main`; reusable pieces (e.g. a client SDK) are subpackages
    (`examples/<name>/client/`, ...).
+   - **`examples/gitlike/` is the reference library-style example**: an
+     importable package (`package gitlike`, import path
+     `github.com/dmundt/go-cask/examples/gitlike`) rather than a runnable
+     `main` program — the single documented exception to the runnable rule
+     below. It is the reference object model the other examples build on.
 2. **Runnable.** `go build ./...`, `go run ./examples/<name>`, and
-   `go test ./examples/...` MUST all pass. The demo prints meaningful output
+   `go test ./examples/...` MUST all pass (except `examples/gitlike`, which
+   is a library, not a program). The demo prints meaningful output
    (hashes, stats, traversal results) — it must be obvious what it did.
 3. **Standard library only.** No external dependencies
    (coding-guidelines §3). Custom hash algorithms use `RegisterHash` with
