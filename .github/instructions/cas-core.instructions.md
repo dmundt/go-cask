@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v5
+version: v6
 ---
 
 # CAS Core — go-cask
@@ -858,6 +858,12 @@ Open follow-ups (future extensions, not blocking):
    `performance.instructions.md` §9.
 5. **Compression layer** — `CompressedStore` wrapping `RawStore` with gzip via
    `io.Pipe`; deferred until a real need appears.
+8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with
+   authenticated encryption (AES-256-GCM, std-lib `crypto/aes` +
+   `crypto/cipher`); the key is supplied by the application and never
+   generated or stored by the core; transparent to the byte layer (the
+   envelope's base64 payload carries ciphertext unchanged); deferred until a
+   real need appears.
 
 ---
 

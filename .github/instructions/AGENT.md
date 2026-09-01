@@ -237,7 +237,7 @@ contradicting statements in the folder.
 | `cas-api.instructions.md`                        | Canonical CAS HTTP API spec (routes, requirements, rate limit). |
 | `api-design.instructions.md`                     | Shared HTTP API design conventions (both surfaces).             |
 | `examples.instructions.md`                       | Example-program rules + the five proposed examples.             |
-| `extensions.instructions.md`                     | Minimal requirements for future extensions/clients of the core. |
+| `extensions.instructions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
 
 ---
 
