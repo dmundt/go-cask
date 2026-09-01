@@ -250,6 +250,7 @@ client/                # public CAS API client SDK (Put/Get/Meta/List/Stats/Veri
 examples/api/
 ├── server/
 │   ├── main.go        # net/http server, pattern routing, bearer middleware
+│   ├── openapi.yaml   # the CAS API OpenAPI document (separate file, //go:embed per api-design §13)
 │   └── server_test.go # httptest: round-trip, roles, streaming
 ├── demo/
 │   └── main.go        # demo CLI: round-trips a file through the server via client/

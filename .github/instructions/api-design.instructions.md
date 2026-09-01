@@ -1,7 +1,7 @@
 ---
 title: API Design — go-cask
-description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation — applied consistently to the viewer and CAS API surfaces.
-version: v1
+description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied consistently to the viewer and CAS API surfaces.
+version: v2
 ---
 
 # API Design — go-cask
@@ -213,6 +213,12 @@ exempt, `trusted_proxies` only for `X-Forwarded-For`).
 
 - Every endpoint MUST be documented in its surface's OpenAPI document,
   served at `GET /viewer/openapi.yaml` and `GET /api/cas/v1/openapi.yaml`.
+- **The OpenAPI documents MUST live in separate files** — a
+  `openapi.yaml` next to the code that serves it (e.g.
+  `internal/web/openapi.yaml`, `examples/api/server/openapi.yaml`),
+  embedded into the binary with `//go:embed` + `embed.FS`. Never an inline
+  Go string constant: the document is data, not code, and must be
+  diffable/lintable in its native form.
 - The documents MUST match the implemented routes exactly; a CI check
   regenerates/compares them on route changes.
 - The in-browser Swagger UI explorer (`GET /swagger/`) is the single
