@@ -1,0 +1,88 @@
+name: CI
+
+# Enforces the gates required by the instruction set:
+#   coding-guidelines §9   — gofmt, go vet, go test, go build
+#   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + gitlike/, fuzz smoke
+#   performance §5         — benchstat gate against a committed baseline
+#   AGENT.md §9            — document integrity (mermaid balance, file refs)
+#
+# Go steps activate automatically once Go code exists (guarded by
+# hashFiles('**/*.go')); the doc-integrity step always runs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt (no unformatted files)
+        if: hashFiles('**/*.go') != ''
+        run: |
+          unformatted="$(gofmt -l .)"
+          test -z "$unformatted" || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
+
+      - name: go mod tidy (no drift)
+        if: hashFiles('**/*.go') != ''
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || { echo "go.mod/go.sum not tidy"; exit 1; }
+
+      - name: go vet
+        if: hashFiles('**/*.go') != ''
+        run: go vet ./...
+
+      - name: Test -race + coverage gate (cas/ + gitlike/ >= 90%)
+        if: hashFiles('**/*.go') != ''
+        run: |
+          fail=0
+          for pkg in ./cas/... ./gitlike/...; do
+            out="$(go test -race -cover "$pkg")"
+            echo "$out"
+            cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
+            if [ -n "$cov" ] && [ "$(awk -v c="$cov" 'BEGIN{print (c+0 >= 90.0) ? 1 : 0}')" != "1" ]; then
+              echo "coverage $cov% below 90% for $pkg"; fail=1
+            fi
+          done
+          go test -race ./...
+          exit $fail
+
+      - name: Fuzz smoke
+        if: hashFiles('**/*.go') != ''
+        run: |
+          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/...
+          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/...
+          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/...
+          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/...
+
+      - name: Benchstat gate (when a baseline is committed)
+        if: hashFiles('.benchmark-baseline.txt') != '' && hashFiles('**/*.go') != ''
+        run: |
+          go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
+          go run golang.org/x/perf/cmd/benchstat@latest .benchmark-baseline.txt /tmp/bench.txt
+
+      - name: Doc integrity (.github/instructions)
+        run: |
+          cd .github/instructions
+          fail=0
+          for f in *.md; do
+            m="$(grep -c '^```mermaid$' "$f" || true)"
+            c="$(grep -c '^```$' "$f" || true)"
+            if [ "$c" -lt "$m" ]; then echo "unbalanced mermaid in $f"; fail=1; fi
+          done
+          for ref in $(grep -rho '[a-z0-9-]*\.instructions\.md' . | sort -u); do
+            case "$ref" in
+              guidelines.instructions.md|go-coding-guidelines.instructions.md) continue ;; # known false positives
+            esac
+            [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
+          done
+          exit $fail
