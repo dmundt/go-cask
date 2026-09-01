@@ -32,13 +32,15 @@ The repo layout is:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it
+client/    public CAS API client SDK (package client)
+internal/  implementation detail (api, web — the viewer —, auth, storage,
+           index); not importable outside this module
 examples/gitlike/ example package (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
                  WalkGraph
 examples/  runnable example programs (per examples.instructions.md)
 cmd/       command-line entry points
 docs/      documentation
-viewer/    embedded technical viewer (browser UI)
 .github/   copilot instructions (this file + related specs)
 ```
 
@@ -388,8 +390,8 @@ gofmt -l .
   `Put`/`Delete`; caches use `sync.Map` + `atomic` counters; `hashRegistry`
   must be guarded by a `sync.RWMutex` once hash registration can happen after
   startup.
-- Serialization format decision (pending, choose one and apply everywhere):
-  (a) plain codec output with a side registry, or (b) self-describing envelope
-  `{"type": "...", "data": ...}` enabling `ResolveAny` without a registry.
+- Serialization format: RESOLVED and implemented — self-describing envelope
+  `{"type": "...@major", "data": <base64 payload>}` (cas-core §8 decision 1),
+  enabling `parseType`/`ResolveAny` without a side registry.
 - Follow the sibling spec `.github/instructions/viewer-security.instructions.md`
-  for anything touching the embedded viewer (`viewer/`).
+  for anything touching the embedded viewer (`internal/web/`).

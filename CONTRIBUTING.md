@@ -20,11 +20,12 @@ repository.
 
 | Path        | What it is                                                  |
 | ----------- | ----------------------------------------------------------- |
-| `cas/`      | The generic core library (package `cas`) — see `cas-core`   |
+| `cas/`      | The public core library (package `cas`) — see `cas-core`    |
+| `client/`   | The public CAS API client SDK (package `client`)            |
+| `internal/` | Implementation detail: `api`, `web` (the viewer), `auth`, `storage`, `index` — not importable outside the module |
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`  | The single entry point: CLI store ops + server (`cask web` serves CAS API + viewer) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |
-| `viewer/`   | The embedded technical viewer (`viewer-design`, `viewer-security`) |
 | `.github/instructions/` | The specification set (21 files)                    |
 
 ### The dev loop
