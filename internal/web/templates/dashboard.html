@@ -1,0 +1,20 @@
+{{define "dashboard"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/objects">Objects</a> · <a href="/viewer/stats">Stats</a> · <a href="/viewer/gc">GC</a></p></nav>
+<h1>CASK viewer</h1>
+<form method="get" action="/viewer/objects">
+<label for="q">Search</label>
+<input id="q" name="q" type="search" placeholder="hash or type">
+<button type="submit">Search</button>
+</form>
+{{template "stat-cards" .}}
+{{template "algo-table" .}}
+{{template "sample-table" .}}
+</main></body>
+</html>{{end}}
+
+{{define "dashboard_panels"}}{{template "stat-cards" .}}
+{{template "algo-table" .}}
+{{template "sample-table" .}}{{end}}

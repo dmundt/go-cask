@@ -1,0 +1,29 @@
+{{define "graph"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a></p></nav>
+<h1>Graph</h1>
+<p>Reachable from <a href="/viewer/objects/{{.Root}}">{{.Root}}</a></p>
+{{if .Err}}<p>walk failed: {{.Err}}</p>{{end}}
+<ul>
+{{range .Nodes}}<li><a href="/viewer/objects/{{.Hash}}">{{.Short}}</a> <span>{{.Type}}</span></li>{{end}}
+</ul>
+</main></body>
+</html>{{end}}
+
+{{define "gc"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a></p></nav>
+<h1>Garbage collection</h1>
+<form method="post" action="/viewer/gc" hx-post="/viewer/gc" hx-target="#gc-result">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label for="roots">Root hashes (one per line)</label>
+<textarea id="roots" name="roots" rows="5"></textarea>
+<button type="submit">Run GC</button>
+</form>
+<div id="gc-result"></div>
+</main></body>
+</html>{{end}}
