@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library (in-process) or the CAS API (remote), plus the embedded server via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v2
+version: v3
 ---
 
 # CLI — go-cask
@@ -37,8 +37,9 @@ Store operations speak to the store in one of two modes:
 - `-algo <name>` selects the write algorithm (default `sha256`); reads accept
   any registered algorithm (cas-core §4.2).
 - The `web` subcommand is the **server shape**: it starts the embedded HTTP
-  server (CAS API + viewer + OpenAPI) and takes the store from its config
-  (backend-architecture §6) or `-store` — it does not use `-api`.
+  server (CAS API + OpenAPI, viewer when enabled) with the store from
+  `-store` and per-role tokens from `-tokens` — it does not use `-api`
+  (backend-architecture §6; a config file is deferred).
 
 ---
 
@@ -55,7 +56,7 @@ Store operations speak to the store in one of two modes:
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
 | `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
-| `web [-config <path>] [-bind <addr>]` | start the embedded server: CAS API + viewer + OpenAPI (backend-architecture §3–§6); viewer disabled by default (viewer-security) |
+| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-rate n] [-burst n]` | start the embedded server: CAS API + OpenAPI (viewer when enabled) per backend-architecture §3–§6; viewer disabled by default (viewer-security); config-file support (`-config`) is deferred — flags only |
 | `version`                     | print the library version and Go version                        |
 
 - Hash arguments are validated with `ParseHash` before use; malformed → usage
@@ -88,7 +89,8 @@ Store operations speak to the store in one of two modes:
 ## 4. Conventions
 
 - Flags: single-dash long names (`-store`, `-api`, `-token`, `-algo`,
-  `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-config`,
+  `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-bind`,
+  `-tokens`, `-rate`, `-burst`, `-config` (deferred),
   `-bind`).
 - Streams: `put`/`get` stream bytes; the CLI never buffers large objects
   (performance P-05).
