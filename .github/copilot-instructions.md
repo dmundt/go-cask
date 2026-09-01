@@ -72,7 +72,9 @@ Related specs that also constrain work in this repo:
   viewer).
 - `.github/instructions/extensions.instructions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
-  modify, stable surface only, recipes, compatibility).
+  modify, stable surface only, recipes, compatibility), plus the catalog of
+  designed-but-deferred possible extensions (packfiles, compression layer,
+  chunking).
 - `.github/instructions/consistency.instructions.md` — the consistency model:
   broken/dangling object detection, mark-and-sweep GC from roots,
   age-based pruning (retention), informed by Git/IPFS/restic without

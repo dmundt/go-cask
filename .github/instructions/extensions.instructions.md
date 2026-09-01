@@ -1,7 +1,7 @@
 ---
 title: Extensions — go-cask
-description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible.
-version: v1
+description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
+version: v2
 ---
 
 # Extensions — go-cask
@@ -49,7 +49,27 @@ version: v1
 
 ---
 
-## 3. Extension Checklist
+## 3. Known Possible Extensions
+
+A catalog of extensions the specification set has **designed but deliberately
+deferred**. They are not part of the core and SHALL be built as extensions —
+their own package, `cas/extra`, or a client — when a real need appears.
+Nothing in this catalog is committed work; the entries point at the owning
+spec instead of restating the design (AGENT.md §4: no duplicated drift).
+
+| Extension | What it is | Design lives in |
+| --------- | ---------- | --------------- |
+| **Packfiles** | Git-style packing: group small loose objects into immutable `pack-<ts>.pack` files plus a `.idx` index — O(packs) `List`/`Stats`, pack-level GC, streaming reads via `io.SectionReader`. | cas-core §8 (follow-up 4); performance §9 (format, write policy, acceptance criteria) |
+| **Compression layer** | `CompressedStore` wrapping `RawStore` with gzip via `io.Pipe`, transparent to everything above the byte layer. | cas-core §8 (follow-up 5) |
+| **Content-defined chunking** | Rolling-hash chunking of very large blobs for chunk-granular dedup. | performance §10 |
+
+Rule for extending this catalog: an extension is listed only once a real
+design exists in an owning spec (like performance §9/§10); a wish without a
+design is not an entry.
+
+---
+
+## 4. Extension Checklist
 
 - [ ] Lives in its own package; `cas`/`gitlike` untouched
 - [ ] Uses only the stable surface (cas-core §7.1)
@@ -61,3 +81,4 @@ version: v1
 - [ ] Std-lib only unless justified + vendored
 - [ ] Exported identifiers documented; OpenAPI if HTTP
 - [ ] Simple: one job, nothing speculative
+- [ ] Catalog entries (§3) reference an owning spec; no design-less wishes
