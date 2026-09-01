@@ -81,7 +81,7 @@ jobs:
           done
           for ref in $(grep -rho '[a-z0-9-]*\.instructions\.md' . | sort -u); do
             case "$ref" in
-              guidelines.instructions.md|go-coding-guidelines.instructions.md) continue ;; # known false positives
+              guidelines.instructions.md|go-coding-guidelines.instructions.md|.instructions.md) continue ;; # known false positives (pattern literals in AGENT.md)
             esac
             [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
           done
