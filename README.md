@@ -20,8 +20,7 @@ domains.
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic
-examples/gitlike/   example package — Git-like object model on top of cas
-examples/  runnable example programs
+examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry points: caskd (server), cask (CLI)
 viewer/    embedded technical viewer (browser UI)
 docs/      documentation
