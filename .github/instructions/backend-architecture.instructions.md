@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
-description: How the go-cask backend is put together — process and binary layout, HTTP server wiring, the two API surfaces, middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v1
+description: How the go-cask backend is put together — process and binary layout, HTTP server wiring (started by `cask web`), the two API surfaces, middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
+version: v2
 ---
 
 # Backend Architecture — go-cask
@@ -31,8 +31,8 @@ version: v1
 - Handlers are **thin**: all logic lives in the library (cas-core);
   the backend composes it and adds HTTP concerns (auth, rate limiting,
   validation, streaming, OpenAPI).
-- One codebase serves all shapes: a single server binary, a CLI, or library
-  embedding — never separate forks.
+- One codebase serves all shapes: the server via `cask web`, the CLI, or
+  library embedding — never separate forks.
 
 ---
 
@@ -40,15 +40,17 @@ version: v1
 
 ```text
 cmd/
-├── caskd        # the server: CAS API + viewer in one binary (default shape)
-├── cask         # CLI: store operations against a store or a remote CAS API
+├── cask         # the single entry point: CLI store operations AND the
+│                # server shape via `cask web` (CAS API + viewer + OpenAPI)
 └── …            # additional entry points per examples.instructions.md
 ```
 
-- `cmd/caskd` is the reference server: it serves both HTTP surfaces and the
-  Swagger/OpenAPI documents.
-- `cmd/cask` is a thin CLI over the same library (and over the CAS API client
-  in remote mode) — the library is the single source of behavior.
+- `cmd/cask` is the only binary. Its `web` subcommand is the **reference
+  server**: it serves both HTTP surfaces and the Swagger/OpenAPI documents
+  (cli §2). There is no separate server binary.
+- The non-`web` subcommands are the thin CLI over the same library (and over
+  the CAS API client in remote mode) — the library is the single source of
+  behavior.
 
 ---
 
@@ -56,7 +58,7 @@ cmd/
 
 ```mermaid
 flowchart TB
-    subgraph BIN["cmd/caskd"]
+    subgraph BIN["cmd/cask web"]
         CFG["config"]
         MID["middleware: rate limit → auth → CSRF"]
         VH["viewer handlers (/viewer/*, HTML)"]
@@ -162,10 +164,14 @@ Lifecycle:
 
 ## 8. Deployment Shapes
 
-1. **Single binary** — library + CAS API + viewer in `cmd/caskd` (default).
-2. **Split** — a viewer server consuming a remote CAS API server over HTTP
-   (the remote client seam of §5); both speak the same documented contract.
-3. **CLI / embedding** — `cmd/cask` and library consumers.
+1. **Single binary** — library + CAS API + viewer in `cmd/cask`, started with
+   `cask web` (default shape).
+2. **Split** — a viewer-fronting `cask web` consuming a remote CAS API
+   server over HTTP (the remote client seam of §5); both sides speak the same
+   documented contract and may both be `cask web` instances with different
+   config.
+3. **CLI / embedding** — the non-`web` `cmd/cask` subcommands and library
+   consumers.
 
 All shapes share the config contract and the middleware/security model; the
 HTTP API versioning (`/api/cas/v1`) is the compatibility boundary for remote
