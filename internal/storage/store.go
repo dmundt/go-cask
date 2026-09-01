@@ -37,6 +37,10 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	return &Store{raw: raw, sizes: map[string]int64{}}, nil
 }
 
+// Raw exposes the underlying FSRawStore for typed resolution (the viewer
+// resolves references via the gitlike resolver over the same store).
+func (s *Store) Raw() *cas.FSRawStore { return s.raw }
+
 // Put stores the bytes read from r under h, records their size, and returns
 // the stored size. Streaming: r is never buffered.
 func (s *Store) Put(ctx context.Context, h cas.Hash, r io.Reader) (int64, error) {
