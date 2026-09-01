@@ -123,7 +123,7 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 | ------------------ | ---------------------------------------------------------------------- |
 | go-cask / CASK     | The project (Content Addressed Storage Kit).                           |
 | `cas` package      | The generic core library (`cas/`, `package cas`).                      |
-| `gitlike` package  | The example layer (`gitlike/`) — Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
+| `gitlike` package  | The example layer (`examples/gitlike/`) — Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
 | the viewer         | The embedded technical browser UI (`viewer/`). **Not** "debug UI".     |
 | viewer API         | The hypermedia surface under `/viewer/` (HTML).                        |
 | CAS API            | The JSON data API under `/api/cas/v1/`.                                |

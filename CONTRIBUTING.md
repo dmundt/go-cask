@@ -21,7 +21,7 @@ repository.
 | Path        | What it is                                                  |
 | ----------- | ----------------------------------------------------------- |
 | `cas/`      | The generic core library (package `cas`) — see `cas-core`   |
-| `gitlike/`  | Reference example object model (package `gitlike`)          |
+| `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/caskd` | The server: CAS API + viewer in one binary                  |
 | `cmd/cask`  | The CLI (spec: `cli.instructions.md`)                       |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |

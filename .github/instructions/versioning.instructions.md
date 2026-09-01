@@ -43,7 +43,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 ## 2. Go Module Versioning Rules
 
 - Module path: `github.com/dmundt/go-cask`; the core lives in the `cas/`
-  subpackage (`github.com/dmundt/go-cask/cas`), the example in `gitlike/`.
+  subpackage (`github.com/dmundt/go-cask/cas`), the example in `examples/gitlike/`.
 - **v0/v1**: no path suffix. Tags: `v1.0.0`, `v1.1.0`, …
 - **v2 and later**: Go REQUIRES the major version in the module path —
   `github.com/dmundt/go-cask/v2` (module path changes, tags become

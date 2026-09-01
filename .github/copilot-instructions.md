@@ -32,8 +32,9 @@ The repo layout is:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it
-gitlike/   example package (package gitlike) — Git-like object model on top
-           of cas: Blob/Tree/Commit/Tag, Repository, Resolver, WalkGraph
+examples/gitlike/ example package (package gitlike) — Git-like object model
+                 on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
+                 WalkGraph
 examples/  runnable example programs (per examples.instructions.md)
 cmd/       command-line entry points
 docs/      documentation
@@ -145,7 +146,7 @@ type-safe, registry-free design:
 10. **Generic core vs. example layer**: the git-like model (`Blob`/`Tree`/
     `Commit`/`Tag`, `Repository`, `Resolver`, `ResolvedObject`, `WalkGraph`,
     `CachedRepository`, `Preloader`) is a **specific example** in a separate
-    `gitlike/` package — the `cas` core stays app-agnostic and generic only.
+    `examples/gitlike/` package — the `cas` core stays app-agnostic and generic only.
 
 The final user turn ("I want a repo from your code with all the latest changes
 and features") is not answered inside the share, so the reference implementation
@@ -208,7 +209,7 @@ flowchart TB
 | *(gitlike)* `CachedRepository`/`Preloader` | Example repository-bound caches (application layer) |
 
 The `cas` package is **generic only**. Everything marked *(gitlike)* lives in
-the separate example package `gitlike/` and is NOT part of the core — apps
+the separate example package `examples/gitlike/` and is NOT part of the core — apps
 build their own equivalents for their own types.
 
 ---
@@ -251,7 +252,7 @@ build their own equivalents for their own types.
 > Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Hash`,
 > `RawStore`); `fsstore.go`/`memstore.go` → cas-core §4.4–4.5;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
-> `cache.go` → §4.10; `maintenance.go` → §4.11; `gitlike/*` → §4.12.
+> `cache.go` → §4.10; `maintenance.go` → §4.11; `examples/gitlike/*` → §4.12.
 
 ## Usage Example
 
@@ -264,7 +265,7 @@ import (
     "time"
 
     "github.com/dmundt/go-cask/cas"
-    "github.com/dmundt/go-cask/gitlike"
+    "github.com/dmundt/go-cask/examples/gitlike"
 )
 
 func main() {
@@ -366,7 +367,7 @@ gofmt -l .
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the
-  example package `gitlike/` — it is NOT part of the generic `cas` core; the
+  example package `examples/gitlike/` — it is NOT part of the generic `cas` core; the
   core stays app-agnostic.
 - **No `any`/`interface{}` in exported API.** The one internal exception is
   the `Store[T].Get` type assertion — document it, or constrain
