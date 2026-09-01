@@ -8,7 +8,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -86,7 +85,7 @@ func (s *Server) postObject(w http.ResponseWriter, r *http.Request) {
 	if algo == "" {
 		algo = "sha256"
 	}
-	hasher, err := newHasher(algo)
+	hasher, err := cas.NewHasher(algo)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, err.Error())
 		return
@@ -237,7 +236,7 @@ func (s *Server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, "read failed")
 		return
 	}
-	recomputed, err := hashBytes(h.Algorithm(), data)
+	recomputed, err := cas.HashBytes(h.Algorithm(), data)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -323,23 +322,4 @@ func parseBounded(raw string, def, lo, hi int) (int, error) {
 		return 0, fmt.Errorf("out of bounds")
 	}
 	return n, nil
-}
-
-// --- hashing helpers (registered algorithms; R-01) ---
-
-func newHasher(algo string) (hash.Hash, error) {
-	return newHasherFor(algo)
-}
-
-func hashBytes(algo string, data []byte) (cas.Hash, error) {
-	h, err := newHasherFor(algo)
-	if err != nil {
-		return nil, err
-	}
-	h.Write(data)
-	return cas.NewHash(algo, h.Sum(nil))
-}
-
-func spoolAndHash(w io.Writer, hasher hash.Hash, r io.Reader) (int64, error) {
-	return io.Copy(io.MultiWriter(w, hasher), r)
 }
