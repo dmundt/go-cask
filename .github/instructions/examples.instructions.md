@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API, and the embedded viewer (templates + htmx).
-version: v1
+description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API and its public client SDK, and the embedded viewer (templates + htmx).
+version: v2
 ---
 
 # Examples — go-cask
@@ -16,8 +16,8 @@ version: v1
 >    (custom codec + hash, caching, GC)
 > 3. `examples/notes` — document graph app with its own object types (the
 >    "apps build their own repository" pattern, lazy loading)
-> 4. `examples/cas-api` — CAS HTTP API server + Go client SDK (streaming,
->    auth, OpenAPI)
+> 4. `examples/cas-api` — CAS HTTP API server + the public client SDK
+>    (streaming, auth, OpenAPI)
 > 5. `examples/viewer-app` — embedded technical viewer (nested Go templates +
 >    htmx, dashboard, security)
 >
@@ -54,8 +54,10 @@ When creating or extending an example, follow these rules:
 
 1. **Location.** Each example lives in `examples/<name>/` inside the main
    module (no separate `go.mod` unless genuinely required). A runnable demo is
-   `package main`; reusable pieces (e.g. a client SDK) are subpackages
-   (`examples/<name>/client/`, ...).
+   `package main`; reusable pieces are subpackages
+   (`examples/<name>/client/`, ...). Exception: the **public CAS API client
+   SDK is a root-level package** (`client/`) so third parties can import it —
+   examples use it, they do not contain it (backend-architecture §2).
    - **`examples/gitlike/` is the reference library-style example**: an
      importable package (`package gitlike`, import path
      `github.com/dmundt/go-cask/examples/gitlike`) rather than a runnable
@@ -203,28 +205,31 @@ examples/notes/
 not loaded until accessed; after prefetch the cache reports hits; broken
 references are detected and reported without crashing.
 
-### 3.4 `examples/cas-api` — CAS HTTP API server + Go client SDK
+### 3.4 `examples/cas-api` — CAS HTTP API server using the public client SDK
 
 **Goal.** A standalone server exposing the CAS HTTP API (`/api/cas/v1`) per
-`cas-api.instructions.md`, plus a small Go client SDK that other programs (and
-the other examples) can use — demonstrating the API contract, streaming, and
-auth.
+`cas-api.instructions.md`, plus the **public `client/` SDK** that other
+programs (and the other examples) can import — demonstrating the API
+contract, streaming, and auth.
 
 **Aspects covered.** CAS API surface (`POST/GET /objects`, `meta`, `list`,
 `stats`, `verify`, `gc`), bearer-token auth with the role matrix,
 streaming upload/download (large objects never fully buffered), dedup,
 OpenAPI self-doc at `/api/cas/v1/openapi.yaml`, client SDK usage.
 
-**Structure.**
+**Structure.** The SDK is a **root-level public package** (`client/`,
+`package client`, import path `github.com/dmundt/go-cask/client`), NOT part
+of the example — it is the public surface promised by
+backend-architecture §2. The example demonstrates it:
 
 ```text
+client/                # public CAS API client SDK (Put/Get/Meta/List/Stats/Verify)
 examples/cas-api/
 ├── server/
-│   ├── main.go      # net/http server, pattern routing, bearer middleware
+│   ├── main.go        # net/http server, pattern routing, bearer middleware
 │   └── server_test.go # httptest: round-trip, roles, streaming
-├── client/
-│   ├── client.go    # SDK: Put/Get/Meta/List/Stats/Verify (public API)
-│   └── main.go      # demo CLI using the SDK
+├── demo/
+│   └── main.go        # demo CLI: round-trips a file through the server via client/
 └── README.md
 ```
 
@@ -233,7 +238,7 @@ examples/cas-api/
 - `server` stores/retrieves bytes by hash with `?algo`, enforces roles
   (viewer: reads; operator: store/verify; admin: delete/gc), returns JSON
   errors, and serves its OpenAPI document.
-- `client` SDK mirrors the API with typed functions and streams
+- `client` mirrors the API with typed functions and streams
   `io.Reader`/`io.ReadCloser`; the demo CLI round-trips a file through the
   server.
 

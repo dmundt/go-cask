@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
-description: How the go-cask backend is put together — process and binary layout, HTTP server wiring (started by `cask web`), the two API surfaces, middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v2
+description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), HTTP server wiring (started by `cask web`), the two API surfaces, middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
+version: v3
 ---
 
 # Backend Architecture — go-cask
@@ -39,18 +39,29 @@ version: v2
 ## 2. Process & Binary Layout
 
 ```text
-cmd/
-├── cask         # the single entry point: CLI store operations AND the
-│                # server shape via `cask web` (CAS API + viewer + OpenAPI)
-└── …            # additional entry points per examples.instructions.md
+go-cask/
+├── cas/          # public core library (package cas) — the stable surface
+├── client/       # public CAS API client SDK (package client)
+├── internal/     # implementation detail — Go forbids imports from outside
+│   │             # this module
+│   ├── api/      #   CAS API handlers (/api/cas/v1/*)
+│   ├── web/      #   the viewer: handlers + templates (/viewer/*)
+│   ├── auth/     #   authn/authz: tokens, sessions, roles, CSRF
+│   ├── storage/  #   backend wiring (config → RawStore)
+│   └── index/    #   object listing/meta/stats helpers
+├── cmd/cask/     # thin main: CLI store ops + `cask web` (the server)
+└── examples/     # runnable examples
 ```
 
-- `cmd/cask` is the only binary. Its `web` subcommand is the **reference
-  server**: it serves both HTTP surfaces and the Swagger/OpenAPI documents
-  (cli §2). There is no separate server binary.
-- The non-`web` subcommands are the thin CLI over the same library (and over
-  the CAS API client in remote mode) — the library is the single source of
-  behavior.
+- `cmd/cask` is the only binary, and it is a **thin main**: all server logic
+  lives in `internal/` (api, web, auth, storage, index); `cask web` wires the
+  internal packages together (cli §2). `internal/` packages MUST NOT be
+  imported from outside this module — Go enforces this at compile time.
+- `cas/` and `client/` are the **public surface**: `cas` is the embedded
+  library; `client` is the remote CAS API SDK. Everything else is private.
+- The non-`web` subcommands of `cmd/cask` are the thin CLI over the same
+  library (and over the client in remote mode) — the library is the single
+  source of behavior.
 
 ---
 
@@ -84,6 +95,9 @@ Rules:
 - The backend NEVER talks to storage directly from handlers — it goes through
   the `RawStore`/`Store[T]` layer, so backend selection is a configuration
   decision, not a code change.
+- The handler sets live in `internal/`: `internal/api` (CAS API),
+  `internal/web` (the viewer); middleware and config in `internal/auth` /
+  `internal/storage`. `cmd/cask web` only wires them (§2).
 
 ---
 

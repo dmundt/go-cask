@@ -23,10 +23,11 @@ domains.
 ## Repository layout
 
 ```text
-cas/       core library (package cas) — generic, app-agnostic
+cas/       core library (package cas) — generic, app-agnostic, public
+client/    public CAS API client SDK (package client)
+internal/  implementation detail: api, web (the viewer), auth, storage, index
 examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry point: cask (CLI; `cask web` starts the CAS API + viewer server)
-viewer/    embedded technical viewer (browser UI)
 docs/      documentation
 .github/   specification set + CI (see below)
 ```
