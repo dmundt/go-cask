@@ -1,37 +1,44 @@
 ---
 title: CLI — go-cask
-description: The contract for cmd/cask — a thin command-line client over the cas library (in-process) or the CAS API (remote); subcommands, flags, output format, auth, and exit codes.
-version: v1
+description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library (in-process) or the CAS API (remote), plus the embedded server via the web subcommand; subcommands, flags, output format, auth, and exit codes.
+version: v2
 ---
 
 # CLI — go-cask
 
-> The contract for `cmd/cask`: a thin command-line client. It is a wrapper,
-> not a second implementation — every operation maps to a core maintenance
-> operation (cas-core §4) or a CAS API call (cas-api), so behavior is defined
-> once.
+> The contract for `cmd/cask`: the single binary of the project — a thin
+> command-line client and, via the `web` subcommand, the embedded server
+> (CAS API + viewer). It is a wrapper, not a second implementation — every
+> operation maps to a core maintenance operation (cas-core §4), a CAS API
+> call (cas-api), or the server composition (backend-architecture §3).
 >
 > Related: `.github/instructions/cas-core.instructions.md` (operations),
 > `.github/instructions/cas-api.instructions.md` (remote mode),
-> `.github/instructions/consistency.instructions.md` (GC/prune),
+> `.github/instructions/backend-architecture.instructions.md` (the `web`
+> server), `.github/instructions/consistency.instructions.md` (GC/prune),
 > `.github/instructions/versioning.instructions.md` (version output).
 
 ---
 
 ## 1. Purpose & Modes
 
-`cmd/cask` speaks to the store in one of two modes:
+`cmd/cask` is the only entry point — there is no separate server binary.
+Store operations speak to the store in one of two modes:
 
 | Mode      | Flag            | What it talks to                              | Auth               |
 | --------- | --------------- | --------------------------------------------- | ------------------ |
 | local     | `-store <path>` | the library in-process (`FSRawStore`)         | none (filesystem trust) |
 | remote    | `-api <url>`    | a CAS API server via the client SDK           | `-token <bearer>`  |
 
-- Exactly one mode is required; `-store` and `-api` are mutually exclusive.
+- Exactly one mode is required for store operations; `-store` and `-api` are
+  mutually exclusive.
 - Remote mode goes through the documented CAS API contract (including rate
   limits and role checks); local mode is always available.
 - `-algo <name>` selects the write algorithm (default `sha256`); reads accept
   any registered algorithm (cas-core §4.2).
+- The `web` subcommand is the **server shape**: it starts the embedded HTTP
+  server (CAS API + viewer + OpenAPI) and takes the store from its config
+  (backend-architecture §6) or `-store` — it does not use `-api`.
 
 ---
 
@@ -48,6 +55,7 @@ version: v1
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
 | `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
+| `web [-config <path>] [-bind <addr>]` | start the embedded server: CAS API + viewer + OpenAPI (backend-architecture §3–§6); viewer disabled by default (viewer-security) |
 | `version`                     | print the library version and Go version                        |
 
 - Hash arguments are validated with `ParseHash` before use; malformed → usage
@@ -56,6 +64,8 @@ version: v1
   `gc` prints the count of deleted objects (consistency §4–§5).
 - Remote mode maps directly to the CAS API endpoints (cas-api §5/§6); local
   mode calls the library.
+- `web` is the only subcommand that does not terminate: it runs the server
+  until signalled (graceful shutdown per backend-architecture §6).
 
 ---
 
@@ -78,7 +88,8 @@ version: v1
 ## 4. Conventions
 
 - Flags: single-dash long names (`-store`, `-api`, `-token`, `-algo`,
-  `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`).
+  `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-config`,
+  `-bind`).
 - Streams: `put`/`get` stream bytes; the CLI never buffers large objects
   (performance P-05).
 - No secrets in output: tokens are never echoed; errors never include the
@@ -91,8 +102,10 @@ version: v1
 ## 5. Checklist
 
 - [ ] `-store` and `-api` modes mutually exclusive; `-algo` honored for writes
-- [ ] All subcommands map to core operations or CAS API endpoints — no new
-      logic in the CLI
+- [ ] `web` starts the full server (CAS API + viewer + OpenAPI) per
+      backend-architecture; no separate server binary exists
+- [ ] All subcommands map to core operations, CAS API endpoints, or the
+      server composition — no new logic in the CLI
 - [ ] Hash arguments validated with `ParseHash` (exit 2 on malformed)
 - [ ] Output plain text by default, `-json` on request; errors on stderr
 - [ ] Exit codes 0/1/2 per §3
