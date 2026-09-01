@@ -18,12 +18,14 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          # std-lib-only module: no go.sum to key a module cache on
+          cache: false
 
       - name: gofmt (no unformatted files)
         if: hashFiles('**/*.go') != ''
