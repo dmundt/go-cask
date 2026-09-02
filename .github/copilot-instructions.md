@@ -1,7 +1,7 @@
 ---
 title: Copilot Instructions — go-cask
 description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in .github/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v3
+version: v4
 ---
 
 # Copilot Instructions — go-cask (CASK: Content Addressed Storage Kit)
@@ -138,8 +138,9 @@ type-safe, registry-free design:
    resolution is type-safe via per-type stores, a `Repository`, and a
    `Resolver` (with a typed `ResolvedObject` union for "resolve anything").
 9. **Lazy loading + caching**: `CachedObject[T]` (lazy proxy), `CachedStore[T]`,
-   LRU eviction, `CachedRepository`, background `Preloader`, `SmartCache`
-   prefetch, and `CacheMonitor` metrics.
+   LRU eviction, `CachedRepository`, background `Preloader` (prefetch-on-
+   access and cache-monitor metrics later became example recipes in
+   `examples/notes` and `examples/artifacts`).
 10. **Generic core vs. example layer**: the git-like model (`Blob`/`Tree`/
     `Commit`/`Tag`, `Repository`, `Resolver`, `ResolvedObject`, `WalkGraph`,
     `CachedRepository`, `Preloader`) is a **specific example** in a separate
@@ -176,7 +177,7 @@ flowchart TB
     end
     subgraph CORE["Generic core (package cas)"]
         TYPED["Typed layer: Object[T] · Codec[T] · Store[T] · Walker[T]"]
-        CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T] · SmartCache[T] · CacheMonitor[T]"]
+        CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
         BYTE["Byte layer: Hash · RawStore · FSRawStore"]
     end
     APP1 --> TYPED
@@ -199,8 +200,6 @@ flowchart TB
 | `Walker[T]`      | Generic graph traversal over `References()`                 |
 | `CachedStore[T]` | Lazy loading + caching wrapper around `Store[T]`            |
 | `LRUCache[T]`    | Size-bounded cache with LRU eviction                        |
-| `SmartCache[T]`  | Prefetch-on-access cache wrapper                            |
-| `CacheMonitor[T]`| Periodic cache snapshots                                    |
 | *(gitlike)* `Blob`/`Tree`/`Commit`/`Tag` | Example `Object[T]` types (application layer)   |
 | *(gitlike)* `Repository`/`Resolver`/`ResolvedObject`/`WalkGraph` | Example per-type stores + type-safe resolution (application layer) |
 | *(gitlike)* `CachedRepository`/`Preloader` | Example repository-bound caches (application layer) |

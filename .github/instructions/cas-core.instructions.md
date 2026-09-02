@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v8
+version: v9
 ---
 
 # CAS Core — go-cask
@@ -103,7 +103,6 @@ These invariants are testable and tested — see the CAS laws in
 │                                                                  │
 │   Caching / lazy loading layer (generic over T):                 │
 │   CachedObject[T] → CachedStore[T] → LRUCache[T]                │
-│   SmartCache[T] · CacheMonitor[T]                                │
 ├──────────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic, package cas)                            │
 │   Hash (algo:digest) · HashFunc registry · ParseHash             │
@@ -250,15 +249,9 @@ classDiagram
         +CacheStats() CacheStats
     }
     class LRUCache~T~
-    class SmartCache~T~
-    class CacheMonitor~T~ {
-        +onSnapshot func(CacheSnapshot)
-    }
     CachedStore~T~ o-- Store~T~ : wraps
     CachedObject~T~ o-- CachedStore~T~ : back-ref
     LRUCache~T~ --|> CachedStore~T~ : extends
-    SmartCache~T~ --|> CachedStore~T~ : extends
-    CacheMonitor~T~ o-- CachedStore~T~ : monitors
 ```
 
 **Example layer — gitlike (application code, not core):**
@@ -566,18 +559,10 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
   overrides `Get` to track LRU and promote existing entries.
 - `NewLRUCache(store, maxSize)` rejects `maxSize <= 0`.
 
-**`SmartCache[T]`** — prefetch on access:
-
-- `GetWithPrefetch(ctx, h)` loads the object, then asynchronously prefetches
-  its references to `prefetchDepth` with a 5 s timeout.
-
-**`CacheMonitor[T]`** — observability:
-
-- `NewCacheMonitor(store, interval, onSnapshot func(CacheSnapshot))`; emits
-  periodic snapshots (hits/misses/hit-rate/size/loads/evicts) until `Stop()`.
-
-(Optional machinery — `SmartCache`, `CacheMonitor` — MAY move to a
-`cas/extra` subpackage unless a core consumer uses them; library-design §1.)
+Prefetch-on-access (`SmartCache`) and periodic cache observability
+(`CacheMonitor`) are **example recipes, not part of `cas`**: `examples/notes`
+demonstrates prefetch-on-access over `CachedStore[T]`, and `examples/artifacts`
+demonstrates a cache monitor emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
 
@@ -783,7 +768,7 @@ The stable API the core promises (library-design §1):
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
 | Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`), `MemoryRawStore`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
-| Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` (+ optional `SmartCache[T]`, `CacheMonitor[T]`) |
+| Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash` (library-design §2) |
 
 Everything else is internal and MUST NOT be relied upon. The surface stays

@@ -1,4 +1,4 @@
-package extra
+package main
 
 import (
 	"sync"
@@ -11,10 +11,10 @@ import (
 // cache's hit/miss/load/evict counters, hit rate, and current size.
 type CacheSnapshot = cas.CacheStats
 
-// CacheMonitor[T] observes a CachedStore[T] and emits CacheSnapshot values
-// through onSnapshot on a fixed interval, starting at construction, until
-// Stop is called. It is used for observability (logging, metrics) of cache
-// behavior.
+// CacheMonitor[T] observes a cas.CachedStore[T] and emits CacheSnapshot
+// values through onSnapshot on a fixed interval, starting at construction,
+// until Stop is called. This is the example's own monitor recipe (formerly
+// cas/extra), inlined per the self-contained-examples rule.
 type CacheMonitor[T any] struct {
 	store      *cas.CachedStore[T]
 	interval   time.Duration

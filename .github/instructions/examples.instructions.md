@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v6
+version: v7
 ---
 
 # Examples — go-cask
@@ -89,7 +89,7 @@ When creating or extending an example, follow these rules:
      criteria, in one short paragraph;
    - **Cas core parts used** — the exact components/APIs exercised (e.g.
      `Store[T]`, `JSONCodec[T]`, `FSRawStore` fan-out, `Verify`, `GC`,
-     `LRUCache[T]`, `SmartCache[T]`), as a list or table;
+     `LRUCache[T]`, `CachedObject[T]`), as a list or table;
    - **What it extends** — everything the example adds on top of the core
      (custom `Codec[T]`, `RegisterHash` algorithms, own `Object[T]` types,
      own repository/resolver pattern, HTTP surface), and explicitly what it
@@ -169,7 +169,7 @@ caching machinery.
 the name must obey the hash-string validation pattern of defaults §2, so
 the earlier illustrative `sha256-double` is not used),
 `PutDedup` (dedup reporting), `CachedStore[T]`/`LRUCache[T]`,
-`CacheMonitor[T]` metrics, `GC` (reachable = manifest-referenced artifacts),
+cache metrics (its own `CacheMonitor` recipe), `GC` (reachable = manifest-referenced artifacts),
 `Stats`.
 
 **Structure.**
@@ -188,7 +188,7 @@ examples/artifacts/
 
 - `put <file>` computes the custom hash, stores via `PutDedup`, and prints
   `deduplicated: true/false`; manifests reference artifact hashes.
-- `get <hash>` serves from cache (`LRUCache`) with a `CacheMonitor` printing
+- `get <hash>` serves from cache (`LRUCache`) with the example's own `CacheMonitor` printing
   hit rate on exit.
 - `gc` mark-and-sweeps: objects not reachable from any manifest are deleted;
   `stats` before/after shows the difference.
@@ -207,7 +207,7 @@ prefetching.
 **Aspects covered.** Custom `Object[T]` types on the generic core, own
 `Repository`/`Resolver`/`ResolvedObject` (copied from the `gitlike` pattern),
 generic `Walker[T]` traversal, lazy loading via `CachedObject[T]`,
-`SmartCache[T]` prefetch, broken-reference detection.
+prefetch-on-access (own `SmartCache` recipe), broken-reference detection.
 
 **Structure.**
 
@@ -226,7 +226,7 @@ examples/notes/
   loaded lazily (`CachedObject.Load` only on access).
 - Own `Resolver` resolves any hash to the right concrete type via
   `ResolvedObject` (no `any`), mirroring the `gitlike` example.
-- `SmartCache.GetWithPrefetch` warms references; metrics show cache hits after
+- the example's `SmartCache.GetWithPrefetch` warms references; metrics show cache hits after
   prefetch; a deliberately dangling reference is flagged as broken.
 
 **Acceptance criteria.** Notes resolve across all three types; attachments are
@@ -338,8 +338,8 @@ JS anywhere in the example.
 | Generic `Walker[T]`                               | ✓               |                | ✓     |         |            |
 | Lazy loading (`CachedObject[T]`)                  |                 |                | ✓     |         | ✓ (hexdump)|
 | Caching (`CachedStore[T]`/`LRUCache[T]`)          |                 | ✓              | ✓     |         |            |
-| `SmartCache[T]` prefetch                          |                 |                | ✓     |         |            |
-| Metrics (`CacheMonitor[T]`)                       |                 | ✓              |       |         |            |
+| Prefetch-on-access (own `SmartCache`)              |                 |                | ✓     |         |            |
+| Cache metrics (own `CacheMonitor`)                 |                 | ✓              |       |         |            |
 | Background `Preloader`                            |                 |                | ✓     |         |            |
 | `Stats` / `Verify` / `GC`                         | ✓ (verify/stats)| ✓ (gc/stats)   |       | ✓       | ✓          |
 | HTTP-exposure pattern (server over `cas`)          |                 |                |       | ✓       |            |

@@ -1,7 +1,4 @@
-// Package extra holds optional machinery for the cas core that the lean core
-// (library-design §1) keeps out of package cas itself: SmartCache (prefetch
-// on access) and CacheMonitor (periodic cache observability).
-package extra
+package main
 
 import (
 	"context"
@@ -13,11 +10,13 @@ import (
 // prefetchTimeout bounds every asynchronous prefetch.
 const prefetchTimeout = 5 * time.Second
 
-// SmartCache[T] wraps a CachedStore[T] and adds prefetch-on-access:
+// SmartCache[T] wraps a cas.CachedStore[T] and adds prefetch-on-access:
 // GetWithPrefetch loads the requested object and then asynchronously
 // prefetches its references (to prefetchDepth levels) so later reads hit
 // the cache. Prefetching never blocks or fails the caller — it runs in a
-// detached goroutine with a 5 s timeout, and errors are dropped.
+// detached goroutine with a 5 s timeout, and errors are dropped. This is
+// the example's own prefetch recipe (formerly cas/extra), inlined per the
+// self-contained-examples rule.
 type SmartCache[T any] struct {
 	store         *cas.CachedStore[T]
 	prefetchDepth int

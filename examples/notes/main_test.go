@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/extra"
 )
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
@@ -90,7 +89,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newTestRepo(t)
 	noteCache := cas.NewCachedStore(repo.Notes)
-	smart := extra.NewSmartCache(noteCache, 2)
+	smart := NewSmartCache(noteCache, 2)
 
 	second, err := repo.Notes.Put(ctx, &Note{Title: "second"})
 	if err != nil {

@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v4
+version: v5
 ---
 
 # Library Design — go-cask
@@ -26,8 +26,9 @@ version: v4
   `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`),
   `MemoryRawStore`, `StoreStats`, `Codec`, `JSONCodec`, `Object`, `Store`,
   `Walker`, `CachedObject`, `CachedStore`, `LRUCache`.
-- **Optional machinery** (`SmartCache`, `CacheMonitor`) MAY move to a
-  `cas/extra` subpackage unless a core consumer (the viewer) uses them;
+- **Optional machinery stays out of the core.** Prefetch-on-access and
+  cache-monitor recipes are demonstrated by `examples/notes` and
+  `examples/artifacts` — never part of package `cas`;
   record the decision in the copilot instructions when made.
 - The `gitlike` layer is NOT part of `cas` (layering rule from the
   architecture doc).
