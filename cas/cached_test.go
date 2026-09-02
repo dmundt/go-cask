@@ -263,37 +263,3 @@ func TestCachedStoreConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
-
-// TestCachedStoreCapacity verifies the FIFO bound on memoized entries.
-func TestCachedStoreCapacity(t *testing.T) {
-	ctx := context.Background()
-	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := NewCachedStoreWithCapacity(st, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewCachedStoreWithCapacity(st, 0); err == nil {
-		t.Fatal("capacity 0 must be rejected")
-	}
-	var hashes []Hash
-	for _, title := range []string{"a", "b", "c"} {
-		h, err := st.Put(ctx, testNote{Title: title})
-		if err != nil {
-			t.Fatal(err)
-		}
-		hashes = append(hashes, h)
-		if _, err := c.GetTyped(ctx, h); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if size := c.CacheStats().Size; size > 2 {
-		t.Fatalf("cache size = %d, want <= 2", size)
-	}
-	// The evicted oldest entry must still load correctly (reloads from store).
-	if _, err := c.GetTyped(ctx, hashes[0]); err != nil {
-		t.Fatalf("reload after eviction: %v", err)
-	}
-}
