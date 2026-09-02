@@ -1,9 +1,9 @@
-// Package storage wires the cas backend for the cask server: it owns the
-// filesystem store, tracks per-object sizes (the API returns sizes in list
-// and meta responses), and exposes the byte-level operations the handlers
-// need. Only FSRawStore is supported — maintenance operations (Verify, GC,
-// Stats) are filesystem operations (cas-core §4.11); MemoryRawStore lacks
-// them (backend-architecture §5).
+// Package storage wires the cas backend for the cask binary (the viewer and
+// the CLI's local operations): it owns the filesystem store, tracks
+// per-object sizes, and exposes the byte-level operations the callers need.
+// Only FSRawStore is supported — maintenance operations (Verify, GC, Stats)
+// are filesystem operations (cas-core §4.11); MemoryRawStore lacks them
+// (backend-architecture §5).
 package storage
 
 import (
@@ -36,10 +36,6 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	}
 	return &Store{raw: raw, sizes: map[string]int64{}}, nil
 }
-
-// Raw exposes the underlying FSRawStore for typed resolution (the viewer
-// resolves references via the gitlike resolver over the same store).
-func (s *Store) Raw() *cas.FSRawStore { return s.raw }
 
 // Put stores the bytes read from r under h, records their size, and returns
 // the stored size. Streaming: r is never buffered.
