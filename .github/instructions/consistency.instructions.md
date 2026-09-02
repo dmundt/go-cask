@@ -1,7 +1,7 @@
 ---
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v3
+version: v4
 ---
 
 # Consistency — go-cask
@@ -189,8 +189,9 @@ Stats()                 # what is stored, per algorithm
 
 - **Core (cas-core §4.11)**: `FSRawStore.Verify`, `GC`, `Stats`; `Prune` is
   the age-based maintenance operation defined here.
-- **CLI (cli §2)**: `verify`, `gc`, `prune` operate in-process over the
-  library; `prune` defaults to `--dry-run`.
+- **CLI (cli §2)**: `verify`, `gc`, `prune`, `clean` operate in-process
+  over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan
+  `*.tmp` files older than a threshold (operations §2).
 - **Viewer (viewer-design.instructions.md)**: integrity diagnostics
   (`Verify`); admin actions for verify/GC/prune with confirm. The viewer is
   a byte-layer tool and does not surface typed references (viewer-design
