@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -101,4 +102,30 @@ func FuzzCodecRoundTrip(f *testing.F) {
 			t.Fatalf("round-trip mismatch: %+v != %+v", back, v)
 		}
 	})
+}
+
+// TestJSONCodecInvalidUTF8Lossy pins the boundary that FuzzCodecRoundTrip
+// documents: encoding/json is lossy on invalid UTF-8 (each invalid byte
+// becomes U+FFFD on encode), so an identity round-trip can only hold for
+// valid UTF-8 text — which is why the fuzz target skips raw invalid bytes.
+// If invalid bytes ever survive the round-trip, this test reports it and the
+// fuzz input constraint can be lifted.
+func TestJSONCodecInvalidUTF8Lossy(t *testing.T) {
+	c := JSONCodec[testNote]{}
+	v := testNote{Title: "ok", Body: "bad\xe8 byte"}
+	data, err := c.Encode(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := c.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back == v {
+		t.Log("invalid UTF-8 now round-trips losslessly — the FuzzCodecRoundTrip input constraint could be lifted")
+		return
+	}
+	if !strings.Contains(back.Body, "\ufffd") {
+		t.Fatalf("expected U+FFFD replacement for the invalid byte, got %q", back.Body)
+	}
 }
