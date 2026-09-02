@@ -41,19 +41,18 @@ func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], erro
 	return &Store[T]{raw: raw, codec: codec, hasher: fn}, nil
 }
 
-// Put serializes obj (its self-describing envelope bytes), computes the
-// content address and stores them. The hash covers the type name AND the
-// payload, so identical content always produces the identical address
-// (dedup) and a type change produces a new address. The serialized bytes are
-// hashed in a single pass and streamed to the backend without buffering
-// (performance §3).
+// Put encodes obj with the store codec, wraps it in the self-describing
+// envelope and stores it. The hash covers the type name AND the payload, so
+// identical content always produces the identical address (dedup) and a type
+// change produces a new address. The envelope bytes are hashed in a single
+// pass and streamed to the backend without buffering (performance §3).
 func (s *Store[T]) Put(ctx context.Context, obj Object[T]) (Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	data, err := obj.Serialize()
+	data, err := s.marshal(obj)
 	if err != nil {
-		return nil, fmt.Errorf("cas: serialize: %w", err)
+		return nil, err
 	}
 	h := s.hasher(data)
 	if err := s.raw.Put(ctx, h, bytes.NewReader(data)); err != nil {
@@ -69,9 +68,9 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj Object[T]) (Hash, bool, err
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	data, err := obj.Serialize()
+	data, err := s.marshal(obj)
 	if err != nil {
-		return nil, false, fmt.Errorf("cas: serialize: %w", err)
+		return nil, false, err
 	}
 	h := s.hasher(data)
 	exists, err := s.raw.Exists(ctx, h)
@@ -85,6 +84,28 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj Object[T]) (Hash, bool, err
 		return nil, false, err
 	}
 	return h, false, nil
+}
+
+// marshal builds the stored form of obj: payload := codec.Encode(T value),
+// wrapped in the self-describing envelope {"type","data"}. The codec is the
+// single serialization authority — the same codec decodes on read
+// (GetTyped). obj is asserted to carry its T value (it always is, by the
+// Object[T] contract: T's value receiver implements Object[T]).
+func (s *Store[T]) marshal(obj Object[T]) ([]byte, error) {
+	v, ok := any(obj).(T)
+	if !ok {
+		return nil, fmt.Errorf("%w: object value is not a %T", ErrUnknownType, obj)
+	}
+	payload, err := s.codec.Encode(v)
+	if err != nil {
+		return nil, fmt.Errorf("cas: encode: %w", err)
+	}
+	env := envelope{Type: obj.Type(), Data: base64.StdEncoding.EncodeToString(payload)}
+	data, err := json.Marshal(env)
+	if err != nil {
+		return nil, fmt.Errorf("cas: envelope: %w", err)
+	}
+	return data, nil
 }
 
 // Get reads the object at h and returns it as Object[T]. This is the single
