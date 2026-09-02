@@ -1,6 +1,7 @@
 package gitlike
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -546,4 +547,155 @@ func marshalEnvelope(typeName string, payload []byte) ([]byte, error) {
 		"data": base64.StdEncoding.EncodeToString(payload),
 	}
 	return json.Marshal(env)
+}
+
+// --- Codec-authority decode paths (replaces the old object-level
+// Deserialize contract tests): invalid payloads are rejected when the typed
+// store decodes them, and error paths of the repo/print APIs are pinned. ---
+
+func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) cas.Hash {
+	t.Helper()
+	env, err := marshalEnvelope(typeName, []byte(payloadJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := cas.ParseHash("sha256:" + sha256Hex(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.raw.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func TestGetTypedRejectsInvalidHashPayloads(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, cas.NewMemoryRawStore())
+
+	// Tree with an invalid entry hash string.
+	h := mustStoreEnv(t, repo, "tree@1", `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`)
+	if _, err := repo.Trees.GetTyped(ctx, h); err == nil {
+		t.Fatal("tree with invalid entry hash must fail decode")
+	}
+	// Commit with an invalid tree hash.
+	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"nope:zz","author":"a"}`)
+	if _, err := repo.Commits.GetTyped(ctx, h); err == nil {
+		t.Fatal("commit with invalid tree hash must fail decode")
+	}
+	// Commit with an invalid parent hash.
+	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parent":"nope:zz","author":"a"}`)
+	if _, err := repo.Commits.GetTyped(ctx, h); err == nil {
+		t.Fatal("commit with invalid parent hash must fail decode")
+	}
+	// Tag with an invalid target hash.
+	h = mustStoreEnv(t, repo, "tag@1", `{"name":"v","target":"nope:zz","tagger":"t"}`)
+	if _, err := repo.Tags.GetTyped(ctx, h); err == nil {
+		t.Fatal("tag with invalid target hash must fail decode")
+	}
+}
+
+func TestRepositoryErrorPaths(t *testing.T) {
+	raw := cas.NewMemoryRawStore()
+	if _, err := NewRepository(raw, "bogusalgo"); err == nil {
+		t.Fatal("NewRepository with unknown algo must error")
+	}
+	repo, err := NewRepository(raw, "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewCachedRepository(repo, 0); err == nil {
+		t.Fatal("NewCachedRepository with maxSize 0 must error")
+	}
+	// ResolveAny of a missing object → ErrNotFound.
+	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("00", 32))
+	res := NewResolver(repo)
+	if _, err := res.ResolveAny(ctxBackground(), missing); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
+	}
+	// WalkGraph propagates a visitor error.
+	root, err := repo.Blobs.Put(ctxBackground(), &Blob{Data: []byte("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := errors.New("stop")
+	if err := WalkGraph(ctxBackground(), res, root, func(*ResolvedObject) error { return sentinel }); !errors.Is(err, sentinel) {
+		t.Fatalf("WalkGraph visitor error = %v", err)
+	}
+}
+
+func ctxBackground() context.Context { return context.Background() }
+
+func TestPrintObjectNilHash(t *testing.T) {
+	// A nil-hash reference exercises the shortHash nil guard.
+	got := PrintObject(&ResolvedObject{Type: "tree", Tree: &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}}})
+	if got == "" {
+		t.Fatal("PrintObject of tree with nil-hash entry returned empty")
+	}
+}
+
+// TestNilOptionalFieldRoundTrips covers marshal/unmarshal + References
+// branches for objects with nil optional references (no parent, no target,
+// nil-hash tree entry).
+func TestNilOptionalFieldRoundTrips(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, cas.NewMemoryRawStore())
+
+	tree := &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}} // nil Hash entry
+	th, err := repo.Trees.Put(ctx, tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := repo.Trees.GetTyped(ctx, th)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Entries) != 1 || back.Entries[0].Hash != nil {
+		t.Fatalf("tree with nil-hash entry round-trip: %+v", back)
+	}
+	if refs := tree.References(); len(refs) != 0 {
+		t.Fatalf("nil-hash entry must not be a reference: %v", refs)
+	}
+
+	commit := &Commit{Tree: th, Author: "a", Message: "root"} // nil Parent
+	ch, err := repo.Commits.Put(ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb, err := repo.Commits.GetTyped(ctx, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cb.Parent != nil || cb.Author != "a" {
+		t.Fatalf("commit with nil parent round-trip: %+v", cb)
+	}
+
+	tag := &Tag{Name: "v1"} // nil Target
+	tgh, err := repo.Tags.Put(ctx, tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := repo.Tags.GetTyped(ctx, tgh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tb.Target != nil || tb.Name != "v1" {
+		t.Fatalf("tag with nil target round-trip: %+v", tb)
+	}
+	if refs := tag.References(); len(refs) != 0 {
+		t.Fatalf("nil target must not be a reference: %v", refs)
+	}
+}
+
+// TestPrintObjectShortHash exercises the shortHash non-truncation branch
+// (digest hex of 8 chars or fewer) via a tag target.
+func TestPrintObjectShortHash(t *testing.T) {
+	h, err := cas.NewHash("sha256", []byte{0xde, 0xad, 0xbe, 0xef}) // 8 hex chars
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: h}})
+	if !strings.Contains(got, "deadbeef") {
+		t.Fatalf("PrintObject short hash = %q", got)
+	}
 }
