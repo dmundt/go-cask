@@ -1,7 +1,7 @@
 name: CI
 
 # Enforces the gates required by the instruction set:
-#   coding-guidelines §9   — gofmt, go vet, go test, go build
+#   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports
 #   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + cas/extra + gitlike, fuzz smoke
 #   performance §5         — benchstat gate against a committed baseline
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
@@ -43,6 +43,14 @@ jobs:
       - name: go vet
         if: hashFiles('**/*.go') != ''
         run: go vet ./...
+
+      - name: Import boundaries (no product → examples imports)
+        if: hashFiles('**/*.go') != ''
+        run: |
+          if grep -rn "dmundt/go-cask/examples" cas internal cmd; then
+            echo "cas/, internal/ and cmd/ MUST NOT import examples/ (coding-guidelines §9)"
+            exit 1
+          fi
 
       - name: Test -race + coverage gate (cas/ + cas/extra + gitlike >= 90%)
         if: hashFiles('**/*.go') != ''
