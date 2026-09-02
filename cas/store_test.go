@@ -420,18 +420,26 @@ func TestNewStoreUnknownAlgorithm(t *testing.T) {
 }
 
 func TestStoreWithCustomHasher(t *testing.T) {
+	// Custom algorithm via the documented recipe: RegisterHash then NewStore
+	// (cas-core §4.2). The address must round-trip through ParseHash.
+	RegisterHash("testblob", func([]byte) Hash {
+		return hash{algo: "testblob", bytes: []byte{0xde, 0xad}}
+	})
 	raw := NewMemoryRawStore()
 	ctx := context.Background()
-	// Custom hasher: every object addresses as "test-blob:dead".
-	s := NewStoreWithHasher(raw, JSONCodec[testNote]{}, func([]byte) Hash {
-		return hash{algo: "test-blob", bytes: []byte{0xde, 0xad}}
-	})
+	s, err := NewStore(raw, JSONCodec[testNote]{}, "testblob")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h, err := s.Put(ctx, testNote{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.String() != "test-blob:dead" {
+	if h.String() != "testblob:dead" {
 		t.Fatalf("custom hasher address = %q", h.String())
+	}
+	if _, err := ParseHash(h.String()); err != nil {
+		t.Fatalf("custom address must round-trip through ParseHash: %v", err)
 	}
 	note, err := s.GetTyped(ctx, h)
 	if err != nil {
