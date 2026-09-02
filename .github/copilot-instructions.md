@@ -58,10 +58,10 @@ Related specs that also constrain work in this repo:
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
-- `.github/instructions/viewer-design-brief.instructions.md` — the design
-  brief for the viewer's next iteration (OpenDesign input): structure-only
-  step 1, no JS/CSS; pages, components, and htmx interaction map aligned to
-  the cas model.
+- `design/viewer-brief.md` — the design brief for the viewer's next
+  iteration (OpenDesign input, not a normative spec): structure-only step 1,
+  no JS/CSS; pages, components, and the htmx interaction map aligned to the
+  cas model.
 - `.github/instructions/examples.instructions.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
   the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
