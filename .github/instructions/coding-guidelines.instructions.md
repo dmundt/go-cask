@@ -1,7 +1,7 @@
 ---
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
-version: v3
+version: v4
 ---
 
 # Go Coding Guidelines — go-cask
@@ -248,6 +248,9 @@ Consequences for this repo:
   (implementation detail: `web` — the viewer —, `storage`, `index`; NOT
   importable outside the module), `cmd/` (thin `main` packages only),
   `examples/`.
+- **No product → example imports.** `cas/`, `internal/` and `cmd/` MUST NOT
+  import `examples/` packages: examples are downstream consumers of the
+  public surface, never upstream dependencies (backend-architecture §2).
 - `internal/` is the home of every implementation detail: viewer handlers,
   middleware, config wiring. It is private by construction — Go rejects
   imports of `internal/` from outside the module, so `cas/` is the only
