@@ -80,10 +80,10 @@ jobs:
           go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
 
       - name: Benchstat gate (when a baseline is committed)
-        if: hashFiles('.benchmark-baseline.txt') != '' && hashFiles('**/*.go') != ''
+        if: hashFiles('benchmarks/cas.txt') != '' && hashFiles('**/*.go') != ''
         run: |
           go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
-          go run golang.org/x/perf/cmd/benchstat@latest .benchmark-baseline.txt /tmp/bench.txt
+          go run golang.org/x/perf/cmd/benchstat@latest benchmarks/cas.txt /tmp/bench.txt
 
       - name: Doc integrity (.github/instructions)
         run: |
