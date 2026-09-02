@@ -50,7 +50,7 @@ Store operations speak to the store in-process over the library:
 | `get <hash> [-o <file>]`      | retrieve bytes to a file or stdout                              |
 | `cat <hash>`                  | alias of `get` to stdout                                        |
 | `list [--algo] [--limit] [--offset]` | list objects (`{total, objects}` shape)                 |
-| `meta <hash>`                 | metadata + references of one object                             |
+| `meta <hash>`                 | metadata of one object (size, type)                            |
 | `stats`                       | storage statistics (per-algorithm counts, total size)           |
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
 | `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
