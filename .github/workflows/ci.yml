@@ -3,7 +3,7 @@ name: CI
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports
 #   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + cas/extra + gitlike, fuzz smoke
-#   performance §5         — benchstat gate against a committed baseline
+#   performance §5         — benchmark regression gate (>10% time vs committed Linux baseline)
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
 # Go steps activate automatically once Go code exists (guarded by
@@ -17,6 +17,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # baseline refresh commits benchmarks/cas.txt
     steps:
       - uses: actions/checkout@v5
 
@@ -79,13 +81,35 @@ jobs:
           go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
 
-      - name: Benchstat gate (when a baseline is committed)
-        if: hashFiles('benchmarks/cas.txt') != '' && hashFiles('**/*.go') != ''
+      - name: Benchmarks (cas)
+        if: hashFiles('**/*.go') != ''
+        run: go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
+
+      - name: Refresh benchmark baseline (Linux runner)
+        if: hashFiles('benchmarks/REFRESH') != '' && hashFiles('**/*.go') != ''
         run: |
-          go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
-          cat /tmp/bench.txt
-          echo '=== CAPTURE-BASELINE-MARKER ==='
-          exit 1 # temporary: capture the Linux baseline from this failure's log
+          cp /tmp/bench.txt benchmarks/cas.txt
+          git rm -q benchmarks/REFRESH
+          git config user.name "go-cask"
+          git config user.email "go-cask@users.noreply.github.com"
+          git add benchmarks/cas.txt
+          git commit -m "ci: refresh Linux benchmark baseline" || true
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
+
+      - name: Benchmark regression gate (time >10% vs baseline fails)
+        if: hashFiles('benchmarks/REFRESH') == '' && hashFiles('**/*.go') != ''
+        run: |
+          awk '
+            NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); base[$1] = $3 + 0 } next }
+            $0 ~ /^Benchmark/ {
+              sub(/-[0-9]+$/, "", $1)
+              if ($1 in base) {
+                d = ($3 - base[$1]) / base[$1] * 100
+                if (d > 10) { printf "%s: +%.1f%% vs baseline\n", $1, d; fail = 1 }
+              }
+            }
+            END { exit fail }
+          ' benchmarks/cas.txt /tmp/bench.txt
 
       - name: Doc integrity (.github/instructions)
         run: |
