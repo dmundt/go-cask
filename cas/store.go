@@ -31,20 +31,14 @@ type Store[T any] struct {
 
 // NewStore creates a Store[T] over raw, resolving the hash algorithm from
 // the registry at construction (no global dependence in the hot path). It
-// returns ErrUnknownAlgorithm if algo is not registered. For custom hash
-// functions, use NewStoreWithHasher.
+// returns ErrUnknownAlgorithm if algo is not registered. Custom algorithms
+// are registered with RegisterHash before calling NewStore (cas-core §4.2).
 func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], error) {
 	fn, ok := lookupHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}
 	return &Store[T]{raw: raw, codec: codec, hasher: fn}, nil
-}
-
-// NewStoreWithHasher creates a Store[T] with an explicit HashFunc — the
-// escape hatch for custom hash algorithms without touching the registry.
-func NewStoreWithHasher[T any](raw RawStore, codec Codec[T], hasher HashFunc) *Store[T] {
-	return &Store[T]{raw: raw, codec: codec, hasher: hasher}
 }
 
 // Put serializes obj (its self-describing envelope bytes), computes the
