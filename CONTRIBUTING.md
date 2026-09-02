@@ -21,7 +21,7 @@ repository.
 | Path        | What it is                                                  |
 | ----------- | ----------------------------------------------------------- |
 | `cas/`      | The public core library (package `cas`) — see `cas-core`    |
-| `internal/` | Implementation detail: `web` (the viewer), `storage`, `index` — not importable outside the module |
+| `internal/` | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`  | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |

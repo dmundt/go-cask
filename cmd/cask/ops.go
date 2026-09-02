@@ -11,25 +11,24 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/internal/index"
-	"github.com/dmundt/go-cask/internal/storage"
 )
 
-// target is the store the ops speak to: the library in-process over
-// internal/storage. There is no remote target — the product ships no
-// network JSON API (backend-architecture §1).
+// target is the store the ops speak to: cas.FSRawStore directly (in-process;
+// there is no storage service layer — the library is the single source of
+// behavior, backend-architecture §2).
 type target struct {
-	local *storage.Store
+	raw *cas.FSRawStore
 }
 
 func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
 	if mf.store == "" {
 		return nil, fmt.Errorf("-store <path> is required")
 	}
-	st, err := storage.New(ctx, storage.Config{Dir: mf.store})
+	raw, err := cas.NewFSRawStore(mf.store)
 	if err != nil {
 		return nil, err
 	}
-	return &target{local: st}, nil
+	return &target{raw: raw}, nil
 }
 
 // usageError marks an argument error (exit code 2).
@@ -38,6 +37,23 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
+
+// gcCount deletes every object not in reachable and returns how many were
+// deleted (stats delta; cas GC itself returns no count).
+func gcCount(ctx context.Context, raw *cas.FSRawStore, reachable map[string]bool) (int64, error) {
+	before, err := raw.Stats(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if err := raw.GC(ctx, reachable); err != nil {
+		return 0, err
+	}
+	after, err := raw.Stats(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return before.ObjectCount - after.ObjectCount, nil
+}
 
 // --- put ---
 
@@ -71,7 +87,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 		defer f.Close()
 		r = f
 	}
-	h, dedup, err := localPut(ctx, t.local, r, algo)
+	h, dedup, err := localPut(ctx, t.raw, r, algo)
 	if err != nil {
 		return err
 	}
@@ -85,7 +101,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 
 // localPut stores bytes under the hash of their content with algo,
 // streaming through a temp spool (hash-on-write).
-func localPut(ctx context.Context, st *storage.Store, r io.Reader, algo string) (cas.Hash, bool, error) {
+func localPut(ctx context.Context, raw *cas.FSRawStore, r io.Reader, algo string) (cas.Hash, bool, error) {
 	hasher, err := cas.NewHasher(algo)
 	if err != nil {
 		return nil, false, err
@@ -103,7 +119,7 @@ func localPut(ctx context.Context, st *storage.Store, r io.Reader, algo string) 
 	if err != nil {
 		return nil, false, err
 	}
-	exists, err := st.Exists(ctx, h)
+	exists, err := raw.Exists(ctx, h)
 	if err != nil {
 		return nil, false, err
 	}
@@ -111,14 +127,14 @@ func localPut(ctx context.Context, st *storage.Store, r io.Reader, algo string) 
 		if _, err := spool.Seek(0, 0); err != nil {
 			return nil, false, err
 		}
-		if err := st.Put(ctx, h, spool); err != nil {
+		if err := raw.Put(ctx, h, spool); err != nil {
 			return nil, false, err
 		}
 	}
 	return h, exists, nil
 }
 
-// --- get / cat ---
+// --- get (default output: stdout) ---
 
 func opGet(ctx context.Context, t *target, args []string) error {
 	// Flags may follow the positional (spec order: get <hash> [-o <file>]).
@@ -142,7 +158,7 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	rc, err := t.local.Get(ctx, h)
+	rc, err := t.raw.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -161,10 +177,6 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	return err
 }
 
-func opCat(ctx context.Context, t *target, args []string) error {
-	return opGet(ctx, t, append([]string{"-o", ""}, args...))
-}
-
 // --- list ---
 
 func opList(ctx context.Context, t *target, args []string) error {
@@ -181,14 +193,14 @@ func opList(ctx context.Context, t *target, args []string) error {
 		Algorithm string `json:"algorithm"`
 		Size      int64  `json:"size"`
 	}
-	hashes, err := t.local.List(ctx, *algo)
+	hashes, err := t.raw.List(ctx, *algo)
 	if err != nil {
 		return err
 	}
 	total := len(hashes)
 	items := make([]item, 0, total)
 	for _, h := range index.Paginate(hashes, *offset, *limit) {
-		size, err := t.local.Size(h)
+		size, err := t.raw.Size(h)
 		if err != nil {
 			return err
 		}
@@ -218,7 +230,7 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	rc, err := t.local.Get(ctx, h)
+	rc, err := t.raw.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -244,7 +256,7 @@ func opStats(ctx context.Context, t *target, args []string) error {
 	if len(args) != 0 {
 		return usagef("stats takes no arguments")
 	}
-	st, err := t.local.Stats(ctx)
+	st, err := t.raw.Stats(ctx)
 	if err != nil {
 		return err
 	}
@@ -259,13 +271,13 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 		return usagef("verify needs <hash> or --all")
 	}
 	if args[0] == "--all" {
-		hashes, err := t.local.List(ctx, "")
+		hashes, err := t.raw.List(ctx, "")
 		if err != nil {
 			return err
 		}
 		bad := 0
 		for _, h := range hashes {
-			if err := t.local.Verify(ctx, h); err != nil {
+			if err := t.raw.Verify(ctx, h); err != nil {
 				fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
 				bad++
 			}
@@ -280,7 +292,7 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	if err := t.local.Verify(ctx, h); err != nil {
+	if err := t.raw.Verify(ctx, h); err != nil {
 		return err
 	}
 	fmt.Printf("%s ok\n", h)
@@ -304,7 +316,7 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	for _, h := range roots {
 		reachable[h.String()] = true
 	}
-	deleted, err := t.local.GC(ctx, reachable)
+	deleted, err := gcCount(ctx, t.raw, reachable)
 	if err != nil {
 		return err
 	}
@@ -323,7 +335,7 @@ func opClean(ctx context.Context, t *target, args []string) error {
 	if fs.NArg() != 0 {
 		return usagef("clean takes no positional arguments")
 	}
-	removed, err := t.local.Clean(ctx, *minAge)
+	removed, err := t.raw.Clean(ctx, *minAge)
 	if err != nil {
 		return err
 	}
@@ -344,7 +356,7 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return err
 	}
-	doomed, err := t.local.Prune(ctx, roots, *minAge, *dryRun)
+	doomed, err := t.raw.Prune(ctx, roots, *minAge, *dryRun)
 	if err != nil {
 		return err
 	}

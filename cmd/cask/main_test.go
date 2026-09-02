@@ -52,7 +52,7 @@ func TestLocalRoundTrip(t *testing.T) {
 	}
 
 	// cat → stdout
-	out, code = run(t, mf, "cat", h)
+	out, code = run(t, mf, "get", h)
 	if code != 0 || out != "hello cask" {
 		t.Fatalf("cat = (%q, %d), want hello cask", out, code)
 	}
@@ -96,7 +96,7 @@ func TestLocalRoundTrip(t *testing.T) {
 	if _, code := run(t, mf, "gc", h); code != 0 {
 		t.Fatalf("gc exit %d", code)
 	}
-	if _, code := run(t, mf, "cat", h); code != 0 {
+	if _, code := run(t, mf, "get", h); code != 0 {
 		t.Fatalf("cat after gc exit %d", code)
 	}
 }
@@ -116,10 +116,10 @@ func TestLocalGcDeletesUnreferenced(t *testing.T) {
 	if _, code := run(t, mf, "gc", h1); code != 0 {
 		t.Fatal("gc failed")
 	}
-	if _, code := run(t, mf, "cat", h2); code == 0 {
+	if _, code := run(t, mf, "get", h2); code == 0 {
 		t.Fatal("unreferenced object survived gc")
 	}
-	if _, code := run(t, mf, "cat", h1); code != 0 {
+	if _, code := run(t, mf, "get", h1); code != 0 {
 		t.Fatal("referenced object deleted")
 	}
 }
@@ -131,12 +131,12 @@ func TestExitCodes(t *testing.T) {
 		t.Fatalf("no-mode exit = %d, want 2", code)
 	}
 	// Invalid hash → usage (2).
-	if _, code := run(t, mf, "cat", "not-a-hash"); code != 2 {
+	if _, code := run(t, mf, "get", "not-a-hash"); code != 2 {
 		t.Fatalf("bad-hash exit = %d, want 2", code)
 	}
 	// Missing object → runtime error (1).
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if _, code := run(t, mf, "cat", missing.String()); code != 1 {
+	if _, code := run(t, mf, "get", missing.String()); code != 1 {
 		t.Fatalf("missing-object exit = %d, want 1", code)
 	}
 }

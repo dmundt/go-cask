@@ -19,8 +19,7 @@ flags:
 
 commands:
   put <file|- >      store bytes (or stdin); prints the hash
-  get <hash> [-o <file>]
-  cat <hash>
+  get <hash> [-o <file>]     (no -o prints to stdout)
   list [--algo] [--limit] [--offset]
   meta <hash>
   stats
@@ -87,8 +86,6 @@ func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 		opErr = opPut(ctx, t, args)
 	case "get":
 		opErr = opGet(ctx, t, args)
-	case "cat":
-		opErr = opCat(ctx, t, args)
 	case "list":
 		opErr = opList(ctx, t, args)
 	case "meta":

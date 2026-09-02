@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/storage"
+	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
@@ -38,7 +38,7 @@ func runWeb(ctx context.Context, args []string) {
 		os.Exit(1)
 	}
 
-	st, err := storage.New(ctx, storage.Config{Dir: *store})
+	raw, err := cas.NewFSRawStore(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
@@ -53,7 +53,7 @@ func runWeb(ctx context.Context, args []string) {
 
 	token := randomToken()
 	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
-	webSrv, err := web.New(st, web.Config{
+	webSrv, err := web.New(raw, web.Config{
 		StartupToken: token,
 		RoleTokens:   roleTokens,
 		Secure:       false, // loopback default; set with TLS
