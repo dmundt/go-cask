@@ -1,0 +1,263 @@
+{
+  "schemaVersion": "1.0",
+  "artifact": {
+    "name": "go-cask object browser",
+    "type": "desktop-first responsive application interface",
+    "purpose": "Browse a content-addressed object store, inspect one selected object, and filter or page the object index.",
+    "principles": [
+      "Use a compact operational interface, not a dashboard or marketing page.",
+      "Prioritize hashes, types, sizes, reference counts, and written time.",
+      "Keep the object table and detail inspector visible together on desktop.",
+      "Use a flat visual system with hairline dividers rather than card-heavy surfaces.",
+      "Do not show object property values when there is no selected object."
+    ]
+  },
+  "tokens": {
+    "color": {
+      "background": "oklch(98% 0.005 250)",
+      "surface": "oklch(100% 0 0)",
+      "foreground": "oklch(22% 0.02 240)",
+      "muted": "oklch(50% 0.018 240)",
+      "border": "oklch(90% 0.008 240)",
+      "accent": "oklch(48% 0.14 145)",
+      "reference": "oklch(50% 0.13 250)",
+      "referenceSoft": "oklch(96% 0.035 250)",
+      "tableHover": "color-mix(in oklch, foreground 3%, surface)",
+      "tableSelected": "color-mix(in oklch, foreground 10%, surface)"
+    },
+    "typography": {
+      "body": ["Segoe UI", "Helvetica", "system-ui", "sans-serif"],
+      "mono": ["JetBrains Mono", "IBM Plex Mono", "Consolas", "ui-monospace", "monospace"],
+      "bodyBase": { "size": "14px", "lineHeight": 1.45 },
+      "table": { "family": "mono", "size": "12px" },
+      "control": { "size": "12px" },
+      "microLabel": { "family": "mono", "size": "10.5px", "weight": 700, "letterSpacing": "0.06em", "transform": "uppercase" },
+      "hash": { "family": "mono", "size": "11.5px", "lineHeight": 1.5 },
+      "hex": { "family": "mono", "size": "11px", "lineHeight": 1.7 }
+    },
+    "spacing": {
+      "pageInset": "14px",
+      "controlGap": "8px",
+      "tableCellX": "13px",
+      "tableCellY": "8px",
+      "inspectorInset": "14px",
+      "sectionGap": "20px",
+      "propertyColumn": "96px"
+    },
+    "shape": {
+      "controlRadius": "5px",
+      "smallRadius": "4px",
+      "markRadius": "5px",
+      "hairline": "1px"
+    }
+  },
+  "layout": {
+    "desktop": {
+      "minimumPreferredWidth": "901px",
+      "pageHeight": "100vh",
+      "verticalRegions": [
+        { "id": "top-bar", "height": "46px" },
+        { "id": "filter-bar", "height": "47px" },
+        { "id": "workspace", "height": "calc(100vh - 93px)" }
+      ],
+      "workspaceColumns": [
+        { "id": "object-list", "width": "minmax(0, 1fr)" },
+        { "id": "object-inspector", "width": "360px" }
+      ],
+      "overflow": {
+        "document": "hidden",
+        "objectTable": "scroll vertically and horizontally as needed",
+        "inspector": "scroll vertically"
+      }
+    },
+    "mobile": {
+      "breakpoint": "900px",
+      "documentOverflow": "auto",
+      "workspaceColumns": "one column",
+      "objectListMinimumHeight": "440px",
+      "inspector": "below object list with top hairline divider",
+      "filterBar": "horizontal scroll permitted"
+    }
+  },
+  "regions": [
+    {
+      "id": "top-bar",
+      "role": "application identity",
+      "background": "surface",
+      "border": "bottom hairline border",
+      "content": [
+        {
+          "id": "brand",
+          "type": "brand lockup",
+          "mark": { "text": "CA", "width": "20px", "height": "20px", "background": "foreground", "foreground": "surface", "font": "mono 700 9px" },
+          "name": "go-cask",
+          "nameStyle": "body 700 16px, -0.02em tracking"
+        }
+      ]
+    },
+    {
+      "id": "filter-bar",
+      "role": "object index query controls",
+      "background": "surface",
+      "border": "bottom hairline border",
+      "controls": [
+        { "id": "search", "type": "text", "width": "260px", "height": "30px", "font": "mono 12px", "placeholder": "Search digest prefix or type", "filters": ["hash prefix", "type"] },
+        { "id": "type-filter", "type": "select", "width": "130px", "height": "30px", "options": ["All types", "bytes@1", "json@1", "text@1"] },
+        { "id": "size-filter", "type": "select", "width": "130px", "height": "30px", "options": ["Any size", "Under 1 KiB", "1 KiB to 1 MiB", "Over 1 MiB"] },
+        { "id": "reset-filters", "type": "text button", "label": "Reset", "style": "accent colored text without border" }
+      ]
+    },
+    {
+      "id": "object-list",
+      "role": "master list",
+      "children": ["object-table", "object-pager"]
+    },
+    {
+      "id": "object-table",
+      "type": "dense sortable data table",
+      "header": { "position": "sticky within table scroll region", "background": "background", "font": "microLabel", "height": "natural" },
+      "columns": [
+        { "id": "hash", "label": "Hash", "alignment": "left", "font": "mono", "display": "algorithm prefix plus shortened digest" },
+        { "id": "type", "label": "Type", "alignment": "left", "font": "mono", "color": "muted" },
+        { "id": "size", "label": "Size", "alignment": "right", "font": "mono" },
+        { "id": "refs", "label": "Refs", "alignment": "right", "font": "mono" },
+        { "id": "written", "label": "Written", "alignment": "right", "font": "mono" }
+      ],
+      "row": {
+        "height": "natural from 8px vertical padding",
+        "interaction": "select object",
+        "hover": { "background": "tableHover" },
+        "selected": { "background": "tableSelected", "leadingInset": "2px muted dark inset line", "text": "foreground" }
+      },
+      "emptyState": { "message": "No objects match the current filters.", "textAlign": "center", "padding": "42px 13px", "color": "muted" }
+    },
+    {
+      "id": "object-pager",
+      "role": "list page controls",
+      "background": "surface",
+      "border": "top hairline border",
+      "left": "range and total, e.g. 1-25 of 512 objects",
+      "rightControls": [
+        { "id": "page-size", "label": "Rows", "type": "select", "width": "68px", "options": [25, 50, 100, 250] },
+        { "id": "first-page", "label": "First page", "glyph": "«" },
+        { "id": "previous-page", "label": "Previous page", "glyph": "‹" },
+        { "id": "page-status", "type": "status text", "format": "Page {page} of {pages}" },
+        { "id": "next-page", "label": "Next page", "glyph": "›" },
+        { "id": "last-page", "label": "Last page", "glyph": "»" }
+      ],
+      "buttonState": { "disabled": "opacity 0.4 and no pointer cursor", "hover": "background becomes page background and border becomes foreground" }
+    },
+    {
+      "id": "object-inspector",
+      "role": "detail panel",
+      "background": "surface",
+      "border": "left hairline divider on desktop; top hairline divider on mobile",
+      "children": ["inspector-header", "inspector-tabs", "metadata-tab", "references-tab", "bytes-tab"]
+    },
+    {
+      "id": "inspector-header",
+      "content": ["micro label Object", "full selected hash"],
+      "background": "background",
+      "padding": "13px 14px 11px",
+      "emptyState": "Keep the label but show no hash when no object is selected."
+    },
+    {
+      "id": "inspector-tabs",
+      "type": "button tablist",
+      "tabs": ["Metadata", "References", "Bytes"],
+      "layout": "horizontal row with 2px gap and 6px 8px 0 padding",
+      "inactive": { "foreground": "muted", "background": "transparent" },
+      "hover": { "foreground": "foreground", "background": "foreground mixed 4% into surface" },
+      "active": { "foreground": "foreground", "fontWeight": 650, "bottomBorder": "2px accent" },
+      "interaction": "Exactly one tab panel is visible. Tab controls are buttons, not navigation links."
+    },
+    {
+      "id": "metadata-tab",
+      "type": "detail panel",
+      "sections": [
+        { "name": "Identity", "properties": ["Algorithm", "Type"] },
+        { "name": "Storage", "properties": ["Size", "References", "Written"] }
+      ],
+      "propertyLayout": "two columns: 96px label column and flexible value column",
+      "labels": { "font": "body 12px", "color": "muted", "case": "normal" },
+      "values": { "font": "mono 12px", "alignment": "left", "wrap": "anywhere" },
+      "sectionTitle": { "font": "mono 700 10.5px", "letterSpacing": "0.06em", "case": "uppercase", "color": "muted" },
+      "emptyState": "Render section labels and property labels only. All property values must be blank."
+    },
+    {
+      "id": "references-tab",
+      "sections": ["Referenced by", "References out"],
+      "row": { "layout": "direction arrow, type badge, shortened hash", "font": "mono 11.5px", "gap": "7px" },
+      "badge": { "background": "referenceSoft", "foreground": "reference", "font": "body 700 9px", "letterSpacing": "0.06em", "case": "uppercase", "padding": "2px 5px", "radius": "3px" },
+      "emptyState": "Both reference lists are empty when there is no selected object."
+    },
+    {
+      "id": "bytes-tab",
+      "type": "hex preview",
+      "content": "First 128 bytes of the selected object, formatted as 8 rows of offset, 16 hex bytes, and ASCII.",
+      "font": "mono 11px / 1.7",
+      "overflow": "horizontal scroll",
+      "emptyState": "Empty when there is no selected object."
+    }
+  ],
+  "dataModel": {
+    "object": {
+      "hash": "string; full content address including algorithm prefix, e.g. sha256:<64 hex characters>",
+      "type": "string; envelope type such as bytes@1, json@1, or text@1",
+      "size": "integer byte count or formatted display value",
+      "refs": "integer number of references",
+      "written": "timestamp or age display string"
+    },
+    "derived": {
+      "shortHash": "algorithm prefix plus a shortened digest ending in an ellipsis",
+      "bytePreview": "derived from object bytes; show no more than 128 bytes",
+      "referencesIn": "zero or more object references pointing to the selected object",
+      "referencesOut": "zero or more object references made by the selected object"
+    }
+  },
+  "state": {
+    "query": { "search": "string", "type": "optional type", "sizeBucket": "all | small | medium | large", "page": "positive integer", "pageSize": "25 | 50 | 100 | 250" },
+    "selection": { "selectedHash": "string or null" },
+    "inspector": { "activeTab": "metadata | references | bytes" },
+    "rules": [
+      "Filter changes reset page to 1.",
+      "Changing page size resets page to 1.",
+      "Selecting a row updates the inspector and selected-row state.",
+      "A filter with zero results clears selection and all inspector values.",
+      "Pager boundaries disable unavailable page controls.",
+      "Rows are paged; do not render an unbounded result set into the DOM."
+    ]
+  },
+  "interactions": [
+    { "trigger": "search input", "result": "Filter by hash prefix or type text and reset pagination." },
+    { "trigger": "type filter", "result": "Filter objects by selected envelope type and reset pagination." },
+    { "trigger": "size filter", "result": "Filter by configured size bucket and reset pagination." },
+    { "trigger": "reset", "result": "Clear all filters, restore default page size, and return to page 1." },
+    { "trigger": "row click", "result": "Select the object and refresh all three inspector panels from that object." },
+    { "trigger": "Metadata, References, or Bytes tab button", "result": "Set that tab active and show only its associated content panel." },
+    { "trigger": "row-size selector", "result": "Update page size, recompute total pages, and return to page 1." },
+    { "trigger": "first/previous/next/last pager control", "result": "Move to the appropriate valid page and update disabled states." }
+  ],
+  "accessibility": {
+    "focus": "All interactive elements have a visible 2px accent focus outline with 2px offset.",
+    "table": "Expose column headers and selection state. Rows must be keyboard-selectable in production.",
+    "tabs": "Use button controls with tab semantics, selected state, and corresponding tab panels.",
+    "controls": "Each select and input has an accessible label.",
+    "color": "Do not use color as the only selected-state indicator; retain the leading inset line and active tab border."
+  },
+  "implementationNotes": {
+    "frameworkAgnostic": [
+      "Keep one normalized object collection and derive filtered, sorted, paged rows from it.",
+      "Keep selection separate from the visible page so a selected object can remain addressable.",
+      "Render only the current page of rows for performance.",
+      "Treat the inspector as a projection of the selected object, not duplicated state.",
+      "Use actual object bytes for the hex view in production rather than deriving bytes from a hash."
+    ],
+    "serverRendered": [
+      "Persist search, filters, page, page size, selected hash, and active tab in URL query parameters.",
+      "Swap the table and pager together as one result unit.",
+      "Return the full page for direct navigation and a fragment for partial-request navigation.",
+      "Use a separate inspector fragment keyed by selected hash."
+    ]
+  }
+}
