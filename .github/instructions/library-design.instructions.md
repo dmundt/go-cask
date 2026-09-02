@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v3
+version: v4
 ---
 
 # Library Design — go-cask
@@ -27,7 +27,7 @@ version: v3
   `MemoryRawStore`, `StoreStats`, `Codec`, `JSONCodec`, `Object`, `Store`,
   `Walker`, `CachedObject`, `CachedStore`, `LRUCache`.
 - **Optional machinery** (`SmartCache`, `CacheMonitor`) MAY move to a
-  `cas/extra` subpackage unless a core consumer (viewer, CAS API) uses them;
+  `cas/extra` subpackage unless a core consumer (the viewer) uses them;
   record the decision in the copilot instructions when made.
 - The `gitlike` layer is NOT part of `cas` (layering rule from the
   architecture doc).
@@ -100,8 +100,8 @@ Rules:
 - Semver discipline: only additive, non-breaking changes inside the current
   major version; breaking changes require a major version and a migration
   note.
-- The HTTP CAS API versioning is independent (`/api/cas/v1` → `v2`, per
-  `cas-api.instructions.md`).
+- Example HTTP surfaces version independently (`/api/cas/v1` →
+  `/api/cas/v2`, per api-design §12).
 - Deprecations: keep deprecated symbols for at least one minor release with a
   doc-comment pointer to the replacement.
 

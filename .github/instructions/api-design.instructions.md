@@ -1,17 +1,18 @@
 ---
 title: API Design — go-cask
-description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied consistently to the viewer and CAS API surfaces.
-version: v2
+description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
+version: v3
 ---
 
 # API Design — go-cask
 
 > This document defines the **common API design conventions** for every HTTP
-> endpoint in go-cask. The per-API specs define the concrete routes:
-> `.github/instructions/cas-api.instructions.md` (the JSON data API) and
-> `.github/instructions/viewer-api.instructions.md` (the viewer's hypermedia
-> surface). **This document defines HOW new endpoints are designed** so all
-> surfaces stay consistent.
+> endpoint in go-cask. The product's only HTTP surface is the viewer
+> (`/viewer/*`, HTML; concrete routes in
+> `.github/instructions/viewer-design.instructions.md`); the `examples/api`
+> pattern demonstrates a JSON surface app authors can copy. **This document
+> defines HOW endpoints are designed** so product and example surfaces stay
+> consistent.
 >
 > Related: `.github/instructions/viewer-security.instructions.md`
 > (authn/authz), `.github/instructions/performance.instructions.md` (rate
@@ -23,29 +24,34 @@ version: v2
 
 ## 1. Purpose & Scope
 
-- Applies to **all HTTP surfaces**: the viewer (`/viewer/*`, `text/html`) and
-  the CAS API (`/api/cas/v1/*`, JSON/octet-stream).
+- Applies to every HTTP endpoint in the repo: the viewer (`/viewer/*`,
+  `text/html`) and any example HTTP surface (the `examples/api` pattern,
+  JSON/octet-stream). go-cask the product ships only the viewer — example
+  surfaces demonstrate patterns for app authors (backend-architecture §1,
+  examples §3.4).
 - Governs: URL naming, HTTP methods, status codes, error shapes,
   authentication/authorization, rate limiting, validation, pagination,
   streaming, versioning, and OpenAPI documentation.
-- A new endpoint MUST follow these conventions unless a per-API spec
+- A new endpoint MUST follow these conventions unless its own spec
   explicitly overrides them.
 
 ---
 
-## 2. Two Surfaces, One Style
+## 2. Surfaces, One Style
 
-| Surface   | Prefix         | Content types                       | Auth            | Consumers          |
-| --------- | -------------- | ----------------------------------- | --------------- | ------------------ |
-| Viewer    | `/viewer/`     | `text/html` (pages + fragments)     | session cookie  | browser only       |
-| CAS API   | `/api/cas/v1/` | `application/json`, `application/octet-stream` | bearer token | viewer backend, CLI, SDK, services |
+| Surface          | Prefix             | Content types                             | Auth           | Consumers                  |
+| ---------------- | ------------------ | ----------------------------------------- | -------------- | -------------------------- |
+| Viewer (product) | `/viewer/`         | `text/html` (pages + fragments)           | session cookie | browser only               |
+| Example JSON surface (`examples/api`) | app-chosen (the pattern uses `/api/cas/v1/`) | `application/json`, `application/octet-stream` | bearer token | the example's demo/tests |
 
 Rules:
 
 - A route's prefix decides its contract; never mix prefixes, never mix
   content types across surfaces.
 - The same design grammar (naming, errors, status codes, middleware) applies
-  to both — only the content type and auth mechanism differ.
+  to all — only the content type and auth mechanism differ.
+- The viewer is the only surface the product ships; example surfaces exist to
+  teach the grammar to app authors (backend-architecture §1).
 
 ---
 
@@ -75,8 +81,9 @@ Rules:
 | DELETE | delete; idempotent (missing object = no-op)    | —            | 204      |
 
 - `POST` is used for creates when the identity is **server-computed** (the
-  CAS API computes the hash) — there is no `PUT` in v1 (objects are
-  immutable; a changed object is a new hash).
+  server computes the hash from the body — e.g. a JSON object store) — there
+  is no `PUT` in the example pattern's v1 (objects are immutable; a changed
+  object is a new hash).
 - Actions with side effects (`verify`, `gc`, login) are `POST`; `verify` is
   read-only in effect but is a POST because it runs a check and is
   role-gated.
@@ -87,21 +94,21 @@ Rules:
 
 ## 5. Status Codes
 
-| Status | Viewer                                     | CAS API                                |
-| ------ | ------------------------------------------ | -------------------------------------- |
-| 200    | HTML page or fragment                      | JSON body / octet-stream bytes         |
-| 201    | —                                          | object created (`POST /objects`)       |
-| 204    | —                                          | deleted / verified OK                  |
-| 303    | login redirect                             | —                                      |
-| 400    | minimal error page (malformed input)       | `{"error":"..."}`                      |
-| 401    | **empty body**                             | `{"error":"unauthorized"}`             |
-| 403    | **empty body**                             | `{"error":"forbidden"}`                |
-| 404    | minimal error page (missing object)        | `{"error":"not found"}`                |
+| Status | Viewer                                     | JSON surface (example)                  |
+| ------ | ------------------------------------------ | --------------------------------------- |
+| 200    | HTML page or fragment                      | JSON body / octet-stream bytes          |
+| 201    | —                                          | object created (`POST /objects`)        |
+| 204    | —                                          | deleted / verified OK                   |
+| 303    | login redirect                             | —                                       |
+| 400    | minimal error page (malformed input)       | `{"error":"..."}`                       |
+| 401    | **empty body**                             | `{"error":"unauthorized"}`              |
+| 403    | **empty body**                             | `{"error":"forbidden"}`                 |
+| 404    | minimal error page (missing object)        | `{"error":"not found"}`                 |
 | 429    | minimal error page (rate limited)          | `{"error":"rate limited"}` + `Retry-After` |
 
 Consistency rules:
 
-- 401/403 **never disclose** whether the target object exists (both surfaces).
+- 401/403 **never disclose** whether the target object exists (on every surface).
 - Mutations that succeed without a useful body return 204; creates return 201
   with the created resource (the hash).
 - 429 is produced by the shared rate-limit middleware before any handler
@@ -111,8 +118,9 @@ Consistency rules:
 
 ## 6. Error Contract
 
-- **CAS API**: every error is JSON `{"error": "<concise message>"}`. No stack
-  traces, no internal paths, no secrets, no object bytes.
+- **JSON surfaces (examples)**: every error is JSON `{"error": "<concise
+  message>"}`. No stack traces, no internal paths, no secrets, no object
+  bytes.
 - **Viewer**: errors are minimal HTML pages/fragments; 401/403 are empty
   bodies per the security spec.
 - Messages are actionable ("unknown hash algorithm: md4") but never disclose
@@ -128,16 +136,18 @@ Consistency rules:
 - **Viewer**: session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over
   HTTPS); the startup token is accepted **only** by `POST /viewer/login`;
   every other endpoint requires a valid session.
-- **CAS API**: `Authorization: Bearer <token>` with configured per-role
-  tokens.
-- **Roles** (both surfaces): `viewer` (reads) → `operator` (+ store, verify) →
+- **Example JSON surfaces**: `Authorization: Bearer <token>` with configured
+  per-role tokens (the `examples/api` pattern).
+- **Roles** (all surfaces): `viewer` (reads) → `operator` (+ store, verify) →
   `admin` (+ delete, GC, maintenance).
 - **CSRF**: every viewer mutation is a POST with a CSRF token validated
   server-side.
 - **Audit**: every mutation is audit-logged; tokens/secrets are never logged.
-- **Rate limiting**: the shared IP-based middleware (below) applies to both
-  surfaces before authentication; the viewer login endpoint keeps its own
-  stricter throttle (5 failures/IP/min with backoff).
+- **Rate limiting**: an IP-based middleware MAY wrap a JSON surface before
+  authentication (the `examples/api` pattern: 2 req/s per IP, burst 20,
+  429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); the viewer login
+  endpoint keeps its own stricter throttle (5 failures/IP/min with backoff,
+  viewer-security).
 
 ---
 
@@ -155,10 +165,12 @@ flowchart LR
     H -->|"role check"| OP["store / read / verify / gc / ..."]
 ```
 
-Ordering is fixed: rate limit → auth → CSRF → handler. The same middleware
-stack wraps both surfaces; only the auth mechanism and CSRF applicability
-differ. Configuration: `rate_limit` block (2 req/s per IP, burst 20, loopback
-exempt, `trusted_proxies` only for `X-Forwarded-For`).
+Ordering is fixed: rate limit → auth → CSRF → handler. The viewer enforces
+it with session auth and CSRF on mutations (plus its login throttle); an
+example JSON surface uses bearer auth and no CSRF. Rate-limit configuration
+applies to JSON example surfaces (2 req/s per IP, burst 20, loopback exempt,
+`trusted_proxies` only for `X-Forwarded-For`); the viewer login throttle is
+fixed at 5 failures/IP/min (viewer-security).
 
 ---
 
@@ -167,8 +179,8 @@ exempt, `trusted_proxies` only for `X-Forwarded-For`).
 - Every `{hash}` parameter: `ParseHash` first → 400 on malformed.
 - Query parameters: reject out-of-range values with 400 (do not silently
   clamp); `limit` bounded (e.g. 1–1000), `offset` ≥ 0.
-- Request bodies: strict decoding; unknown fields are rejected for CAS API
-  JSON bodies (fail loudly, `json.Decoder.DisallowUnknownFields` where
+- Request bodies: strict decoding; unknown fields are rejected for JSON
+  surface bodies (fail loudly, `json.Decoder.DisallowUnknownFields` where
   sensible).
 - Never trust client input: header, query, and body are all validated
   (viewer-security defensive programming).
@@ -200,37 +212,39 @@ exempt, `trusted_proxies` only for `X-Forwarded-For`).
 
 ## 12. Versioning
 
-- The data API carries its major version in the prefix: `/api/cas/v1`.
-  Breaking changes (removed/renamed fields, changed semantics) require `v2`;
-  additive changes are allowed within `v1`.
+- A JSON example surface MAY carry its major version in the URL prefix (the
+  `examples/api` pattern uses `/api/cas/v1`): breaking changes (removed/
+  renamed fields, changed semantics) require a new major; additive changes
+  are allowed within a major.
 - The viewer surface is unversioned — it is an application surface whose htmx
   fragments evolve with the UI.
-- Versioning is expressed in the URL, never in headers, for both surfaces.
+- Versioning is expressed in the URL, never in headers.
 
 ---
 
 ## 13. Documentation & OpenAPI
 
-- Every endpoint MUST be documented in its surface's OpenAPI document,
-  served at `GET /viewer/openapi.yaml` and `GET /api/cas/v1/openapi.yaml`.
-- **The OpenAPI documents MUST live in separate files** — a
-  `openapi.yaml` next to the code that serves it (e.g.
-  `internal/web/openapi.yaml`, `examples/api/server/openapi.yaml`),
-  embedded into the binary with `//go:embed` + `embed.FS`. Never an inline
-  Go string constant: the document is data, not code, and must be
-  diffable/lintable in its native form.
+- A JSON surface's endpoint set MUST be documented in an OpenAPI document
+  served by that surface (the `examples/api` pattern serves its document at
+  `/api/cas/v1/openapi.yaml`).
+- **The OpenAPI documents MUST live in separate files** — an `openapi.yaml`
+  next to the code that serves it (e.g.
+  `examples/api/server/openapi.yaml`), embedded into the binary with
+  `//go:embed` + `embed.FS`. Never an inline Go string constant: the
+  document is data, not code, and must be diffable/lintable in its native
+  form.
 - The documents MUST match the implemented routes exactly; a CI check
   regenerates/compares them on route changes.
-- The in-browser Swagger UI explorer (`GET /swagger/`) is the single
-  documented no-JS deviation: vendored, pinned, disabled by default,
-  explicitly enabled, authenticated.
+- The HTML viewer needs no OpenAPI document — its surface is hypermedia,
+  defined by `viewer-design.instructions.md`.
 
 ---
 
 ## 14. Designing a New Endpoint (procedure)
 
 1. **Pick the surface** — browser-facing (HTML/htmx) → `/viewer/`;
-   programmatic (JSON) → `/api/cas/v1/`. Never both.
+   programmatic (JSON) → the app's own example surface (see `examples/api`).
+   Never both on one prefix.
 2. **Model the resource** — plural noun path, sub-resources by nesting,
    action as POST sub-resource.
 3. **Define the contract** — method, request body, response shape/content

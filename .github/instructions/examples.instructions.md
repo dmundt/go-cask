@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, the CAS HTTP API and its public client SDK, and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v4
+description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
+version: v5
 ---
 
 # Examples — go-cask
@@ -16,8 +16,9 @@ version: v4
 >    (custom codec + hash, caching, GC)
 > 3. `examples/notes` — document graph app with its own object types (the
 >    "apps build their own repository" pattern, lazy loading)
-> 4. `examples/api` — CAS HTTP API server + the public client SDK
->    (streaming, auth, OpenAPI)
+> 4. `examples/api` — HTTP-exposure pattern: a self-contained store server
+>    over the public `cas` surface (versioned prefix, bearer auth, rate
+>    limit, streaming, OpenAPI)
 > 5. `examples/viewer` — embedded technical viewer (nested Go templates +
 >    htmx, dashboard, security)
 >
@@ -28,10 +29,9 @@ version: v4
 > Related specs: `.github/instructions/cas-core.instructions.md`
 > (the design the examples exercise), `.github/instructions/coding-
 > guidelines.instructions.md` (how the Go code must be written),
-> `.github/instructions/cas-api.instructions.md` and
-> `.github/instructions/viewer-api.instructions.md` (HTTP surfaces),
-> `.github/instructions/viewer-security.instructions.md` and
-> `.github/instructions/viewer-design.instructions.md` (viewer rules).
+> `.github/instructions/api-design.instructions.md` (HTTP conventions for
+> example surfaces), `.github/instructions/viewer-security.instructions.md`
+> and `.github/instructions/viewer-design.instructions.md` (viewer rules).
 
 ---
 
@@ -55,9 +55,7 @@ When creating or extending an example, follow these rules:
 1. **Location.** Each example lives in `examples/<name>/` inside the main
    module (no separate `go.mod` unless genuinely required). A runnable demo is
    `package main`; reusable pieces are subpackages
-   (`examples/<name>/client/`, ...). Exception: the **public CAS API client
-   SDK is a root-level package** (`client/`) so third parties can import it —
-   examples use it, they do not contain it (backend-architecture §2).
+   (`examples/<name>/client/`, ...).
    - **`examples/gitlike/` is the reference library-style example**: an
      importable package (`package gitlike`, import path
      `github.com/dmundt/go-cask/examples/gitlike`) rather than a runnable
@@ -228,47 +226,50 @@ examples/notes/
 not loaded until accessed; after prefetch the cache reports hits; broken
 references are detected and reported without crashing.
 
-### 3.4 `examples/api` — CAS HTTP API server using the public client SDK
+### 3.4 `examples/api` — HTTP-exposure pattern (server over `cas`)
 
-**Goal.** A standalone server exposing the CAS HTTP API (`/api/cas/v1`) per
-`cas-api.instructions.md`, plus the **public `client/` SDK** that other
-programs (and the other examples) can import — demonstrating the API
-contract, streaming, and auth.
+**Goal.** A self-contained HTTP server that exposes a `cas` store to other
+processes — the **pattern an app author copies** when their app needs a
+network surface. go-cask the product ships no network JSON API
+(backend-architecture §1); this example shows how to build one from the
+public `cas` library alone, with std-lib `net/http`.
 
-**Aspects covered.** CAS API surface (`POST/GET /objects`, `meta`, `list`,
-`stats`, `verify`, `gc`), bearer-token auth with the role matrix,
-streaming upload/download (large objects never fully buffered), dedup,
-OpenAPI self-doc at `/api/cas/v1/openapi.yaml`, client SDK usage.
+**Aspects covered.** Versioned prefix (`/api/cas/v1`), bearer-token auth with
+the role matrix, streaming upload/download (large objects never fully
+buffered), dedup (`PutDedup`), per-IP rate limiting, `ParseHash` validation,
+JSON errors, OpenAPI self-doc at `/api/cas/v1/openapi.yaml` (api-design
+§13), and a plain-HTTP demo client (no SDK — the product has none).
 
-**Structure.** The SDK is a **root-level public package** (`client/`,
-`package client`, import path `github.com/dmundt/go-cask/client`), NOT part
-of the example — it is the public surface promised by
-backend-architecture §2. The example demonstrates it:
+**Structure.**
 
 ```text
-client/                # public CAS API client SDK (Put/Get/Meta/List/Stats/Verify)
 examples/api/
 ├── server/
 │   ├── main.go        # net/http server, pattern routing, bearer middleware
-│   ├── openapi.yaml   # the CAS API OpenAPI document (separate file, //go:embed per api-design §13)
-│   └── server_test.go # httptest: round-trip, roles, streaming
+│   ├── ratelimit.go   # per-IP token bucket (api-design §8 pattern)
+│   ├── hash.go        # hash-on-write spooling, envelope-type sniffing
+│   ├── openapi.yaml   # the surface's OpenAPI document (separate file,
+│   │                  # //go:embed per api-design §13)
+│   └── server_test.go # httptest: round-trip, roles, streaming, 429
 ├── demo/
-│   └── main.go        # demo CLI: round-trips a file through the server via client/
-└── README.md
+│   └── main.go        # demo CLI: round-trips a file with plain net/http
+└── README.md          # required per rule 8: core used/extended, walkthrough,
+                       # mermaid
 ```
 
 **Key behaviors.**
 
 - `server` stores/retrieves bytes by hash with `?algo`, enforces roles
-  (viewer: reads; operator: store/verify; admin: delete/gc), returns JSON
-  errors, and serves its OpenAPI document.
-- `client` mirrors the API with typed functions and streams
-  `io.Reader`/`io.ReadCloser`; the demo CLI round-trips a file through the
-  server.
+  (viewer: reads; operator: store/verify; admin: delete/gc), rate-limits per
+  IP, returns JSON errors, and serves its OpenAPI document.
+- `demo` PUTs a file, GETs it back, and prints meta/stats — using plain
+  `net/http` and `cas.ParseHash`, exactly as an app without an SDK would.
 
-**Acceptance criteria.** `client.Put` → `client.Get` returns identical bytes;
-a viewer-role token gets 403 on `DELETE`; large payloads stream without
-buffering; `GET /api/cas/v1/openapi.yaml` is served and matches the routes.
+**Acceptance criteria.** The demo round-trips a file through the server
+(identical bytes); a viewer-role token gets 403 on `DELETE`; large payloads
+stream without buffering; `GET /api/cas/v1/openapi.yaml` is served and
+matches the routes. The server imports nothing but `cas` and stdlib — proof
+the pattern needs no `internal/` and no SDK.
 
 ### 3.5 `examples/viewer` — embedded viewer (nested templates + htmx)
 
@@ -281,7 +282,7 @@ model from `viewer-security.instructions.md`.
 **Aspects covered.** Nested `html/template` composition (`base`/`dashboard`/
 `object`/partials), htmx patterns (active search, lazy-loaded hexdump,
 out-of-band stats refresh), raw HTML, session auth (startup token + cookie),
-role enforcement, CSRF on mutations, backend consuming the CAS API layer.
+role enforcement, CSRF on mutations, backend over the store (in-process).
 
 **Structure.**
 
@@ -332,8 +333,8 @@ JS anywhere in the example.
 | `SmartCache[T]` prefetch                          |                 |                | ✓     |         |            |
 | Metrics (`CacheMonitor[T]`)                       |                 | ✓              |       |         |            |
 | Background `Preloader`                            |                 |                | ✓     |         |            |
-| `Stats` / `Verify` / `GC`                         | ✓ (verify/stats)| ✓ (gc/stats)   |       | ✓       | ✓ (via API)|
-| CAS HTTP API + client SDK                         |                 |                |       | ✓       | ✓ (consumes)|
+| `Stats` / `Verify` / `GC`                         | ✓ (verify/stats)| ✓ (gc/stats)   |       | ✓       | ✓          |
+| HTTP-exposure pattern (server over `cas`)          |                 |                |       | ✓       |            |
 | Viewer: nested templates + htmx + dashboard       |                 |                |       |         | ✓          |
 | Security (authn/authz, sessions, CSRF)            |                 |                |       | ✓ (bearer) | ✓ (session)|
 | Streaming (`io.Reader`/`io.ReadCloser`)           | ✓ (files)       | ✓              |       | ✓       | ✓          |
