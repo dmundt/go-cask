@@ -1,23 +1,27 @@
-# CAS core benchmark baseline (performance spec §5).
-# Regenerate: go test -bench=. -benchmem -run=^$ ./cas/...
-# Machine: local dev; CI numbers will differ — recalibrate on CI hardware.
-
-BenchmarkStorePut/64B-20      	  865994	      1408 ns/op	  45.44 MB/s	    1649 B/op	      17 allocs/op
-BenchmarkStorePut/1KiB-20     	  231888	      6706 ns/op	 152.70 MB/s	   10816 B/op	      21 allocs/op
-BenchmarkStorePut/1MiB-20     	     169	   6760404 ns/op	 155.11 MB/s	11413157 B/op	      48 allocs/op
-BenchmarkStoreGet/64B-20      	  700795	      1832 ns/op	  34.93 MB/s	    1042 B/op	      12 allocs/op
-BenchmarkStoreGet/1KiB-20     	  175160	      9587 ns/op	 106.81 MB/s	    7229 B/op	      17 allocs/op
-BenchmarkStoreGet/1MiB-20     	     224	   4552576 ns/op	 230.33 MB/s	 6667618 B/op	      43 allocs/op
-BenchmarkFSRawStorePut/flat/64B-20         	     836	   2384285 ns/op	   0.03 MB/s	    2783 B/op	      19 allocs/op
-BenchmarkFSRawStorePut/flat/1KiB-20        	     643	   2889373 ns/op	   0.35 MB/s	    2781 B/op	      19 allocs/op
-BenchmarkFSRawStorePut/fanout-2-1/64B-20   	     733	   1803287 ns/op	   0.04 MB/s	    3072 B/op	      21 allocs/op
-BenchmarkFSRawStorePut/fanout-2-1/1KiB-20  	     966	   1590298 ns/op	   0.64 MB/s	    2928 B/op	      19 allocs/op
-BenchmarkFSRawStoreGet/flat/64B-20         	   41024	     28209 ns/op	   2.27 MB/s	    1100 B/op	       9 allocs/op
-BenchmarkFSRawStoreGet/flat/1KiB-20        	   39468	     29312 ns/op	  34.93 MB/s	    1340 B/op	      10 allocs/op
-BenchmarkFSRawStoreGet/fanout-2-1/64B-20   	   41617	     28684 ns/op	   2.23 MB/s	    1279 B/op	      10 allocs/op
-BenchmarkFSRawStoreGet/fanout-2-1/1KiB-20  	   42686	     32332 ns/op	  31.67 MB/s	    1278 B/op	      10 allocs/op
-BenchmarkRoundTrip-20                      	   63955	     17879 ns/op	  57.27 MB/s	   18091 B/op	      38 allocs/op
-BenchmarkVerify-20                         	   26014	     46300 ns/op	 132.70 MB/s	   34371 B/op	      17 allocs/op
-BenchmarkParseHash/valid-20                	 1324770	       860.3 ns/op	      80 B/op	       2 allocs/op
-BenchmarkParseHash/invalid-20              	 4009318	       323.3 ns/op	      96 B/op	       3 allocs/op
-BenchmarkParallelPutGet-20                 	 2577454	       523.7 ns/op	     984 B/op	      12 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/dmundt/go-cask/cas
+cpu: AMD EPYC 9V74 80-Core Processor                
+BenchmarkStorePut/64B-4     	  703988	      1665 ns/op	  38.44 MB/s	    1648 B/op	      17 allocs/op
+BenchmarkStorePut/1KiB-4    	  172964	      6844 ns/op	 149.63 MB/s	   10806 B/op	      21 allocs/op
+BenchmarkStorePut/1MiB-4    	     186	   6374131 ns/op	 164.50 MB/s	11338886 B/op	      48 allocs/op
+BenchmarkStoreGet/64B-4     	  606840	      1869 ns/op	  34.25 MB/s	    1040 B/op	      12 allocs/op
+BenchmarkStoreGet/1KiB-4    	  158166	      7406 ns/op	 138.26 MB/s	    7220 B/op	      17 allocs/op
+BenchmarkStoreGet/1MiB-4    	     182	   6742020 ns/op	 155.53 MB/s	 6666049 B/op	      45 allocs/op
+BenchmarkFSRawStorePut/flat/64B-4         	    3668	    347032 ns/op	   0.18 MB/s	    1752 B/op	      19 allocs/op
+BenchmarkFSRawStorePut/flat/1KiB-4        	    3368	    343764 ns/op	   2.98 MB/s	    1752 B/op	      19 allocs/op
+BenchmarkFSRawStorePut/fanout-2-1/64B-4   	    3748	    316226 ns/op	   0.20 MB/s	    1955 B/op	      20 allocs/op
+BenchmarkFSRawStorePut/fanout-2-1/1KiB-4  	    3226	    320556 ns/op	   3.19 MB/s	    1975 B/op	      20 allocs/op
+BenchmarkFSRawStoreGet/flat/64B-4         	  108956	     10365 ns/op	   6.17 MB/s	     585 B/op	       8 allocs/op
+BenchmarkFSRawStoreGet/flat/1KiB-4        	  114090	     10350 ns/op	  98.94 MB/s	     585 B/op	       8 allocs/op
+BenchmarkFSRawStoreGet/fanout-2-1/64B-4   	  111950	     10629 ns/op	   6.02 MB/s	     681 B/op	       9 allocs/op
+BenchmarkFSRawStoreGet/fanout-2-1/1KiB-4  	  111862	     10673 ns/op	  95.94 MB/s	     665 B/op	       9 allocs/op
+BenchmarkRoundTrip-4                      	   75583	     15628 ns/op	  65.52 MB/s	   18051 B/op	      38 allocs/op
+BenchmarkVerify-4                         	   61836	     19391 ns/op	 316.85 MB/s	   33624 B/op	      15 allocs/op
+BenchmarkParseHash/valid-4                	  574308	      2120 ns/op	      80 B/op	       2 allocs/op
+BenchmarkParseHash/invalid-4              	 2711373	       446.2 ns/op	      96 B/op	       3 allocs/op
+BenchmarkParallelPutGet-4                 	 1480362	       781.2 ns/op	     968 B/op	      12 allocs/op
+PASS
+ok  	github.com/dmundt/go-cask/cas	27.584s
+PASS
+ok  	github.com/dmundt/go-cask/cas/extra	0.003s
