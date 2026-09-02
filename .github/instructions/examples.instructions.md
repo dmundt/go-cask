@@ -236,7 +236,8 @@ public `cas` library alone, with std-lib `net/http`.
 
 **Aspects covered.** Versioned prefix (`/api/cas/v1`), bearer-token auth with
 the role matrix, streaming upload/download (large objects never fully
-buffered), dedup (`PutDedup`), per-IP rate limiting, `ParseHash` validation,
+buffered), dedup (raw-layer exists-then-put), per-IP rate limiting,
+`ParseHash` validation,
 JSON errors, OpenAPI self-doc at `/api/cas/v1/openapi.yaml` (api-design
 §13), and a plain-HTTP demo client (no SDK — the product has none).
 

@@ -24,34 +24,32 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - **`examples/gitlike`** — the reference object model (`Blob`/`Tree`/
   `Commit`/`Tag`, `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`,
   `CachedRepository`, `Preloader`).
-- **`client/`** — the public CAS API client SDK (`Put`/`Get`/`Meta`/
-  `List`/`Verify`/`Stats`/`GC`/`OpenAPI`, streaming, bearer auth).
 - **`cmd/cask`** — the single entry point: CLI store operations (`put`,
-  `get`, `cat`, `list`, `meta`, `stats`, `verify`, `gc`, `prune`) in local
-  (`-store`) and remote (`-api`) modes, the `web` subcommand (embedded
-  server), and `version`.
-- **`internal/`** — the server implementation: `api` (CAS API R-01…R-14),
-  `auth` (per-role bearer tokens, IP token-bucket rate limiter), `storage`
-  (filesystem store service), `index` (pagination/envelope-type helpers),
-  `web` (the embedded viewer: sessions, CSRF, roles, htmx templates).
+  `get`, `cat`, `list`, `meta`, `stats`, `verify`, `gc`, `prune`) over the
+  library in-process, the `web` subcommand (the embedded viewer), and
+  `version`.
+- **`internal/`** — the viewer implementation: `web` (sessions, CSRF,
+  roles, htmx templates), `storage` (filesystem store service), `index`
+  (pagination/envelope-type helpers).
 - **The viewer** — dashboard, object list/detail with lazy hexdump,
   references (best-effort via gitlike), graph, stats, GC — secure by
-  default (`cask web -viewer`), startup-token login, empty-body 401/403.
+  default (`cask web`), startup-token login, empty-body 401/403.
 - **Examples** — `files` (gitlike miniature), `artifacts` (gzip codec +
   custom hash + cache + GC), `notes` (own types + lazy loading +
-  prefetch), `api` (CAS HTTP server + demo), each with a rule-8 README.
+  prefetch), `api` (HTTP-exposure pattern: store server + plain-HTTP demo), each with a
+  rule-8 README.
 - CI: gofmt/tidy/vet, `-race` + per-package coverage gate (cas, cas/extra,
-  client, gitlike ≥ 90%), fuzz smoke (4 targets), benchstat, doc integrity.
+  gitlike ≥ 90%), fuzz smoke (4 targets), benchstat, doc integrity.
 
 ### Changed
 
-- Layout: `internal/` for all server implementation detail (Go-enforced
-  privacy), root `client/` for the public SDK; the viewer lives in
-  `internal/web/`; `cas/` stays at the repo root.
-- The server became `cask web` (part of the CLI); `cmd/caskd` removed.
+- Layout: `internal/` for all implementation detail (Go-enforced privacy);
+  the viewer lives in `internal/web/`; `cas/` stays at the repo root.
+- The server became `cask web` — the embedded viewer only, no JSON API
+  surface; `cmd/caskd` removed.
 - OpenAPI documents MUST live in separate embedded `.yaml` files
-  (api-design §13); the CAS API serves the canonical document from
-  `internal/api/openapi.yaml`.
+  (api-design §13) — JSON example surfaces only (`examples/api`); the
+  viewer needs none.
 - Every example ships a `README.md` covering the cas core used, what it
   extends, a code walkthrough, and a Mermaid diagram (examples §2 rule 8).
 - Examples renamed to short single-word names (`files`, `artifacts`,
@@ -72,6 +70,13 @@ The project is pre-release; the first public tag will be `v1.0.0`
 
 ### Removed
 
+- `client/` — the public CAS API client SDK; CLI remote mode (`-api`/
+  `-token`) goes with it.
+- `internal/api` + `internal/auth` — the CAS JSON API handlers, bearer-token
+  auth, and the IP rate limiter.
+- The CAS HTTP API surface: the `cas-api` / `viewer-api` specs, `/api/cas/v1`
+  routes, the viewer OpenAPI doc + `/swagger/` (never implemented), and the
+  `-viewer`/`-rate`/`-burst` flags (`cask web` now IS the viewer).
 - `cas.NewStoreWithHasher` — undocumented, unconsumed constructor; custom
   hash algorithms use the documented `RegisterHash` + `NewStore` recipe
   (cas-core §4.2).

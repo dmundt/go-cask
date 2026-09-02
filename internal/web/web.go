@@ -24,13 +24,10 @@ var templateFS embed.FS
 //go:embed htmx.min.js
 var htmxJS []byte
 
-//go:embed openapi.yaml
-var openapiYAML []byte
-
-// Config selects viewer behavior. The viewer is disabled unless Enabled
-// (viewer-security §3: secure by default).
+// Config selects viewer behavior. The viewer runs only when the caller
+// (`cmd/cask web`) constructs it — there is no Enabled switch
+// (viewer-security §3).
 type Config struct {
-	Enabled      bool
 	StartupToken string // generated at startup, printed once, admin role
 	RoleTokens   map[string]string
 	Secure       bool // serve Secure cookies (HTTPS)
@@ -88,7 +85,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/stats", s.require(RoleViewer, s.statsPage))
 	mux.HandleFunc("GET /viewer/gc", s.require(RoleAdmin, s.gcPage))
 	mux.HandleFunc("POST /viewer/gc", s.require(RoleAdmin, s.gcFragment))
-	mux.HandleFunc("GET /viewer/openapi.yaml", s.require(RoleViewer, s.openapi))
 	return mux
 }
 
@@ -417,11 +413,6 @@ func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("viewer audit", "action", "gc", "deleted", deleted)
 	fmt.Fprintf(w, "<p class=\"result\">gc: deleted %d objects</p>", deleted)
-}
-
-func (s *Server) openapi(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-	w.Write(openapiYAML)
 }
 
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {

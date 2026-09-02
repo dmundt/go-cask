@@ -6,7 +6,7 @@ package index
 import "encoding/json"
 
 // Paginate returns the items in the [offset, offset+limit) window,
-// bounded to the slice (list pagination per cas-api R-05).
+// bounded to the slice (list pagination per defaults §3).
 func Paginate[T any](items []T, offset, limit int) []T {
 	off := max(offset, 0)
 	lo := min(off, len(items))
