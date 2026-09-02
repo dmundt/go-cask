@@ -1,9 +1,8 @@
-// Package main implements the api example: a standalone CAS HTTP API
-// server (examples spec §3.4) implementing the /api/cas/v1 contract
-// (cas-api.instructions.md, R-01…R-14): content-addressed store with dedup,
-// streaming uploads/downloads, bearer-token role auth, IP-based rate
-// limiting, metadata, list, verify, GC, stats, and a self-served OpenAPI
-// document. The companion public SDK is the root `client/` package.
+// Package main implements the api example: the HTTP-exposure pattern — a
+// standalone server (examples spec §3.4) over the public cas library,
+// serving the versioned /api/cas/v1 surface with dedup, streaming
+// uploads/downloads, bearer-token role auth, IP-based rate limiting,
+// metadata, list, verify, GC, stats, and a self-served OpenAPI document.
 package main
 
 import (
@@ -12,7 +11,7 @@ import (
 	"time"
 )
 
-// RateLimitConfig configures the IP-based token-bucket limiter (R-14).
+// RateLimitConfig configures the IP-based token-bucket limiter.
 type RateLimitConfig struct {
 	Enabled           bool
 	RequestsPerSecond float64
@@ -33,7 +32,7 @@ type bucket struct {
 
 // rateLimiter is a std-lib token bucket per caller IP: sustained rate with
 // burst capacity. Per-IP state is lazily expired after idleWindow and
-// bounded by maxEntries (R-14 memory hygiene). Safe for concurrent use.
+// bounded by maxEntries (memory hygiene). Safe for concurrent use.
 type rateLimiter struct {
 	cfg        RateLimitConfig
 	mu         sync.Mutex

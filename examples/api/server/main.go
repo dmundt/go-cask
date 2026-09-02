@@ -1,6 +1,6 @@
-// Command api-server is a standalone CAS HTTP API server
-// (examples/api): it serves /api/cas/v1 per cas-api.instructions.md
-// with bearer-token role auth and IP-based rate limiting.
+// Command api-server is the HTTP-exposure pattern server (examples/api):
+// it serves the versioned /api/cas/v1 surface over the public cas
+// library, with bearer-token role auth and IP-based rate limiting.
 //
 // Usage:
 //

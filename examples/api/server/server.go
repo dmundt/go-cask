@@ -55,7 +55,7 @@ func (s *server) Handler() http.Handler {
 }
 
 // rateLimit wraps the mux: 429 + Retry-After + X-RateLimit-* before auth
-// (R-14; loopback exempt by default).
+// (loopback exempt by default).
 func (s *server) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.rl.cfg.ExemptLoopback && isLoopback(r.RemoteAddr) {
@@ -75,7 +75,7 @@ func (s *server) rateLimit(next http.Handler) http.Handler {
 }
 
 // callerIP derives the client IP: X-Forwarded-For only via trusted proxies
-// (R-14).
+// (per-caller identity).
 func (s *server) callerIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -90,7 +90,7 @@ func (s *server) callerIP(r *http.Request) string {
 	return host
 }
 
-// requireRole enforces the bearer-token role matrix (R-11): 401 for a
+// requireRole enforces the bearer-token role matrix: 401 for a
 // missing/invalid token, 403 for an insufficient role — neither discloses
 // whether the target object exists.
 func (s *server) requireRole(roles []string, next http.HandlerFunc) http.HandlerFunc {
@@ -117,7 +117,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// R-01/R-02/R-04: store raw bytes — the hash is computed while streaming
+// Store raw bytes — the hash is computed while streaming
 // the body to a temp spool (memory-bounded), then the spool streams into
 // the store. Identical bytes → identical hash → deduplicated.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +168,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
 
-// R-05: list objects with algo filter and pagination.
+// List objects with algo filter and pagination.
 func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, err := parseBounded(q.Get("limit"), 100, 1, 1000)
@@ -200,7 +200,7 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"total": total, "objects": objects})
 }
 
-// R-03/R-04: stream the stored bytes with X-CAS-* metadata headers.
+// Stream the stored bytes with X-CAS-* metadata headers.
 func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseHashParam(w, r)
 	if !ok {
@@ -235,7 +235,7 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// R-06: metadata — size always; type best-effort from the envelope.
+// Metadata — size always; type best-effort from the envelope.
 func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseHashParam(w, r)
 	if !ok {
@@ -263,7 +263,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// R-07: integrity — recompute and compare (operator).
+// Integrity — recompute and compare (operator).
 func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseHashParam(w, r)
 	if !ok {
@@ -292,7 +292,7 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// R-09: storage statistics.
+// Storage statistics.
 func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 	st, err := s.raw.Stats(r.Context())
 	if err != nil {
@@ -310,7 +310,7 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// R-08: mark-and-sweep from the reachable set (admin).
+// Mark-and-sweep from the reachable set (admin).
 func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reachable []string `json:"reachable"`
