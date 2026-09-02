@@ -1,13 +1,13 @@
 ---
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
-version: v2
+version: v3
 ---
 
 # Go Coding Guidelines — go-cask
 
-> Applies to **all Go code** in this repository (`cas/`, `client/`,
-> `internal/`, `cmd/`).
+> Applies to **all Go code** in this repository (`cas/`, `internal/`,
+> `cmd/`).
 > Complements `.github/instructions/cas-core.instructions.md` (what to
 > build) and `.github/instructions/viewer-security.instructions.md` (how the
 > viewer must be secured). Where this file conflicts with an older sketch in
@@ -118,12 +118,6 @@ Consequences for this repo:
 - The only script allowed anywhere in the viewer is **htmx** (one pinned,
   vendored file, or a CDN URL with an integrity attribute). htmx's script is
   not "our" JS — it is the framework that provides interactivity.
-- **Documented deviation.** The optional in-browser Swagger UI API explorer
-  (`GET /swagger/`, see `.github/instructions/cas-api.instructions.md` §6 and
-  `.github/instructions/viewer-api.instructions.md` §7) embeds the Swagger UI
-  JavaScript bundle. This is the single documented exception to the no-JS
-  rule: vendored and pinned, disabled by default, never part of the default
-  viewer, and only reachable when explicitly enabled.
 - Interactivity is expressed **only** through htmx attributes (`hx-get`,
   `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, ...) that request HTML
   fragments from the backend. There is no client-side state.
@@ -250,21 +244,19 @@ Consequences for this repo:
 
 ## 9. Project Structure & Conventions
 
-- Layout: `cas/` (public core library, `package cas`), `client/` (public CAS
-  API client SDK, `package client`), `internal/` (implementation detail:
-  `api`, `web` — the viewer —, `auth`, `storage`, `index`; NOT importable
-  outside the module), `cmd/` (thin `main` packages only), `examples/`,
-  `docs/` (backend-architecture §2).
-- `internal/` is the home of every implementation detail: server handlers,
+- Layout: `cas/` (public core library, `package cas`), `internal/`
+  (implementation detail: `web` — the viewer —, `storage`, `index`; NOT
+  importable outside the module), `cmd/` (thin `main` packages only),
+  `examples/`, `docs/` (backend-architecture §2).
+- `internal/` is the home of every implementation detail: viewer handlers,
   middleware, config wiring. It is private by construction — Go rejects
-  imports of `internal/` from outside the module, so the public surface
-  stays exactly `cas/` + `client/`.
-- HTTP middleware (authn, CSRF, and the **IP-based rate limiter**) is shared
-  code wrapped around the HTTP surfaces. The rate limiter is a std-lib token
-  bucket per caller IP (`sync.Mutex`/`atomic` + `time`), configured per
-  `.github/instructions/cas-api.instructions.md` §3 (R-14): 429 + `Retry-After`
-  + `X-RateLimit-*` headers; client IP from `RemoteAddr`, `X-Forwarded-For`
-  only via a trusted proxy; loopback exempt by default; per-IP state evicted.
+  imports of `internal/` from outside the module, so `cas/` is the only
+  public package (plus the `examples/gitlike/` example layer).
+- Viewer HTTP middleware (authn, sessions, CSRF, login throttle) lives in
+  `internal/web` (viewer-security). An example surface MAY add its own
+  IP-based rate limiter (std-lib token bucket per caller IP, 429 +
+  `Retry-After` + `X-RateLimit-*`, loopback exempt — see `examples/api` and
+  api-design §8).
 - `go.mod` at the repo root declaring `go 1.27`; module path matches the
   repository.
 - No blank imports except the `embed` pattern; no init-based magic except

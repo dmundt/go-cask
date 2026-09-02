@@ -1,7 +1,7 @@
 ---
 title: Copilot Instructions — go-cask
 description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in .github/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v1
+version: v2
 ---
 
 # Copilot Instructions — go-cask (CASK: Content Addressed Storage Kit)
@@ -32,9 +32,8 @@ The repo layout is:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it
-client/    public CAS API client SDK (package client)
-internal/  implementation detail (api, web — the viewer —, auth, storage,
-           index); not importable outside this module
+internal/  implementation detail (web — the viewer —, storage, index);
+           not importable outside this module
 examples/gitlike/ example package (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
                  WalkGraph
@@ -60,18 +59,9 @@ Related specs that also constrain work in this repo:
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
-- `.github/instructions/viewer-api.instructions.md` — Swagger/OpenAPI
-  contract: viewer routes (`/viewer/`, HTML) and the CAS data API
-  (`/api/cas/v1/`, JSON) as separate namespaces; the viewer is one client of
-  the CAS API, other clients use it too.
-- `.github/instructions/cas-api.instructions.md` — canonical Swagger/OpenAPI
-  spec and requirements of the CAS HTTP API (`/api/cas/v1/`): content
-  addressing, dedup, immutability, streaming, pagination, verify, GC, stats,
-  bearer-token auth and role matrix.
 - `.github/instructions/examples.instructions.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
-  the implementation (gitlike, custom codecs/hashes, caching, CAS API,
-  viewer).
+  the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
 - `.github/instructions/extensions.instructions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
@@ -91,8 +81,7 @@ Related specs that also constrain work in this repo:
   branch concept: one permanent `main`, short-lived `<type>/<kebab>` branches,
   on-demand `release/vX.Y`; patterns, examples, lifecycle.
 - `.github/instructions/cli.instructions.md` — the `cmd/cask` CLI contract:
-  subcommands, flags, output format, exit codes, local (`-store`) and remote
-  (`-api`) modes, and the `web` server subcommand (CAS API + viewer).
+  subcommands, flags, output format, exit codes, local (`-store`) ops and the `web` viewer subcommand.
 - `.github/instructions/object-versioning.instructions.md` — object-model
   semver: versioned type names (`type@major`), coexisting model versions in
   one store, compatibility rules and migration.
@@ -109,7 +98,7 @@ Related specs that also constrain work in this repo:
 - `.github/instructions/api-design.instructions.md` — shared HTTP API design
   conventions: naming, methods, status codes, errors, authn/authz, rate
   limiting, validation, pagination, streaming, versioning, OpenAPI docs —
-  applied consistently to the viewer and CAS API surfaces.
+  applied consistently to the viewer surface and to example HTTP surfaces.
 - `.github/instructions/AGENT.md` — the meta-guide for the instruction folder:
   file naming, frontmatter, document structure, terminology, precedence, and
   the maintenance checklist that keeps every instruction file consistent.

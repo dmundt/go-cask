@@ -4,8 +4,7 @@
 [![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-A generic, Git-like, **content-addressed storage** library and service for
-Go: store any bytes once under the hash of their content, reference them by
+A generic, Git-like, **content-addressed storage** library for Go: store any bytes once under the hash of their content, reference them by
 hash, and build typed object graphs on top — reusable across apps and
 domains.
 
@@ -24,10 +23,9 @@ domains.
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic, public
-client/    public CAS API client SDK (package client)
-internal/  implementation detail: api, web (the viewer), auth, storage, index
+internal/  implementation detail: web (the viewer), storage, index
 examples/  runnable example programs (incl. the gitlike reference object model)
-cmd/       entry point: cask (CLI; `cask web` starts the CAS API + viewer server)
+cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 docs/      documentation
 .github/   specification set + CI (see below)
 ```
@@ -56,8 +54,8 @@ raw := cas.NewMemoryRawStore() // fast, deterministic, not persistent
 
 This project is specified, not guessed: `.github/instructions/` contains the
 complete design contract — core architecture (`cas-core`), coding guidelines,
-library design, performance, testing, consistency (GC/pruning), the CAS and
-viewer HTTP APIs, viewer design & security, versioning, defaults, examples,
+library design, performance, testing, consistency (GC/pruning), the viewer
+HTTP surface, viewer design & security, versioning, defaults, examples,
 and extensions. `AGENT.md` in that folder is the meta-guide; read it before
 editing any spec. The full inventory is in `AGENT.md` §10.
 
