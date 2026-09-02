@@ -14,32 +14,26 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/api"
-	"github.com/dmundt/go-cask/internal/auth"
 	"github.com/dmundt/go-cask/internal/storage"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
-// runWeb starts the embedded server: the CAS API and, when enabled, the
-// viewer — one server, one mux (backend-architecture §3). The viewer is
-// disabled by default (viewer-security §3: secure by default); enabling it
-// generates a startup admin token printed once, and binding to a
-// non-loopback address requires explicit confirmation (viewer-security §4).
+// runWeb starts the embedded viewer — the product's only HTTP surface
+// (backend-architecture §3). Invoking `cask web` IS the explicit enablement
+// (viewer-security §3); binding to a non-loopback address requires explicit
+// confirmation (viewer-security §4).
 func runWeb(ctx context.Context, args []string) {
 	fs := flag.NewFlagSet("web", flag.ExitOnError)
 	store := fs.String("store", "./objects", "filesystem store directory")
 	bind := fs.String("bind", "127.0.0.1:8080", "listen address")
-	tokens := fs.String("tokens", "viewer=viewer,operator=operator,admin=admin", "comma-separated role=token pairs")
-	rate := fs.Float64("rate", 2, "rate-limit sustained requests/sec per IP")
-	burst := fs.Int("burst", 20, "rate-limit burst per IP")
-	viewer := fs.Bool("viewer", false, "enable the embedded technical viewer (secure by default)")
-	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind for the viewer without HTTPS")
+	tokens := fs.String("tokens", "viewer=viewer,operator=operator,admin=admin", "comma-separated role=token pairs for viewer login")
+	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if *viewer && !isLoopbackBind(*bind) && !*allowInsecure {
+	if !isLoopbackBind(*bind) && !*allowInsecure {
 		slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
 		os.Exit(1)
 	}
@@ -49,38 +43,29 @@ func runWeb(ctx context.Context, args []string) {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
 	}
-	tokenMap := map[string]string{}
+	roleTokens := map[string]string{} // token → role, for viewer login
 	for _, pair := range strings.Split(*tokens, ",") {
 		role, tok, ok := strings.Cut(pair, "=")
 		if ok {
-			tokenMap[strings.TrimSpace(tok)] = strings.TrimSpace(role)
+			roleTokens[strings.TrimSpace(tok)] = strings.TrimSpace(role)
 		}
 	}
-	rlCfg := auth.DefaultRateLimit()
-	rlCfg.RequestsPerSecond = *rate
-	rlCfg.Burst = *burst
-	apiSrv := api.New(st, tokenMap, rlCfg)
-	defer apiSrv.Close()
+
+	token := randomToken()
+	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
+	webSrv, err := web.New(st, web.Config{
+		StartupToken: token,
+		RoleTokens:   roleTokens,
+		Secure:       false, // loopback default; set with TLS
+	})
+	if err != nil {
+		slog.Error("viewer setup", "err", err)
+		os.Exit(1)
+	}
 
 	root := http.NewServeMux()
-	root.Handle("/api/cas/v1/", apiSrv.Handler())
-
-	if *viewer {
-		token := randomToken()
-		slog.Warn("viewer enabled", "admin_token", token) // printed once, never stored
-		webSrv, err := web.New(st, web.Config{
-			Enabled:      true,
-			StartupToken: token,
-			RoleTokens:   tokenMap,
-			Secure:       false, // loopback default; set with TLS
-		})
-		if err != nil {
-			slog.Error("viewer setup", "err", err)
-			os.Exit(1)
-		}
-		root.Handle("/viewer/", webSrv.Handler())
-		root.Handle("/viewer", webSrv.Handler())
-	}
+	root.Handle("/viewer/", webSrv.Handler())
+	root.Handle("/viewer", webSrv.Handler())
 
 	httpSrv := &http.Server{
 		Addr:              *bind,
@@ -88,7 +73,7 @@ func runWeb(ctx context.Context, args []string) {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		slog.Info("cask web listening", "addr", *bind, "store", *store, "viewer", *viewer)
+		slog.Info("cask web listening (viewer)", "addr", *bind, "store", *store)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("serve", "err", err)
 			os.Exit(1)

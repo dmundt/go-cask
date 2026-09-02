@@ -3,17 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/client"
-	"github.com/dmundt/go-cask/internal/api"
-	"github.com/dmundt/go-cask/internal/auth"
-	"github.com/dmundt/go-cask/internal/storage"
 )
 
 // run executes a cask operation in-process, returning its stdout and exit
@@ -143,48 +138,6 @@ func TestExitCodes(t *testing.T) {
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, code := run(t, mf, "cat", missing.String()); code != 1 {
 		t.Fatalf("missing-object exit = %d, want 1", code)
-	}
-}
-
-func TestRemoteOps(t *testing.T) {
-	ctx := context.Background()
-	st, err := storage.New(ctx, storage.Config{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := api.New(st, map[string]string{"op-tok": "operator"}, auth.DefaultRateLimit())
-	t.Cleanup(srv.Close)
-	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
-
-	mf := modeFlags{api: ts.URL, token: "op-tok"}
-	c := client.New(ts.URL, "op-tok")
-
-	f := writeTemp(t, "remote data")
-	fh, err := os.Open(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, _, err := c.Put(ctx, fh, "")
-	fh.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	out, code := run(t, mf, "cat", h.String())
-	if code != 0 || out != "remote data" {
-		t.Fatalf("remote cat = (%q, %d)", out, code)
-	}
-	out, code = run(t, mf, "stats")
-	if code != 0 || !strings.Contains(out, "1 objects") {
-		t.Fatalf("remote stats = (%q, %d)", out, code)
-	}
-	if _, code := run(t, mf, "verify", h.String()); code != 0 {
-		t.Fatalf("remote verify exit %d", code)
-	}
-	// Remote prune is unsupported → usage error.
-	if _, code := run(t, mf, "prune", "--min-age", "1ns", h.String()); code != 2 {
-		t.Fatalf("remote prune exit = %d, want 2", code)
 	}
 }
 
