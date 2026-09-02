@@ -1,7 +1,7 @@
 ---
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for .github/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v2
+version: v3
 ---
 
 # AGENT — go-cask Instruction Folder Guide
@@ -35,11 +35,11 @@ version: v2
 
 - Pattern: `<kebab-case-topic>.instructions.md`.
 - Topics are domain nouns — the full set is: `api-design`,
-  `backend-architecture`, `branch-naming`, `cas-api`, `cas-core`, `cli`,
+  `backend-architecture`, `branch-naming`, `cas-core`, `cli`,
   `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`,
   `frontend-architecture`, `library-design`, `object-versioning`,
   `operations`, `performance`, `testing-strategy`, `versioning`,
-  `viewer-api`, `viewer-design`, `viewer-security`.
+  `viewer-design`, `viewer-security`.
 - No redundant prefixes: the folder already says "instructions" — do not
   prefix topics with `go-` (the file is `coding-guidelines.instructions.md`,
   not `go-coding-guidelines.instructions.md`).
@@ -126,14 +126,12 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 | `gitlike` package  | The example layer (`examples/gitlike/`) — Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
 | the viewer         | The embedded technical browser UI (`internal/web/`). **Not** "debug UI".     |
 | viewer API         | The hypermedia surface under `/viewer/` (HTML).                        |
-| CAS API            | The JSON data API under `/api/cas/v1/`.                                |
+| CAS API            | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface.                                |
 | `RawStore`         | The non-generic byte-storage interface; backends: `FSRawStore`, `MemoryRawStore`, … |
 | `Store[T]`         | The generic typed store.                                               |
 | `Hash`             | Content address `algo:hexdigest`; validated with `ParseHash`.          |
 | fan-out            | The configurable directory layout (`FanOut`/`FanLevels`), Git-like default. |
 | lock-free reads    | `Get`/`Exists`/`List`/`Stats` take no lock (atomic rename).            |
-| IP-based rate limiting | Shared middleware: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`. |
-| Swagger UI explorer | The optional in-browser API explorer (`GET /swagger/`), the single documented no-JS deviation. |
 | CAS laws           | The invariants in `testing-strategy.instructions.md` §1.               |
 
 Forbidden / deprecated:
@@ -150,7 +148,7 @@ Forbidden / deprecated:
 - Refer to sibling files by relative path in backticks:
   `.github/instructions/<file>.instructions.md` (or a short
   `<file>.instructions.md` name inside a `Related:` line).
-- Reference sections by their number (`§4.4`, `R-14`, `§2`) — never by
+- Reference sections by their number (`§4.4`, `P-05`, `§2`) — never by
   approximate prose.
 - When a change affects a contract, update **all** files that reference it in
   one pass; a `grep` for the changed term across `.github/` must come back
@@ -166,18 +164,16 @@ When two files appear to conflict, this order decides (highest first):
 
 1. **Security** — `viewer-security.instructions.md` is non-negotiable for
    anything touching the viewer; nothing may weaken it.
-2. **Per-API specs** — `cas-api.instructions.md` / `viewer-api.instructions.md`
-   define concrete routes and win over the shared conventions.
-3. **Common conventions** — `api-design.instructions.md` (HTTP design),
+2. **Common conventions** — `api-design.instructions.md` (HTTP design),
    `coding-guidelines.instructions.md` (Go style), `library-design.
    instructions.md` (lean-core/errors).
-4. **Architecture** — `cas-core.instructions.md` defines the library
+3. **Architecture** — `cas-core.instructions.md` defines the library
    component contracts; `backend-architecture.instructions.md` and
-   `frontend-architecture.instructions.md` compose them into the server and
+   `frontend-architecture.instructions.md` compose them into the viewer and
    browser-facing system; `performance`/`testing-strategy`/`operations`
    refine them.
-5. **Examples** — `examples.instructions.md` may demonstrate, never redefine.
-6. **This file (AGENT.md)** governs the documents themselves.
+4. **Examples** — `examples.instructions.md` may demonstrate, never redefine.
+5. **This file (AGENT.md)** governs the documents themselves.
 
 On any conflict: fix the **more specific** document to match the more general
 one, unless the specific document is higher in this order. Never leave two
@@ -204,7 +200,7 @@ contradicting statements in the folder.
 - Tables: pipe tables with a header separator row; alignment via
   `:---:` only where it adds meaning.
 - Line width ≤ ~100 chars; LF endings; UTF-8.
-- Numbers/lists: requirements numbered (`R-01…`, `P-01…`, `A-…`) only when
+- Numbers/lists: requirements numbered (`P-01…`, `A-…`) only when
   cross-referenced; otherwise bullet lists.
 
 ---
@@ -229,13 +225,11 @@ contradicting statements in the folder.
 | `defaults.instructions.md`                       | Canonical defaults & behavior reference (all constants, grouped). |
 | `versioning.instructions.md`                     | Library Git versioning: semver tags, Go module v2+ rules, release process. |
 | `branch-naming.instructions.md`                  | Simple Git branch concept: main + short-lived typed branches, patterns, lifecycle. |
-| `cli.instructions.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local/remote modes, the `web` server subcommand. |
+| `cli.instructions.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local ops plus the `web` viewer subcommand. |
 | `object-versioning.instructions.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
 | `viewer-security.instructions.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
 | `viewer-design.instructions.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
-| `viewer-api.instructions.md`                     | Viewer + CAS API OpenAPI; two-surface separation.               |
-| `cas-api.instructions.md`                        | Canonical CAS HTTP API spec (routes, requirements, rate limit). |
-| `api-design.instructions.md`                     | Shared HTTP API design conventions (both surfaces).             |
+| `api-design.instructions.md`                     | Shared HTTP API design conventions (viewer + example HTTP surfaces).             |
 | `examples.instructions.md`                       | Example-program rules + the five proposed examples.             |
 | `extensions.instructions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
 

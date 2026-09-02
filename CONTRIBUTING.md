@@ -21,12 +21,11 @@ repository.
 | Path        | What it is                                                  |
 | ----------- | ----------------------------------------------------------- |
 | `cas/`      | The public core library (package `cas`) — see `cas-core`    |
-| `client/`   | The public CAS API client SDK (package `client`)            |
-| `internal/` | Implementation detail: `api`, `web` (the viewer), `auth`, `storage`, `index` — not importable outside the module |
+| `internal/` | Implementation detail: `web` (the viewer), `storage`, `index` — not importable outside the module |
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
-| `cmd/cask`  | The single entry point: CLI store ops + server (`cask web` serves CAS API + viewer) — spec: `cli.instructions.md` |
+| `cmd/cask`  | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |
-| `.github/instructions/` | The specification set (21 files)                    |
+| `.github/instructions/` | The specification set (19 files)                    |
 
 ### The dev loop
 
@@ -35,7 +34,7 @@ go build ./...
 go vet ./...
 go test -race ./...            # correctness + the lock-free read path
 go test -bench=. -benchmem     # performance (performance spec §5)
-go run ./cmd/cask web          # server (CAS API + viewer, disabled by default)
+go run ./cmd/cask web          # the embedded viewer (admin UI, loopback)
 go run ./cmd/cask              # CLI store operations
 gofmt -l .                     # must be empty
 ```

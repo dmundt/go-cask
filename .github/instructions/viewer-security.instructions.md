@@ -1,18 +1,17 @@
 ---
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v2
+version: v3
 ---
 
 # Viewer Security — go-cask
 
 > Security requirements for the embedded technical viewer. **Nothing may
-> weaken this file** (AGENT.md §8 precedence). The viewer design and API
-> surfaces MUST comply with it.
+> weaken this file** (AGENT.md §8 precedence). The viewer design and its
+> HTTP surface MUST comply with it.
 >
 > Related: `.github/instructions/viewer-design.instructions.md` (the UI it
-> protects), `.github/instructions/viewer-api.instructions.md` (the routes),
-> `.github/instructions/api-design.instructions.md` (shared HTTP
+> protects), `.github/instructions/api-design.instructions.md` (shared HTTP
 > conventions).
 
 ---
@@ -45,14 +44,11 @@ guiding priority is Security > Auditability > Simplicity > Convenience (§14).
 
 ## 3. Secure By Default
 
-The viewer SHALL be disabled by default unless explicitly enabled.
-
-Example:
-
-```yaml
-viewer:
-  enabled: false
-```
+The viewer SHALL run only when explicitly invoked: `cask web` starts it and
+no other subcommand does. There is no separate API server it rides along
+with and no `enabled` switch (backend-architecture §1) — invoking `cask
+web` IS the explicit enablement, and everything else about the viewer stays
+off by default (loopback bind §4, no unauthenticated access §5).
 
 ---
 
@@ -353,7 +349,7 @@ When in doubt, choose the more secure implementation.
 
 ## 15. Compliance Checklist
 
-- [ ] Viewer disabled by default; loopback bind by default; non-loopback
+- [ ] Viewer runs only via explicit `cask web`; loopback bind by default; non-loopback
       requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [ ] Authentication required; login throttled (5 failures/IP/min, backoff,
       audit-logged without the token value) (§5)

@@ -1,7 +1,7 @@
 ---
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v1
+version: v2
 ---
 
 # Versioning — go-cask
@@ -113,12 +113,12 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 | Versioned thing                    | Version scheme                 | Who bumps it                     |
 | ---------------------------------- | ------------------------------ | -------------------------------- |
 | The Go library (`cas`/`gitlike`)   | semver Git tags (`v1.2.3`)     | maintainers per §5               |
-| The HTTP CAS API (`/api/cas/v1`)   | URL prefix majors (`v1` → `v2`) | independent of library semver (api-design §12) |
+| An example JSON surface (the `examples/api` pattern) | URL prefix majors (`/api/cas/v1` → `/api/cas/v2`) | independent of library semver (api-design §12) |
 | Instruction documents (frontmatter `version: vN`) | `v1`, `v2`, … document revisions | per AGENT.md §3, on material doc changes |
 
-These three version spaces MUST NOT be conflated: a `v2` of the HTTP API does
-not imply a `v2` library, and a doc at `version: v3` says nothing about the
-library's release.
+These three version spaces MUST NOT be conflated: a `v2` of an example JSON
+surface does not imply a `v2` library, and a doc at `version: v3` says
+nothing about the library's release.
 
 ---
 
@@ -131,4 +131,4 @@ library's release.
 - [ ] `gofmt`/`go vet`/`go test -race`/benchmark gate green before tagging
 - [ ] CHANGELOG.md updated on every release; `Unreleased` section maintained
 - [ ] v2+ uses the `/v2` module path suffix and the `cas/v2/` layout
-- [ ] HTTP API majors and doc versions never conflated with library versions
+- [ ] Example-surface majors and doc versions never conflated with library versions

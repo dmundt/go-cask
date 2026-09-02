@@ -1,7 +1,7 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v2
+version: v3
 ---
 
 # Performance — go-cask
@@ -112,8 +112,8 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 
 1. Reproduce: `go test -bench=BenchmarkRoundTrip -benchmem`.
 2. Profile: `go test -bench=... -cpuprofile p.out -memprofile m.out`, or
-   `net/http/pprof` on the server (std-lib; gate it like the Swagger
-   explorer — explicitly enabled, documented deviation if exposed).
+   `net/http/pprof` on the viewer server (std-lib; expose it only when
+   explicitly enabled).
 3. Order of attack: allocations first (`pprof -alloc_objects`), then CPU
    (flamegraph), then lock contention (`-mutexprofile`) — expect none in the
    read path.

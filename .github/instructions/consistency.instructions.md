@@ -1,7 +1,7 @@
 ---
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v1
+version: v2
 ---
 
 # Consistency — go-cask
@@ -125,9 +125,9 @@ expiration.
   objects older than T regardless of reachability — this removes history and
   can break references. Documented as the one operation that can destroy
   reachable data; it exists for legal/temp-data eviction.
-- **API surface**: exposed as a maintenance operation (CAS API `POST
-  /api/cas/v1/prune` with `{roots, min_age, dry_run}`, admin role; viewer
-  admin action with confirm). See `cas-api.instructions.md` conventions.
+- **Surface**: exposed as a `cask` CLI operation (`prune --min-age <dur>
+  <roots...> [--dry-run]`, cli §2) and a viewer admin action with confirm.
+  There is no HTTP surface (backend-architecture §1).
 
 ---
 
@@ -188,9 +188,9 @@ Stats()                 # what is stored, per algorithm
 ## 9. Where These Live
 
 - **Core (cas-core §4.11)**: `FSRawStore.Verify`, `GC`, `Stats`; `Prune` is
-  added as the age-based maintenance operation defined here.
-- **CAS API (cas-api.instructions.md)**: `verify`, `gc` exist; `prune`
-  follows the same conventions (POST, admin, audit-logged, `dry_run`).
+  the age-based maintenance operation defined here.
+- **CLI (cli §2)**: `verify`, `gc`, `prune` operate in-process over the
+  library; `prune` defaults to `--dry-run`.
 - **Viewer (viewer-design.instructions.md)**: diagnostics for broken and
   dangling objects; admin actions for verify/GC/prune with confirm.
 
@@ -206,4 +206,4 @@ Stats()                 # what is stored, per algorithm
       grace period; dry-run default
 - [ ] The dangerous all-objects prune is admin + dry-run + confirm
 - [ ] No refcounts, no automatic GC, no GC transactions (§8)
-- [ ] CAS API + viewer expose verify/GC/prune per the conventions
+- [ ] CLI + viewer expose verify/GC/prune per the conventions (cli §2)
