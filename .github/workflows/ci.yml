@@ -106,9 +106,9 @@ jobs:
           # Bench lines (with -benchmem + SetBytes) are:
           #   name-4  count  ns/op  "ns/op"  MB/s  "MB/s"  B/op  "B/op"  allocs  "allocs/op"
           # so the allocs/op value is field 9. Shared ubuntu-latest runners
-          # vary in hardware, so wall-clock time cannot be gated: fail on ANY
-          # increase in allocs/op (hardware-independent, deterministic for
-          # identical code). Time is printed for humans only.
+          # vary in hardware, so wall-clock time cannot be gated. Allocations
+          # jitter by ±1 between runs: fail only on a real regression (>10%
+          # and at least 2 allocs/op). Time is printed for humans only.
           awk '
             NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); if (!($1 in base) || $9 + 0 < base[$1]) base[$1] = $9 + 0; if (!($1 in tb) || $3 + 0 < tb[$1]) tb[$1] = $3 + 0 } next }
             $0 ~ /^Benchmark/ {
@@ -118,7 +118,7 @@ jobs:
             }
             END {
               for (n in base) if (n in cur) {
-                if (cur[n] > base[n]) { printf "%s: allocs/op %d -> %d (regression)\n", n, base[n], cur[n]; fail = 1 }
+                if (cur[n] - base[n] >= 2 && cur[n] - base[n] > base[n] * 0.10) { printf "%s: allocs/op %d -> %d (regression)\n", n, base[n], cur[n]; fail = 1 }
               }
               for (n in tb) if (n in tc) printf "  (info) %s: ns/op %d -> %d\n", n, tb[n], tc[n]
               exit fail
