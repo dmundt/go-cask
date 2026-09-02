@@ -17,7 +17,7 @@ unreferenced artifacts.
 | `Store[T]` / `PutDedup` | artifact + manifest storage, dedup reporting |
 | `Object[T]` (self-describing envelope) | `Artifact`, `Manifest` |
 | `LRUCache[T]` | the bounded artifact cache (`get`) |
-| `CacheMonitor[T]` (`cas/extra`) | periodic cache snapshots |
+| periodic cache snapshots (own `CacheMonitor` recipe) | emits `CacheStats` |
 | `FSRawStore.GC` / `Stats` | mark-and-sweep / store totals |
 | `Hash` / `ParseHash` | manifest references and `get` args |
 
