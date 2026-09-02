@@ -1,5 +1,6 @@
 # Go
 /bin/
+*.exe
 *.test
 *.out
 coverage.out

@@ -147,7 +147,7 @@ func TestRoundTripAndDedup(t *testing.T) {
 	}
 }
 
-// R-04: large payloads stream without buffering (memory-bounded spool).
+// Large payloads stream without buffering (memory-bounded spool).
 func TestLargePayload(t *testing.T) {
 	ctx := context.Background()
 	c, _ := newTestServer(t, DefaultRateLimit())
@@ -196,7 +196,7 @@ func TestRoleMatrix(t *testing.T) {
 	}
 }
 
-// R-14: exceeding the burst → 429 with Retry-After + X-RateLimit-* headers.
+// Exceeding the burst → 429 with Retry-After + X-RateLimit-* headers.
 func TestRateLimit(t *testing.T) {
 	ctx := context.Background()
 	cfg := DefaultRateLimit()
