@@ -19,6 +19,32 @@ domains.
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, semver-versioned
   object models, GC from roots, age-based pruning — no over-engineering.
 
+## Design principles & grounding
+
+go-cask is a **single-host content-addressed storage kit**. The durable
+decisions that shape the repo (each named spec is the normative contract):
+
+- **No network surface ships.** The product has no CAS JSON API, no client
+  SDK, and no server binary — it is `cas` + the CLI + the embedded viewer.
+  HTTP exposure is an app-author pattern, demonstrated by `examples/api`
+  (backend-architecture §1).
+- **The viewer is a byte-layer admin tool.** It shows objects, bytes, and
+  integrity — never typed references or graphs — and product code never
+  imports `examples/` (viewer-design §7, coding-guidelines §9).
+- **Dependencies are one-directional.** `cas`/`internal`/`cmd` never import
+  `examples/`; examples never import `internal/` and are self-contained
+  except the `gitlike` shared reference library (examples §2 rule 11).
+- **Lean generic core with reference implementations.** `cas` stays
+  app-agnostic; each pluggable seam ships one reference (`sha1`/`sha256`,
+  `MemoryRawStore`, `JSONCodec`), and only the cas-core §7.1 surface is
+  stable — speculative surface is cut, not kept.
+- **The byte layer is policy-free.** GC/prune take app-supplied roots;
+  roots are pins (there is no per-object pinned property); the store never
+  interprets typed references (consistency §4).
+- **Examples teach, never ship.** `gitlike` is the shared reference object
+  model; `artifacts` shows the compression-codec seam; `api` shows how an
+  app exposes a store over HTTP.
+
 ## Repository layout
 
 ```text

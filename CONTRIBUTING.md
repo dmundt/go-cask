@@ -25,7 +25,28 @@ repository.
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`  | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |
-| `.github/instructions/` | The specification set (20 files)                    |
+| `.github/instructions/` | The specification set (20 spec files + AGENT.md)        |
+
+### Design decisions & constraints
+
+Before changing structure, APIs, or scope, read the README's *Design
+principles & grounding* and the owning specs. The constraints that shape
+every change:
+
+- **Single-host kit**: no network JSON API, no SDK, no server binary
+  (backend-architecture §1) — HTTP exposure is an `examples/api` pattern.
+- **One-directional dependencies**: `cas`/`internal`/`cmd` MUST NOT import
+  `examples/`; examples MUST NOT import `internal/` and are self-contained
+  except the `gitlike` shared reference library (coding-guidelines §9,
+  examples §2 rule 11).
+- **Byte-layer viewer**: `internal/web` shows objects, bytes, and integrity —
+  no typed references or graphs (viewer-design §7).
+- **Lean generic core**: only the cas-core §7.1 surface is stable; adding
+  exported surface is a spec change first (library-design §1).
+- **Policy-free byte layer**: GC/prune take app-supplied roots; roots are
+  pins — there is no per-object pinned property (consistency §4).
+- **Examples teach, never ship**: `gitlike` is the shared reference model;
+  the product never imports examples.
 
 ### The dev loop
 
