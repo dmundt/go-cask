@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v5
+version: v6
 ---
 
 # CLI — go-cask
@@ -55,6 +55,7 @@ Store operations speak to the store in-process over the library:
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
 | `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
+| `clean [--min-age <dur>]`        | remove orphan `*.tmp` files (crash leftovers) older than `min-age` (default 24 h) |
 | `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) is deferred — flags only |
 | `version`                     | print the library version and Go version                        |
 

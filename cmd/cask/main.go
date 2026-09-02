@@ -27,6 +27,7 @@ commands:
   verify <hash|--all>
   gc <roots...>
   prune --min-age <dur> <roots...> [--dry-run]
+  clean [--min-age <dur>]   remove orphan *.tmp files (crash leftovers)
   web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]
   version
 `
@@ -100,6 +101,8 @@ func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 		opErr = opGC(ctx, t, args)
 	case "prune":
 		opErr = opPrune(ctx, t, args)
+	case "clean":
+		opErr = opClean(ctx, t, args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n%s", cmd, usage)
 		return 2

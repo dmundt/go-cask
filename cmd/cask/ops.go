@@ -312,6 +312,25 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	return nil
 }
 
+// --- clean ---
+
+func opClean(ctx context.Context, t *target, args []string) error {
+	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
+	minAge := fs.Duration("min-age", 24*time.Hour, "minimum age of orphan *.tmp files to remove")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() != 0 {
+		return usagef("clean takes no positional arguments")
+	}
+	removed, err := t.local.Clean(ctx, *minAge)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("clean: removed %d orphan tmp files\n", removed)
+	return nil
+}
+
 // --- prune ---
 
 func opPrune(ctx context.Context, t *target, args []string) error {
