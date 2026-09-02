@@ -18,11 +18,11 @@ import (
 //
 // Stored objects use the self-describing envelope (cas-core §8, decision 1):
 // the serialized bytes are {"type": "<type>@<major>", "data": "<base64
-// payload>"}, where the payload is the codec output. Object[T].Serialize
-// produces these envelope bytes (the object knows its own Type); Put hashes
-// and stores them as-is. Get strips the envelope and decodes the payload
-// with the store's codec. The base64 payload encoding keeps the envelope
-// valid JSON for any codec output (JSON, gzip, binary).
+// payload>"}, where the payload is the codec output. Store.Put builds the
+// envelope from codec.Encode(obj) and obj.Type(); GetTyped strips the
+// envelope and decodes the payload with the store's codec. The base64
+// payload encoding keeps the envelope valid JSON for any codec output (JSON,
+// gzip, binary).
 // The typed layer is constrained: T MUST implement Object[T]. The type
 // system therefore proves that every value a Store handles is an object —
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
@@ -106,18 +106,6 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 		return nil, fmt.Errorf("cas: envelope: %w", err)
 	}
 	return data, nil
-}
-
-// Get reads the object at h and returns it as Object[T]. T implements
-// Object[T] by the Store constraint, so Get is GetTyped with an interface
-// return — no type assertions anywhere in the typed layer. A missing object
-// returns ErrNotFound.
-func (s *Store[T]) Get(ctx context.Context, h Hash) (Object[T], error) {
-	v, err := s.GetTyped(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return v, nil
 }
 
 // GetTyped reads the object at h and returns the concrete T directly — no

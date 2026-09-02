@@ -239,13 +239,13 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("GetTyped = %+v", note)
 	}
 
-	// Get returns Object[T].
-	obj, err := s.Get(ctx, h)
+	// The typed value exposes Object[T] methods (T is Object[T]).
+	note2, err := s.GetTyped(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if obj.Type() != "note@1" {
-		t.Fatalf("Type() = %q", obj.Type())
+	if note2.Type() != "note@1" {
+		t.Fatalf("Type() = %q", note2.Type())
 	}
 
 	// GetRaw returns the stored envelope bytes.
@@ -326,9 +326,6 @@ func TestStoreEmptyStore(t *testing.T) {
 	ctx := context.Background()
 	missing, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 
-	if _, err := s.Get(ctx, missing); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Get = %v", err)
-	}
 	if _, err := s.GetTyped(ctx, missing); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetTyped = %v", err)
 	}

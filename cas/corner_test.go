@@ -367,7 +367,6 @@ func TestStoreCanceledOps(t *testing.T) {
 		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, testNote{Title: "t"}); return err }},
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
 		{"GetTyped", func() error { _, err := st.GetTyped(ctx, h); return err }},
-		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
 		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
 		{"Delete", func() error { return st.Delete(ctx, h) }},
 	} {
@@ -403,14 +402,14 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	}
 
 	// A missing reference during recursion → ErrNotFound.
-	w := NewWalker(st, func(Object[testNode]) error { return nil })
+	w := NewWalker(st, func(testNode) error { return nil })
 	if err := w.Walk(ctx, brokenH); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Walk over broken ref = %v, want ErrNotFound", err)
 	}
 
 	// A visit error from a child propagates (not just from the root).
 	seen := 0
-	w2 := NewWalker(st, func(o Object[testNode]) error {
+	w2 := NewWalker(st, func(o testNode) error {
 		seen++
 		if o.References() == nil { // the leaf
 			return errors.New("stop at leaf")
