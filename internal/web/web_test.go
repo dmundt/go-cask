@@ -149,7 +149,7 @@ func TestVerifyAndDelete(t *testing.T) {
 	ctx := context.Background()
 	st, _ := storage.New(ctx, storage.Config{Dir: t.TempDir()})
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if _, err := st.Put(ctx, h, strings.NewReader("view me")); err != nil {
+	if err := st.Put(ctx, h, strings.NewReader("view me")); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(st, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
