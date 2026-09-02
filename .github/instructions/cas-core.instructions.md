@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v10
+version: v11
 ---
 
 # CAS Core — go-cask
@@ -488,20 +488,20 @@ type Object[T any] interface {
 ### 4.8 `Store[T]` — the generic typed store
 
 ```go
-type Store[T any] struct {
+type Store[T Object[T]] struct {
     raw    RawStore
     codec  Codec[T]
     hasher HashFunc
 }
 
-func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], error)
+func NewStore[T Object[T]](raw RawStore, codec Codec[T], algo string) (*Store[T], error)
 ```
 
 | Method        | Behavior                                                          |
 | ------------- | ----------------------------------------------------------------- |
-| `Put`         | `codec.Encode(obj)` → envelope`{"type","data"}` → `hasher(data)` → `raw.Put(ctx, h, reader)` → h |
+| `Put`         | `Put(ctx, obj T)` → `codec.Encode(obj)` → envelope`{"type","data"}` → `hasher(data)` → `raw.Put` → h |
 | `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
-| `Get`         | `raw.Get` → `codec.Decode` → assert `Object[T]` (only `any` use)  |
+| `Get`         | `raw.Get` → `codec.Decode` → the concrete `T` as `Object[T]`      |
 | `GetTyped`    | decodes via the codec; returns the concrete `T` (no casts); a value that implements `Object[T]` must match the envelope type |
 | `GetRaw`      | returns the serialized bytes for inspection/tooling               |
 | `Exists`      | delegates to `raw`                                                |

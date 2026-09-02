@@ -16,8 +16,9 @@ import "errors"
 
 // Sentinel errors. Backends map their "not found" condition to ErrNotFound
 // via %w; integrity checks return ErrHashMismatch; hash parsing returns
-// ErrInvalidHash / ErrUnknownAlgorithm; deserialization of an unknown type
-// name or major version returns ErrUnknownType. Compare with errors.Is,
+// ErrInvalidHash / ErrUnknownAlgorithm; an envelope with an unknown type
+// name or major version returns ErrUnknownType; a stored payload that the
+// store codec cannot decode returns ErrCorrupt. Compare with errors.Is,
 // never by string.
 var (
 	ErrNotFound         = errors.New("cas: object not found")
@@ -25,4 +26,5 @@ var (
 	ErrUnknownAlgorithm = errors.New("cas: unknown hash algorithm")
 	ErrInvalidHash      = errors.New("cas: invalid hash")
 	ErrUnknownType      = errors.New("cas: unknown object type or version")
+	ErrCorrupt          = errors.New("cas: corrupt object")
 )

@@ -6,14 +6,14 @@ import "context"
 // generic core's only graph primitive. It works for any object type with no
 // knowledge of the domain model. Content addressing makes cycles impossible,
 // so no visited set is needed.
-type Walker[T any] struct {
+type Walker[T Object[T]] struct {
 	store *Store[T]
 	visit func(Object[T]) error
 }
 
 // NewWalker creates a walker over store that calls visit for every object
 // reached.
-func NewWalker[T any](store *Store[T], visit func(Object[T]) error) *Walker[T] {
+func NewWalker[T Object[T]](store *Store[T], visit func(Object[T]) error) *Walker[T] {
 	return &Walker[T]{store: store, visit: visit}
 }
 

@@ -23,7 +23,11 @@ import (
 // and stores them as-is. Get strips the envelope and decodes the payload
 // with the store's codec. The base64 payload encoding keeps the envelope
 // valid JSON for any codec output (JSON, gzip, binary).
-type Store[T any] struct {
+// The typed layer is constrained: T MUST implement Object[T]. The type
+// system therefore proves that every value a Store handles is an object —
+// Store[plain] does not compile, Put takes the concrete T, and no runtime
+// type assertions exist anywhere in the typed layer.
+type Store[T Object[T]] struct {
 	raw    RawStore
 	codec  Codec[T]
 	hasher HashFunc
@@ -33,7 +37,7 @@ type Store[T any] struct {
 // the registry at construction (no global dependence in the hot path). It
 // returns ErrUnknownAlgorithm if algo is not registered. Custom algorithms
 // are registered with RegisterHash before calling NewStore (cas-core §4.2).
-func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], error) {
+func NewStore[T Object[T]](raw RawStore, codec Codec[T], algo string) (*Store[T], error) {
 	fn, ok := lookupHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
@@ -46,7 +50,7 @@ func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], erro
 // identical content always produces the identical address (dedup) and a type
 // change produces a new address. The envelope bytes are hashed in a single
 // pass and streamed to the backend without buffering (performance §3).
-func (s *Store[T]) Put(ctx context.Context, obj Object[T]) (Hash, error) {
+func (s *Store[T]) Put(ctx context.Context, obj T) (Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -64,7 +68,7 @@ func (s *Store[T]) Put(ctx context.Context, obj Object[T]) (Hash, error) {
 // PutDedup is Put that first checks whether the content already exists; it
 // returns (h, true, nil) when the object was already stored (deduplicated)
 // and (h, false, nil) when it was written now.
-func (s *Store[T]) PutDedup(ctx context.Context, obj Object[T]) (Hash, bool, error) {
+func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -86,17 +90,13 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj Object[T]) (Hash, bool, err
 	return h, false, nil
 }
 
-// marshal builds the stored form of obj: payload := codec.Encode(T value),
+// marshal builds the stored form of obj: payload := codec.Encode(obj),
 // wrapped in the self-describing envelope {"type","data"}. The codec is the
 // single serialization authority — the same codec decodes on read
-// (GetTyped). obj is asserted to carry its T value (it always is, by the
-// Object[T] contract: T's value receiver implements Object[T]).
-func (s *Store[T]) marshal(obj Object[T]) ([]byte, error) {
-	v, ok := any(obj).(T)
-	if !ok {
-		return nil, fmt.Errorf("%w: object value is not a %T", ErrUnknownType, obj)
-	}
-	payload, err := s.codec.Encode(v)
+// (GetTyped). obj is the concrete T (the Store constraint), so no type
+// assertion is involved.
+func (s *Store[T]) marshal(obj T) ([]byte, error) {
+	payload, err := s.codec.Encode(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
@@ -108,20 +108,16 @@ func (s *Store[T]) marshal(obj Object[T]) ([]byte, error) {
 	return data, nil
 }
 
-// Get reads the object at h and returns it as Object[T]. This is the single
-// documented use of a type assertion on T in the exported API; every other
-// access path is fully typed. A missing object returns ErrNotFound; a value
-// that decodes but does not implement Object[T] returns ErrUnknownType.
+// Get reads the object at h and returns it as Object[T]. T implements
+// Object[T] by the Store constraint, so Get is GetTyped with an interface
+// return — no type assertions anywhere in the typed layer. A missing object
+// returns ErrNotFound.
 func (s *Store[T]) Get(ctx context.Context, h Hash) (Object[T], error) {
 	v, err := s.GetTyped(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	obj, ok := any(v).(Object[T])
-	if !ok {
-		return nil, fmt.Errorf("%w: decoded value is not an Object[%T]", ErrUnknownType, v)
-	}
-	return obj, nil
+	return v, nil
 }
 
 // GetTyped reads the object at h and returns the concrete T directly — no
@@ -142,10 +138,10 @@ func (s *Store[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
 	}
 	v, err := s.codec.Decode(payload)
 	if err != nil {
-		return zero, err
+		return zero, fmt.Errorf("cas: %w: payload decode failed", ErrCorrupt)
 	}
-	if obj, ok := any(v).(Object[T]); ok && obj.Type() != envType {
-		return zero, fmt.Errorf("%w: envelope type %q != decoded type %q", ErrUnknownType, envType, obj.Type())
+	if v.Type() != envType {
+		return zero, fmt.Errorf("%w: envelope type %q != decoded type %q", ErrUnknownType, envType, v.Type())
 	}
 	return v, nil
 }

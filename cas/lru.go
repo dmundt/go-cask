@@ -18,7 +18,7 @@ import (
 // cache can never exceed maxSize. Get additionally promotes existing
 // entries, and GetTyped is overridden to route through Get so its loads
 // respect the same policy.
-type LRUCache[T any] struct {
+type LRUCache[T Object[T]] struct {
 	*CachedStore[T]
 	mu      sync.Mutex
 	maxSize int
@@ -27,7 +27,7 @@ type LRUCache[T any] struct {
 }
 
 // NewLRUCache wraps store in a size-bounded cache. maxSize must be > 0.
-func NewLRUCache[T any](store *Store[T], maxSize int) (*LRUCache[T], error) {
+func NewLRUCache[T Object[T]](store *Store[T], maxSize int) (*LRUCache[T], error) {
 	if maxSize <= 0 {
 		return nil, fmt.Errorf("cas: LRU maxSize must be > 0, got %d", maxSize)
 	}

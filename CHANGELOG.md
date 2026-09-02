@@ -65,6 +65,7 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - CLI: the `cat` alias is gone — `get` without `-o` prints to stdout
   (cli spec v7).
 
+- `cas` typed layer: `Store[T Object[T]]` — the constraint makes every\n  handled value an object at compile time (no type assertions remain);\n  `Put` takes the concrete `T`; new sentinel `ErrCorrupt` for payloads the\n  codec cannot decode (cas-core v11).
 - `cas` typed layer: the `Codec[T]` is now the single serialization
   authority — `Store.Put` builds the envelope from `codec.Encode` + the
   object's `Type()`; `Object[T]` shrank to `{Type, References}`
