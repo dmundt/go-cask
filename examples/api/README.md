@@ -8,6 +8,13 @@ Acceptance: `client.Put` → `client.Get` returns identical bytes; a
 viewer-role token gets 403 on `DELETE`; large payloads stream without
 buffering; `GET /api/cas/v1/openapi.yaml` is served and matches the routes.
 
+**Relationship to the shipped server.** The production CAS API server is
+`cask web` (`cmd/cask` over `internal/api` — backend-architecture §2/§3).
+This example's `server/` is a *teaching re-implementation* of the same wire
+contract that uses only public `cas`/`client` APIs (examples §2 rule 4),
+proving the contract can be met without `internal/`. For real use, run
+`cask web`, not this example.
+
 ## Cas core parts used
 
 | Component | Where |
