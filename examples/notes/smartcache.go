@@ -17,7 +17,7 @@ const prefetchTimeout = 5 * time.Second
 // detached goroutine with a 5 s timeout, and errors are dropped. This is
 // the example's own prefetch recipe (formerly cas/extra), inlined per the
 // self-contained-examples rule.
-type SmartCache[T any] struct {
+type SmartCache[T cas.Object[T]] struct {
 	store         *cas.CachedStore[T]
 	prefetchDepth int
 }
@@ -25,7 +25,7 @@ type SmartCache[T any] struct {
 // NewSmartCache wraps store with reference prefetching to prefetchDepth
 // levels. A depth <= 0 disables prefetching (GetWithPrefetch then behaves
 // like GetTyped).
-func NewSmartCache[T any](store *cas.CachedStore[T], prefetchDepth int) *SmartCache[T] {
+func NewSmartCache[T cas.Object[T]](store *cas.CachedStore[T], prefetchDepth int) *SmartCache[T] {
 	return &SmartCache[T]{store: store, prefetchDepth: prefetchDepth}
 }
 

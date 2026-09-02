@@ -32,7 +32,7 @@ type CacheStats struct {
 // underlying Store[T] exactly once (double-checked locking) and memoizes the
 // result — object AND error — for every later Load. IsLoaded reports state
 // without loading.
-type CachedObject[T any] struct {
+type CachedObject[T Object[T]] struct {
 	store  *Store[T]
 	hash   Hash
 	mu     sync.RWMutex
@@ -73,7 +73,7 @@ func (c *CachedObject[T]) IsLoaded() bool {
 // CachedStore[T] wraps a Store[T] with a sync.Map of CachedObject[T] keyed by
 // h.String(). Get returns a not-yet-loaded reference (verifying existence
 // first); GetTyped loads it. Preload loads many objects in parallel.
-type CachedStore[T any] struct {
+type CachedStore[T Object[T]] struct {
 	store   *Store[T]
 	cache   sync.Map // string → *CachedObject[T]
 	metrics CacheMetrics
@@ -81,7 +81,7 @@ type CachedStore[T any] struct {
 }
 
 // NewCachedStore wraps store in a lazy-loading cache.
-func NewCachedStore[T any](store *Store[T]) *CachedStore[T] {
+func NewCachedStore[T Object[T]](store *Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
 }
 

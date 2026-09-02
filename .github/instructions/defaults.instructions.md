@@ -1,7 +1,7 @@
 ---
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v6
+version: v7
 ---
 
 # Defaults & Behavior — go-cask
@@ -51,7 +51,7 @@ version: v6
 | Hash-on-write                     | single pass via `io.TeeReader`                     | performance §3      |
 | Cache key                         | `h.String()` → `*CachedObject[T]` in `sync.Map`    | cas-core §4.10      |
 | LRU `maxSize`                     | MUST be > 0                                        | cas-core §4.10      |
-| Sentinel errors                   | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType` | library-design §2 |
+| Sentinel errors                   | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` | library-design §2 |
 | Object type name format           | `<type>@<major>` (e.g. `commit@1`); absent version reads as `@1` | object-versioning §2 |
 | Object serialization envelope     | `{"type": "<type>@<major>", "data": <codec bytes>}` (JSON envelope) | cas-core §8, decision 1 |
 | `Prune` dry-run default           | `true` (delete requires explicit flag)             | consistency §5      |
