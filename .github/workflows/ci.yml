@@ -101,7 +101,7 @@ jobs:
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
 
       - name: Benchmark regression gate (time >10% vs baseline fails)
-        if: hashFiles('benchmarks/REFRESH') == '' && hashFiles('**/*.go') != ''
+        if: hashFiles('**/*.go') != ''
         run: |
           awk '
             NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); base[$1] = $3 + 0 } next }
