@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v7
+version: v8
 ---
 
 # CAS Core — go-cask
@@ -433,7 +433,10 @@ a reader observes either the old or the new file, never a partial one (see
 bytes), so concurrent writers of the same hash are safe. At most a single
 `sync.Mutex` coordinates `Put`/`Delete`; reads are wait-free.
 
-**Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`.
+**Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`, `Clean`;
+`Size(h)` returns an object's size in bytes (`ErrNotFound` when missing);
+`Clean(ctx, olderThan)` sweeps leftover `<path>.tmp` files from crashed
+writes (always safe — `.tmp` files are never valid objects, operations §2).
 
 ### 4.5 `MemoryRawStore` — in-memory backend
 
@@ -555,6 +558,10 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
   error channel); `PreloadRecursive(ctx, h, depth)` preloads the object graph.
 - `CacheStats()` (hit rate, size, loads, evicts), `Evict(h)`, `Clear()`,
   `Warmup(ctx, hashes)`.
+- `NewCachedStoreWithCapacity(store, max)` bounds the memoized set: once
+  `max` entries are cached, each new entry FIFO-evicts the oldest (evicted
+  proxies reload on demand — correctness unaffected); `NewCachedStore`
+  remains unbounded.
 
 **`LRUCache[T]`** — size-bounded cache:
 
