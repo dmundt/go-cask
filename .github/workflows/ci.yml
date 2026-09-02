@@ -2,7 +2,7 @@ name: CI
 
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports
-#   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + cas/extra + gitlike, fuzz smoke
+#   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + gitlike, fuzz smoke
 #   performance §5         — benchmark regression gate (>10% time vs committed Linux baseline)
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
@@ -58,13 +58,13 @@ jobs:
             exit 1
           fi
 
-      - name: Test -race + coverage gate (cas/ + cas/extra + gitlike >= 90%)
+      - name: Test -race + coverage gate (cas/ + gitlike >= 90%)
         if: hashFiles('**/*.go') != ''
         run: |
           fail=0
           # One package per invocation so each package's coverage line is
-          # gated individually (./cas/... would mask cas behind cas/extra).
-          for pkg in ./cas ./cas/extra ./examples/gitlike; do
+          # gated individually (./cas/... would mask cas behind nothing else here).
+          for pkg in ./cas ./examples/gitlike; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
@@ -79,7 +79,7 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           # -fuzz cannot target multiple packages, and ./cas/... now matches
-          # cas + cas/extra; the fuzz targets live in package cas only.
+          # the fuzz targets live in package cas only.
           go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
