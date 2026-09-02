@@ -1,7 +1,8 @@
 // Command cask is the single entry point of go-cask: CLI store operations
-// (local -store or remote -api) and, via the web subcommand, the embedded
-// server (CAS API + viewer) — see cli.instructions.md. It is a thin main:
-// all behavior lives in the cas/client libraries and internal/ packages.
+// over the library in-process and, via the web subcommand, the embedded
+// viewer — see cli.instructions.md. It is a thin main: all behavior lives in
+// the cas library and the internal/ packages. The product ships no network
+// JSON API (backend-architecture §1).
 package main
 
 import (
@@ -11,12 +12,10 @@ import (
 	"os"
 )
 
-const usage = `usage: cask [-store <path> | -api <url> [-token <tok>]] <command> [args]
+const usage = `usage: cask [-store <path>] <command> [args]
 
-modes:
-  -store <path>   local mode: the library in-process (FSRawStore)
-  -api <url>      remote mode: a CAS API server via the client SDK
-  -token <tok>    bearer token for remote mode
+flags:
+  -store <path>   the store directory (the library in-process, FSRawStore)
 
 commands:
   put <file|- >      store bytes (or stdin); prints the hash
@@ -28,15 +27,13 @@ commands:
   verify <hash|--all>
   gc <roots...>
   prune --min-age <dur> <roots...> [--dry-run]
-  web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-rate n] [-burst n]
+  web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]
   version
 `
 
-// modeFlags are the global mode selectors parsed before the subcommand.
+// modeFlags are the global flags parsed before the subcommand.
 type modeFlags struct {
 	store string
-	api   string
-	token string
 }
 
 func main() {
@@ -56,8 +53,8 @@ func main() {
 	}
 }
 
-// parseGlobal consumes the mode flags (-store/-api/-token) and returns the
-// subcommand with its remaining args.
+// parseGlobal consumes the -store flag and returns the subcommand with its
+// remaining args.
 func parseGlobal(args []string) (modeFlags, string, []string, error) {
 	var mf modeFlags
 	i := 0
@@ -68,16 +65,6 @@ func parseGlobal(args []string) (modeFlags, string, []string, error) {
 				return mf, "", nil, fmt.Errorf("-store needs a path")
 			}
 			mf.store, i = args[i+1], i+2
-		case "-api":
-			if i+1 >= len(args) {
-				return mf, "", nil, fmt.Errorf("-api needs a url")
-			}
-			mf.api, i = args[i+1], i+2
-		case "-token":
-			if i+1 >= len(args) {
-				return mf, "", nil, fmt.Errorf("-token needs a value")
-			}
-			mf.token, i = args[i+1], i+2
 		default:
 			return mf, args[i], args[i+1:], nil
 		}
