@@ -1,7 +1,7 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v3
+version: v4
 ---
 
 # Performance — go-cask
@@ -100,7 +100,8 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 - Benchmarks that isolate store logic from disk noise run against
   `MemoryRawStore` (deterministic, no I/O variance); disk behavior is
   covered separately by the `BenchmarkFSRawStore*` cases.
-- CI compares against a committed baseline with `benchstat`; a regression
+- CI compares the `cas` benchmark suite against the committed baseline
+  (`benchmarks/cas.txt`, refreshed on the Linux CI runner); a regression
   beyond the agreed threshold (e.g. >10% time or allocs on the small-object
   cases) fails the build.
 - The lock-free claim is exercised by `-race` tests (testing-strategy §4.4)
@@ -241,7 +242,7 @@ Acceptance: a design decision first, then implementation behind the same
 
 ## 11. Performance Test Requirements
 
-Go benchmarks (report allocs, benchstat gates) are the unit level. The
+Go benchmarks (report allocs, regression gates) are the unit level. The
 following **scenario tests** prove end-to-end behavior at scale. Run them on
 every material core change (CI smoke: subset) and fully in nightly.
 
@@ -277,7 +278,7 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 
 - Record: CPU model, RAM, disk type (SSD/HDD), filesystem, Go version; run
   each scenario 3× and take the median.
-- Go benchmarks: `benchstat` against the committed baseline. Scenario tests:
+- Go benchmarks: regression gate against the committed baseline (>10% on\n  time fails). Scenario tests:
   a dedicated `cmd/perftest` harness (or `-tags=perftest` tests) printing a
   `scenario / metric / target / result` table.
 - Attach the table to PRs that touch the core; nightly runs compare against
@@ -290,7 +291,7 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 - [ ] `Get`/`Exists`/`List`/`Stats` are lock-free (no lock in those methods)
 - [ ] hash-on-write in a single pass (`io.TeeReader`)
 - [ ] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
-- [ ] CI `benchstat` gate against a committed baseline
+- [ ] CI benchmark regression gate (>10% on time) against a committed baseline
 - [ ] `-race` concurrent Put/Get/Delete test green
 - [ ] no reflection/`unsafe`/external speed dependencies
 - [ ] profiling workflow documented and reproducible
