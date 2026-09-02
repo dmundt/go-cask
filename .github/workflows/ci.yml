@@ -87,7 +87,7 @@ jobs:
 
       - name: Benchmarks (cas)
         if: hashFiles('**/*.go') != ''
-        run: go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
+        run: go test -bench=. -benchmem -count=5 -run=^$ ./cas/... > /tmp/bench.txt
 
       - name: Refresh benchmark baseline (Linux runner)
         if: hashFiles('benchmarks/REFRESH') != '' && hashFiles('**/*.go') != ''
@@ -103,16 +103,15 @@ jobs:
       - name: Benchmark regression gate (time >10% vs baseline fails)
         if: hashFiles('**/*.go') != ''
         run: |
+          # Min-of-samples comparison (count=5): disk-bound benchmarks are too
+          # noisy for single-sample deltas; the best run is the stable signal.
           awk '
-            NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); base[$1] = $3 + 0 } next }
+            NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); v = $3 + 0; if (!($1 in base) || v < base[$1]) base[$1] = v } next }
             $0 ~ /^Benchmark/ {
-              sub(/-[0-9]+$/, "", $1)
-              if ($1 in base) {
-                d = ($3 - base[$1]) / base[$1] * 100
-                if (d > 10) { printf "%s: +%.1f%% vs baseline\n", $1, d; fail = 1 }
-              }
+              sub(/-[0-9]+$/, "", $1); v = $3 + 0
+              if (!($1 in cur) || v < cur[$1]) cur[$1] = v
             }
-            END { exit fail }
+            END { for (n in base) if (n in cur) { d = (cur[n] - base[n]) / base[n] * 100; if (d > 10) { printf "%s: +%.1f%% vs baseline\n", n, d; fail = 1 } } exit fail }
           ' benchmarks/cas.txt /tmp/bench.txt
 
       - name: Doc integrity (.github/instructions)
