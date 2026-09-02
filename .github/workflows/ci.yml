@@ -83,7 +83,7 @@ jobs:
         if: hashFiles('benchmarks/cas.txt') != '' && hashFiles('**/*.go') != ''
         run: |
           go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
-          go run golang.org/x/perf/cmd/benchstat@latest benchmarks/cas.txt /tmp/bench.txt
+          cat /tmp/bench.txt # baseline capture (temporary)
 
       - name: Doc integrity (.github/instructions)
         run: |
