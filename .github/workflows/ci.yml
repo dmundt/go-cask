@@ -21,6 +21,10 @@ jobs:
       contents: write # baseline refresh commits benchmarks/cas.txt
     steps:
       - uses: actions/checkout@v5
+        with:
+          # On PRs, check out the head branch itself (not the merge ref) so
+          # the baseline-refresh step can commit and push to it.
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
