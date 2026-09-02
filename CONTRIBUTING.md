@@ -25,7 +25,7 @@ repository.
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`  | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.instructions.md` |
 | `examples/` | Runnable example programs (`examples.instructions.md`)      |
-| `.github/instructions/` | The specification set (19 files)                    |
+| `.github/instructions/` | The specification set (20 files)                    |
 
 ### The dev loop
 

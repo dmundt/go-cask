@@ -1,7 +1,7 @@
 ---
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for .github/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v3
+version: v4
 ---
 
 # AGENT — go-cask Instruction Folder Guide
@@ -39,7 +39,7 @@ version: v3
   `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`,
   `frontend-architecture`, `library-design`, `object-versioning`,
   `operations`, `performance`, `testing-strategy`, `versioning`,
-  `viewer-design`, `viewer-security`.
+  `viewer-design`, `viewer-design-brief`, `viewer-security`.
 - No redundant prefixes: the folder already says "instructions" — do not
   prefix topics with `go-` (the file is `coding-guidelines.instructions.md`,
   not `go-coding-guidelines.instructions.md`).
@@ -229,6 +229,7 @@ contradicting statements in the folder.
 | `object-versioning.instructions.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
 | `viewer-security.instructions.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
 | `viewer-design.instructions.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
+| `viewer-design-brief.instructions.md`        | Design brief for the viewer's next iteration (OpenDesign input; structure-only step 1, CSS deferred).
 | `api-design.instructions.md`                     | Shared HTTP API design conventions (viewer + example HTTP surfaces).             |
 | `examples.instructions.md`                       | Example-program rules + the five proposed examples.             |
 | `extensions.instructions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
