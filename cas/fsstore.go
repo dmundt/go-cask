@@ -206,6 +206,53 @@ func (s *FSRawStore) Delete(ctx context.Context, h Hash) error {
 	return nil
 }
 
+// Size returns the stored object's size in bytes. A missing object returns
+// ErrNotFound. Lock-free.
+func (s *FSRawStore) Size(h Hash) (int64, error) {
+	fi, err := os.Stat(s.hashPath(h))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, fmt.Errorf("%w: %s", ErrNotFound, h)
+		}
+		return 0, fmt.Errorf("cas: stat object: %w", err)
+	}
+	return fi.Size(), nil
+}
+
+// Clean removes leftover *.tmp files (from a crash mid-write) older than
+// olderThan, returning how many were removed. *.tmp files are never valid
+// objects — List/Stats ignore them — so sweeping is always safe. An
+// olderThan <= 0 removes every *.tmp file. Lock-free.
+func (s *FSRawStore) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	cutoff := time.Now().Add(-olderThan)
+	removed := 0
+	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries; keep sweeping
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".tmp") {
+			return nil
+		}
+		if olderThan > 0 {
+			fi, err := d.Info()
+			if err != nil || fi.ModTime().After(cutoff) {
+				return nil
+			}
+		}
+		if err := os.Remove(path); err == nil {
+			removed++
+		}
+		return nil
+	})
+	if err != nil {
+		return removed, fmt.Errorf("cas: clean: %w", err)
+	}
+	return removed, nil
+}
+
 // List returns every stored hash, filtered by algorithm when algo != "".
 // Files that are not recognizable objects — stray files, leftover *.tmp
 // files — are skipped, not errors. Lock-free; walks the tree.
