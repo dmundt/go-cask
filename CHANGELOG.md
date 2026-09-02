@@ -77,6 +77,9 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - The CAS HTTP API surface: the `cas-api` / `viewer-api` specs, `/api/cas/v1`
   routes, the viewer OpenAPI doc + `/swagger/` (never implemented), and the
   `-viewer`/`-rate`/`-burst` flags (`cask web` now IS the viewer).
+- Viewer references/graph + `internal/storage.Raw()`: the viewer is a
+  byte-layer tool and no longer imports `examples/gitlike` (dependency rule,
+  coding-guidelines §9).
 - `cas.NewStoreWithHasher` — undocumented, unconsumed constructor; custom
   hash algorithms use the documented `RegisterHash` + `NewStore` recipe
   (cas-core §4.2).
