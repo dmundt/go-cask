@@ -247,7 +247,7 @@ Consequences for this repo:
 - Layout: `cas/` (public core library, `package cas`), `internal/`
   (implementation detail: `web` — the viewer —, `storage`, `index`; NOT
   importable outside the module), `cmd/` (thin `main` packages only),
-  `examples/`, `docs/` (backend-architecture §2).
+  `examples/`.
 - `internal/` is the home of every implementation detail: viewer handlers,
   middleware, config wiring. It is private by construction — Go rejects
   imports of `internal/` from outside the module, so `cas/` is the only

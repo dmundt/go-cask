@@ -39,7 +39,6 @@ examples/gitlike/ example package (package gitlike) — Git-like object model
                  WalkGraph
 examples/  runnable example programs (per examples.instructions.md)
 cmd/       command-line entry points
-docs/      documentation
 .github/   copilot instructions (this file + related specs)
 ```
 
