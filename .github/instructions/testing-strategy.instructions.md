@@ -1,7 +1,7 @@
 ---
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v4
+version: v5
 ---
 
 # Testing Strategy — go-cask
@@ -31,6 +31,25 @@ version: v4
 | Layout equivalence    | same content addressable under every `FanOut`/`FanLevels` combo   |
 | Path round-trip       | `pathToHash(hashPath(h)) == h` for every layout and algorithm     |
 | Errors                | `Get` missing → `errors.Is(err, ErrNotFound)`; `ParseHash` garbage → `ErrInvalidHash` |
+
+### 1.1 Every Test Is Explicit (normative)
+
+Tests exist to *prove* behavior, so each proof must be **explicit**:
+
+- Every behavior and edge case MUST have a **named, deterministic test** that
+  states the case (a table row or `t.Run` subtest describes the scenario it
+  asserts — never anonymous branches under a generic name).
+- Fuzz, race, golden, and benchmark runs are **supplements, never the only
+  guard**: a fuzz seed or committed corpus entry without an explicit test for
+  the behavior it exercises is a gap (e.g. invalid-UTF-8 lossiness is pinned
+  by `TestJSONCodecInvalidUTF8Lossy`, not by a corpus file).
+- Tests MUST NOT depend on execution order or shared mutable state: each test
+  builds its own store/fixture (`t.TempDir`); mutating global registries
+  (e.g. `RegisterHash` in tests) uses unique names.
+- Assertions are direct (`errors.Is`, exact values, exact digests); a test
+  that passes only by printing or by another test's side effect is a defect.
+- When fuzzing surfaces a real constraint or a skipped branch, pin the
+  underlying behavior with an explicit test in the same change.
 
 ---
 

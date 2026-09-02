@@ -1,6 +1,6 @@
-// Package index provides the listing/metadata helpers shared by the CAS API
-// and (later) the viewer: pagination over stored hashes and best-effort
-// type detection from the self-describing envelope (cas-core §8 decision 1).
+// Package index provides the listing/metadata helpers shared by the cask CLI
+// and the viewer: pagination over stored hashes and best-effort type
+// detection from the self-describing envelope (cas-core §8 decision 1).
 package index
 
 import "encoding/json"
