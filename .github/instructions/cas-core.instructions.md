@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v9
+version: v10
 ---
 
 # CAS Core — go-cask
@@ -127,12 +127,14 @@ the generic core (§4.12).
 Read this first; it explains the whole design in one pass.
 
 **Storing an object.** An application defines a type `Note` implementing
-`Object[Note]` (it knows how to serialize itself and which hashes it
+`Object[Note]` (it knows its versioned type name and which hashes it
 references). It creates a `Store[Note]` over a `RawStore` backend with a
 `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`:
 
-1. **Serializes** the note via `Codec.Encode` (or `note.Serialize()`) —
-   the typed layer's only job is turning a typed value into bytes;
+1. **Serializes** the note via `Codec.Encode` and wraps the payload in the
+   self-describing envelope `{"type": "<type>@<major>", "data": …}` built by
+   `Store.Put` itself — the codec is the single serialization authority
+   (objects never serialize themselves);
 2. **Hashes** the bytes with the store's `HashFunc` — producing the content
    address `sha256:…`;
 3. **Streams** the bytes into the byte layer via `RawStore.Put(ctx, h, r)` —
@@ -206,8 +208,6 @@ classDiagram
         <<interface>>
         +Type() string
         +References() []Hash
-        +Serialize() ([]byte, error)
-        +Deserialize([]byte) (T, error)
     }
     class Codec~T~ {
         <<interface>>
@@ -470,10 +470,8 @@ type Codec[T any] interface {
 
 ```go
 type Object[T any] interface {
-    Type() string        // "blob", "tree", "commit", or app-specific
+    Type() string        // versioned "<type>@<major>", e.g. "commit@1"
     References() []Hash  // hashes this object points to (may be nil)
-    Serialize() ([]byte, error)
-    Deserialize(data []byte) (T, error) // returns T — no casts for callers
 }
 ```
 
@@ -483,8 +481,9 @@ type Object[T any] interface {
   store (`.github/instructions/object-versioning.instructions.md`).
 - `References()` is the single source of truth for graph traversal, preloading,
   and GC reachability.
-- `T` is the concrete type (e.g. `*Blob`), so `Deserialize` hands back the
-  exact type.
+- Serialization is NOT an object concern: `Store.Put` encodes the value with
+  the store's `Codec[T]` and builds the envelope (§8 decision 1) — the codec
+  is the single serialization authority on write AND read (`GetTyped`).
 
 ### 4.8 `Store[T]` — the generic typed store
 
@@ -500,10 +499,10 @@ func NewStore[T any](raw RawStore, codec Codec[T], algo string) (*Store[T], erro
 
 | Method        | Behavior                                                          |
 | ------------- | ----------------------------------------------------------------- |
-| `Put`         | `obj.Serialize()` → `hasher(data)` → `raw.Put(ctx, h, reader)` → h |
+| `Put`         | `codec.Encode(obj)` → envelope`{"type","data"}` → `hasher(data)` → `raw.Put(ctx, h, reader)` → h |
 | `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
 | `Get`         | `raw.Get` → `codec.Decode` → assert `Object[T]` (only `any` use)  |
-| `GetTyped`    | returns the concrete `T` directly (no casts)                      |
+| `GetTyped`    | decodes via the codec; returns the concrete `T` (no casts); a value that implements `Object[T]` must match the envelope type |
 | `GetRaw`      | returns the serialized bytes for inspection/tooling               |
 | `Exists`      | delegates to `raw`                                                |
 | `Delete`      | delegates to `raw`                                                |
@@ -657,7 +656,7 @@ type ResolvedObject struct {
 ### 5.1 Write path
 
 ```text
-Object[T].Serialize()
+codec.Encode(obj) → envelope{"type","data"}   # built by Store.Put
         │
         ▼
 hash := hasher(data)              # algorithm from store config
@@ -711,7 +710,7 @@ ResolveAny(ctx, h) ──► raw bytes ──► parseType(data) ──► switc
 ```mermaid
 flowchart LR
     subgraph WRITE["Write path"]
-        A1["Object[T].Serialize()"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
+        A1["codec.Encode(obj) → envelope (Store.Put)"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
     end
     subgraph READ["Typed read path"]
         B1["raw.Get(ctx, h)"] --> B2["codec.Decode(data)"] --> B3["T (GetTyped) / Object[T] (Get)"]

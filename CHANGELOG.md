@@ -65,6 +65,12 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - CLI: the `cat` alias is gone — `get` without `-o` prints to stdout
   (cli spec v7).
 
+- `cas` typed layer: the `Codec[T]` is now the single serialization
+  authority — `Store.Put` builds the envelope from `codec.Encode` + the
+  object's `Type()`; `Object[T]` shrank to `{Type, References}`
+  (`Serialize`/`Deserialize` removed from the contract; example serializers
+  become vestigial and are removed in a follow-up). cas-core v10.
+
 ### Fixed
 
 - CI steps that assumed a `go.sum` and a single-package `./cas/...`
