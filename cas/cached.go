@@ -36,14 +36,14 @@ type CachedObject[T Object[T]] struct {
 	store  *Store[T]
 	hash   Hash
 	mu     sync.RWMutex
-	obj    Object[T]
+	obj    T
 	err    error
 	loaded bool
 }
 
 // Load returns the object, loading it from the underlying store on first
 // access and memoizing the result (including errors) for later calls.
-func (c *CachedObject[T]) Load(ctx context.Context) (Object[T], error) {
+func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	c.mu.RLock()
 	if c.loaded {
 		obj, err := c.obj, c.err
@@ -57,7 +57,7 @@ func (c *CachedObject[T]) Load(ctx context.Context) (Object[T], error) {
 	if c.loaded { // double-checked locking
 		return c.obj, c.err
 	}
-	obj, err := c.store.Get(ctx, c.hash)
+	obj, err := c.store.GetTyped(ctx, c.hash)
 	c.obj, c.err, c.loaded = obj, err, true
 	return obj, err
 }
@@ -111,10 +111,11 @@ func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], err
 
 // GetTyped returns the loaded object for h: Get + Load. A missing object
 // returns ErrNotFound.
-func (c *CachedStore[T]) GetTyped(ctx context.Context, h Hash) (Object[T], error) {
+func (c *CachedStore[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
 	co, err := c.Get(ctx, h)
 	if err != nil {
-		return nil, err
+		var zero T
+		return zero, err
 	}
 	return co.Load(ctx)
 }

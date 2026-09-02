@@ -150,8 +150,8 @@ func TestWalkerChain(t *testing.T) {
 	}
 
 	var seen []string
-	w := cas.NewWalker(repo.Notes, func(obj cas.Object[*Note]) error {
-		seen = append(seen, obj.(*Note).Title)
+	w := cas.NewWalker(repo.Notes, func(obj *Note) error {
+		seen = append(seen, obj.Title)
 		return nil
 	})
 	if err := w.Walk(ctx, root); err != nil {

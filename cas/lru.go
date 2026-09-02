@@ -94,10 +94,11 @@ func (c *LRUCache[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], error)
 // GetTyped returns the loaded object, routing through Get so the load
 // respects the LRU policy (the embedded CachedStore.GetTyped would insert
 // without bound).
-func (c *LRUCache[T]) GetTyped(ctx context.Context, h Hash) (Object[T], error) {
+func (c *LRUCache[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
 	co, err := c.Get(ctx, h)
 	if err != nil {
-		return nil, err
+		var zero T
+		return zero, err
 	}
 	return co.Load(ctx)
 }

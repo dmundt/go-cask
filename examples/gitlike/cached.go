@@ -50,29 +50,17 @@ func NewCachedRepository(repo *Repository, maxSize int) (*CachedRepository, erro
 
 // GetCommit returns the commit at h via the commit cache.
 func (c *CachedRepository) GetCommit(ctx context.Context, h cas.Hash) (*Commit, error) {
-	obj, err := c.Commits.GetTyped(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*Commit), nil
+	return c.Commits.GetTyped(ctx, h)
 }
 
 // GetTree returns the tree at h via the tree cache.
 func (c *CachedRepository) GetTree(ctx context.Context, h cas.Hash) (*Tree, error) {
-	obj, err := c.Trees.GetTyped(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*Tree), nil
+	return c.Trees.GetTyped(ctx, h)
 }
 
 // GetBlob returns the blob at h via the blob cache.
 func (c *CachedRepository) GetBlob(ctx context.Context, h cas.Hash) (*Blob, error) {
-	obj, err := c.Blobs.GetTyped(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*Blob), nil
+	return c.Blobs.GetTyped(ctx, h)
 }
 
 // ResolveAny resolves h to any supported object type, using the caches where

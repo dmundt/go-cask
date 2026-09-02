@@ -33,10 +33,11 @@ func NewSmartCache[T cas.Object[T]](store *cas.CachedStore[T], prefetchDepth int
 // asynchronously prefetches the object's references to the configured depth.
 // It returns the loaded object; prefetch progress is observable through the
 // cache's stats.
-func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, h cas.Hash) (cas.Object[T], error) {
+func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, h cas.Hash) (T, error) {
 	obj, err := c.store.GetTyped(ctx, h)
 	if err != nil {
-		return nil, err
+		var zero T
+		return zero, err
 	}
 	if c.prefetchDepth > 0 {
 		go func() {

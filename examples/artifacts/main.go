@@ -207,11 +207,7 @@ func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Hash, erro
 
 // get serves an artifact by hash through the LRU cache.
 func (a *app) get(ctx context.Context, h cas.Hash) (*Artifact, error) {
-	obj, err := a.cache.GetTyped(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*Artifact), nil
+	return a.cache.GetTyped(ctx, h)
 }
 
 // gc deletes every object not reachable from the manifests: manifest hashes

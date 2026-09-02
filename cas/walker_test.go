@@ -28,8 +28,7 @@ func TestWalkerTraversal(t *testing.T) {
 	}
 
 	var visited []string
-	w := NewWalker(s, func(obj Object[testNode]) error {
-		n := obj.(testNode)
+	w := NewWalker(s, func(n testNode) error {
 		visited = append(visited, n.Name)
 		return nil
 	})
@@ -56,7 +55,7 @@ func TestWalkerNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	w := NewWalker(s, func(Object[testNode]) error { return nil })
+	w := NewWalker(s, func(testNode) error { return nil })
 	if err := w.Walk(context.Background(), missing); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Walk(missing) = %v, want ErrNotFound", err)
 	}
@@ -73,7 +72,7 @@ func TestWalkerVisitError(t *testing.T) {
 		t.Fatal(err)
 	}
 	sentinel := errors.New("stop")
-	w := NewWalker(s, func(Object[testNode]) error { return sentinel })
+	w := NewWalker(s, func(testNode) error { return sentinel })
 	if err := w.Walk(ctx, h); !errors.Is(err, sentinel) {
 		t.Fatalf("Walk = %v, want sentinel", err)
 	}
