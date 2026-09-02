@@ -182,20 +182,22 @@ func TestStorePutDedupCancelled(t *testing.T) {
 	}
 }
 
-// plain is a struct that does NOT implement Object[plain] — used to hit the
-// "decoded value is not an Object[T]" branch of Store.Get.
-type plain struct{ X int }
+// The typed layer is compile-time constrained to Object[T]: a type that does
+// not implement Object[T] cannot even be passed to NewStore. (Runtime proof:
+// the package would not compile otherwise; the old "decoded value is not an
+// Object" branch of Get no longer exists.)
 
-func TestStoreGetNonObjectValue(t *testing.T) {
+// TestGetTypedCorruptPayload pins ErrCorrupt: a stored payload the store
+// codec cannot decode surfaces as ErrCorrupt from GetTyped.
+func TestGetTypedCorruptPayload(t *testing.T) {
 	ctx := context.Background()
 	raw := NewMemoryRawStore()
-	store, err := NewStore(raw, JSONCodec[plain]{}, "sha256")
+	store, err := NewStore(raw, JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Hand-store an envelope whose payload decodes to plain.
-	payload := base64.StdEncoding.EncodeToString([]byte(`{"X":1}`))
-	data, err := json.Marshal(envelope{Type: "plain@1", Data: payload})
+	payload := base64.StdEncoding.EncodeToString([]byte("not json at all"))
+	data, err := json.Marshal(envelope{Type: "note@1", Data: payload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,8 +205,8 @@ func TestStoreGetNonObjectValue(t *testing.T) {
 	if err := raw.Put(ctx, h, strings.NewReader(string(data))); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Get(ctx, h); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("Get = %v, want ErrUnknownType (plain does not implement Object)", err)
+	if _, err := store.GetTyped(ctx, h); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("GetTyped(corrupt payload) = %v, want ErrCorrupt", err)
 	}
 }
 
