@@ -1,7 +1,7 @@
 ---
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v5
+version: v6
 ---
 
 # Testing Strategy — go-cask
@@ -63,7 +63,7 @@ table (below); a new requirement without a test fails review.
 | --------------------------------------------------- | ------------------------------------------------------- |
 | `examples/api` HTTP-exposure pattern (`server_test.go`) | httptest round-trip, roles, streaming, 429 |
 | `performance` P-01…P-05                             | a benchmark or test per P-ID (lock-free reads, streaming, allocs) |
-| Sentinel errors (library-design §2, five errors)    | one positive `errors.Is` assertion per error            |
+| Sentinel errors (library-design §2, six errors)     | one positive `errors.Is` assertion per error            |
 | Maintenance ops (cas-core §4.11): `Stats`/`Verify`/`GC`/`Prune` | one test per op, incl. dry-run and destructive paths |
 | Object-model versioning (object-versioning §2–§4)   | versioned `Type()` names, coexisting majors, `ErrUnknownType` |
 | Defaults (defaults §2–§7)                           | each default asserted by a test (e.g. fan-out (2,1), algo sha256, perms) |
