@@ -1,7 +1,7 @@
 ---
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v3
+version: v4
 ---
 
 # Defaults & Behavior — go-cask
@@ -21,10 +21,11 @@ version: v3
   `RawStore`, backends) → typed layer (generic: `Object[T]`, `Codec[T]`,
   `Store[T]`, `Walker[T]`, caches) → application layer (per-app types;
   `gitlike` is the reference example).
-- **Two HTTP surfaces** (api-design §2): viewer (`/viewer/*`, HTML) and CAS
-  API (`/api/cas/v1/*`, JSON/octet-stream) — never mixed.
+- **One HTTP surface** (api-design §2): the viewer (`/viewer/*`, HTML). The
+  product ships no network JSON API (backend-architecture §1); the
+  `examples/api` pattern demonstrates a JSON surface.
 - **One server, one mux** (backend-architecture §3–4) with the fixed
-  middleware order: rate limit → auth → CSRF → handler.
+  middleware order: session auth → role → CSRF → handler.
 - **Five maintenance operations** (consistency §8): `Verify`, `ScanRefs`,
   `GC`, `Prune`, `Stats`.
 - Detail lives in `cas-core`, `backend-architecture`, `frontend-architecture` —
@@ -59,22 +60,18 @@ version: v3
 
 ---
 
-## 3. HTTP Defaults (both surfaces)
+## 3. HTTP Defaults
 
 | Item                          | Default / value                                        | Defined in        |
 | ----------------------------- | ------------------------------------------------------ | ----------------- |
 | Viewer prefix                 | `/viewer/` (HTML, unversioned)                         | api-design §2      |
-| CAS API prefix                | `/api/cas/v1/` (JSON, versioned)                       | api-design §2      |
-| Rate limit                    | 2 req/s per IP, burst 20                               | cas-api §3, R-14   |
-| Rate-limit exemptions         | loopback (`127.0.0.1`, `::1`) exempt; `trusted_proxies: []` | cas-api §3   |
-| Rate-limit response           | 429 + `Retry-After` + `X-RateLimit-*` + `{"error":"rate limited"}` | cas-api §3 |
-| Pagination                    | `limit=100` (1–1000), `offset=0` (≥0)                  | cas-api R-05       |
-| List envelope                 | `{"total": int, "objects": [...]}`                     | cas-api R-05       |
-| Error body (CAS API)          | `{"error": "<message>"}`                               | api-design §6       |
+| Example JSON prefix (pattern) | `/api/cas/v1/` in `examples/api`                       | api-design §12      |
+| Example JSON rate limit       | 2 req/s per IP, burst 20; loopback exempt; 429 + `Retry-After` + `X-RateLimit-*` | api-design §8 |
+| Example list pagination       | `limit=100` (1–1000), `offset=0` (≥0); `{total, objects}` envelope | api-design §10 |
+| Error body (JSON surfaces)    | `{"error": "<message>"}`                               | api-design §6       |
 | Binary payloads               | `application/octet-stream` + `X-CAS-Algorithm/Size/Type` headers | api-design §11 |
 | 401/403 (viewer)              | **empty body** (never disclose existence)              | api-design §5       |
-| OpenAPI documents             | `/viewer/openapi.yaml`, `/api/cas/v1/openapi.yaml`     | api-design §13      |
-| Swagger UI explorer           | disabled (`swagger_ui.enabled: false`), explicitly enabled only | api-design §13 |
+| OpenAPI documents             | separate embedded `.yaml` per JSON surface (`examples/api/server/openapi.yaml`); the viewer needs none | api-design §13 |
 
 ---
 
@@ -82,7 +79,7 @@ version: v3
 
 | Item                          | Default / value                                        | Defined in           |
 | ----------------------------- | ------------------------------------------------------ | -------------------- |
-| Viewer enabled                | `false` (secure by default)                            | viewer-security      |
+| Viewer startup                | `cask web` IS the viewer; loopback-only default bind; startup admin token printed once | cli §2, viewer-security |
 | Default bind                  | `127.0.0.1:8080` (loopback only)                       | viewer-security      |
 | Short-hash display            | 8 hex chars of the digest (e.g. `9f86d081`)            | viewer-design §7     |
 | Generic-list hash format      | `<shorthash> (<type>)` (e.g. `9f86d081 (blob)`)        | viewer-design §7     |

@@ -1,7 +1,7 @@
 ---
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v3
+version: v4
 ---
 
 # Testing Strategy — go-cask
@@ -12,7 +12,6 @@ version: v3
 > practical**; a requirement without a test is a bug in the suite.
 >
 > Related: `cas-core.instructions.md` (the contracts under test),
-> `cas-api.instructions.md` (requirements R-01…R-14 the HTTP tests trace),
 > `performance.instructions.md` (P-01…P-05, benchmark gates),
 > `library-design.instructions.md` (sentinel errors), `consistency.
 > instructions.md` (GC/prune), `defaults.instructions.md` (defaults under
@@ -43,7 +42,7 @@ table (below); a new requirement without a test fails review.
 
 | Requirement source                                  | Must be exercised by                                    |
 | --------------------------------------------------- | ------------------------------------------------------- |
-| `cas-api` R-01…R-14 (content addressing … rate limiting) | an `httptest` case per R-ID, named `TestAPI_R0X_…` |
+| `examples/api` HTTP-exposure pattern (`server_test.go`) | httptest round-trip, roles, streaming, 429 |
 | `performance` P-01…P-05                             | a benchmark or test per P-ID (lock-free reads, streaming, allocs) |
 | Sentinel errors (library-design §2, five errors)    | one positive `errors.Is` assertion per error            |
 | Maintenance ops (cas-core §4.11): `Stats`/`Verify`/`GC`/`Prune` | one test per op, incl. dry-run and destructive paths |
@@ -52,8 +51,8 @@ table (below); a new requirement without a test fails review.
 | Branch/CLI/versioning docs                          | where code exists (`cmd/cask` subcommands, `version` output) |
 
 Convention: tests that trace a requirement carry its ID in the name
-(`TestAPI_R05_Pagination`, `TestStore_P01_LockFreeReads`), so traceability is
-grep-able.
+(`TestStore_P01_LockFreeReads`, `TestServer_Post_RoundTrip`), so
+traceability is grep-able.
 
 ---
 
@@ -148,7 +147,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 - CI: `go test -race ./...`; fuzz smoke runs; `benchstat` gate
   (performance §5).
 - **Coverage — as high as practical**:
-  - `cas/` core, `client/` (the public SDK) AND `examples/gitlike/`:
+  - `cas/` core AND `examples/gitlike/`:
     **≥ 90%** statement coverage (excluding generated code); every exported
     identifier must be exercised at least once; any untested branch requires
     a comment explaining why.
@@ -163,14 +162,14 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 ## 6. Checklist
 
 - [ ] all CAS laws in §1 covered by tests
-- [ ] every requirement ID (R-01…R-14, P-01…P-05, sentinel errors, ops,
-      defaults) has at least one test, named with the ID (§2)
+- [ ] every requirement ID (P-01…P-05, sentinel errors, ops, defaults,
+      example-API acceptance) has at least one test, named with the ID (§2)
 - [ ] corner & error inventory of §3 covered per component
 - [ ] fuzz targets present, corpora committed, CI runs them
 - [ ] `-race` concurrent test green (lock-free read path proven)
 - [ ] corruption test proves `Verify` fails on a flipped byte
 - [ ] golden hash vectors assert exact digests
-- [ ] coverage ≥ 90% on `cas/` + `client/` + `examples/gitlike/`; every
+- [ ] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every
       exported identifier exercised; untested branches commented
 - [ ] every HTTP route tested (success + 400/401/403/404/429)
 - [ ] new requirements come with their test (traceability is review-gated)

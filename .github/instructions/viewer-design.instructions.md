@@ -1,7 +1,7 @@
 ---
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, references, blobs, stats).
-version: v2
+version: v3
 ---
 
 # Viewer Design — go-cask
@@ -353,18 +353,12 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 
 - **No JSON/data API** — the viewer is a hypermedia API only (cf. book ch.
   10, "JSON Data APIs" vs "Hypermedia APIs"); no `/api/...` endpoints, no
-  JSON responses. The object store's programmatic data API is a **separate
-  namespace** (`/api/cas/v1/`, see
-  `.github/instructions/viewer-api.instructions.md`); the viewer backend is
-  one client of it, and other clients (CLI, SDK, services) use it too — the
-  two surfaces are never mixed.
+  JSON responses. The product ships no programmatic data API at all
+  (backend-architecture §1); an app that needs one copies the `examples/api`
+  pattern.
 - **No CSS, no JavaScript** — no stylesheets, no `<style>`, no custom
   `<script>`; htmx is the only script (vendored, pinned). Elegance comes from
-  semantic HTML structure, not styling. Documented exception: the optional
-  in-browser Swagger UI API explorer (`GET /swagger/`, see
-  `.github/instructions/cas-api.instructions.md` §6 and
-  `.github/instructions/viewer-api.instructions.md` §7) when explicitly
-  enabled.
+  semantic HTML structure, not styling.
 - **No charting/dashboard libraries** — the dashboard is plain HTML tables and
   numbers; no chart libs, no CSS frameworks, no build step.
 - **No client-side rendering** — no JS-generated DOM, no HTML string

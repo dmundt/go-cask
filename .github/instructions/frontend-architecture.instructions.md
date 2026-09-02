@@ -1,7 +1,7 @@
 ---
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
-version: v1
+version: v2
 ---
 
 # Frontend Architecture — go-cask
@@ -14,8 +14,7 @@ version: v1
 >
 > Related: `.github/instructions/viewer-design.instructions.md` (the viewer's
 > screens), `.github/instructions/viewer-security.instructions.md` (authn,
-> sessions, CSRF), `.github/instructions/viewer-api.instructions.md` (the
-> `/viewer` routes), `.github/instructions/coding-guidelines.instructions.md`
+> sessions, CSRF), `.github/instructions/coding-guidelines.instructions.md`
 > (no CSS/JS, templates + htmx), `.github/instructions/api-design.
 > instructions.md` (HTTP conventions).
 
@@ -95,8 +94,7 @@ Rules:
   `#object-table`, `#hexdump`, `#stats-panel`) — never whole page unless
   intended.
 - No custom events, no `_hyperscript`, no Alpine, no hand-written JS — htmx
-  attributes only (coding-guidelines §4; the Swagger UI explorer is the sole
-  documented exception, explicitly enabled).
+  attributes only (coding-guidelines §4).
 
 ---
 
@@ -119,9 +117,7 @@ Rules:
 - Single binary: templates and the vendored htmx script are embedded via
   `embed.FS`.
 - No npm, no build step, no static asset pipeline (coding-guidelines §10).
-- The only script in the runtime is **htmx** (one pinned, vendored file);
-  the only permitted deviation is the optional Swagger UI explorer
-  (`/swagger/`, disabled by default, authenticated).
+- The only script in the runtime is **htmx** (one pinned, vendored file).
 
 ---
 

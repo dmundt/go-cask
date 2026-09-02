@@ -1,13 +1,13 @@
 ---
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v2
+version: v3
 ---
 
 # Operations — go-cask
 
 > How a CASK-backed deployment stays durable, observable, and migratable.
-> Related: `cas-api.instructions.md` (HTTP surface), `cas-core.
+> Related: `cas-core.
 > instructions.md` (`StoreStats`/`Verify`/`GC`), `viewer-security.
 > instructions.md` (audit logging), `library-design.instructions.md`
 > (`ErrHashMismatch`).
@@ -40,12 +40,13 @@ version: v2
 
 - Structured logging (`log/slog`):
   - mutations (store / delete / verify / gc) with affected hash and result
-  - rate-limit rejections (429) with caller IP
+  - login-throttle rejections with caller IP
   - slow operations (latency above a threshold)
   - GC runs (deleted count, duration)
 - Metrics (counters): objects stored/read/deleted, bytes in/out, cache
-  hits/misses (`CacheStats`), 429 count. Expose read-only via the CAS API
-  (`/stats`) and structured logs; do NOT add a metrics dependency unless
+  hits/misses (`CacheStats`), login-throttle count. Expose read-only via the
+  viewer stats page and structured logs; do NOT add a metrics dependency
+  unless
   required (coding-guidelines §3) — if it becomes necessary, expose a small
   interface the deployment implements.
 - Audit logging follows `viewer-security.instructions.md`: never log tokens
@@ -99,7 +100,8 @@ version: v2
 
 - [ ] fsync-before-rename enforced; directory fsync configurable
 - [ ] orphan `*.tmp` sweep documented/implemented
-- [ ] slog logging for mutations, 429s, slow ops, and GC runs
+- [ ] slog logging for mutations, login-throttle rejections, slow ops, and
+      GC runs
 - [ ] verify cadence defined; mismatch → quarantine + audit + alert
 - [ ] migration procedures (algorithm and layout) documented with
       verify-before-delete
