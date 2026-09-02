@@ -1,8 +1,10 @@
 // Package storage wires the cas backend for the cask binary (the viewer and
-// the CLI's local operations): it owns the filesystem store, tracks
-// per-object sizes, and exposes the byte-level operations the callers need.
-// Only FSRawStore is supported — maintenance operations (Verify, GC, Stats)
-// are filesystem operations (cas-core §4.11); MemoryRawStore lacks them
+// the CLI's local operations): it owns the filesystem store and exposes the
+// byte-level operations the callers need. Per-object sizes are read from
+// disk on demand (cas FSRawStore.Size) — no in-memory size map, so objects
+// written outside this package always report correct sizes. Only FSRawStore
+// is supported — maintenance operations (Verify, GC, Stats) are filesystem
+// operations (cas-core §4.11); MemoryRawStore lacks them
 // (backend-architecture §5).
 package storage
 
@@ -10,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
@@ -21,11 +22,9 @@ type Config struct {
 	Dir string // filesystem store directory (FSRawStore, fan-out default)
 }
 
-// Store is the server's storage service over an FSRawStore.
+// Store is the cask binary's storage service over an FSRawStore.
 type Store struct {
-	raw   *cas.FSRawStore
-	mu    sync.RWMutex
-	sizes map[string]int64 // hash string → size, maintained at Put
+	raw *cas.FSRawStore
 }
 
 // New opens the store at cfg.Dir.
@@ -34,20 +33,12 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
 	}
-	return &Store{raw: raw, sizes: map[string]int64{}}, nil
+	return &Store{raw: raw}, nil
 }
 
-// Put stores the bytes read from r under h, records their size, and returns
-// the stored size. Streaming: r is never buffered.
-func (s *Store) Put(ctx context.Context, h cas.Hash, r io.Reader) (int64, error) {
-	cr := &countingReader{r: r}
-	if err := s.raw.Put(ctx, h, cr); err != nil {
-		return 0, err
-	}
-	s.mu.Lock()
-	s.sizes[h.String()] = cr.n
-	s.mu.Unlock()
-	return cr.n, nil
+// Put stores the bytes read from r under h. Streaming: r is never buffered.
+func (s *Store) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
+	return s.raw.Put(ctx, h, r)
 }
 
 // Get streams the object's bytes; the caller MUST close the ReadCloser.
@@ -60,24 +51,21 @@ func (s *Store) Exists(ctx context.Context, h cas.Hash) (bool, error) {
 	return s.raw.Exists(ctx, h)
 }
 
+// Size returns the object's size in bytes, read from disk (ErrNotFound for
+// a missing object). Correct for any object, including ones written before
+// this process started.
+func (s *Store) Size(h cas.Hash) (int64, error) {
+	return s.raw.Size(h)
+}
+
 // Delete removes the object; a missing object is a no-op.
 func (s *Store) Delete(ctx context.Context, h cas.Hash) error {
-	s.mu.Lock()
-	delete(s.sizes, h.String())
-	s.mu.Unlock()
 	return s.raw.Delete(ctx, h)
 }
 
 // List returns stored hashes, optionally filtered by algorithm.
 func (s *Store) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	return s.raw.List(ctx, algo)
-}
-
-// Size returns the recorded size of an object (0 if unknown).
-func (s *Store) Size(h cas.Hash) int64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.sizes[h.String()]
 }
 
 // Stats returns per-algorithm counts and total size.
@@ -104,13 +92,6 @@ func (s *Store) GC(ctx context.Context, reachable map[string]bool) (int64, error
 	if err != nil {
 		return 0, err
 	}
-	s.mu.Lock()
-	for hs := range s.sizes {
-		if !reachable[hs] {
-			delete(s.sizes, hs)
-		}
-	}
-	s.mu.Unlock()
 	return before.ObjectCount - after.ObjectCount, nil
 }
 
@@ -121,16 +102,4 @@ func (s *Store) GC(ctx context.Context, reachable map[string]bool) (int64, error
 // need graph-aware retention compute a reachable set and use GC.
 func (s *Store) Prune(ctx context.Context, roots []cas.Hash, minAge time.Duration, dryRun bool) ([]cas.Hash, error) {
 	return s.raw.Prune(ctx, roots, minAge, dryRun)
-}
-
-// countingReader counts the bytes read through it.
-type countingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += int64(n)
-	return n, err
 }

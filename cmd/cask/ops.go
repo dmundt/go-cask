@@ -111,7 +111,7 @@ func localPut(ctx context.Context, st *storage.Store, r io.Reader, algo string) 
 		if _, err := spool.Seek(0, 0); err != nil {
 			return nil, false, err
 		}
-		if _, err := st.Put(ctx, h, spool); err != nil {
+		if err := st.Put(ctx, h, spool); err != nil {
 			return nil, false, err
 		}
 	}
@@ -188,7 +188,11 @@ func opList(ctx context.Context, t *target, args []string) error {
 	total := len(hashes)
 	items := make([]item, 0, total)
 	for _, h := range index.Paginate(hashes, *offset, *limit) {
-		items = append(items, item{h.String(), h.Algorithm(), t.local.Size(h)})
+		size, err := t.local.Size(h)
+		if err != nil {
+			return err
+		}
+		items = append(items, item{h.String(), h.Algorithm(), size})
 	}
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"total": total, "objects": items})
