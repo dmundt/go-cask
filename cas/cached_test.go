@@ -50,7 +50,7 @@ func TestCachedObjectLazyLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memoized Load must not re-read the store: %v", err)
 	}
-	if again.(testNote) != obj.(testNote) {
+	if again != obj {
 		t.Fatal("memoized value differs")
 	}
 }

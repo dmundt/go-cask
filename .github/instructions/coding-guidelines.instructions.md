@@ -1,7 +1,7 @@
 ---
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
-version: v5
+version: v6
 ---
 
 # Go Coding Guidelines — go-cask
@@ -207,8 +207,7 @@ Consequences for this repo:
   `cas-core.instructions.md`). Generics replace `any` + reflection and
   move type errors to compile time.
 - Rules:
-  - No `any` / `interface{}` in the exported API (architectural rule; the one
-    documented internal exception is `Store[T].Get`).
+  - No `any` / `interface{}` in the exported API (architectural rule).
   - Constrain type parameters with interfaces — including type sets / `~`
     unions — instead of accepting unconstrained `T` where semantics require
     methods or operations.
@@ -222,7 +221,7 @@ Consequences for this repo:
 - **Go 1.27 language additions** (see
   [release notes](https://go.dev/doc/go1.27)):
   - **Generic methods** — a method may declare its own type parameters:
-    `func (s *Store[T]) Map[R any](ctx context.Context, h Hash, f func(Object[T]) (R, error)) (R, error)`.
+    `func (s *Store[T]) Map[R any](ctx context.Context, h Hash, f func(T) (R, error)) (R, error)`.
     Use them to add typed helpers to this repo's generic types (e.g. typed
     resolution on `Store[T]`). Caveats: methods of interfaces may not declare
     type parameters, and interface methods cannot be implemented by generic

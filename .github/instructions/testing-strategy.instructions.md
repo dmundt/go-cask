@@ -1,7 +1,7 @@
 ---
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v6
+version: v7
 ---
 
 # Testing Strategy — go-cask
@@ -25,12 +25,12 @@ version: v6
 | --------------------- | ----------------------------------------------------------------- |
 | Determinism           | same bytes → same `Hash.String()` every time                      |
 | Dedup                 | `Put` twice → one object; `PutDedup` reports `deduplicated: true` |
-| Round-trip            | `Put` → `Get` → identical bytes; `GetTyped` → value equal via codec |
+| Round-trip            | byte layer: `Put` → `RawStore.Get` → identical bytes; typed layer: `Put` → `GetTyped` → value equal via codec |
 | Immutability          | stored bytes never change after `Put`                              |
 | Integrity             | `Verify` passes on an intact object, fails after ANY byte flip    |
 | Layout equivalence    | same content addressable under every `FanOut`/`FanLevels` combo   |
 | Path round-trip       | `pathToHash(hashPath(h)) == h` for every layout and algorithm     |
-| Errors                | `Get` missing → `errors.Is(err, ErrNotFound)`; `ParseHash` garbage → `ErrInvalidHash` |
+| Errors                | missing object on any read (`RawStore.Get`, `GetRaw`, `GetTyped`) → `ErrNotFound`; `ParseHash` garbage → `ErrInvalidHash` |
 
 ### 1.1 Every Test Is Explicit (normative)
 
@@ -91,10 +91,11 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
   default), unknown type/major → `ErrUnknownType`
 
 **Store**
-- empty store: `Get`/`GetTyped` → `ErrNotFound`; `Exists` false; `Delete`
+- empty store: `GetRaw`/`GetTyped` → `ErrNotFound`; `Exists` false; `Delete`
   no-op
 - `Put` of empty bytes; `PutDedup` first vs repeat; `GetRaw` vs `GetTyped`
-- type mismatch path (`Get` on a store for the wrong object type)
+- type mismatch path (`GetTyped` on a store whose `T` doesn't match the
+  envelope type → `ErrUnknownType`)
 
 **Backends (both, table-driven)**
 - missing object (ErrNotFound), corrupt file (fs), `.tmp` leftovers ignored
