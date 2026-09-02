@@ -70,6 +70,55 @@ go-cask/
   import `examples/` packages — examples are downstream consumers of the
   public surface, never upstream dependencies (coding-guidelines §9).
 
+Dependency map (edge = "imports"; the forbidden edges below are NOT drawn):
+
+```mermaid
+flowchart TB
+    subgraph PUBLIC["repo root — public surface"]
+        CAS["cas<br/>(generic core library)"]
+        EXTRA["cas/extra<br/>(SmartCache · CacheMonitor)"]
+    end
+    subgraph MODPRIV["internal/ — module-private (Go-enforced)"]
+        IDX["index<br/>(pagination · envelope type)"]
+        STO["storage<br/>(store service over FSRawStore)"]
+        WEB["web — the viewer<br/>(byte-layer · sessions/CSRF)"]
+    end
+    subgraph CMDDIR["cmd/"]
+        CASK["cask<br/>(CLI ops · `cask web` viewer server)"]
+    end
+    subgraph EX["examples/ — public APIs only · self-contained"]
+        GL["gitlike<br/>(shared reference support library)"]
+        F["files"]
+        ART["artifacts"]
+        NT["notes"]
+        API["api<br/>(HTTP-exposure pattern)"]
+    end
+
+    EXTRA --> CAS
+    STO --> CAS
+    WEB --> CAS
+    WEB --> IDX
+    WEB --> STO
+    CASK --> CAS
+    CASK --> IDX
+    CASK --> STO
+    CASK --> WEB
+    GL --> CAS
+    F --> CAS
+    F --> GL
+    ART --> CAS
+    ART --> EXTRA
+    NT --> CAS
+    NT --> EXTRA
+    API --> CAS
+```
+
+- `internal/index` and `examples/api/demo` import nothing from the module.
+- Forbidden (not drawn): `cas/`·`internal/`·`cmd/` → `examples/`
+  (coding-guidelines §9); `examples/` → `internal/` (examples §2 rule 4);
+  example → example except the sanctioned `files → gitlike` shared-support
+  dependency (examples §2 rule 11).
+
 ---
 
 ## 3. The Viewer Server (`cask web`)
