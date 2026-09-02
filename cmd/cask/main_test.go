@@ -149,3 +149,11 @@ func writeTemp(t *testing.T, content string) string {
 	}
 	return f
 }
+
+func TestClean(t *testing.T) {
+	mf := localMF(t)
+	out, code := run(t, mf, "clean")
+	if code != 0 || !strings.Contains(out, "removed 0") {
+		t.Fatalf("clean = (%q, %d)", out, code)
+	}
+}

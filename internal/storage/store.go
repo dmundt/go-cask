@@ -95,6 +95,12 @@ func (s *Store) GC(ctx context.Context, reachable map[string]bool) (int64, error
 	return before.ObjectCount - after.ObjectCount, nil
 }
 
+// Clean removes orphan *.tmp files (crash leftovers) older than olderThan,
+// returning how many were removed (cas-core §4.4).
+func (s *Store) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
+	return s.raw.Clean(ctx, olderThan)
+}
+
 // Prune deletes unreachable objects older than minAge (age = file mtime ≈
 // first-Put time); dryRun returns the would-be-deleted set without deleting
 // (dry-run is the safe default). Reachability is root-only at the byte
