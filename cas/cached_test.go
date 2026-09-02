@@ -263,3 +263,55 @@ func TestCachedStoreConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestLRUCacheBoundViaAllAccessors guards the regression where GetTyped,
+// Preload and Warmup bypassed the LRU policy (they inserted into the
+// embedded CachedStore without bookkeeping, so the bound never held).
+func TestLRUCacheBoundViaAllAccessors(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lru, err := NewLRUCache(store, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hashes []Hash
+	for i := 0; i < 5; i++ {
+		h, err := store.Put(ctx, testNote{Title: string(rune('a' + i))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hashes = append(hashes, h)
+	}
+
+	// GetTyped (previously bypassing the bound) keeps the cache ≤ maxSize.
+	for _, h := range hashes {
+		if _, err := lru.GetTyped(ctx, h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st := lru.CacheStats(); st.Size > 2 {
+		t.Fatalf("GetTyped exceeded bound: size = %d, want <= 2", st.Size)
+	}
+	// Evicted entries reload correctly through GetTyped.
+	if _, err := lru.GetTyped(ctx, hashes[0]); err != nil {
+		t.Fatalf("reload after eviction: %v", err)
+	}
+	if st := lru.CacheStats(); st.Size > 2 {
+		t.Fatalf("reload exceeded bound: size = %d, want <= 2", st.Size)
+	}
+
+	// Warmup inserts must respect the bound too.
+	warm, err := NewLRUCache(store, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := warm.Warmup(ctx, hashes); err != nil {
+		t.Fatal(err)
+	}
+	if st := warm.CacheStats(); st.Size > 2 {
+		t.Fatalf("Warmup exceeded bound: size = %d, want <= 2", st.Size)
+	}
+}

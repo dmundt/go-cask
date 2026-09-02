@@ -77,6 +77,7 @@ type CachedStore[T any] struct {
 	store   *Store[T]
 	cache   sync.Map // string → *CachedObject[T]
 	metrics CacheMetrics
+	onNew   func(key string) // policy hook: called once per newly cached key
 }
 
 // NewCachedStore wraps store in a lazy-loading cache.
@@ -101,7 +102,10 @@ func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], err
 		return nil, fmt.Errorf("cas: %w: %s", ErrNotFound, h)
 	}
 	co := &CachedObject[T]{store: c.store, hash: h}
-	actual, _ := c.cache.LoadOrStore(key, co)
+	actual, loaded := c.cache.LoadOrStore(key, co)
+	if !loaded && c.onNew != nil {
+		c.onNew(key)
+	}
 	return actual.(*CachedObject[T]), nil
 }
 
