@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v5
+version: v6
 ---
 
 # Backend Architecture — go-cask
@@ -49,14 +49,13 @@ go-cask/
 ├── internal/     # implementation detail — Go forbids imports from outside
 │   │             # this module
 │   ├── web/      #   the viewer: handlers + templates (/viewer/*)
-│   ├── storage/  #   store service (config → RawStore)
-│   └── index/    #   object listing/meta/stats helpers
+│   └── index/    #   object listing/meta helpers
 ├── cmd/cask/     # thin main: CLI store ops + `cask web` (the viewer)
 └── examples/     # runnable examples (gitlike, files, artifacts, notes, api)
 ```
 
 - `cmd/cask` is the only binary, and it is a **thin main**: all viewer logic
-  lives in `internal/` (web, storage, index); `cask web` wires the internal
+  lives in `internal/` (web, index); `cask web` wires the internal
   packages together (cli §2). `internal/` packages MUST NOT be imported from
   outside this module — Go enforces this at compile time.
 - `cas/` is the **public surface** — the embedded library (plus the
@@ -80,7 +79,6 @@ flowchart TB
     end
     subgraph MODPRIV["internal/ — module-private (Go-enforced)"]
         IDX["index<br/>(pagination · envelope type)"]
-        STO["storage<br/>(store service over FSRawStore)"]
         WEB["web — the viewer<br/>(byte-layer · sessions/CSRF)"]
     end
     subgraph CMDDIR["cmd/"]
@@ -98,10 +96,8 @@ flowchart TB
     STO --> CAS
     WEB --> CAS
     WEB --> IDX
-    WEB --> STO
     CASK --> CAS
     CASK --> IDX
-    CASK --> STO
     CASK --> WEB
     GL --> CAS
     F --> CAS
@@ -148,9 +144,9 @@ Rules:
 - The viewer NEVER talks to storage directly from handlers — it goes through
   the `RawStore`/`Store[T]` layer, so backend selection is a configuration
   decision, not a code change.
-- The handler set lives in `internal/web` (the viewer), over
-  `internal/storage` (store service) and `internal/index` (listing helpers).
-  `cmd/cask web` only wires them (§2).
+- The handler set lives in `internal/web` (the viewer), over the `cas`
+  library and `internal/index` (listing helpers). `cmd/cask web` only wires
+  them (§2).
 
 ---
 
@@ -221,7 +217,7 @@ Lifecycle:
 ## 8. Deployment Shapes
 
 1. **Local admin** — `cask web` on the machine holding the store: the viewer
-   in-process over `internal/storage` (default shape; loopback bind,
+   in-process over the `cas` library (default shape; loopback bind,
    viewer-security §4).
 2. **CLI / embedding** — the non-`web` `cmd/cask` subcommands and library
    consumers.

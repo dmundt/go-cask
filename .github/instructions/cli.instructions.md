@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v6
+version: v7
 ---
 
 # CLI — go-cask
@@ -47,8 +47,7 @@ Store operations speak to the store in-process over the library:
 | Command                        | Behavior                                                       |
 | ------------------------------ | -------------------------------------------------------------- |
 | `put <file>\|-`               | store bytes (or stdin); prints the hash                         |
-| `get <hash> [-o <file>]`      | retrieve bytes to a file or stdout                              |
-| `cat <hash>`                  | alias of `get` to stdout                                        |
+| `get <hash> [-o <file>]`      | retrieve bytes to a file or stdout (no `-o` prints to stdout)  |
 | `list [--algo] [--limit] [--offset]` | list objects (`{total, objects}` shape)                 |
 | `meta <hash>`                 | metadata of one object (size, type)                            |
 | `stats`                       | storage statistics (per-algorithm counts, total size)           |

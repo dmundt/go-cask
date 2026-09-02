@@ -49,7 +49,7 @@ decisions that shape the repo (each named spec is the normative contract):
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic, public
-internal/  implementation detail: web (the viewer), storage, index
+internal/  implementation detail: web (the viewer), index
 examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 .github/   specification set + CI (see below)
