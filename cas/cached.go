@@ -76,47 +76,11 @@ type CachedStore[T any] struct {
 	store   *Store[T]
 	cache   sync.Map // string → *CachedObject[T]
 	metrics CacheMetrics
-	max     int // > 0: bound memoized entries (FIFO eviction)
-	orderMu sync.Mutex
-	order   []string // insertion order of cached keys (only when max > 0)
 }
 
 // NewCachedStore wraps store in a lazy-loading cache.
 func NewCachedStore[T any](store *Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
-}
-
-// NewCachedStoreWithCapacity is NewCachedStore with a bound on the number of
-// memoized entries: once max entries are cached, every new entry evicts the
-// oldest (FIFO). Eviction only drops the cached proxy — objects reload on
-// demand — so correctness is unaffected. max must be > 0.
-func NewCachedStoreWithCapacity[T any](store *Store[T], max int) (*CachedStore[T], error) {
-	if max <= 0 {
-		return nil, fmt.Errorf("cas: cache capacity must be > 0, got %d", max)
-	}
-	c := NewCachedStore[T](store)
-	c.max = max
-	return c, nil
-}
-
-// note records a newly cached key under the FIFO bound, evicting the oldest
-// entry when the capacity is exceeded.
-func (c *CachedStore[T]) note(key string) {
-	c.orderMu.Lock()
-	defer c.orderMu.Unlock()
-	for _, k := range c.order {
-		if k == key {
-			return // already tracked
-		}
-	}
-	c.order = append(c.order, key)
-	for len(c.order) > c.max {
-		old := c.order[0]
-		c.order = c.order[1:]
-		if _, ok := c.cache.LoadAndDelete(old); ok {
-			c.metrics.Evicts.Add(1)
-		}
-	}
 }
 
 // Get returns the (possibly not-yet-loaded) cached object for h. It verifies
@@ -136,10 +100,7 @@ func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], err
 		return nil, fmt.Errorf("cas: %w: %s", ErrNotFound, h)
 	}
 	co := &CachedObject[T]{store: c.store, hash: h}
-	actual, loaded := c.cache.LoadOrStore(key, co)
-	if !loaded && c.max > 0 {
-		c.note(key)
-	}
+	actual, _ := c.cache.LoadOrStore(key, co)
 	return actual.(*CachedObject[T]), nil
 }
 

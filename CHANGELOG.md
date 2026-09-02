@@ -41,8 +41,8 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - CI: gofmt/tidy/vet, `-race` + per-package coverage gate (cas, cas/extra,
   gitlike ≥ 90%), fuzz smoke (4 targets), benchstat, doc integrity.
 
-- cas: `FSRawStore.Size` (per-object size) and `Clean` (orphan `*.tmp` sweep);
-  `CachedStore` capacity via `NewCachedStoreWithCapacity` (FIFO bound).
+- cas: `FSRawStore.Size` (per-object size) and `Clean` (orphan `*.tmp`
+  sweep).
 
 ### Changed
 
