@@ -27,7 +27,7 @@ version: v4
 >   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
 >   hypermedia-driven application philosophy this viewer implements.
-> - `.github/instructions/viewer-design-brief.instructions.md` — the
+> - `design/viewer-brief.md` — the
 >   non-normative design brief for the viewer's planned next iteration
 >   (OpenDesign input); it proposes a target grammar but changes nothing
 >   here until its outcomes are folded back into this spec (brief §7).
