@@ -16,7 +16,9 @@ import (
 // reference between objects holds a full Hash — algorithm AND digest — never
 // a bare digest, so one object graph may mix algorithms freely and a store
 // can read any object whose algorithm is registered. Hashes are immutable
-// value carriers. The zero value is a nil Hash.
+// value carriers. The zero value is a nil Hash: calling a method on it
+// panics, so check for nil before use (ParseHash/NewHash never return nil
+// on success).
 type Hash interface {
 	Algorithm() string // "sha1", "sha256", ...
 	Bytes() []byte     // raw digest bytes
@@ -65,7 +67,8 @@ func HashBytes(algo string, data []byte) (Hash, error) {
 }
 
 // NewHasher returns a streaming hasher for a registered algorithm (the
-// built-ins sha1/sha256). It returns ErrUnknownAlgorithm for algorithms
+// built-ins sha1/sha256) as the standard library hash.Hash, so callers can
+// stream bytes into it. It returns ErrUnknownAlgorithm for algorithms
 // registered only as one-shot HashFunc, which cannot stream — use HashBytes
 // for those.
 func NewHasher(algo string) (hashtype.Hash, error) {
