@@ -1,7 +1,7 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v4
+version: v5
 ---
 
 # Performance — go-cask
@@ -101,9 +101,9 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
   `MemoryRawStore` (deterministic, no I/O variance); disk behavior is
   covered separately by the `BenchmarkFSRawStore*` cases.
 - CI compares the `cas` benchmark suite against the committed baseline
-  (`benchmarks/cas.txt`, refreshed on the Linux CI runner); a regression
-  beyond the agreed threshold (e.g. >10% time or allocs on the small-object
-  cases) fails the build.
+  (`benchmarks/cas.txt`, refreshed on the Linux CI runner); the gate fails
+  on any increase in allocations per op (hardware-independent; wall-clock
+  time is too noisy on shared CI runners to gate, so it stays informational).
 - The lock-free claim is exercised by `-race` tests (testing-strategy §4.4)
   and `BenchmarkParallelPutGet`.
 
@@ -291,7 +291,7 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 - [ ] `Get`/`Exists`/`List`/`Stats` are lock-free (no lock in those methods)
 - [ ] hash-on-write in a single pass (`io.TeeReader`)
 - [ ] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
-- [ ] CI benchmark regression gate (>10% on time) against a committed baseline
+- [ ] CI regression gate (allocs/op) against a committed baseline
 - [ ] `-race` concurrent Put/Get/Delete test green
 - [ ] no reflection/`unsafe`/external speed dependencies
 - [ ] profiling workflow documented and reproducible
