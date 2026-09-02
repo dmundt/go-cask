@@ -72,5 +72,8 @@ The project is pre-release; the first public tag will be `v1.0.0`
 
 ### Removed
 
+- `cas.NewStoreWithHasher` — undocumented, unconsumed constructor; custom
+  hash algorithms use the documented `RegisterHash` + `NewStore` recipe
+  (cas-core §4.2).
 - `cmd/caskd` (absorbed into `cmd/cask web`).
 - The top-level `viewer/` directory (viewer code moved to `internal/web/`).
