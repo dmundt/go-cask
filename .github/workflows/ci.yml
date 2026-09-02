@@ -83,7 +83,9 @@ jobs:
         if: hashFiles('benchmarks/cas.txt') != '' && hashFiles('**/*.go') != ''
         run: |
           go test -bench=. -benchmem -run=^$ ./cas/... > /tmp/bench.txt
-          cat /tmp/bench.txt # baseline capture (temporary)
+          cat /tmp/bench.txt
+          echo '=== CAPTURE-BASELINE-MARKER ==='
+          exit 1 # temporary: capture the Linux baseline from this failure's log
 
       - name: Doc integrity (.github/instructions)
         run: |
