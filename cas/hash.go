@@ -183,13 +183,3 @@ func lookupHash(algo string) (HashFunc, bool) {
 	fn, ok := hashRegistry[algo]
 	return fn, ok
 }
-
-// hashData computes the content address of data with the named algorithm.
-// It returns ErrUnknownAlgorithm if algo is not registered.
-func hashData(algo string, data []byte) (Hash, error) {
-	fn, ok := lookupHash(algo)
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
-	}
-	return fn(data), nil
-}
