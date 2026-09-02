@@ -20,8 +20,7 @@ The project is pre-release; the first public tag will be `v1.0.0`
     (one-pass hashing, `PutDedup`, self-describing envelope with
     type-verifying reads), `Walker[T]`;
   - caching: `CachedObject[T]`, `CachedStore[T]`, in-tree `LRUCache[T]`;
-  - `cas/extra`: `SmartCache[T]` (prefetch on access), `CacheMonitor[T]`.
-- **`examples/gitlike`** — the reference object model (`Blob`/`Tree`/
+  - **`examples/gitlike`** — the reference object model (`Blob`/`Tree`/
   `Commit`/`Tag`, `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`,
   `CachedRepository`, `Preloader`).
 - **`cmd/cask`** — the single entry point: CLI store operations (`put`,
@@ -38,8 +37,9 @@ The project is pre-release; the first public tag will be `v1.0.0`
   custom hash + cache + GC), `notes` (own types + lazy loading +
   prefetch), `api` (HTTP-exposure pattern: store server + plain-HTTP demo), each with a
   rule-8 README.
-- CI: gofmt/tidy/vet, `-race` + per-package coverage gate (cas, cas/extra,
-  gitlike ≥ 90%), fuzz smoke (4 targets), benchstat, doc integrity.
+- CI: gofmt/tidy/vet, `-race` + per-package coverage gate (cas, gitlike
+  ≥ 90%), fuzz smoke (4 targets), doc integrity, import boundaries, benchmark
+  allocs gate.
 
 - cas: `FSRawStore.Size` (per-object size) and `Clean` (orphan `*.tmp`
   sweep).
@@ -78,6 +78,8 @@ The project is pre-release; the first public tag will be `v1.0.0`
 
 ### Removed
 
+- `cas/extra` — `SmartCache`/`CacheMonitor` inlined into `examples/notes` and
+  `examples/artifacts` (example recipes, not core; cas-core v9).
 - `client/` — the public CAS API client SDK; CLI remote mode (`-api`/
   `-token`) goes with it.
 - `internal/api` + `internal/auth` — the CAS JSON API handlers, bearer-token

@@ -17,7 +17,8 @@ type CacheMetrics struct {
 }
 
 // CacheStats is a point-in-time snapshot of cache behavior, as returned by
-// CachedStore.CacheStats and consumed by CacheMonitor.
+// CachedStore.CacheStats (consumed by cache-observability tooling such as the
+// artifacts example monitor).
 type CacheStats struct {
 	Hits    uint64
 	Misses  uint64

@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v6
+version: v7
 ---
 
 # Backend Architecture — go-cask
@@ -75,7 +75,6 @@ Dependency map (edge = "imports"; the forbidden edges below are NOT drawn):
 flowchart TB
     subgraph PUBLIC["repo root — public surface"]
         CAS["cas<br/>(generic core library)"]
-        EXTRA["cas/extra<br/>(SmartCache · CacheMonitor)"]
     end
     subgraph MODPRIV["internal/ — module-private (Go-enforced)"]
         IDX["index<br/>(pagination · envelope type)"]
@@ -92,7 +91,6 @@ flowchart TB
         API["api<br/>(HTTP-exposure pattern)"]
     end
 
-    EXTRA --> CAS
     STO --> CAS
     WEB --> CAS
     WEB --> IDX
@@ -103,9 +101,7 @@ flowchart TB
     F --> CAS
     F --> GL
     ART --> CAS
-    ART --> EXTRA
     NT --> CAS
-    NT --> EXTRA
     API --> CAS
 ```
 

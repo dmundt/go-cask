@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/extra"
 )
 
 const usage = `usage: artifacts [-store <dir>] <command> [args]
@@ -154,7 +153,7 @@ type app struct {
 	artifacts *cas.Store[*Artifact]
 	manifests *cas.Store[*Manifest]
 	cache     *cas.LRUCache[*Artifact]
-	monitor   *extra.CacheMonitor[*Artifact]
+	monitor   *CacheMonitor[*Artifact]
 }
 
 func newApp(dir string) (*app, error) {
@@ -175,7 +174,7 @@ func newApp(dir string) (*app, error) {
 		return nil, err
 	}
 	a := &app{raw: raw, artifacts: artifacts, manifests: manifests, cache: cache}
-	a.monitor = extra.NewCacheMonitor(cache.CachedStore, 2*time.Second, func(s extra.CacheSnapshot) {
+	a.monitor = NewCacheMonitor(cache.CachedStore, 2*time.Second, func(s CacheSnapshot) {
 		fmt.Printf("cache: hits=%d misses=%d hit-rate=%.2f size=%d\n", s.Hits, s.Misses, s.HitRate, s.Size)
 	})
 	return a, nil

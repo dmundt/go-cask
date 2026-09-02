@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/extra"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,
@@ -29,7 +28,7 @@ func demo() error {
 	// cache for notes.
 	attachments := cas.NewCachedStore(repo.Attachments)
 	noteCache := cas.NewCachedStore(repo.Notes)
-	smart := extra.NewSmartCache(noteCache, 2)
+	smart := NewSmartCache(noteCache, 2)
 
 	// Tags.
 	workTag, err := repo.Tags.Put(ctx, &Tag{Name: "work"})

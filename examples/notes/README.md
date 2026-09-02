@@ -15,7 +15,7 @@ generic `Walker[T]`.
 | `Store[T]` + `JSONCodec[T]` | the three per-type stores in `Repository` |
 | `Store.GetTyped` (envelope type verification) | resolver reads |
 | `CachedObject[T]` / `CachedStore[T]` | lazy attachment loading |
-| `SmartCache[T]` (`cas/extra`) | prefetch on access |
+| prefetch-on-access (own `SmartCache` recipe) | warms references via `CachedStore` |
 | `Walker[T]` | same-type related-note traversal |
 | `Hash` / `ParseHash` | references and `parseType` |
 
