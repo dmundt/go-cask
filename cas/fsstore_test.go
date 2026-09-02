@@ -505,3 +505,68 @@ func ExampleNewFSRawStore() {
 	defer os.RemoveAll("./objects")
 	_ = s
 }
+
+// TestSizeAndClean exercises FSRawStore.Size and the *.tmp sweep.
+func TestSizeAndClean(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewFSRawStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := hashData("sha256", []byte("size me"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put(ctx, h, strings.NewReader("size me")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Size(h)
+	if err != nil || got != 7 {
+		t.Fatalf("Size = %d, %v; want 7", got, err)
+	}
+	missing, _ := hashData("sha256", []byte("missing"))
+	if _, err := s.Size(missing); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Size(missing) err = %v, want ErrNotFound", err)
+	}
+
+	// Two leftover *.tmp files: one old, one fresh. Both live in the
+	// fan-out dir of an existing object (where a crash mid-write leaves
+	// them), so store the second object first.
+	other, _ := hashData("sha256", []byte("other"))
+	if err := s.Put(ctx, other, strings.NewReader("other")); err != nil {
+		t.Fatal(err)
+	}
+	oldTmp := s.hashPath(h) + ".tmp"
+	freshTmp := s.hashPath(other) + ".tmp"
+	if err := os.WriteFile(oldTmp, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(oldTmp, past, past); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(freshTmp, []byte("fresh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sweep older than 1h: only the old file goes.
+	n, err := s.Clean(ctx, time.Hour)
+	if err != nil || n != 1 {
+		t.Fatalf("Clean(1h) = %d, %v; want 1", n, err)
+	}
+	if _, err := os.Stat(oldTmp); !os.IsNotExist(err) {
+		t.Fatal("old tmp still present")
+	}
+	if _, err := os.Stat(freshTmp); err != nil {
+		t.Fatal("fresh tmp wrongly removed")
+	}
+
+	// olderThan <= 0 removes everything.
+	n, err = s.Clean(ctx, 0)
+	if err != nil || n != 1 {
+		t.Fatalf("Clean(0) = %d, %v; want 1", n, err)
+	}
+	if _, err := os.Stat(freshTmp); !os.IsNotExist(err) {
+		t.Fatal("fresh tmp still present after Clean(0)")
+	}
+}
