@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v5
+version: v6
 ---
 
 # Examples — go-cask
@@ -56,11 +56,13 @@ When creating or extending an example, follow these rules:
    module (no separate `go.mod` unless genuinely required). A runnable demo is
    `package main`; reusable pieces are subpackages
    (`examples/<name>/client/`, ...).
-   - **`examples/gitlike/` is the reference library-style example**: an
-     importable package (`package gitlike`, import path
+   - **`examples/gitlike/` is the shared reference support library** — the
+     single designated cross-example dependency (rule 11): an importable
+     package (`package gitlike`, import path
      `github.com/dmundt/go-cask/examples/gitlike`) rather than a runnable
-     `main` program — the single documented exception to the runnable rule
-     below. It is the reference object model the other examples build on.
+     `main` program — the documented exception to the runnable rule below.
+     It is the reference object model app authors (and the `files` example)
+     build on; it stays an example, never part of `cas`.
 2. **Runnable.** `go build ./...`, `go run ./examples/<name>`, and
    `go test ./examples/...` MUST all pass (except `examples/gitlike`, which
    is a library, not a program). The demo prints meaningful output
@@ -109,9 +111,14 @@ When creating or extending an example, follow these rules:
 10. **Never modify the libraries for an example's sake.** If an example needs
     a feature that does not exist, that is a spec/library change — raise it
     separately; do not hack around it inside the example.
+11. **Self-contained.** Every example is self-contained: an example MUST NOT
+    import another example's package. The one exception is
+    `examples/gitlike` — the shared reference support library (rule 1) —
+    which examples MAY import (the `files` example does). Examples never
+    depend on `files`, `artifacts`, `notes`, or `api`, and those never
+    depend on each other.
 
 ---
-
 ## 3. Proposed Examples
 
 ### 3.1 `examples/files` — Git-like versioned file store
@@ -365,6 +372,8 @@ When asked to "create an example" or "show how to X":
       meaningful output
 - [ ] No external dependencies; no CSS/JS in the viewer example; no `any` in
       example APIs
+- [ ] No example imports another example except the shared reference
+      support library `gitlike` (rule 11)
 - [ ] Examples use only documented public APIs of `cas`/`gitlike`; the
       libraries themselves are untouched
 - [ ] Each example ships a `README.md` with the §2 rule 8 content (core used,
