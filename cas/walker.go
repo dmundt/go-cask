@@ -8,12 +8,12 @@ import "context"
 // so no visited set is needed.
 type Walker[T Object[T]] struct {
 	store *Store[T]
-	visit func(Object[T]) error
+	visit func(T) error
 }
 
 // NewWalker creates a walker over store that calls visit for every object
 // reached.
-func NewWalker[T Object[T]](store *Store[T], visit func(Object[T]) error) *Walker[T] {
+func NewWalker[T Object[T]](store *Store[T], visit func(T) error) *Walker[T] {
 	return &Walker[T]{store: store, visit: visit}
 }
 
@@ -21,7 +21,7 @@ func NewWalker[T Object[T]](store *Store[T], visit func(Object[T]) error) *Walke
 // first. It returns the first error from visit or from any read. A missing
 // object returns ErrNotFound.
 func (w *Walker[T]) Walk(ctx context.Context, h Hash) error {
-	obj, err := w.store.Get(ctx, h)
+	obj, err := w.store.GetTyped(ctx, h)
 	if err != nil {
 		return err
 	}

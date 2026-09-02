@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v11
+version: v12
 ---
 
 # CAS Core — go-cask
@@ -68,8 +68,9 @@ example) live outside it (§4.12).
 5. **Layering.** The byte layer is **non-generic** (`Hash` + `io.Reader` only).
    All generics live in the typed layer above it.
 6. **No `any` in the public API.** Every object type has its own `Store[T]`;
-   mixing types is a compile-time error. One documented internal exception: the
-   `any` type assertion inside `Store[T].Get`.
+   mixing types is a compile-time error. The typed layer holds no type
+   assertions: reads return the concrete `T` via `GetTyped` (there is no
+   `Store[T].Get` returning `Object[T]`, §4.8).
 7. **Streaming I/O.** The byte layer moves `io.Reader`/`io.ReadCloser`; large
    objects are never fully buffered by the backend.
 8. **Thread safety by default.** Backends have lock-free reads (atomic
@@ -98,7 +99,7 @@ These invariants are testable and tested — see the CAS laws in
 │                                                                  │
 │   Object[T]  — self-describing, reference-aware objects          │
 │   Codec[T]   — serialization (JSONCodec[T] default)              │
-│   Store[T]   — Put / Get / GetTyped / GetRaw / Exists / Delete   │
+│   Store[T]   — Put / GetTyped / GetRaw / Exists / Delete         │
 │   Walker[T]  — generic graph traversal over References()         │
 │                                                                  │
 │   Caching / lazy loading layer (generic over T):                 │
@@ -144,10 +145,12 @@ references). It creates a `Store[Note]` over a `RawStore` backend with a
    graph. Identical bytes always produce the identical hash, so the same
    content is stored once (dedup).
 
-**Reading an object.** `Store.Get(ctx, h)` (or `GetTyped` for the concrete
-type) reverses the path: `RawStore.Get` streams the bytes, `Codec.Decode`
-reconstructs the value. `Get` additionally asserts the result implements
-`Object[T]`; `GetTyped` returns the concrete `T` with no casts.
+**Reading an object.** `Store.GetTyped(ctx, h)` reverses the path:
+`RawStore.Get` streams the bytes, `Codec.Decode` reconstructs the value, and
+the decoded object's `Type()` must match the envelope's type name
+(`ErrUnknownType` on mismatch). The result is the concrete `T` — no casts,
+no `Object[T]` intermediate (the former `Store.Get`, which returned an
+`Object[T]` the caller had to cast, is retired).
 
 **Why three layers.** The byte layer is non-generic so ANY backend can be
 swapped in without touching application code. The typed layer is generic so
@@ -219,7 +222,6 @@ classDiagram
         +codec Codec~T~
         +hasher HashFunc
         +Put(ctx, obj) Hash
-        +Get(ctx, h) Object~T~
         +GetTyped(ctx, h) T
         +GetRaw(ctx, h) []byte
         +Exists(ctx, h) (bool, error)
@@ -237,14 +239,14 @@ classDiagram
     direction LR
     class Store~T~
     class CachedObject~T~ {
-        +Load(ctx) Object~T~
+        +Load(ctx) T
         +IsLoaded() bool
     }
     class CachedStore~T~ {
         +cache sync.Map
         +metrics CacheMetrics
         +Get(ctx, h) *CachedObject~T~
-        +GetTyped(ctx, h) Object~T~
+        +GetTyped(ctx, h) T
         +Preload(ctx, hashes) error
         +CacheStats() CacheStats
     }
@@ -336,7 +338,7 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
   per-algorithm counts. Different `Store[T]` instances over the same
   `RawStore` may write with different algorithms.
 - **Changing the hash type:** a store's algorithm is a write-default, not a
-  constraint on reads. `Store[T].Get`/`GetRaw`, `RawStore.Get`, and
+  constraint on reads. `Store[T].GetTyped`/`GetRaw`, `RawStore.Get`, and
   `ParseHash` resolve ANY registered algorithm; objects written with an
   earlier algorithm remain readable forever — re-hashing is never required
   to read.
@@ -501,8 +503,7 @@ func NewStore[T Object[T]](raw RawStore, codec Codec[T], algo string) (*Store[T]
 | ------------- | ----------------------------------------------------------------- |
 | `Put`         | `Put(ctx, obj T)` → `codec.Encode(obj)` → envelope`{"type","data"}` → `hasher(data)` → `raw.Put` → h |
 | `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
-| `Get`         | `raw.Get` → `codec.Decode` → the concrete `T` as `Object[T]`      |
-| `GetTyped`    | decodes via the codec; returns the concrete `T` (no casts); a value that implements `Object[T]` must match the envelope type |
+| `GetTyped`    | `raw.Get` → `codec.Decode` → the concrete `T`; the decoded `Type()` must match the envelope type name (else `ErrUnknownType`) |
 | `GetRaw`      | returns the serialized bytes for inspection/tooling               |
 | `Exists`      | delegates to `raw`                                                |
 | `Delete`      | delegates to `raw`                                                |
@@ -512,18 +513,23 @@ Design notes:
 - Type safety comes from one store per type: `Store[Blob]` and
   `Store[Commit]` are distinct, so passing a commit hash to a blob store is a
   **compile-time error**.
-- Alternative constraint eliminating even the internal `any`:
-  `type Store[T Object[T]] struct{ ... }` — optional, keep signatures stable.
+- There is deliberately **no `Get` returning `Object[T]`** — it forced every
+  caller to type-assert. Reads go through `GetTyped` (concrete `T`, type
+  name verified) or `GetRaw` (bytes); the constraint `Store[T Object[T]]`
+  keeps the typed layer free of `any` and type assertions (coding-guidelines
+  §8).
 - `Store[T]` is safe for concurrent use if its `RawStore` is.
 
 ### 4.9 `Walker[T]` — generic graph traversal
 
 ```go
 // Walker traverses any single-type object graph via References().
-func NewWalker[T any](store *Store[T], visit func(Object[T]) error) *Walker[T]
+func NewWalker[T Object[T]](store *Store[T], visit func(T) error) *Walker[T]
 func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 ```
 
+- `visit` receives every reached object as the concrete `T` (no casts); the
+  walker reads via `Store[T].GetTyped`.
 - Recurses over `obj.References()`; works for any object type — no knowledge
   of the domain model.
 - Content addressing makes cycles impossible, so no visited set is needed.
@@ -544,8 +550,9 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 
 - Cache: `sync.Map` keyed by `h.String()` → `*CachedObject[T]`.
 - Metrics: `CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic counters).
-- `Get(ctx, h)` returns a **not-yet-loaded** reference (verifies existence
-  first); `GetTyped` = `Get` + `Load`.
+- `Get(ctx, h)` returns a **not-yet-loaded** `*CachedObject[T]` reference
+  (verifies existence first); `GetTyped` = `Get` + `Load`, returning the
+  concrete `T`.
 - `Preload(ctx, hashes)` loads many objects in parallel (worker goroutines +
   error channel); `PreloadRecursive(ctx, h, depth)` preloads the object graph.
 - `CacheStats()` (hit rate, size, loads, evicts), `Evict(h)`, `Clear()`,
@@ -675,7 +682,7 @@ Optional `PutDedup`: check `raw.Exists(hash)` first and skip the write.
 ```text
 raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (GetTyped)
                                        │
-                                       └─► assert Object[T] (Get)
+                                       └─► Type() matches envelope type
 ```
 
 ### 5.3 Lazy/cached read path
@@ -684,7 +691,7 @@ raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (G
 CachedStore.Get(ctx, h) ──► *CachedObject[T] (not loaded)
         │
         ▼ (first access)
-CachedObject.Load(ctx) ──► store.Get ──► memoize (obj, err)
+CachedObject.Load(ctx) ──► store.GetTyped ──► memoize (obj, err)
         │
         ▼ (later access)
 return memoized value      # double-checked locking
@@ -713,11 +720,11 @@ flowchart LR
         A1["codec.Encode(obj) → envelope (Store.Put)"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
     end
     subgraph READ["Typed read path"]
-        B1["raw.Get(ctx, h)"] --> B2["codec.Decode(data)"] --> B3["T (GetTyped) / Object[T] (Get)"]
+        B1["raw.Get(ctx, h)"] --> B2["codec.Decode(data)"] --> B3["T (GetTyped)"]
     end
     subgraph LAZY["Lazy/cached path"]
         C1["CachedStore.Get(ctx, h)"] --> C2["*CachedObject[T] (not loaded)"]
-        C2 --> C3["Load: store.Get → memoize (obj, err)"]
+        C2 --> C3["Load: store.GetTyped → memoize (obj, err)"]
     end
     subgraph RESOLVE["Cross-type resolution (gitlike)"]
         D1["ResolveAny(ctx, h)"] --> D2["parseType(data)"] --> D3{"type"}
@@ -747,7 +754,9 @@ flowchart LR
 Rules:
 
 - `Store[T]` is safe for concurrent use if its `RawStore` is.
-- Callers must close every `io.ReadCloser` from `Get`.
+- Callers must close every `io.ReadCloser` from the byte layer's
+  `RawStore.Get` (the typed layer returns bytes or concrete values, never a
+  stream the caller must close).
 - Prefetchers must never block the hot path (queue full → skip; prefetch in a
   goroutine with a timeout).
 
@@ -768,7 +777,7 @@ The stable API the core promises (library-design §1):
 | Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`), `MemoryRawStore`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
 | Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` |
-| Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash` (library-design §2) |
+| Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
 
 Everything else is internal and MUST NOT be relied upon. The surface stays
 additive-compatible (library-design §5).
@@ -785,10 +794,10 @@ additive-compatible (library-design §5).
    backend is persistent.
 
 **Add an object type** (e.g. `Document`):
-1. Implement `Object[Document]` (`Type`/`References`/`Serialize`/
-   `Deserialize`) — `References()` is the contract for traversal and GC.
+1. Implement `Object[Document]` (`Type()`/`References()`) — `References()`
+   is the contract for traversal and GC.
 2. Create your own `*Store[Document]` with `JSONCodec[Document]{}` — the
-   generic core stays untouched.
+   generic core stays untouched (serialization is the codec's job, §4.6).
 3. If you need a repository/resolver for your types, copy the `gitlike`
    pattern (§4.12) into your own package — do NOT extend `cas` or `gitlike`.
 4. Never add `any` or reflection — add explicit typed methods.

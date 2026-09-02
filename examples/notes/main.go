@@ -87,7 +87,7 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("attachment loaded after access: %v (%d bytes)\n", co.IsLoaded(), len(obj.(*Attachment).Data))
+	fmt.Printf("attachment loaded after access: %v (%d bytes)\n", co.IsLoaded(), len(obj.Data))
 
 	// SmartCache prefetch: loading a related-only note warms its references.
 	prefetchRoot, err := repo.Notes.Put(ctx, &Note{Title: "prefetch-root", Related: []cas.Hash{second}})
@@ -139,9 +139,9 @@ func demo() error {
 		return err
 	}
 	seen := 0
-	w := cas.NewWalker(repo.Notes, func(obj cas.Object[*Note]) error {
+	w := cas.NewWalker(repo.Notes, func(obj *Note) error {
 		seen++
-		fmt.Printf("walk: %s\n", obj.(*Note).Title)
+		fmt.Printf("walk: %s\n", obj.Title)
 		return nil
 	})
 	if err := w.Walk(ctx, root); err != nil {
