@@ -26,7 +26,6 @@ cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), storage, index
 examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
-docs/      documentation
 .github/   specification set + CI (see below)
 ```
 
