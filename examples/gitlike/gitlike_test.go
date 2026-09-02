@@ -89,135 +89,6 @@ func TestObjectRoundTrips(t *testing.T) {
 	}
 }
 
-// --- Object-level Deserialize(Serialize(v)) contract ---
-
-func TestObjectDeserializeSerialize(t *testing.T) {
-	commit := &Commit{Tree: mustHash(t, "sha256:"+strings.Repeat("ab", 32)), Author: "a", Message: "m"}
-	ser, err := commit.Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	back, err := commit.Deserialize(ser)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if back.Message != "m" || !back.Tree.Equal(commit.Tree) {
-		t.Fatalf("Deserialize(Serialize(v)) = %+v", back)
-	}
-}
-
-// Deserialize(Serialize(v)) == v for every type, including a commit with a
-// parent and a tag with a target.
-func TestDeserializeRoundTripAllTypes(t *testing.T) {
-	parent := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
-	tree := mustHash(t, "sha256:"+strings.Repeat("cd", 32))
-	blob := mustHash(t, "sha256:"+strings.Repeat("ef", 32))
-
-	// Blob.
-	blobSer, err := (&Blob{Data: []byte("payload")}).Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	blobBack, err := (&Blob{}).Deserialize(blobSer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(blobBack.Data) != "payload" {
-		t.Fatalf("blob round-trip: %q", blobBack.Data)
-	}
-
-	// Tree (one entry with a hash, one entry with a nil hash).
-	treeSer, err := (&Tree{Entries: []TreeEntry{
-		{Name: "f", Hash: blob, Mode: "m"},
-		{Name: "nilhash", Mode: "m"},
-	}}).Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	treeBack, err := (&Tree{}).Deserialize(treeSer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(treeBack.Entries) != 2 || !treeBack.Entries[0].Hash.Equal(blob) || treeBack.Entries[1].Hash != nil {
-		t.Fatalf("tree round-trip: %+v", treeBack)
-	}
-
-	// Commit with a parent.
-	commitSer, err := (&Commit{Tree: tree, Parent: parent, Author: "a", Message: "m"}).Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	commitBack, err := (&Commit{}).Deserialize(commitSer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !commitBack.Tree.Equal(tree) || !commitBack.Parent.Equal(parent) || commitBack.Author != "a" {
-		t.Fatalf("commit round-trip: %+v", commitBack)
-	}
-
-	// Tag.
-	tagSer, err := (&Tag{Name: "v1", Target: parent, Tagger: "t", Message: "tag"}).Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	tagBack, err := (&Tag{}).Deserialize(tagSer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tagBack.Name != "v1" || !tagBack.Target.Equal(parent) || tagBack.Tagger != "t" {
-		t.Fatalf("tag round-trip: %+v", tagBack)
-	}
-}
-
-// Malformed envelopes and payloads must fail Deserialize gracefully.
-func TestDeserializeErrors(t *testing.T) {
-	blob := &Blob{}
-	for _, garbage := range []string{
-		"not json",
-		`{"data":"AAAA"}`,                // missing type
-		`{"type":"blob@1","data":"%%%"}`, // bad base64
-	} {
-		if _, err := blob.Deserialize([]byte(garbage)); err == nil {
-			t.Errorf("Deserialize(%q) must error", garbage)
-		}
-	}
-	// Payload that decodes but contains an invalid hash string.
-	treeSer := &Tree{Entries: []TreeEntry{{Name: "f", Hash: mustHash(t, "sha256:"+strings.Repeat("ab", 32)), Mode: "m"}}}
-	treeSer.Entries[0].Hash = nil // exercise the empty-hash JSON path
-	ser, err := treeSer.Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (&Tree{}).Deserialize(ser); err != nil {
-		t.Fatalf("tree with omitted hash must decode: %v", err)
-	}
-	badTree := `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`
-	badTreeEnv, _ := marshalEnvelopeRaw("tree@1", badTree)
-	if _, err := (&Tree{}).Deserialize(badTreeEnv); err == nil {
-		t.Fatal("tree with invalid entry hash must error")
-	}
-	badCommit := `{"tree":"nope:zz","author":"a"}`
-	badCommitEnv, _ := marshalEnvelopeRaw("commit@1", badCommit)
-	if _, err := (&Commit{}).Deserialize(badCommitEnv); err == nil {
-		t.Fatal("commit with invalid tree hash must error")
-	}
-	badParent := `{"tree":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parent":"nope:zz","author":"a"}`
-	badParentEnv, _ := marshalEnvelopeRaw("commit@1", badParent)
-	if _, err := (&Commit{}).Deserialize(badParentEnv); err == nil {
-		t.Fatal("commit with invalid parent hash must error")
-	}
-	badTag := `{"name":"v","target":"nope:zz","tagger":"t"}`
-	badTagEnv, _ := marshalEnvelopeRaw("tag@1", badTag)
-	if _, err := (&Tag{}).Deserialize(badTagEnv); err == nil {
-		t.Fatal("tag with invalid target hash must error")
-	}
-}
-
-// marshalEnvelopeRaw builds an envelope with a literal JSON payload.
-func marshalEnvelopeRaw(typeName, jsonPayload string) ([]byte, error) {
-	return marshalEnvelope(typeName, []byte(jsonPayload))
-}
-
 // --- Versioned type names (object-versioning §6) ---
 
 func TestVersionedTypeNames(t *testing.T) {
@@ -410,7 +281,7 @@ func TestResolveAnyUnknownType(t *testing.T) {
 // --- parseType ---
 
 func TestParseType(t *testing.T) {
-	ser, err := (&Blob{Data: []byte("x")}).Serialize()
+	ser, err := marshalEnvelope("blob@1", []byte(`{"data":"eA=="}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,4 +536,14 @@ func mustHash(t *testing.T, s string) cas.Hash {
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// marshalEnvelope builds a self-describing envelope over payload bytes
+// (test helper: production serialization is the cas Store codec).
+func marshalEnvelope(typeName string, payload []byte) ([]byte, error) {
+	env := map[string]string{
+		"type": typeName,
+		"data": base64.StdEncoding.EncodeToString(payload),
+	}
+	return json.Marshal(env)
 }

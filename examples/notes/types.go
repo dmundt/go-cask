@@ -15,7 +15,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -86,22 +85,6 @@ func (n *Note) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (n *Note) Serialize() ([]byte, error) {
-	return marshalEnvelope(n.Type(), n)
-}
-
-func (n *Note) Deserialize(data []byte) (*Note, error) {
-	payload, err := envelopePayload(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Note
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, err
-	}
-	return &v, nil
-}
-
 // Tag is a leaf object a note references.
 type Tag struct {
 	Name string `json:"name"`
@@ -109,20 +92,6 @@ type Tag struct {
 
 func (t *Tag) Type() string           { return typeTag }
 func (t *Tag) References() []cas.Hash { return nil }
-func (t *Tag) Serialize() ([]byte, error) {
-	return marshalEnvelope(t.Type(), t)
-}
-func (t *Tag) Deserialize(data []byte) (*Tag, error) {
-	payload, err := envelopePayload(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Tag
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, err
-	}
-	return &v, nil
-}
 
 // Attachment is a large blob, loaded lazily on access.
 type Attachment struct {
@@ -131,20 +100,6 @@ type Attachment struct {
 
 func (a *Attachment) Type() string           { return typeAttachment }
 func (a *Attachment) References() []cas.Hash { return nil }
-func (a *Attachment) Serialize() ([]byte, error) {
-	return marshalEnvelope(a.Type(), a)
-}
-func (a *Attachment) Deserialize(data []byte) (*Attachment, error) {
-	payload, err := envelopePayload(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Attachment
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, err
-	}
-	return &v, nil
-}
 
 func hashStrings(hashes []cas.Hash) []string {
 	out := make([]string, 0, len(hashes))
@@ -164,35 +119,6 @@ func parseHashes(strs []string) ([]cas.Hash, error) {
 		out = append(out, h)
 	}
 	return out, nil
-}
-
-// envelope is the self-describing storage form (cas-core §8 decision 1).
-type envelope struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
-}
-
-func marshalEnvelope(typeName string, v any) ([]byte, error) {
-	payload, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(envelope{Type: typeName, Data: base64.StdEncoding.EncodeToString(payload)})
-}
-
-func envelopePayload(data []byte) ([]byte, error) {
-	var env envelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		return nil, fmt.Errorf("%w: not a valid object envelope", cas.ErrUnknownType)
-	}
-	if env.Type == "" {
-		return nil, fmt.Errorf("%w: envelope missing type", cas.ErrUnknownType)
-	}
-	payload, err := base64.StdEncoding.DecodeString(env.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: envelope data is not base64", cas.ErrUnknownType)
-	}
-	return payload, nil
 }
 
 // parseType extracts the unversioned type name ("note", "tag", ...).

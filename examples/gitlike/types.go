@@ -15,7 +15,6 @@
 package gitlike
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -43,25 +42,7 @@ func (b *Blob) Type() string { return TypeBlob }
 // References returns nil — a blob is a leaf.
 func (b *Blob) References() []cas.Hash { return nil }
 
-// Serialize returns the self-describing envelope for the blob.
-func (b *Blob) Serialize() ([]byte, error) {
-	// json.Marshal cannot fail here: Blob holds only a []byte field.
-	payload, _ := json.Marshal(b)
-	return marshalEnvelope(b.Type(), payload)
-}
-
 // Deserialize parses the envelope and returns the blob.
-func (b *Blob) Deserialize(data []byte) (*Blob, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Blob
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, fmt.Errorf("gitlike: decode blob: %w", err)
-	}
-	return &v, nil
-}
 
 // TreeEntry is one entry in a Tree. It is an entry, not an object itself;
 // Hash references the stored object for Name.
@@ -125,25 +106,7 @@ func (t *Tree) References() []cas.Hash {
 	return refs
 }
 
-// Serialize returns the self-describing envelope for the tree.
-func (t *Tree) Serialize() ([]byte, error) {
-	// json.Marshal cannot fail here: Tree serializes via plain struct fields.
-	payload, _ := json.Marshal(t)
-	return marshalEnvelope(t.Type(), payload)
-}
-
 // Deserialize parses the envelope and returns the tree.
-func (t *Tree) Deserialize(data []byte) (*Tree, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Tree
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, fmt.Errorf("gitlike: decode tree: %w", err)
-	}
-	return &v, nil
-}
 
 // Commit points at a tree (and optionally a parent commit); nil Parent marks
 // a root commit.
@@ -220,25 +183,7 @@ func (c *Commit) References() []cas.Hash {
 	return refs
 }
 
-// Serialize returns the self-describing envelope for the commit.
-func (c *Commit) Serialize() ([]byte, error) {
-	// json.Marshal cannot fail here: Commit serializes via plain struct fields.
-	payload, _ := json.Marshal(c)
-	return marshalEnvelope(c.Type(), payload)
-}
-
 // Deserialize parses the envelope and returns the commit.
-func (c *Commit) Deserialize(data []byte) (*Commit, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Commit
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, fmt.Errorf("gitlike: decode commit: %w", err)
-	}
-	return &v, nil
-}
 
 // Tag names a target object (typically a commit).
 type Tag struct {
@@ -296,53 +241,13 @@ func (g *Tag) References() []cas.Hash {
 	return []cas.Hash{g.Target}
 }
 
-// Serialize returns the self-describing envelope for the tag.
-func (g *Tag) Serialize() ([]byte, error) {
-	// json.Marshal cannot fail here: Tag serializes via plain struct fields.
-	payload, _ := json.Marshal(g)
-	return marshalEnvelope(g.Type(), payload)
-}
-
 // Deserialize parses the envelope and returns the tag.
-func (g *Tag) Deserialize(data []byte) (*Tag, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return nil, err
-	}
-	var v Tag
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return nil, fmt.Errorf("gitlike: decode tag: %w", err)
-	}
-	return &v, nil
-}
 
 // envelope is the self-describing storage form (cas-core §8 decision 1):
 // {"type": "<type>@<major>", "data": "<base64 payload>"}.
 type envelope struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
-}
-
-// marshalEnvelope wraps a serialized payload in the self-describing envelope.
-func marshalEnvelope(typeName string, payload []byte) ([]byte, error) {
-	return json.Marshal(envelope{Type: typeName, Data: base64.StdEncoding.EncodeToString(payload)})
-}
-
-// unmarshalEnvelope parses the envelope and returns the versioned type name
-// and the base64-decoded payload.
-func unmarshalEnvelope(data []byte) (string, []byte, error) {
-	var env envelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		return "", nil, fmt.Errorf("gitlike: %w: not a valid object envelope", cas.ErrUnknownType)
-	}
-	if env.Type == "" {
-		return "", nil, fmt.Errorf("gitlike: %w: envelope missing type", cas.ErrUnknownType)
-	}
-	payload, err := base64.StdEncoding.DecodeString(env.Data)
-	if err != nil {
-		return "", nil, fmt.Errorf("gitlike: %w: envelope data is not base64", cas.ErrUnknownType)
-	}
-	return env.Type, payload, nil
 }
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a

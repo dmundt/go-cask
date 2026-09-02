@@ -43,18 +43,6 @@ func (a *Artifact) Type() string { return "artifact@1" }
 
 func (a *Artifact) References() []cas.Hash { return nil }
 
-func (a *Artifact) Serialize() ([]byte, error) {
-	return marshalEnvelope(a.Type(), gzipJSON(a))
-}
-
-func (a *Artifact) Deserialize(data []byte) (*Artifact, error) {
-	payload, err := envelopePayload(data)
-	if err != nil {
-		return nil, err
-	}
-	return gunzipJSON[Artifact](payload)
-}
-
 // Manifest names the current artifact(s) of a build target. GC keeps
 // everything reachable from manifests and reclaims replaced artifacts.
 type Manifest struct {
@@ -96,18 +84,6 @@ func (m *Manifest) UnmarshalJSON(data []byte) error {
 		m.Artifacts = append(m.Artifacts, h)
 	}
 	return nil
-}
-
-func (m *Manifest) Serialize() ([]byte, error) {
-	return marshalEnvelope(m.Type(), gzipJSON(m))
-}
-
-func (m *Manifest) Deserialize(data []byte) (*Manifest, error) {
-	payload, err := envelopePayload(data)
-	if err != nil {
-		return nil, err
-	}
-	return gunzipJSON[Manifest](payload)
 }
 
 // gzipJSON compresses the JSON encoding of v (deterministic output: fixed
