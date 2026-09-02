@@ -1,7 +1,7 @@
 ---
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v4
+version: v5
 ---
 
 # Viewer Design — go-cask
@@ -140,15 +140,13 @@ base                  # <html> shell: <head> (htmx script), <body>, nav
 │   ├── stat-card     # partial: one big number + label (an htmx fragment)
 │   ├── stats-panel   # partial: per-algorithm breakdown (OOB-swappable)
 │   ├── sample-table  # partial: recent/sample objects (also a fragment)
-│   └── quick-nav     # partial: Objects · Stats · Verify · GC
+│   └── quick-nav     # partial: Objects · Verify · GC
 ├── login             # full page, standalone
 ├── objects           # page: table of all objects + filters
 │   └── object-row    # partial: one row per object (also an htmx fragment)
 ├── object            # page: detail for one hash
 │   ├── object-meta   # partial: dl of hash/type/size/algorithm
 │   └── hexdump       # partial: raw bytes as hex + ASCII (lazy-loaded)
-├── stats             # page: full statistics (the dashboard's "see all")
-│   └── stats-panel   # partial: the numbers table (shared with dashboard)
 ├── fragments         # htmx fragment responses reuse the same partials
 └── _error            # partial: minimal error block (401/403 empty per §3)
 ```
@@ -159,7 +157,6 @@ flowchart TB
     BASE --> LOGIN["login"]
     BASE --> OBJS["objects"]
     BASE --> OBJ["object"]
-    BASE --> STATS["stats"]
     DASH --> STATCARD["stat-card"]
     DASH --> STATSP["stats-panel — shared, OOB-swappable"]
     DASH --> SAMPLE["sample-table"]
@@ -167,7 +164,6 @@ flowchart TB
     OBJS --> OROW["object-row — also an htmx fragment"]
     OBJ --> OMETA["object-meta"]
     OBJ --> HEX["hexdump — lazy-loaded"]
-    STATS --> STATSP
     FRAG["htmx fragment responses reuse the same partials"] -.-> OROW
     FRAG -.-> STATSP
 ```
@@ -175,8 +171,8 @@ flowchart TB
 Composition uses `{{define}}` / `{{template}}` / `{{block}}` (coding-
 guidelines §5: the latest template feature set). A **fragment is just a named
 template rendered standalone** — the same partial serves both full-page
-composition and htmx swaps (e.g. `stats-panel` appears on the dashboard, on
-`/viewer/stats`, and as an OOB-swap target).
+composition and htmx swaps (e.g. `stats-panel` appears on the dashboard
+and as an OOB-swap target).
 
 ### Conventions
 
@@ -252,7 +248,6 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 | `/viewer/objects/{hash}/raw`      | GET    | object    | raw serialized bytes + `hexdump` (lazy-loaded `<pre>`)             | viewer  |
 | `/viewer/objects/{hash}/verify`   | POST   | fragment  | integrity check (recompute hash) → result fragment                 | operator|
 | `/viewer/objects/{hash}/delete`   | POST   | fragment  | delete object (hx-confirm) → updated list                          | admin   |
-| `/viewer/stats`                   | GET    | stats     | full statistics page (dashboard's "see all")                       | viewer  |
 | `/viewer/gc`                      | POST   | fragment  | mark-and-sweep GC with polling progress                            | admin   |
 
 `{hash}` values are validated with `ParseHash` before any storage access.
@@ -275,22 +270,23 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 │                               │ ef56b00c (tree)     204 B        │
 │                               │ [see all objects →]             │
 ├───────────────────────────────┴──────────────────────────────────┤
-│ Objects · Stats · Verify · GC                                  │
+│ Objects · Verify · GC                                            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 - **Stat cards** (`stat-card`): total objects, total size, algorithms in use —
   the three numbers that answer *"what's in this store?"* at a glance.
 - **Algorithm breakdown** (`stats-panel`): per-algorithm object counts and
-  sizes (from `RawStore.Stats`); a "see all" link to `/viewer/stats`.
+  sizes (from `RawStore.Stats`); the dashboard is the stats view, with the
+  panel refreshed out-of-band.
 - **Sample objects** (`sample-table`): the first N objects from
   `RawStore.List` (all algorithms), so the dashboard shows real content, not
   just numbers. Rows show `<shorthash> (<type>)`; every row links to its
   detail page via the full hash.
 - **Search** (prominent, top-right): active search that swaps the object
   table — the primary entry point for "find this hash".
-- **Quick nav**: one line of links — Objects, Stats, Verify, GC — so
-  every tool is one click from the hub.
+- **Quick nav**: one line of links — Objects, Verify, GC — so every tool
+  is one click from the hub.
 
 ### Objects
 
@@ -373,7 +369,7 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 - [ ] HTML rendered only by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [ ] Full pages and htmx fragments share the same partials (incl.
-      `stats-panel` on dashboard, stats page, and OOB swaps)
+      `stats-panel` on the dashboard and as OOB swaps)
 - [ ] Objects viewable: 8-char short-hash links (full hash on the detail
       page and in link targets), algorithm, type, size; generic lists show
       `<shorthash> (<type>)`

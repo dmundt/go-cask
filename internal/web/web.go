@@ -73,7 +73,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))
 	mux.HandleFunc("POST /viewer/objects/{hash}/verify", s.require(RoleOperator, s.verifyFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleAdmin, s.deleteFragment))
-	mux.HandleFunc("GET /viewer/stats", s.require(RoleViewer, s.statsPage))
 	mux.HandleFunc("GET /viewer/gc", s.require(RoleAdmin, s.gcPage))
 	mux.HandleFunc("POST /viewer/gc", s.require(RoleAdmin, s.gcFragment))
 	return mux
@@ -302,29 +301,6 @@ func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("viewer audit", "action", "object.delete", "hash", h)
 	fmt.Fprint(w, "<p class=\"result\">deleted</p>")
-}
-
-// --- stats ---
-
-func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.Stats(r.Context())
-	if err != nil {
-		http.Error(w, "stats failed", http.StatusInternalServerError)
-		return
-	}
-	type row struct {
-		Algo  string
-		Count int64
-	}
-	var rows []row
-	for a, n := range st.AlgorithmCounts {
-		rows = append(rows, row{a, int64(n)})
-	}
-	s.render(w, "stats", struct {
-		ObjectCount int64
-		TotalSize   int64
-		Rows        []row
-	}{st.ObjectCount, st.TotalSize, rows})
 }
 
 // --- gc ---
