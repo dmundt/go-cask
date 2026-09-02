@@ -60,6 +60,11 @@ The project is pre-release; the first public tag will be `v1.0.0`
 - GitHub Actions bumped to Node-24 majors (`checkout@v5`, `setup-go@v6`);
   module caching disabled (std-lib-only module has no `go.sum`).
 
+- `internal/storage` removed: `cmd/cask` and the viewer use `cas.FSRawStore`
+  directly (the service layer had become a passthrough).
+- CLI: the `cat` alias is gone — `get` without `-o` prints to stdout
+  (cli spec v7).
+
 ### Fixed
 
 - CI steps that assumed a `go.sum` and a single-package `./cas/...`

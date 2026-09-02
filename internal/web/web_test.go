@@ -11,18 +11,17 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/internal/storage"
 )
 
 const testStartupToken = "AAAA-BBBB-CCCC"
 
 func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	t.Helper()
-	st, err := storage.New(context.Background(), storage.Config{Dir: t.TempDir()})
+	raw, err := cas.NewFSRawStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(st, Config{
+	srv, err := New(raw, Config{
 		StartupToken: testStartupToken,
 		RoleTokens: map[string]string{
 			"viewer-tok":   RoleViewer,
@@ -147,12 +146,15 @@ func TestCSRFEnforced(t *testing.T) {
 
 func TestVerifyAndDelete(t *testing.T) {
 	ctx := context.Background()
-	st, _ := storage.New(ctx, storage.Config{Dir: t.TempDir()})
-	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := st.Put(ctx, h, strings.NewReader("view me")); err != nil {
+	raw, err := cas.NewFSRawStore(t.TempDir())
+	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(st, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
+	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	if err := raw.Put(ctx, h, strings.NewReader("view me")); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
