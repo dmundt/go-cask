@@ -1,7 +1,7 @@
 ---
 title: Copilot Instructions — go-cask
 description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in .github/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v2
+version: v3
 ---
 
 # Copilot Instructions — go-cask (CASK: Content Addressed Storage Kit)
@@ -58,6 +58,10 @@ Related specs that also constrain work in this repo:
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
+- `.github/instructions/viewer-design-brief.instructions.md` — the design
+  brief for the viewer's next iteration (OpenDesign input): structure-only
+  step 1, no JS/CSS; pages, components, and htmx interaction map aligned to
+  the cas model.
 - `.github/instructions/examples.instructions.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
   the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
