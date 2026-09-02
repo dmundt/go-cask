@@ -12,6 +12,11 @@ package cas
 // return a versioned type name "<type>@<major>" (e.g. "commit@1") so several
 // object-model majors can coexist in one store and the version travels with
 // the bytes.
+//
+// The payload encoding Serialize produces MUST match the Codec[T] the Store
+// is configured with: Store.GetTyped decodes the payload with that codec. A
+// non-JSON codec therefore requires Serialize to use the same encoding
+// (the codec is the single serialization authority on the read side).
 type Object[T any] interface {
 	Type() string       // versioned type name, e.g. "blob@1"
 	References() []Hash // hashes this object points to; may be nil
