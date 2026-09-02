@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v4
+version: v5
 ---
 
 # Backend Architecture — go-cask
@@ -66,6 +66,9 @@ go-cask/
 - There is no `internal/api`, no `internal/auth` bearer-token layer, and no
   `client/` SDK: the network JSON API was removed so the kit stays
   single-host (§1). HTTP-exposure patterns live in `examples/api`.
+- **No product → example imports.** `cas/`, `internal/` and `cmd/` MUST NOT
+  import `examples/` packages — examples are downstream consumers of the
+  public surface, never upstream dependencies (coding-guidelines §9).
 
 ---
 

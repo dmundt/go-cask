@@ -276,7 +276,7 @@ the pattern needs no `internal/` and no SDK.
 
 **Goal.** A runnable application embedding the technical viewer per
 `viewer-design.instructions.md`: a dashboard (stat cards, algorithm table,
-sample objects, search), object detail (metadata, references, hexdump), and
+sample objects, search), object detail (metadata, hexdump), and
 stats — built with nested Go templates + htmx, no CSS/JS, with the security
 model from `viewer-security.instructions.md`.
 
@@ -311,8 +311,8 @@ examples/viewer/
   side-effect free.
 
 **Acceptance criteria.** Login with the startup token reaches the dashboard;
-search returns fragments without full reloads; detail pages show references
-and a lazy hexdump; a viewer-role session cannot delete; no CSS or hand-written
+search returns fragments without full reloads; detail pages show a lazy
+hexdump; a viewer-role session cannot delete; no CSS or hand-written
 JS anywhere in the example.
 
 ---

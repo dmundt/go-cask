@@ -1,7 +1,7 @@
 ---
 title: Viewer Design — go-cask
-description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, references, blobs, stats).
-version: v3
+description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
+version: v4
 ---
 
 # Viewer Design — go-cask
@@ -10,7 +10,7 @@ version: v3
 > the **developer or admin** who needs to browse the CAS and understand its
 > internals. This document defines **how** it is built (hypermedia-driven,
 > nested Go templates + htmx only, raw HTML) and **what** it shows: a
-> **dashboard** as the hub, and drill-downs into objects, references, blobs,
+> **dashboard** as the hub, and drill-downs into objects, blobs,
 > and storage statistics — at a very technical, low level.
 >
 > The viewer MUST be **simple, elegant, and usable**. Elegance here does not
@@ -23,8 +23,8 @@ version: v3
 > - `.github/instructions/coding-guidelines.instructions.md` — §4 (no
 >   CSS/JS), §5 (html/template + htmx), §6 (raw HTML), §10 (viewer boundary).
 > - `.github/instructions/cas-core.instructions.md` — the data model
->   the viewer displays (`Hash`, `Object[T]`, `References()`, `Resolver`,
->   `RawStore.Stats`, `Verify`, `GC`).
+>   the viewer displays (`Hash`, `Object[T]`, `RawStore.Stats`, `Verify`,
+>   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
 >   hypermedia-driven application philosophy this viewer implements.
 
@@ -40,8 +40,8 @@ The viewer is the developer/admin's window into the CAS:
 - **hub**: a **dashboard** (the landing page) that answers the top-level
   questions at a glance — storage stats, algorithm breakdown, a sample of
   objects, and search — with one click to every detail
-- **drill-down paths**: dashboard → object list → object detail → references
-  / raw blob / graph
+- **drill-down paths**: dashboard → object list → object detail → raw
+  blob / hexdump
 - **aesthetic**: simple, elegant, usable — dense but scannable, plain
   semantic HTML, no decoration
 
@@ -77,9 +77,9 @@ via a new hash), JSON/data APIs, client-side state, charting libraries.
    Every screen answers *"what am I looking at, and where do I go next?"*
 7. **Information hierarchy.** Overview → list → detail → raw. Each page has
    one purpose; detail pages start with a short summary block and then go
-   deeper (metadata → references → bytes).
-8. **No dead ends.** Every hash is a link; every reference is navigable;
-   every panel has an obvious "see all" target. The user can always get back
+   deeper (metadata → bytes).
+8. **No dead ends.** Every hash is a link; every panel has an obvious
+   "see all" target. The user can always get back
    to the dashboard.
 9. **Elegance without CSS.** Clean, predictable layout from semantic HTML
    alone: consistent tables with `<caption>`/`<th scope>`, `<dl>` for
@@ -96,8 +96,8 @@ via a new hash), JSON/data APIs, client-side state, charting libraries.
 All requirements of `.github/instructions/viewer-security.instructions.md`
 apply verbatim. The design-relevant consequences:
 
-- **Secure by default**: the viewer SHALL be disabled unless explicitly
-  enabled; config key `viewer:`.
+- **Runs only when invoked**: `cask web` starts the viewer and no other
+  subcommand does; there is no `enabled` switch (viewer-security §3).
 - **Localhost only** by default; non-loopback bind requires HTTPS or
   `allow_insecure_bind: true` plus a startup warning.
 - **Authentication**: startup admin token + session cookie (HttpOnly,
@@ -136,16 +136,13 @@ base                  # <html> shell: <head> (htmx script), <body>, nav
 │   ├── stat-card     # partial: one big number + label (an htmx fragment)
 │   ├── stats-panel   # partial: per-algorithm breakdown (OOB-swappable)
 │   ├── sample-table  # partial: recent/sample objects (also a fragment)
-│   └── quick-nav     # partial: Objects · Stats · Verify · GC · Graph
+│   └── quick-nav     # partial: Objects · Stats · Verify · GC
 ├── login             # full page, standalone
 ├── objects           # page: table of all objects + filters
 │   └── object-row    # partial: one row per object (also an htmx fragment)
 ├── object            # page: detail for one hash
 │   ├── object-meta   # partial: dl of hash/type/size/algorithm
-│   ├── ref-list      # partial: References() table (also a fragment)
 │   └── hexdump       # partial: raw bytes as hex + ASCII (lazy-loaded)
-├── graph             # page: reachable object graph from a hash
-│   └── graph-node    # partial: one node + its edges
 ├── stats             # page: full statistics (the dashboard's "see all")
 │   └── stats-panel   # partial: the numbers table (shared with dashboard)
 ├── fragments         # htmx fragment responses reuse the same partials
@@ -158,7 +155,6 @@ flowchart TB
     BASE --> LOGIN["login"]
     BASE --> OBJS["objects"]
     BASE --> OBJ["object"]
-    BASE --> GRAPH["graph"]
     BASE --> STATS["stats"]
     DASH --> STATCARD["stat-card"]
     DASH --> STATSP["stats-panel — shared, OOB-swappable"]
@@ -166,12 +162,9 @@ flowchart TB
     DASH --> QNAV["quick-nav"]
     OBJS --> OROW["object-row — also an htmx fragment"]
     OBJ --> OMETA["object-meta"]
-    OBJ --> REFL["ref-list — also an htmx fragment"]
     OBJ --> HEX["hexdump — lazy-loaded"]
-    GRAPH --> GNODE["graph-node"]
     STATS --> STATSP
     FRAG["htmx fragment responses reuse the same partials"] -.-> OROW
-    FRAG -.-> REFL
     FRAG -.-> STATSP
 ```
 
@@ -191,8 +184,7 @@ composition and htmx swaps (e.g. `stats-panel` appears on the dashboard, on
   `shortHash` (first 8 hex chars of the digest — the UI display form),
   `hashWithType` (`<shorthash> (<type>)`, e.g. `9f86d081 (blob)` — for
   generic lists), `humanSize` (KB/MB for overviews), `byteSize` (exact bytes
-  for details), `hexdump` (format bytes), `refType` (resolve `Type()` for a
-  hash when known)
+  for details), `hexdump` (format bytes)
 - raw HTML: semantic elements (`<table>` with `<caption>`/`<th scope>`,
   `<dl>`, `<pre>`, `<nav>`, `<form>`) — no `<div>` soup, no inline `style`
 
@@ -206,7 +198,6 @@ swaps):
   <td>{{.Hash.Algorithm}}</td>
   <td>{{.Type}}</td>
   <td>{{byteSize .Size}}</td>
-  <td>{{len .References}}</td>
 </tr>
 {{end}}
 ```
@@ -253,11 +244,10 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 | `/viewer/`                        | GET    | dashboard | **landing hub**: stat cards, algorithm table, sample objects, search, quick nav | viewer |
 | `/viewer/dashboard`               | GET    | fragment  | dashboard panels (stats + sample) for refresh via htmx             | viewer  |
 | `/viewer/objects`                 | GET    | objects   | full object list: filter box + table (also search fragment target) | viewer  |
-| `/viewer/objects/{hash}`          | GET    | object    | object detail: meta + references + actions                         | viewer  |
+| `/viewer/objects/{hash}`          | GET    | object    | object detail: meta + actions                                     | viewer  |
 | `/viewer/objects/{hash}/raw`      | GET    | object    | raw serialized bytes + `hexdump` (lazy-loaded `<pre>`)             | viewer  |
 | `/viewer/objects/{hash}/verify`   | POST   | fragment  | integrity check (recompute hash) → result fragment                 | operator|
 | `/viewer/objects/{hash}/delete`   | POST   | fragment  | delete object (hx-confirm) → updated list                          | admin   |
-| `/viewer/graph/{hash}`            | GET    | graph     | reachable object graph: nodes (type+hash) and reference edges      | viewer  |
 | `/viewer/stats`                   | GET    | stats     | full statistics page (dashboard's "see all")                       | viewer  |
 | `/viewer/gc`                      | POST   | fragment  | mark-and-sweep GC with polling progress                            | admin   |
 
@@ -281,7 +271,7 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 │                               │ ef56b00c (tree)     204 B        │
 │                               │ [see all objects →]             │
 ├───────────────────────────────┴──────────────────────────────────┤
-│ Objects · Stats · Verify · GC · Graph                            │
+│ Objects · Stats · Verify · GC                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -295,7 +285,7 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
   detail page via the full hash.
 - **Search** (prominent, top-right): active search that swaps the object
   table — the primary entry point for "find this hash".
-- **Quick nav**: one line of links — Objects, Stats, Verify, GC, Graph — so
+- **Quick nav**: one line of links — Objects, Stats, Verify, GC — so
   every tool is one click from the hub.
 
 ### Objects
@@ -309,24 +299,20 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
   e.g. `9f86d081 (blob)`) so the object type is visible at a glance; tables
   that already have a dedicated type column (e.g. the objects list) may show
   the plain short hash.
-- List columns: hash (short + type), algorithm, `Type()`, size, reference
-  count; filter by algorithm and by hash/type substring via active search.
+- List columns: hash (short + type), algorithm, `Type()`, size; filter by
+  algorithm and by hash/type substring via active search.
 - Detail page order (hierarchy): summary (`object-meta` `<dl>`: full hash,
-  algorithm, type, exact size) → references (`ref-list`) → actions (verify /
-  delete per role) → raw bytes (`hexdump`, lazy).
+  algorithm, type, exact size) → actions (verify / delete per role) → raw
+  bytes (`hexdump`, lazy).
 
-### References
+### References are out of scope
 
-- Each object's `References()` rendered as a table of `<shorthash> (<type>)`
-  links (per the hash display rule); every hash links to its own detail page
-  via the full hash.
-- Target type is discovered lazily via `Resolver.ResolveAny` (per the
-  architecture doc's type-resolution design) and shown as the `(type)` label;
-  a **missing/unresolvable reference is flagged explicitly** (broken-link
-  diagnostics are valuable at this level).
-- `graph/{hash}` walks the reachable graph (commit → tree → entries → blobs,
-  tag → target) as nested HTML with real links — pure hypermedia traversal of
-  the object graph.
+- The viewer operates at the **byte layer** and MUST NOT interpret typed
+  references: resolving `References()` requires an app object model, and the
+  product ships none — `internal/` and `cas/` MUST NOT import `examples/`
+  (coding-guidelines §9). Reference graphs belong to app layers
+  (`examples/gitlike` demonstrates them); the viewer shows objects, bytes,
+  and integrity, not typed structure.
 
 ### Blobs
 
@@ -365,6 +351,8 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
   concatenation in Go (coding-guidelines §6).
 - **No object editing** — objects are immutable; the viewer only inspects,
   verifies, and (admin) deletes/GCs.
+- **No typed references/graph** — the viewer is a byte-layer tool (§7:
+  "References are out of scope").
 
 ---
 
@@ -383,10 +371,10 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 - [ ] Full pages and htmx fragments share the same partials (incl.
       `stats-panel` on dashboard, stats page, and OOB swaps)
 - [ ] Objects viewable: 8-char short-hash links (full hash on the detail
-      page and in link targets), algorithm, type, size, references; generic
-      lists show `<shorthash> (<type>)`
-- [ ] References navigable: every reference hash is a working link; missing
-      references flagged
+      page and in link targets), algorithm, type, size; generic lists show
+      `<shorthash> (<type>)`
+- [ ] No typed references/graph anywhere in `internal/web/` (byte-layer
+      viewer; §7)
 - [ ] Blobs viewable: raw bytes + hex dump, lazy-loaded for large objects
 - [ ] Mutations (verify/delete/GC) are POST + CSRF + role-checked +
       audit-logged; GET endpoints are side-effect free
