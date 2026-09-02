@@ -558,10 +558,6 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
   error channel); `PreloadRecursive(ctx, h, depth)` preloads the object graph.
 - `CacheStats()` (hit rate, size, loads, evicts), `Evict(h)`, `Clear()`,
   `Warmup(ctx, hashes)`.
-- `NewCachedStoreWithCapacity(store, max)` bounds the memoized set: once
-  `max` entries are cached, each new entry FIFO-evicts the oldest (evicted
-  proxies reload on demand — correctness unaffected); `NewCachedStore`
-  remains unbounded.
 
 **`LRUCache[T]`** — size-bounded cache:
 
