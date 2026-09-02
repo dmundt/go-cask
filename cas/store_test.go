@@ -22,24 +22,6 @@ func (n testNote) Type() string { return "note@1" }
 func (n testNote) References() []Hash {
 	return nil
 }
-func (n testNote) Serialize() ([]byte, error) {
-	payload, err := json.Marshal(n)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(envelope{Type: n.Type(), Data: base64.StdEncoding.EncodeToString(payload)})
-}
-func (n testNote) Deserialize(data []byte) (testNote, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return testNote{}, err
-	}
-	var v testNote
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return testNote{}, err
-	}
-	return v, nil
-}
 
 // testNode references other nodes by hash — exercises References-driven
 // traversal and cross-object storage. It carries custom JSON methods so the
@@ -85,25 +67,6 @@ func (n *testNode) UnmarshalJSON(data []byte) error {
 		n.Refs = append(n.Refs, h)
 	}
 	return nil
-}
-
-func (n testNode) Serialize() ([]byte, error) {
-	payload, err := json.Marshal(n)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(envelope{Type: n.Type(), Data: base64.StdEncoding.EncodeToString(payload)})
-}
-func (n testNode) Deserialize(data []byte) (testNode, error) {
-	_, payload, err := unmarshalEnvelope(data)
-	if err != nil {
-		return testNode{}, err
-	}
-	var v testNode
-	if err := json.Unmarshal(payload, &v); err != nil {
-		return testNode{}, err
-	}
-	return v, nil
 }
 
 // --- Shared backend contract: the CAS laws over both backends ---
@@ -396,22 +359,6 @@ func TestStoreTypeSafety(t *testing.T) {
 	}
 }
 
-func TestStoreEnvelopeRoundTrip(t *testing.T) {
-	// Object.Deserialize(Serialize(v)) == v (the Object-level contract).
-	n := testNote{Title: "x", Body: "y"}
-	ser, err := n.Serialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	back, err := n.Deserialize(ser)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if back != n {
-		t.Fatalf("Deserialize(Serialize(v)) = %+v, want %+v", back, n)
-	}
-}
-
 func TestNewStoreUnknownAlgorithm(t *testing.T) {
 	_, err := NewStore[testNote](NewMemoryRawStore(), JSONCodec[testNote]{}, "nope")
 	if !errors.Is(err, ErrUnknownAlgorithm) {
@@ -495,8 +442,16 @@ func TestStoreCancelledContext(t *testing.T) {
 }
 
 func TestEnvelopeFormat(t *testing.T) {
-	// The stored form must be exactly the self-describing envelope.
-	data, err := testNote{Title: "t"}.Serialize()
+	// The stored form must be exactly the self-describing envelope, built by
+	// Store.Put from the codec payload (the codec is the serialization
+	// authority — objects no longer serialize themselves).
+	ctx := context.Background()
+	s := newTestStore(t, NewMemoryRawStore())
+	h, err := s.Put(ctx, testNote{Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := s.GetRaw(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}

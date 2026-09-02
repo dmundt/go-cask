@@ -146,27 +146,30 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	}
 }
 
-// errorObject fails every Serialize call.
+// errorObject is a minimal Object[T] used with a failing codec.
 type errorObject struct{}
 
 func (errorObject) Type() string       { return "err@1" }
 func (errorObject) References() []Hash { return nil }
-func (errorObject) Serialize() ([]byte, error) {
-	return nil, errors.New("serialize exploded")
-}
-func (errorObject) Deserialize([]byte) (errorObject, error) { return errorObject{}, nil }
 
-func TestStoreSerializeError(t *testing.T) {
+// failingCodec always fails to encode — the serialization authority is the
+// codec now, so an encode failure must surface from Store.Put/PutDedup.
+type failingCodec[T any] struct{}
+
+func (failingCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode exploded") }
+func (failingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
+
+func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[errorObject]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), failingCodec[errorObject]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Put(ctx, errorObject{}); err == nil {
-		t.Fatal("Put with failing Serialize must error")
+		t.Fatal("Put with failing codec must error")
 	}
 	if _, _, err := s.PutDedup(ctx, errorObject{}); err == nil {
-		t.Fatal("PutDedup with failing Serialize must error")
+		t.Fatal("PutDedup with failing codec must error")
 	}
 }
 
