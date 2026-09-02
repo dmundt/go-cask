@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>go-cask object browser</title>
+  <style>
+    :root { --bg: oklch(98% .005 250); --surface: oklch(100% 0 0); --fg: oklch(22% .02 240); --muted: oklch(50% .018 240); --border: oklch(90% .008 240); --accent: oklch(48% .14 145); --blue: oklch(50% .13 250); --blue-soft: oklch(96% .035 250); --font: 'Segoe UI', Helvetica, system-ui, sans-serif; --mono: 'JetBrains Mono', 'IBM Plex Mono', Consolas, ui-monospace, monospace; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); overflow: hidden; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .mono, code { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .topbar { height: 46px; display: flex; align-items: center; padding: 0 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+    .mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--fg); color: var(--surface); font: 700 9px var(--mono); }
+    .filters { height: 47px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .input, select { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font-size: 12px; }
+    .input { width: 260px; font-family: var(--mono); }
+    select { width: 130px; }
+    .reset { border: 0; background: transparent; color: var(--accent); font-size: 11px; }
+    .workspace { height: calc(100vh - 93px); display: grid; grid-template-columns: minmax(0, 1fr) 360px; background: var(--surface); }
+    .list { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .table-wrap { flex: 1; min-height: 0; overflow: auto; }
+    table { width: 100%; min-width: 700px; border-collapse: collapse; font: 12px var(--mono); }
+    th, td { padding: 8px 13px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--muted); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; }
+    td.right, th.right { text-align: right; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover td { background: color-mix(in oklch, var(--fg) 3%, var(--surface)); }
+    tbody tr.selected td { background: color-mix(in oklch, var(--fg) 10%, var(--surface)); color: var(--fg); }
+    tbody tr.selected .type { color: var(--muted); }
+    tbody tr.selected td:first-child { box-shadow: inset 2px 0 color-mix(in oklch, var(--fg) 55%, transparent); }
+    .type { color: var(--muted); }
+    .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 14px; border-top: 1px solid var(--border); color: var(--muted); font: 11.5px var(--mono); }
+    .pager-controls { display: flex; align-items: center; gap: 5px; }
+    .pager select { width: 68px; height: 27px; font: 11px var(--mono); }
+    .page-button { min-width: 27px; height: 27px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--fg); font: 11px var(--mono); }
+    .page-button:hover:not(:disabled) { background: var(--bg); border-color: var(--fg); }
+    .page-button:disabled { opacity: .4; cursor: not-allowed; }
+    .empty-row td { padding: 42px 13px; text-align: center; color: var(--muted); font-family: var(--font); }
+    .inspector { border-left: 1px solid var(--border); overflow: auto; min-width: 0; }
+    .inspector-head { padding: 13px 14px 11px; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .inspector-head h1 { margin: 0 0 5px; color: var(--muted); font: 700 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .hash { overflow-wrap: anywhere; font: 11.5px/1.5 var(--mono); }
+    .tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
+    .tab { padding: 8px 10px 7px; border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; background: transparent; color: var(--muted); font-size: 12px; }
+    .tab:hover { color: var(--fg); background: color-mix(in oklch, var(--fg) 4%, var(--surface)); }
+    .tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 650; }
+    .pane { display: none; padding: 15px 14px; }
+    .pane.active { display: block; }
+    .section { margin-bottom: 20px; }
+    .section:last-child { margin-bottom: 0; }
+    .section h2 { margin: 0 0 9px; color: var(--muted); font: 700 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    dl { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 5px 10px; margin: 0; }
+    dt { color: var(--muted); font-size: 12px; }
+    dd { margin: 0; overflow-wrap: anywhere; font: 12px var(--mono); }
+    .ref-list { display: grid; gap: 6px; }
+    .ref { display: flex; gap: 7px; align-items: center; font: 11.5px var(--mono); }
+    .ref-kind { padding: 2px 5px; border-radius: 3px; background: var(--blue-soft); color: var(--blue); font: 700 9px var(--font); letter-spacing: .06em; text-transform: uppercase; }
+    pre { margin: 0; overflow: auto; font: 11px/1.7 var(--mono); color: color-mix(in oklch, var(--fg) 85%, var(--muted)); }
+    .empty-detail { color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) { body { overflow: auto; } .filters { overflow-x: auto; } .workspace { height: auto; min-height: calc(100vh - 93px); grid-template-columns: 1fr; } .list { min-height: 440px; } .inspector { border-left: 0; border-top: 1px solid var(--border); } }
+  </style>
+</head>
+<body>
+  <header class="topbar" data-od-id="top-bar"><div class="brand" data-od-id="brand"><span class="mark">CA</span>go-cask</div></header>
+  <form class="filters" data-od-id="filter-bar">
+    <input class="input" id="search" aria-label="Search objects" placeholder="Search digest prefix or type" />
+    <select id="type-filter" aria-label="Object type"><option value="">All types</option><option value="bytes@1">bytes@1</option><option value="json@1">json@1</option><option value="text@1">text@1</option></select>
+    <select id="size-filter" aria-label="Size"><option value="">Any size</option><option value="small">Under 1 KiB</option><option value="medium">1 KiB to 1 MiB</option><option value="large">Over 1 MiB</option></select>
+    <button class="reset" type="reset" data-od-id="reset-filters">Reset</button>
+  </form>
+  <main class="workspace" data-od-id="object-browser">
+    <section class="list">
+      <div class="table-wrap"><table data-od-id="object-table"><thead><tr><th>Hash</th><th>Type</th><th class="right">Size</th><th class="right">Refs</th><th class="right">Written</th></tr></thead><tbody id="object-rows"></tbody></table></div>
+      <footer class="pager" data-od-id="object-pager"><span id="result-count">0 objects</span><div class="pager-controls"><label for="page-size">Rows</label><select id="page-size" aria-label="Rows per page"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="250">250</option></select><button class="page-button" type="button" id="first-page" aria-label="First page">«</button><button class="page-button" type="button" id="previous-page" aria-label="Previous page">‹</button><span id="page-status">Page 1 of 1</span><button class="page-button" type="button" id="next-page" aria-label="Next page">›</button><button class="page-button" type="button" id="last-page" aria-label="Last page">»</button></div></footer>
+    </section>
+    <aside class="inspector" data-od-id="inspector">
+      <header class="inspector-head"><h1>Object</h1><div class="hash" id="detail-hash"></div></header>
+      <nav class="tabs" aria-label="Object detail tabs"><button class="tab active" type="button" role="tab" aria-selected="true" data-tab="metadata">Metadata</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="references">References</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="bytes">Bytes</button></nav>
+      <section class="pane active" id="metadata"><div class="section"><h2>Identity</h2><dl><dt>Algorithm</dt><dd id="detail-algorithm"></dd><dt>Type</dt><dd id="detail-type"></dd></dl></div><div class="section"><h2>Storage</h2><dl><dt>Size</dt><dd id="detail-size"></dd><dt>References</dt><dd id="detail-refs"></dd><dt>Written</dt><dd id="detail-written"></dd></dl></div></section>
+      <section class="pane" id="references"><div class="section"><h2>Referenced by</h2><div class="ref-list" id="referenced-by"></div></div><div class="section"><h2>References out</h2><div class="ref-list" id="references-out"></div></div></section>
+      <section class="pane" id="bytes"><pre id="hexdump"></pre></section>
+    </aside>
+  </main>
+  <script>
+    const store = [];
+    const types = ['bytes@1', 'json@1', 'text@1'];
+    const sizes = ['128 B', '986 B', '2.1 KiB', '48 KiB', '384 KiB', '1.2 MiB'];
+    for (let index = 0; index < 512; index++) {
+      const digest = (index.toString(16).padStart(8, '0') + 'cask' + (index * 2654435761 >>> 0).toString(16).padStart(8, '0')).repeat(4).slice(0, 64);
+      store.push({ hash: 'sha256:' + digest, type: types[index % types.length], size: sizes[index % sizes.length], refs: index % 21, written: index < 24 ? `${index + 1}h ago` : `${Math.floor(index / 24)}d ago` });
+    }
+    let selected = -1; let page = 1;
+    const rows = document.getElementById('object-rows');
+    const search = document.getElementById('search');
+    const typeFilter = document.getElementById('type-filter');
+    const sizeFilter = document.getElementById('size-filter'); const pageSize = document.getElementById('page-size');
+    const shortHash = hash => hash.slice(0, 19) + '...';
+    const byteSize = value => { const [n, unit] = value.split(' '); return Number(n) * ({ B: 1, KiB: 1024, MiB: 1048576 }[unit] || 0); };
+    const hexPreview = hash => { const seed = hash.slice(hash.indexOf(':') + 1); return Array.from({ length: 8 }, (_, row) => { const chunk = Array.from({ length: 16 }, (_, index) => parseInt(seed.slice(((row * 16 + index) * 2) % seed.length, ((row * 16 + index) * 2) % seed.length + 2), 16)); return `${(row * 16).toString(16).padStart(8, '0')}  ${chunk.map(byte => byte.toString(16).padStart(2, '0')).join(' ')}  |${chunk.map(byte => byte > 31 && byte < 127 ? String.fromCharCode(byte) : '.').join('')}|`; }).join('\n'); };
+    function ref(direction, kind, hash) { const item = document.createElement('div'); item.className = 'ref'; item.innerHTML = `<span>${direction}</span><span class="ref-kind">${kind}</span><code>${hash}</code>`; return item; }
+    function clearDetail() { ['detail-hash', 'detail-algorithm', 'detail-type', 'detail-size', 'detail-refs', 'detail-written', 'hexdump'].forEach(id => document.getElementById(id).textContent = ''); document.getElementById('referenced-by').replaceChildren(); document.getElementById('references-out').replaceChildren(); }
+    function showDetail(object) { if (!object) return clearDetail(); document.getElementById('detail-hash').textContent = object.hash; document.getElementById('detail-algorithm').textContent = 'sha256'; document.getElementById('detail-type').textContent = object.type; document.getElementById('detail-size').textContent = object.size; document.getElementById('detail-refs').textContent = object.refs; document.getElementById('detail-written').textContent = object.written; document.getElementById('hexdump').textContent = hexPreview(object.hash); const inbound = document.getElementById('referenced-by'); inbound.replaceChildren(...Array.from({ length: Math.min(object.refs, 5) }, (_, i) => ref('<-','manifest',`b3:cc576cd1f637b${10 + i}...`))); if (!inbound.childElementCount) inbound.textContent = 'No objects reference this object.'; document.getElementById('references-out').replaceChildren(ref('->','blob',`b3:${object.hash.slice(7, 23)}...`)); }
+    function matches() { const query = search.value.trim().toLowerCase(); const type = typeFilter.value; const bucket = sizeFilter.value; return store.filter(object => (!query || object.hash.includes(query) || object.type.includes(query)) && (!type || object.type === type) && (!bucket || bucket === 'small' && byteSize(object.size) < 1024 || bucket === 'medium' && byteSize(object.size) >= 1024 && byteSize(object.size) <= 1048576 || bucket === 'large' && byteSize(object.size) > 1048576)); }
+    function render() { const visible = matches(); const size = Number(pageSize.value); const pages = Math.max(1, Math.ceil(visible.length / size)); page = Math.min(page, pages); const start = (page - 1) * size; const shown = visible.slice(start, start + size); rows.replaceChildren(); if (!visible.length) { selected = -1; showDetail(null); const row = document.createElement('tr'); row.className = 'empty-row'; row.innerHTML = '<td colspan="5">No objects match the current filters.</td>'; rows.append(row); } else { shown.forEach(object => { const row = document.createElement('tr'); row.className = store.indexOf(object) === selected ? 'selected' : ''; row.innerHTML = `<td>${shortHash(object.hash)}</td><td class="type">${object.type}</td><td class="right">${object.size}</td><td class="right">${object.refs}</td><td class="right">${object.written}</td>`; row.addEventListener('click', () => { selected = store.indexOf(object); showDetail(object); render(); }); rows.append(row); }); } document.getElementById('result-count').textContent = visible.length ? `${start + 1}-${Math.min(start + size, visible.length)} of ${visible.length.toLocaleString()} objects` : '0 objects'; document.getElementById('page-status').textContent = `Page ${page} of ${pages}`; document.getElementById('first-page').disabled = page === 1; document.getElementById('previous-page').disabled = page === 1; document.getElementById('next-page').disabled = page === pages; document.getElementById('last-page').disabled = page === pages; }
+    document.querySelector('.tabs').addEventListener('click', event => { const tab = event.target.closest('button[data-tab]'); if (!tab) return; document.querySelectorAll('.tab').forEach(item => { const active = item === tab; item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active)); }); document.querySelectorAll('.pane').forEach(pane => pane.classList.toggle('active', pane.id === tab.dataset.tab)); });
+    const resetPage = () => { page = 1; render(); }; search.addEventListener('input', resetPage); typeFilter.addEventListener('change', resetPage); sizeFilter.addEventListener('change', resetPage); pageSize.addEventListener('change', resetPage); document.querySelector('.filters').addEventListener('reset', () => setTimeout(resetPage)); document.getElementById('first-page').addEventListener('click', () => { page = 1; render(); }); document.getElementById('previous-page').addEventListener('click', () => { page--; render(); }); document.getElementById('next-page').addEventListener('click', () => { page++; render(); }); document.getElementById('last-page').addEventListener('click', () => { page = Math.ceil(matches().length / Number(pageSize.value)); render(); });
+    clearDetail(); render();
+  </script>
+</body>
+</html>
