@@ -63,6 +63,15 @@ go-cask/
   library (and over the client in remote mode) — the library is the single
   source of behavior.
 
+> **Two CAS API servers, different roles.** `cask web` (§3) is the shipped
+> server: `cmd/cask` wires the `internal/api` handlers over the store.
+> `examples/api/server` is a *teaching re-implementation* of the same wire
+> contract (cas-api R-01…R-14) built on the public `cas`/`client` surface
+> only, because examples MUST NOT import `internal/` (examples §2 rule 4).
+> `internal/api` is authoritative; the example exists to prove a third party
+> can build a compliant server from the public kit alone (examples §3.4).
+> The example demonstrates the contract — it is not a shipped server.
+
 ---
 
 ## 3. Server Composition
