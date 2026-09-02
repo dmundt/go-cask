@@ -7,38 +7,29 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/client"
 	"github.com/dmundt/go-cask/internal/index"
 	"github.com/dmundt/go-cask/internal/storage"
 )
 
-// target is the store the ops speak to: local (internal/storage) or remote
-// (the public client SDK).
+// target is the store the ops speak to: the library in-process over
+// internal/storage. There is no remote target — the product ships no
+// network JSON API (backend-architecture §1).
 type target struct {
-	local  *storage.Store
-	remote *client.Client
+	local *storage.Store
 }
 
 func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
-	switch {
-	case mf.store != "" && mf.api != "":
-		return nil, fmt.Errorf("-store and -api are mutually exclusive")
-	case mf.store != "":
-		st, err := storage.New(ctx, storage.Config{Dir: mf.store})
-		if err != nil {
-			return nil, err
-		}
-		return &target{local: st}, nil
-	case mf.api != "":
-		return &target{remote: client.New(mf.api, mf.token)}, nil
-	default:
-		return nil, fmt.Errorf("exactly one mode is required: -store <path> or -api <url>")
+	if mf.store == "" {
+		return nil, fmt.Errorf("-store <path> is required")
 	}
+	st, err := storage.New(ctx, storage.Config{Dir: mf.store})
+	if err != nil {
+		return nil, err
+	}
+	return &target{local: st}, nil
 }
 
 // usageError marks an argument error (exit code 2).
@@ -80,14 +71,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 		defer f.Close()
 		r = f
 	}
-	var h cas.Hash
-	var dedup bool
-	var err error
-	if t.local != nil {
-		h, dedup, err = localPut(ctx, t.local, r, algo)
-	} else {
-		h, dedup, err = t.remote.Put(ctx, r, algo)
-	}
+	h, dedup, err := localPut(ctx, t.local, r, algo)
 	if err != nil {
 		return err
 	}
@@ -158,12 +142,7 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	var rc io.ReadCloser
-	if t.local != nil {
-		rc, err = t.local.Get(ctx, h)
-	} else {
-		rc, _, err = t.remote.Get(ctx, h)
-	}
+	rc, err := t.local.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -202,26 +181,14 @@ func opList(ctx context.Context, t *target, args []string) error {
 		Algorithm string `json:"algorithm"`
 		Size      int64  `json:"size"`
 	}
-	var items []item
-	var total int
-	if t.local != nil {
-		hashes, err := t.local.List(ctx, *algo)
-		if err != nil {
-			return err
-		}
-		total = len(hashes)
-		for _, h := range index.Paginate(hashes, *offset, *limit) {
-			items = append(items, item{h.String(), h.Algorithm(), t.local.Size(h)})
-		}
-	} else {
-		res, err := t.remote.List(ctx, client.ListOptions{Algo: *algo, Limit: *limit, Offset: *offset})
-		if err != nil {
-			return err
-		}
-		total = int(res.Total)
-		for _, m := range res.Objects {
-			items = append(items, item{m.Hash.String(), m.Algorithm, m.Size})
-		}
+	hashes, err := t.local.List(ctx, *algo)
+	if err != nil {
+		return err
+	}
+	total := len(hashes)
+	items := make([]item, 0, total)
+	for _, h := range index.Paginate(hashes, *offset, *limit) {
+		items = append(items, item{h.String(), h.Algorithm(), t.local.Size(h)})
 	}
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"total": total, "objects": items})
@@ -247,27 +214,17 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	var size int64
-	var typ string
-	if t.local != nil {
-		rc, err := t.local.Get(ctx, h)
-		if err != nil {
-			return err
-		}
-		data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
-		rc.Close()
-		if err != nil {
-			return err
-		}
-		size = int64(len(data))
-		typ = index.EnvelopeType(data)
-	} else {
-		m, err := t.remote.Meta(ctx, h)
-		if err != nil {
-			return err
-		}
-		size, typ = m.Size, m.Type
+	rc, err := t.local.Get(ctx, h)
+	if err != nil {
+		return err
 	}
+	data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
+	rc.Close()
+	if err != nil {
+		return err
+	}
+	size := int64(len(data))
+	typ := index.EnvelopeType(data)
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"hash": h.String(), "algorithm": h.Algorithm(), "size": size, "type": typ,
@@ -283,28 +240,12 @@ func opStats(ctx context.Context, t *target, args []string) error {
 	if len(args) != 0 {
 		return usagef("stats takes no arguments")
 	}
-	if t.local != nil {
-		st, err := t.local.Stats(ctx)
-		if err != nil {
-			return err
-		}
-		fmt.Println(st)
-		return nil
-	}
-	st, err := t.remote.Stats(ctx)
+	st, err := t.local.Stats(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d objects, %d bytes [%s]\n", st.ObjectCount, st.TotalSize, algoCountsString(st.AlgorithmCounts))
+	fmt.Println(st)
 	return nil
-}
-
-func algoCountsString(counts map[string]int64) string {
-	parts := make([]string, 0, len(counts))
-	for a, n := range counts {
-		parts = append(parts, a+"="+strconv.FormatInt(n, 10))
-	}
-	return strings.Join(parts, ", ")
 }
 
 // --- verify ---
@@ -313,52 +254,32 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 	if len(args) == 0 {
 		return usagef("verify needs <hash> or --all")
 	}
-	if t.local != nil {
-		if args[0] == "--all" {
-			hashes, err := t.local.List(ctx, "")
-			if err != nil {
-				return err
-			}
-			bad := 0
-			for _, h := range hashes {
-				if err := t.local.Verify(ctx, h); err != nil {
-					fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
-					bad++
-				}
-			}
-			fmt.Printf("verified %d objects, %d corrupt\n", len(hashes), bad)
-			if bad > 0 {
-				return fmt.Errorf("%d corrupt objects", bad)
-			}
-			return nil
-		}
-		h, err := cas.ParseHash(args[0])
+	if args[0] == "--all" {
+		hashes, err := t.local.List(ctx, "")
 		if err != nil {
-			return usagef("invalid hash: %v", err)
-		}
-		if err := t.local.Verify(ctx, h); err != nil {
 			return err
 		}
-		fmt.Printf("%s ok\n", h)
+		bad := 0
+		for _, h := range hashes {
+			if err := t.local.Verify(ctx, h); err != nil {
+				fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
+				bad++
+			}
+		}
+		fmt.Printf("verified %d objects, %d corrupt\n", len(hashes), bad)
+		if bad > 0 {
+			return fmt.Errorf("%d corrupt objects", bad)
+		}
 		return nil
-	}
-	// Remote mode.
-	if args[0] == "--all" {
-		return usagef("--all is local-only; verify specific hashes in remote mode")
 	}
 	h, err := cas.ParseHash(args[0])
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	v, err := t.remote.Verify(ctx, h)
-	if err != nil {
+	if err := t.local.Verify(ctx, h); err != nil {
 		return err
 	}
-	if v.Valid {
-		fmt.Printf("%s ok (recomputed %s)\n", h, v.Recomputed)
-	} else {
-		return fmt.Errorf("%s CORRUPT (recomputed %s)", h, v.Recomputed)
-	}
+	fmt.Printf("%s ok\n", h)
 	return nil
 }
 
@@ -379,12 +300,7 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	for _, h := range roots {
 		reachable[h.String()] = true
 	}
-	var deleted int64
-	if t.local != nil {
-		deleted, err = t.local.GC(ctx, reachable)
-	} else {
-		deleted, err = t.remote.GC(ctx, roots)
-	}
+	deleted, err := t.local.GC(ctx, reachable)
 	if err != nil {
 		return err
 	}
@@ -400,9 +316,6 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	dryRun := fs.Bool("dry-run", true, "report without deleting (default true)")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
-	}
-	if t.remote != nil {
-		return usagef("prune is not available in remote mode (the CAS API has no prune endpoint)")
 	}
 	roots, err := parseHashes(fs.Args())
 	if err != nil {

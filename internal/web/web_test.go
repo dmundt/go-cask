@@ -23,7 +23,6 @@ func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 		t.Fatal(err)
 	}
 	srv, err := New(st, Config{
-		Enabled:      true,
 		StartupToken: testStartupToken,
 		RoleTokens: map[string]string{
 			"viewer-tok":   RoleViewer,
@@ -153,7 +152,7 @@ func TestVerifyAndDelete(t *testing.T) {
 	if _, err := st.Put(ctx, h, strings.NewReader("view me")); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(st, Config{Enabled: true, StartupToken: testStartupToken, RoleTokens: map[string]string{}})
+	srv, err := New(st, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +196,7 @@ func TestVerifyAndDelete(t *testing.T) {
 	}
 }
 
-func TestStaticAndOpenAPI(t *testing.T) {
+func TestStatic(t *testing.T) {
 	ts, _ := newTestServer(t)
 	// htmx is public (needed on the login page).
 	resp, err := http.Get(ts.URL + "/viewer/static/htmx.min.js")
@@ -207,24 +206,6 @@ func TestStaticAndOpenAPI(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("htmx = %d, want 200", resp.StatusCode)
-	}
-	// OpenAPI requires a session.
-	resp, err = http.Get(ts.URL + "/viewer/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("openapi unauth = %d, want 401", resp.StatusCode)
-	}
-	admin := login(t, ts, testStartupToken)
-	resp, err = admin.Get(ts.URL + "/viewer/openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("openapi auth = %d, want 200", resp.StatusCode)
 	}
 }
 
