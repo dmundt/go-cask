@@ -1,7 +1,7 @@
 ---
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v4
+version: v5
 ---
 
 # Consistency — go-cask
@@ -94,7 +94,10 @@ space** — never about repairing torn writes.
 - **Concurrency**: sweeping unlinks files; a concurrent `Put` of a swept hash
   simply re-creates it (idempotent, lock-free-safe); a reader holding an open
   FD keeps the bytes until it closes (POSIX). No GC-vs-write coordination is
-  needed.
+  needed **within one process**. GC and writers MUST NOT run in different OS
+  processes on the same store directory — concurrency safety is per-process
+  (cas-core §6); run GC and writers in the same process, or coordinate with
+  application-level locking.
 - **Why not reference counting**: refcounts require a persisted, updated
   counter on every write — complexity and a source of drift. Mark-and-sweep
   is stateless, correct by construction, and cheap enough for a store where

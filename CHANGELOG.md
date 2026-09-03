@@ -19,6 +19,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Concurrency boundary documented: cas is **multi-client safe within one
+  process** (lock-free reads, per-process mutexes, atomic writes — cas-core
+  §6). Multiple OS processes MUST NOT share one store directory — there is
+  no inter-process locking; keep one store directory ↔ one process and serve
+  many clients from it (cas-core v16, backend-architecture v8, consistency
+  v5).
 - Naming: the acronym expansion is **Content Addressable Store (Kit)** and is
   written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
   Go package — replacing the former "Content Addressed Storage (Kit)" wording
