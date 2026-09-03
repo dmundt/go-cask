@@ -19,6 +19,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- `cas` `FSRawStore.Put`: temp files now use **unique per-writer names**
+  (`os.CreateTemp`, `*.tmp`) instead of a deterministic `<path>.tmp` —
+  concurrent writers of the same hash never share a temp inode, so
+  cross-process same-hash writes cannot corrupt each other; on POSIX the
+  atomic rename gives last-wins, on Windows a racing Put may transiently
+  error but never corrupts (cas-core v18, operations v4).
 - `cask` mutating commands (`put`, `gc`, `prune`, `clean`) and `web` now take
   the store's exclusive cross-process lock (`.cask.lock`, holding the PID):
   a second mutating process is refused with the holder's PID; reads never

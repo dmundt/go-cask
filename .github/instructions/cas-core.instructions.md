@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v17
+version: v18
 ---
 
 # CAS Core — go-cask
@@ -474,28 +474,41 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
 **Write path (atomic):**
 
 ```text
-MkdirAll(dir) → Create(<path>.tmp) → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
+MkdirAll(dir) → CreateTemp(dir, "*.tmp") → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
 ```
 
+- The temp file has a **unique per-writer name** (`os.CreateTemp` in the
+  object's directory, so the rename stays on one filesystem). Because no two
+  writers ever share a temp inode, concurrent writers of the SAME hash —
+  even from different OS processes — cannot corrupt each other's in-flight
+  write or the stored object. The rename is atomic: on POSIX the last writer
+  wins with identical bytes; on Windows a concurrent rename-over-existing can
+  transiently fail (no cross-process last-wins), so a racing `Put` MAY return
+  an error — the object is never corrupted and the failed writer's temp file
+  is removed.
 - On any failure the temp file is removed; readers never observe partial files.
 - `.tmp` files are ignored by `List`/`Stats`.
 
-**Concurrency (lock-free reads):** writes are atomic (temp file →
+**Concurrency (lock-free reads):** writes are atomic (unique temp file →
 `f.Sync()` → `os.Rename`), so `Get`/`Exists`/`List`/`Stats` take **no lock** —
 a reader observes either the old or the new file, never a partial one (see
 `performance.instructions.md` §2). `Put` is idempotent (same hash ⇒ same
-bytes), so concurrent writers of the same hash are safe. At most a single
-`sync.Mutex` coordinates `Put`/`Delete`; reads are wait-free. **These
-guarantees are per-process**: the mutex is an in-process lock, and there is
-no file locking or other coordination between OS processes. Multiple
-processes MUST NOT open the same store directory concurrently — run one
-process per store, or serialize access with application-level locking
-(backend-architecture §1).
+bytes), so concurrent writers of the same hash never corrupt the object —
+in-process via the mutex, and across processes via the unique temp names
+above (with the POSIX/Windows rename caveat in §4.4). At most a single
+`sync.Mutex` coordinates `Put`/`Delete` within a process; reads are
+wait-free. **The cross-process guarantees stop at object writes**: there is
+no inter-process locking, so `Delete`/`GC`/`Prune`/`Clean` racing another
+process's writes are NOT safe. Multiple processes MUST NOT run destructive
+ops on the same store directory concurrently — run one process per store, or
+serialize access with application-level locking (`cask` mutating commands do
+this via `.cask.lock`; backend-architecture §1).
 
 **Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`, `Clean`;
 `Size(h)` returns an object's size in bytes (`ErrNotFound` when missing);
-`Clean(ctx, olderThan)` sweeps leftover `<path>.tmp` files from crashed
-writes (always safe — `.tmp` files are never valid objects, operations §2).
+`Clean(ctx, olderThan)` sweeps leftover `*.tmp` files (the unique temp names
+crashed writes leave behind) older than the threshold — always safe, `.tmp`
+files are never valid objects (operations §2).
 
 ### 4.5 `MemoryRawStore` — in-memory backend
 
