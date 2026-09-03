@@ -19,12 +19,19 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- `cask` mutating commands (`put`, `gc`, `prune`, `clean`) and `web` now take
+  the store's exclusive cross-process lock (`.cask.lock`, holding the PID):
+  a second mutating process is refused with the holder's PID; reads never
+  lock. The library has no inter-process locking — this is the CLI's
+  application-level enforcement of the one-store-per-process invariant
+  (cli spec v8, cas-core v17, backend-architecture v9).
 - Concurrency boundary documented: cas is **multi-client safe within one
   process** (lock-free reads, per-process mutexes, atomic writes — cas-core
   §6). Multiple OS processes MUST NOT share one store directory — there is
   no inter-process locking; keep one store directory ↔ one process and serve
-  many clients from it (cas-core v16, backend-architecture v8, consistency
-  v5).
+  many clients from it. The cross-process-safe subset (concurrent readers +
+  idempotent same-hash `Put`s) is stated explicitly (cas-core v17,
+  backend-architecture v9, consistency v5).
 - Naming: the acronym expansion is **Content Addressable Store (Kit)** and is
   written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
   Go package — replacing the former "Content Addressed Storage (Kit)" wording

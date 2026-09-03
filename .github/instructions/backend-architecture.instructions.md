@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v8
+version: v9
 ---
 
 # Backend Architecture — go-cask
@@ -175,7 +175,11 @@ Rules:
   two OS processes MUST NOT open the same store directory at the same time.
   Scale by serving more clients from the single process, or shard into
   separate store directories — never by running a second process on the same
-  directory.
+  directory. The `cask` CLI enforces this at the application layer: mutating
+  commands and `web` take the store's exclusive `.cask.lock` for the
+  operation/process lifetime, refusing a second mutator with the holder's
+  PID (cli §2); apps embedding the library provide equivalent coordination
+  themselves.
 
 ---
 

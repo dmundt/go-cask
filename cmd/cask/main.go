@@ -74,11 +74,23 @@ func parseGlobal(args []string) (modeFlags, string, []string, error) {
 
 // runOp dispatches a store operation and returns the exit code: 0 success,
 // 1 runtime error, 2 usage error (cli §3). web/version are handled in main.
+//
+// Mutating operations (put, gc, prune, clean) take the store's exclusive
+// cross-process lock first, so two processes never mutate one store
+// directory concurrently (cas-core §6); read-only operations never lock.
 func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 	t, err := openTarget(ctx, mf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 2
+	}
+	if mutatingOp(cmd) {
+		lock, err := acquireStoreLock(mf.store)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		defer lock.release()
 	}
 	var opErr error
 	switch cmd {
@@ -114,4 +126,16 @@ func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 		return code
 	}
 	return 0
+}
+
+// mutatingOp reports whether cmd writes to the store (put, gc, prune,
+// clean). These take the store's exclusive cross-process lock; all other
+// ops (get, list, meta, stats, verify) are read-only and never lock.
+func mutatingOp(cmd string) bool {
+	switch cmd {
+	case "put", "gc", "prune", "clean":
+		return true
+	default:
+		return false
+	}
 }
