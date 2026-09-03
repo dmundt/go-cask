@@ -1,7 +1,7 @@
 ---
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v3
+version: v4
 ---
 
 # Operations — go-cask
@@ -16,9 +16,11 @@ version: v3
 
 ## 1. Durability
 
-- Writes: temp file → `f.Sync()` → `os.Rename` (the reference contract). The
-  `f.Sync()` **before** rename guarantees the data is on disk before it
-  becomes visible.
+- Writes: uniquely named temp file (`os.CreateTemp`, `*.tmp`) →
+  `f.Sync()` → `os.Rename` (the reference contract). The unique name means
+  concurrent writers — even across processes — never share a temp inode,
+  and the `f.Sync()` **before** rename guarantees the data is on disk before
+  it becomes visible.
 - Optional full durability: fsync the containing directory after the rename
   so the rename itself survives a crash; make this configurable (cost vs.
   durability trade-off).

@@ -366,6 +366,55 @@ func TestConcurrentSameHashPut(t *testing.T) {
 	}
 }
 
+// TestUniqueTempAcrossInstances simulates two OS processes writing the SAME
+// hash concurrently: two FSRawStore instances over one directory each have
+// their own mutex (the in-process lock does not coordinate them), so safety
+// relies on the unique per-writer temp names (cas-core §4.4). The object
+// must never be corrupted and no `*.tmp` may survive. Transient Put errors
+// are tolerated: on Windows a concurrent rename-over-existing can return
+// Access denied (no atomic last-wins across processes), so a racing Put may
+// fail — but it must clean up its temp and never corrupt the object.
+func TestUniqueTempAcrossInstances(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s1, err := NewFSRawStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := NewFSRawStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := hashData("sha256", []byte("cross-process"))
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 25; i++ {
+			_ = s1.Put(ctx, h, strings.NewReader("cross-process")) // errors tolerated mid-race
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 25; i++ {
+			_ = s2.Put(ctx, h, strings.NewReader("cross-process")) // errors tolerated mid-race
+		}
+	}()
+	wg.Wait()
+
+	rc, err := s1.Get(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := readAllAndClose(rc)
+	if string(got) != "cross-process" {
+		t.Fatalf("content after cross-instance puts = %q (corrupted)", got)
+	}
+	if leftovers := tmpFilesIn(s1, h); len(leftovers) != 0 {
+		t.Fatalf("temp files left after concurrent puts: %v", leftovers)
+	}
+}
+
 func TestConcurrentGetDuringDelete(t *testing.T) {
 	ctx := context.Background()
 	s := mustFS(t)

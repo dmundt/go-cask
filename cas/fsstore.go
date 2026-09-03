@@ -118,10 +118,13 @@ func pathToHash(rel string) (Hash, error) {
 }
 
 // Put stores the bytes read from r under h. It is idempotent (same hash ⇒
-// identical bytes) and atomic: the content is written to a <path>.tmp file,
-// fsynced, then renamed over the final path, so readers never observe a
-// partial object and concurrent writers of the same hash are safe. On any
-// failure the temp file is removed.
+// identical bytes) and atomic: the content is written to a uniquely named
+// temp file in the object's directory (os.CreateTemp, `*.tmp`), fsynced,
+// then renamed over the final path. The unique name means concurrent
+// writers of the same hash — even from DIFFERENT processes — never share a
+// temp inode, so they cannot corrupt each other's in-flight write; the
+// atomic rename makes the last one win with identical bytes. Readers never
+// observe a partial object. On any failure the temp file is removed.
 func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -133,14 +136,18 @@ func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("cas: create object dir: %w", err)
 	}
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	f, err := os.CreateTemp(filepath.Dir(path), "*.tmp")
 	if err != nil {
 		return fmt.Errorf("cas: create temp file: %w", err)
 	}
+	tmp := f.Name()
 	cleanup := func() {
 		f.Close()
 		os.Remove(tmp)
+	}
+	if err := f.Chmod(0o644); err != nil {
+		cleanup()
+		return fmt.Errorf("cas: chmod temp file: %w", err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
 		cleanup()
