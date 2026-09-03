@@ -63,9 +63,61 @@ below a generic, constrained **typed layer** (`Object[T]`, `Codec[T]`,
 depends only on the byte layer; apps build their own `Object[T]` models on
 `Store[T]`.
 
-The canonical interface diagram (byte → typed → caching layers) and the
-normative architecture live in [cas-core §3.3](.github/instructions/cas-core.instructions.md)
-— kept there so the README cannot drift from the spec.
+```mermaid
+classDiagram
+    direction LR
+
+    class Hash {
+        <<interface>>
+        +Algorithm() string
+        +String() string
+        +Equal(other Hash) bool
+    }
+    class RawStore {
+        <<interface>>
+        +Put(ctx, h, r) error
+        +Get(ctx, h) io.ReadCloser
+        +Exists(ctx, h) (bool, error)
+        +Delete(ctx, h) error
+        +List(ctx, algo) []Hash
+    }
+    class FSRawStore {
+        <<backend>>
+    }
+    class MemoryRawStore {
+        <<backend>>
+    }
+    RawStore <|.. FSRawStore : implements
+    RawStore <|.. MemoryRawStore : implements
+
+    class Object~T~ {
+        <<interface>>
+        +Type() string
+        +References() []Hash
+    }
+    class Codec~T~ {
+        <<interface>>
+        +Encode(v T) ([]byte, error)
+        +Decode(data []byte) (T, error)
+    }
+    class Store~T~ {
+        +Put(ctx, obj T) (Hash, error)
+        +Get(ctx, h) (T, error)
+        +Delete(ctx, h) error
+    }
+    class Walker~T~ {
+        +Walk(ctx, h) error
+    }
+    Store~T~ o-- RawStore : raw
+    Store~T~ o-- Codec~T~ : codec
+    Store~T~ ..> Object~T~ : stores
+    Walker~T~ ..> Store~T~ : reads via Get
+
+    class CachedStore~T~
+    class LRUCache~T~
+    CachedStore~T~ o-- Store~T~ : wraps
+    LRUCache~T~ --|> CachedStore~T~ : extends
+```
 
 ## Quick start
 
