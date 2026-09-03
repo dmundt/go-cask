@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v15
+version: v16
 ---
 
 # CAS Core — go-cask
@@ -485,7 +485,12 @@ MkdirAll(dir) → Create(<path>.tmp) → io.Copy(f, r) → f.Sync() → os.Renam
 a reader observes either the old or the new file, never a partial one (see
 `performance.instructions.md` §2). `Put` is idempotent (same hash ⇒ same
 bytes), so concurrent writers of the same hash are safe. At most a single
-`sync.Mutex` coordinates `Put`/`Delete`; reads are wait-free.
+`sync.Mutex` coordinates `Put`/`Delete`; reads are wait-free. **These
+guarantees are per-process**: the mutex is an in-process lock, and there is
+no file locking or other coordination between OS processes. Multiple
+processes MUST NOT open the same store directory concurrently — run one
+process per store, or serialize access with application-level locking
+(backend-architecture §1).
 
 **Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`, `Clean`;
 `Size(h)` returns an object's size in bytes (`ErrNotFound` when missing);
@@ -811,7 +816,14 @@ flowchart LR
 
 Rules:
 
-- `Store[T]` is safe for concurrent use if its `RawStore` is.
+- `Store[T]` is safe for concurrent use if its `RawStore` is. **Concurrency
+  safety is per-process**: all of the above (mutexes, `sync.Map`,
+  double-checked locking) coordinates threads of ONE process. Multiple OS
+  processes MUST NOT share one store directory concurrently — there is no
+  inter-process locking. Serve many clients from one process (the CLI, the
+  viewer, or an app embedding the library; `examples/api` shows the HTTP
+  pattern), and keep the "one store directory ↔ one process" invariant
+  (backend-architecture §1).
 - Callers must close every `io.ReadCloser` from the byte layer's
   `RawStore.Get` (the typed layer returns bytes or concrete values, never a
   stream the caller must close).
