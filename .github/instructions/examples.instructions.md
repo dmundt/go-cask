@@ -1,6 +1,6 @@
 ---
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
+description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
 version: v8
 ---
 
@@ -12,7 +12,7 @@ version: v8
 >
 > 1. `examples/files` — Git-like versioned file store (the `gitlike`
 >    layer)
-> 2. `examples/artifacts` — content-addressed build artifact cache
+> 2. `examples/artifacts` — content-addressable build artifact cache
 >    (custom codec + hash, caching, GC)
 > 3. `examples/notes` — document graph app with its own object types (the
 >    "apps build their own repository" pattern, lazy loading)
@@ -87,7 +87,7 @@ When creating or extending an example, follow these rules:
    package comment) that teaches the example. It MUST contain:
    - **What it demonstrates** — the primary aspect (§4) and acceptance
      criteria, in one short paragraph;
-   - **Cas core parts used** — the exact components/APIs exercised (e.g.
+   - **`cas` core parts used** — the exact components/APIs exercised (e.g.
      `Store[T]`, `JSONCodec[T]`, `FSRawStore` fan-out, `Verify`, `GC`,
      `LRUCache[T]`, `CachedObject[T]`), as a list or table;
    - **What it extends** — everything the example adds on top of the core
@@ -123,7 +123,7 @@ When creating or extending an example, follow these rules:
 
 ### 3.1 `examples/files` — Git-like versioned file store
 
-**Goal.** A small CLI that stores file trees as content-addressed objects and
+**Goal.** A small CLI that stores file trees as content-addressable objects and
 commits them, using the `gitlike` layer end to end — the closest thing to a
 miniature Git built on CASK. It also demonstrates the derived object-state
 report: every object is classified verified / orphaned / corrupt / unverified
@@ -171,7 +171,7 @@ commit and reports a mismatch after a stored file is corrupted on disk;
 objects as `orphaned`, a corrupted object as `corrupt`, and under
 `-no-verify` reachable objects as `unverified`.
 
-### 3.2 `examples/artifacts` — content-addressed build artifact cache
+### 3.2 `examples/artifacts` — content-addressable build artifact cache
 
 **Goal.** A build-artifact cache that stores outputs under their content hash,
 with a custom codec (gzip), a custom registered hash algorithm, bounded

@@ -1,7 +1,7 @@
 ---
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for .github/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v5
+version: v6
 ---
 
 # AGENT — go-cask Instruction Folder Guide
@@ -121,7 +121,8 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 
 | Term               | Meaning / usage                                                        |
 | ------------------ | ---------------------------------------------------------------------- |
-| go-cask / CASK     | The project (Content Addressed Storage Kit).                           |
+| go-cask / CASK     | The project (Content Addressable Store Kit).                           |
+| CAS / CASK         | Acronyms, always ALL-CAPS when written out: "CAS" = Content Addressable Store, "CASK" = Content Addressable Store Kit. Never lowercase (lowercase `cas` is the Go package, next row). |
 | `cas` package      | The generic core library (`cas/`, `package cas`).                      |
 | `gitlike` package  | The example layer (`examples/gitlike/`) — Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
 | the viewer         | The embedded technical browser UI (`internal/web/`). **Not** "debug UI".     |

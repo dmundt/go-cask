@@ -1,4 +1,4 @@
-# artifacts — content-addressed build artifact cache
+# artifacts — content-addressable build artifact cache
 
 **What it demonstrates.** A build-artifact cache that stores outputs under
 the hash of their content with a custom gzip codec, a custom registered hash
@@ -8,7 +8,7 @@ manifests — exercising the maintenance and caching machinery of the core
 `deduplicated: true`; the second `get` hits the cache; `gc` deletes only
 unreferenced artifacts.
 
-## Cas core parts used
+## `cas` core parts used
 
 | Component | Where |
 | --------- | ----- |

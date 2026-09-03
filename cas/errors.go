@@ -1,4 +1,4 @@
-// Package cas implements a generic, content-addressed storage core: binary
+// Package cas implements the core of a content-addressable store: binary
 // objects are stored once under the hash of their content, as immutable,
 // self-describing values that reference each other by hash. The package is
 // layered — a non-generic byte layer (Hash, RawStore, backends) below a

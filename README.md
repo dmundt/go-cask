@@ -1,14 +1,14 @@
-# CASK — Content Addressed Storage Kit
+# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-A generic, Git-like, **content-addressed storage** library for Go: store any bytes once under the hash of their content, reference them by
+A generic, Git-like **content-addressable store** for Go: store any bytes once under the hash of their content, reference them by
 hash, and build typed object graphs on top — reusable across apps and
 domains.
 
-- **Content-addressed** — same bytes ⇒ same hash ⇒ stored once (dedup).
+- **Content-addressable** — same bytes ⇒ same hash ⇒ stored once (dedup).
 - **Immutable & verifiable** — objects never change; `Verify` detects any
   corruption.
 - **Generic core, typed apps** — the `cas` core knows nothing about your
@@ -21,7 +21,7 @@ domains.
 
 ## Design principles & grounding
 
-go-cask is a **single-host content-addressed storage kit**. The durable
+go-cask is a **single-host content-addressable store kit**. The durable
 decisions that shape the repo (each named spec is the normative contract):
 
 - **No network surface ships.** The product has no CAS JSON API, no client
