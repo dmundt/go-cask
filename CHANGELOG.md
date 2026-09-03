@@ -10,6 +10,8 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v0.1.0-alpha.2] - 2026-09-03
+
 ### Added
 
 - Core-overview diagram of the `cas` interfaces (byte / typed / caching
