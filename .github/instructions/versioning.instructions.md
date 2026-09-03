@@ -1,14 +1,16 @@
 ---
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v2
+version: v3
 ---
 
 # Versioning — go-cask
 
 > How the `cas` library (and its `gitlike` example package) is versioned and
-> released through Git. The project is currently **pre-release** (no version
-> tags exist yet); this document defines the rules from the first tag onward.
+> released through Git. The project is **pre-release**: the first public tag
+> is `v0.1.0-alpha.1` (a pre-release), heading toward `v1.0.0` once the
+> stable surface is frozen; this document defines the rules from the first
+> tag onward.
 >
 > Related: `.github/instructions/library-design.instructions.md` §5
 > (compatibility policy — the semantic contract this versioning implements),
@@ -34,9 +36,12 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 - **Pre-release policy:** while the library is new, breaking changes are
   allowed in `v0.x.y` minor bumps (Go convention). The project may either
   start at `v0.1.0` and reach `v1.0.0` when the stable surface is frozen, or
-  go straight to `v1.0.0` on first release. **Decision: first public tag is
-  `v1.0.0`** — the docs already commit to the stable surface; treat
-  pre-1.0 as private development without tags.
+  go straight to `v1.0.0` on first release. **Decision: start at `v0.1.0`**
+  — the first public tag is the pre-release `v0.1.0-alpha.1`, followed by
+  further pre-releases (`-alpha.N`, `-beta.N`, `-rc.N`) and `v0.1.0` itself,
+  then `v1.0.0` when the docs' stable surface (cas-core §7.1) is frozen.
+  Pre-release tags sort below their final release (`v0.1.0-alpha.1` <
+  `v0.1.0`) and use the same annotated-tag mechanics (§3, §5).
 
 ---
 
@@ -44,7 +49,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 - Module path: `github.com/dmundt/go-cask`; the core lives in the `cas/`
   subpackage (`github.com/dmundt/go-cask/cas`), the example in `examples/gitlike/`.
-- **v0/v1**: no path suffix. Tags: `v1.0.0`, `v1.1.0`, …
+- **v0/v1**: no path suffix. Tags: `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, …
 - **v2 and later**: Go REQUIRES the major version in the module path —
   `github.com/dmundt/go-cask/v2` (module path changes, tags become
   `v2.0.0`, …). Layout decision: keep both majors in one repository by
@@ -62,10 +67,10 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 ## 3. Git Mechanics
 
-- **Tags**: annotated tags (`git tag -a v1.0.0 -m "…"`), pushed with
-  `git push --tags`. Tags are **immutable**: never move, delete, or
-  re-release a version with different content. If a release is broken, ship
-  `vX.Y.Z+1` (PATCH) — never re-tag.
+- **Tags**: annotated tags (`git tag -a v0.1.0-alpha.1 -m "v0.1.0-alpha.1"`),
+  pushed with `git push --tags`. Tags are **immutable**: never move, delete,
+  or re-release a version with different content. If a release is broken,
+  ship `vX.Y.Z+1` (PATCH) — never re-tag.
 - **Branches**: full naming patterns, examples, and lifecycle rules are in
   `.github/instructions/branch-naming.instructions.md`; the essentials:
   - `main` — default development branch; version tags land here.
@@ -97,6 +102,8 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 1. **Decide the bump** from the commits since the last tag (§4): any
    `BREAKING CHANGE` → MAJOR; new features → MINOR; fixes only → PATCH.
+   Pre-releases use the version of the release they precede
+   (`v0.1.0-alpha.1`, `v0.1.0-beta.1`, … — §1).
 2. **Verify**: `gofmt -l .` clean, `go vet ./...`, `go test -race ./...`,
    and the performance benchstat gate (performance §5/§11) green on `main`.
 3. **Update CHANGELOG.md** (move `Unreleased` → the new version).
@@ -105,6 +112,11 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 5. **(v2+ only)** update the module path to `…/v2`, publish the `cas/v2/`
    subtree, tag `v2.X.Y`.
 6. Create `release/vX.Y` only if the minor needs future maintenance.
+
+> **Pre-release tags** (alpha/beta/rc) follow the same process: they are
+> annotated, immutable tags on the module root commit, and each gets its own
+> CHANGELOG section (`## [v0.1.0-alpha.1] - <date>`). The release process
+> runs per tag, not per final version only.
 
 ---
 
@@ -124,7 +136,8 @@ nothing about the library's release.
 
 ## 7. Checklist
 
-- [ ] First public tag is `v1.0.0` on the module root commit
+- [ ] First public tag is the pre-release `v0.1.0-alpha.1` on the module
+      root commit; `v1.0.0` follows once the stable surface is frozen
 - [ ] Tags are annotated, immutable, and never re-tagged
 - [ ] Bump decided from commits (breaking → MAJOR, feature → MINOR, fix →
       PATCH) with `BREAKING CHANGE` footers
