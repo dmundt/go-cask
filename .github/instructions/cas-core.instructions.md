@@ -90,7 +90,7 @@ These invariants are testable and tested — see the CAS laws in
 ```mermaid
 flowchart TB
     subgraph APP["Application / domain layer (per app, NOT part of the core)"]
-        direction LR
+        direction TB
         GITLIKE["examples/gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
         OTHER["Other apps: Note, Job, Document, ... (same pattern)"]
     end
@@ -106,7 +106,7 @@ flowchart TB
     end
 
     subgraph BYTE["Byte layer (non-generic, package cas)"]
-        direction LR
+        direction TB
         HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
         RAW["RawStore interface"]
         BACKENDS["Backends: FSRawStore (reference), MemoryRawStore (tests),<br/>S3, BadgerDB, PostgreSQL"]

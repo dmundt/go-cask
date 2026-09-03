@@ -63,6 +63,8 @@ below a generic, constrained **typed layer** (`Object[T]`, `Codec[T]`,
 depends only on the byte layer; apps build their own `Object[T]` models on
 `Store[T]`.
 
+Architecture layers:
+
 ```mermaid
 flowchart TB
     APP["Application layer<br/>(per app — gitlike, notes, files, …)"]
