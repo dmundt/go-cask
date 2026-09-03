@@ -17,10 +17,13 @@ const lockFileName = ".cask.lock"
 // storeLock is an exclusive, advisory cross-process lock on a store
 // directory. The cas library coordinates threads within ONE process
 // (cas-core §6); this lock extends that contract across OS processes at the
-// application layer: mutating operations (put, gc, prune, clean) and the
-// viewer (web) take it exclusively, so two processes never mutate the same
-// store concurrently. Reads never lock — they are lock-free and safe
-// concurrently.
+// application layer for MAINTENANCE sweeps (gc, prune, clean) — two sweeps
+// never run on one store concurrently. Writers (put) and reads never lock:
+// object writes are safe across processes by construction (unique temps +
+// atomic rename, cas-core §4.4), and sweeps reclaim only objects older than
+// their grace `--min-age`, so a concurrent writer's fresh objects survive
+// (Git's model). The viewer (web) also never locks — its mutations are
+// in-process.
 //
 // The lock is a plain file created atomically with O_CREATE|O_EXCL (the
 // caller's PID and start time are written inside for diagnosis). It is
@@ -38,7 +41,7 @@ func acquireStoreLock(dir string) (*storeLock, error) {
 	if err != nil {
 		if os.IsExist(err) {
 			holder := readLockHolder(path)
-			return nil, fmt.Errorf("store %q is locked by %s (mutating ops take an exclusive lock, cas-core §6); stop that process, or remove %s if it is stale", dir, holder, path)
+			return nil, fmt.Errorf("store %q is locked by %s (maintenance sweeps take an exclusive lock, cas-core §6); stop that process, or remove %s if it is stale", dir, holder, path)
 		}
 		return nil, fmt.Errorf("lock store: %w", err)
 	}

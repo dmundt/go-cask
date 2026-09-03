@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v9
+version: v10
 ---
 
 # Backend Architecture — go-cask
@@ -169,17 +169,19 @@ Rules:
   other machines is an app concern: copy the `examples/api` pattern (public
   `cas` surface, its own HTTP layer, its own auth) and run it as that app's
   server. The go-cask product ships no such server (§1).
-- **One store directory ↔ one process.** Concurrency safety in `cas` is
-  per-process (in-process locks, no file locking, cas-core §6): any number of
-  goroutines or HTTP clients may share one store **within** a process, but
-  two OS processes MUST NOT open the same store directory at the same time.
-  Scale by serving more clients from the single process, or shard into
-  separate store directories — never by running a second process on the same
-  directory. The `cask` CLI enforces this at the application layer: mutating
-  commands and `web` take the store's exclusive `.cask.lock` for the
-  operation/process lifetime, refusing a second mutator with the holder's
-  PID (cli §2); apps embedding the library provide equivalent coordination
-  themselves.
+- **One store directory ↔ one writer-process, grace for sweeps.** Concurrency
+  safety in `cas` is per-process (in-process locks, cas-core §6): any number
+  of goroutines or HTTP clients may share one store **within** a process.
+  Across OS processes, object writes and reads are safe by construction
+  (atomic rename, unique temps); what needs care is a maintenance sweep
+  racing another process's writes. The `cask` CLI uses the grace model:
+  writers and `web` run lock-free; `gc`/`prune`/`clean` take the store's
+  exclusive `.cask.lock` (one sweep at a time) and reclaim only objects older
+  than `--min-age` (default 24h), so recent writes survive — a forced
+  `--min-age 0` sweep is the documented dangerous variant (cli §2, cas-core
+  §6). Scale by serving more clients from one process, or shard into separate
+  store directories; apps embedding the library provide equivalent
+  coordination themselves.
 
 ---
 

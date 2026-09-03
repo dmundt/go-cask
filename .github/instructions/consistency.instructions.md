@@ -1,7 +1,7 @@
 ---
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v5
+version: v6
 ---
 
 # Consistency — go-cask
@@ -94,10 +94,13 @@ space** — never about repairing torn writes.
 - **Concurrency**: sweeping unlinks files; a concurrent `Put` of a swept hash
   simply re-creates it (idempotent, lock-free-safe); a reader holding an open
   FD keeps the bytes until it closes (POSIX). No GC-vs-write coordination is
-  needed **within one process**. GC and writers MUST NOT run in different OS
-  processes on the same store directory — concurrency safety is per-process
-  (cas-core §6); run GC and writers in the same process, or coordinate with
-  application-level locking.
+  needed **within one process**. Across OS processes, the **grace model**
+  applies (cas-core §6): a sweep that may race a live writer MUST reclaim
+  only objects older than a grace `--min-age`, so recent writes survive the
+  sweep — this is what the `cask` CLI does (`gc`/`prune` default 24h). A
+  forced `--min-age 0` sweep is the dangerous variant: only safe when no
+  other process is writing. Maintenance sweeps never run concurrently with
+  each other (`cask` serializes via `.cask.lock`, cli §2).
 - **Why not reference counting**: refcounts require a persisted, updated
   counter on every write — complexity and a source of drift. Mark-and-sweep
   is stateless, correct by construction, and cheap enough for a store where
@@ -210,6 +213,8 @@ Stats()                 # what is stored, per algorithm
 - [ ] GC is mark-and-sweep from app-supplied roots; explicit only
 - [ ] `Prune(roots, minAge, dryRun)` keeps unreachable-young objects as a
       grace period; dry-run default
+- [ ] Sweeps racing live writers are grace-gated (`--min-age`); forced
+      `--min-age 0` is the documented dangerous variant (cas-core §6)
 - [ ] The dangerous all-objects prune is admin + dry-run + confirm
 - [ ] No refcounts, no automatic GC, no GC transactions (§8)
 - [ ] CLI + viewer expose verify/GC/prune per the conventions (cli §2)
