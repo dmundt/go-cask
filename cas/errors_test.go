@@ -27,6 +27,14 @@ func (r *failingReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+// tmpFilesIn returns the leftover `*.tmp` file names in the fan-out
+// directory that would hold h. Put writes uniquely named temps there, so a
+// failed write must leave none behind.
+func tmpFilesIn(s *FSRawStore, h Hash) []string {
+	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(s.hashPath(h)), "*.tmp"))
+	return matches
+}
+
 func TestHashDataUnknownAlgorithm(t *testing.T) {
 	if _, err := hashData("nope", []byte("x")); !errors.Is(err, ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
@@ -95,8 +103,8 @@ func TestFSPutReaderError(t *testing.T) {
 	if len(list) != 0 {
 		t.Fatalf("failed Put left objects behind: %v", list)
 	}
-	if _, err := os.Stat(s.hashPath(h) + ".tmp"); !os.IsNotExist(err) {
-		t.Fatal("failed Put left a .tmp file behind")
+	if leftovers := tmpFilesIn(s, h); len(leftovers) != 0 {
+		t.Fatalf("failed Put left temp files behind: %v", leftovers)
 	}
 }
 
