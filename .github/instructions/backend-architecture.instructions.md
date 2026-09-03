@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v7
+version: v8
 ---
 
 # Backend Architecture — go-cask
@@ -169,6 +169,13 @@ Rules:
   other machines is an app concern: copy the `examples/api` pattern (public
   `cas` surface, its own HTTP layer, its own auth) and run it as that app's
   server. The go-cask product ships no such server (§1).
+- **One store directory ↔ one process.** Concurrency safety in `cas` is
+  per-process (in-process locks, no file locking, cas-core §6): any number of
+  goroutines or HTTP clients may share one store **within** a process, but
+  two OS processes MUST NOT open the same store directory at the same time.
+  Scale by serving more clients from the single process, or shard into
+  separate store directories — never by running a second process on the same
+  directory.
 
 ---
 
