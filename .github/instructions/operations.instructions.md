@@ -16,7 +16,8 @@ version: v4
 
 ## 1. Durability
 
-- Writes: uniquely named temp file (`os.CreateTemp`, `*.tmp`) →
+- Writes: uniquely named temp file (created with `O_CREATE|O_EXCL`; a
+  numeric suffix is appended if another process already holds `<path>.tmp`) →
   `f.Sync()` → `os.Rename` (the reference contract). The unique name means
   concurrent writers — even across processes — never share a temp inode,
   and the `f.Sync()` **before** rename guarantees the data is on disk before

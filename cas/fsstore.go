@@ -118,13 +118,19 @@ func pathToHash(rel string) (Hash, error) {
 }
 
 // Put stores the bytes read from r under h. It is idempotent (same hash ⇒
-// identical bytes) and atomic: the content is written to a uniquely named
-// temp file in the object's directory (os.CreateTemp, `*.tmp`), fsynced,
-// then renamed over the final path. The unique name means concurrent
-// writers of the same hash — even from DIFFERENT processes — never share a
-// temp inode, so they cannot corrupt each other's in-flight write; the
-// atomic rename makes the last one win with identical bytes. Readers never
-// observe a partial object. On any failure the temp file is removed.
+// identical bytes) and atomic: the content is written to a temp file created
+// with O_CREATE|O_EXCL next to the final path, fsynced, then renamed over
+// it. Temp names are unique per writer: the base name is <path>.tmp, and if
+// another writer already holds it (O_EXCL fails — only possible across
+// processes, since the in-process mutex serializes Puts) a numeric suffix is
+// appended. No two writers ever share a temp inode, so concurrent writers of
+// the same hash — even from different OS processes — cannot corrupt each
+// other's in-flight write or the stored object. The rename is atomic: on
+// POSIX the last writer wins with identical bytes; on Windows a concurrent
+// rename-over-existing can transiently fail (no cross-process last-wins), so
+// a racing Put MAY return an error — the object is never corrupted and the
+// failed writer's temp file is removed. On any failure the temp file is
+// removed; readers never observe partial files.
 func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -136,18 +142,13 @@ func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("cas: create object dir: %w", err)
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), "*.tmp")
+	f, tmp, err := createTempExcl(path)
 	if err != nil {
 		return fmt.Errorf("cas: create temp file: %w", err)
 	}
-	tmp := f.Name()
 	cleanup := func() {
 		f.Close()
 		os.Remove(tmp)
-	}
-	if err := f.Chmod(0o644); err != nil {
-		cleanup()
-		return fmt.Errorf("cas: chmod temp file: %w", err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
 		cleanup()
@@ -166,6 +167,32 @@ func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 		return fmt.Errorf("cas: publish object: %w", err)
 	}
 	return nil
+}
+
+// createTempExcl creates a uniquely named temp file for an object write:
+// <path>.tmp, or <path>.tmp.<n> while another writer holds the base name.
+// The in-process mutex means the first attempt always succeeds in-process; a
+// suffix is only needed when a DIFFERENT process is writing the same hash.
+func createTempExcl(path string) (*os.File, string, error) {
+	base := path + ".tmp"
+	f, err := os.OpenFile(base, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err == nil {
+		return f, base, nil
+	}
+	if !os.IsExist(err) {
+		return nil, "", err
+	}
+	for i := 1; i < 10000; i++ {
+		name := fmt.Sprintf("%s.%d", base, i)
+		f, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			return f, name, nil
+		}
+		if !os.IsExist(err) {
+			return nil, "", err
+		}
+	}
+	return nil, "", fmt.Errorf("temp name exhausted for %s", path)
 }
 
 // Get returns a stream of the object's bytes; the caller MUST close it. A
