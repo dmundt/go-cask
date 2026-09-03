@@ -14,7 +14,7 @@ pattern for building their own typed layers on `Store[T]`.
 | `Object[T]` (versioned `blob@1`…`tag@1`) | `types.go` |
 | `Hash` / `ParseHash` | all references (tree entries, commit tree/parent, tag target) |
 | `RawStore` | the shared backend under `Repository` |
-| `Store.GetTyped` (envelope type verification) | resolver reads |
+| `Store.Get` (envelope type verification) | resolver reads |
 | `LRUCache[T]` | `CachedRepository` |
 | `CachedStore[T].PreloadRecursive` | `Preloader` |
 

@@ -304,9 +304,9 @@ func TestHashOneShotRegistration(t *testing.T) {
 	}
 }
 
-// TestStoreGetTypedLegacyEnvelope verifies a legacy unversioned envelope
-// type name decodes (reads as @1) and round-trips through GetTyped.
-func TestStoreGetTypedLegacyEnvelope(t *testing.T) {
+// TestStoreGetLegacyEnvelope verifies a legacy unversioned envelope
+// type name decodes (reads as @1) and round-trips through Get.
+func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
 	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
 	if err != nil {
@@ -324,12 +324,12 @@ func TestStoreGetTypedLegacyEnvelope(t *testing.T) {
 	if err := st.raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.GetTyped(ctx, h)
+	got, err := st.Get(ctx, h)
 	if err != nil {
-		t.Fatalf("GetTyped(legacy envelope) = %v", err)
+		t.Fatalf("Get(legacy envelope) = %v", err)
 	}
 	if got.Title != "legacy" {
-		t.Fatalf("GetTyped = %+v", got)
+		t.Fatalf("Get = %+v", got)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestCachedStoreCanceled(t *testing.T) {
 }
 
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
-// contexts on Put, PutDedup, GetRaw, and GetTyped (via GetRaw).
+// contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
 	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
 	if err != nil {
@@ -366,7 +366,7 @@ func TestStoreCanceledOps(t *testing.T) {
 		{"Put", func() error { _, err := st.Put(ctx, testNote{Title: "t"}); return err }},
 		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, testNote{Title: "t"}); return err }},
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
-		{"GetTyped", func() error { _, err := st.GetTyped(ctx, h); return err }},
+		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
 		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
 		{"Delete", func() error { return st.Delete(ctx, h) }},
 	} {

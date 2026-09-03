@@ -21,7 +21,7 @@ func NewWalker[T Object[T]](store *Store[T], visit func(T) error) *Walker[T] {
 // first. It returns the first error from visit or from any read. A missing
 // object returns ErrNotFound.
 func (w *Walker[T]) Walk(ctx context.Context, h Hash) error {
-	obj, err := w.store.GetTyped(ctx, h)
+	obj, err := w.store.Get(ctx, h)
 	if err != nil {
 		return err
 	}

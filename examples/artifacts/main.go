@@ -194,7 +194,7 @@ func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Hash, erro
 	}
 	var out []cas.Hash
 	for _, h := range hashes {
-		m, err := a.manifests.GetTyped(ctx, h)
+		m, err := a.manifests.Get(ctx, h)
 		if err != nil {
 			continue // not a manifest
 		}
@@ -207,7 +207,7 @@ func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Hash, erro
 
 // get serves an artifact by hash through the LRU cache.
 func (a *app) get(ctx context.Context, h cas.Hash) (*Artifact, error) {
-	return a.cache.GetTyped(ctx, h)
+	return a.cache.Get(ctx, h)
 }
 
 // gc deletes every object not reachable from the manifests: manifest hashes
@@ -219,7 +219,7 @@ func (a *app) gc(ctx context.Context) (int, error) {
 	}
 	reachable := make(map[string]bool, len(hashes))
 	for _, h := range hashes {
-		m, err := a.manifests.GetTyped(ctx, h)
+		m, err := a.manifests.Get(ctx, h)
 		if err != nil {
 			continue // not a manifest (an artifact)
 		}

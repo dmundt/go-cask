@@ -78,7 +78,7 @@ func demo() error {
 	}
 
 	// Lazy loading: the attachment is NOT loaded until accessed.
-	co, err := attachments.Get(ctx, att)
+	co, err := attachments.Proxy(ctx, att)
 	if err != nil {
 		return err
 	}

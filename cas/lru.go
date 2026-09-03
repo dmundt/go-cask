@@ -13,10 +13,10 @@ import (
 // (container/list + map) — no external dependency (coding-guidelines §3).
 //
 // The bound is enforced for EVERY insertion path: CachedStore calls the
-// policy hook on each newly cached key, so Get, GetTyped, Preload, Warmup
+// policy hook on each newly cached key, so Proxy, Get, Preload, Warmup
 // and PreloadRecursive all funnel through the same LRU bookkeeping — the
-// cache can never exceed maxSize. Get additionally promotes existing
-// entries, and GetTyped is overridden to route through Get so its loads
+// cache can never exceed maxSize. Proxy additionally promotes existing
+// entries, and Get is overridden to route through Proxy so its loads
 // respect the same policy.
 type LRUCache[T Object[T]] struct {
 	*CachedStore[T]
@@ -76,11 +76,11 @@ func (c *LRUCache[T]) touchLocked(key string) {
 	c.index[key] = c.list.PushFront(co.(*CachedObject[T]))
 }
 
-// Get returns the (possibly not-yet-loaded) cached object for h, promoting
+// Proxy returns the (possibly not-yet-loaded) CachedObject for h, promoting
 // it to the most-recent position. A missing object returns ErrNotFound. New
 // entries were already recorded and bounded by the policy hook.
-func (c *LRUCache[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], error) {
-	co, err := c.CachedStore.Get(ctx, h)
+func (c *LRUCache[T]) Proxy(ctx context.Context, h Hash) (*CachedObject[T], error) {
+	co, err := c.CachedStore.Proxy(ctx, h)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +91,11 @@ func (c *LRUCache[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], error)
 	return co, nil
 }
 
-// GetTyped returns the loaded object, routing through Get so the load
-// respects the LRU policy (the embedded CachedStore.GetTyped would insert
-// without bound).
-func (c *LRUCache[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
-	co, err := c.Get(ctx, h)
+// Get returns the loaded object, routing through Proxy so existing entries
+// are promoted on every access (the embedded CachedStore.Get would load
+// without updating the LRU order).
+func (c *LRUCache[T]) Get(ctx context.Context, h Hash) (T, error) {
+	co, err := c.Proxy(ctx, h)
 	if err != nil {
 		var zero T
 		return zero, err

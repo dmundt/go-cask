@@ -38,7 +38,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	repo := newRepo(t, cas.NewMemoryRawStore())
 
 	hb := putBlob(t, repo, "hello")
-	blob, err := repo.Blobs.GetTyped(ctx, hb)
+	blob, err := repo.Blobs.Get(ctx, hb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := repo.Trees.GetTyped(ctx, ht)
+	tree, err := repo.Trees.Get(ctx, ht)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	commit, err := repo.Commits.GetTyped(ctx, hc)
+	commit, err := repo.Commits.Get(ctx, hc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tag, err := repo.Tags.GetTyped(ctx, htag)
+	tag, err := repo.Tags.Get(ctx, htag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,28 +569,28 @@ func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) 
 	return h
 }
 
-func TestGetTypedRejectsInvalidHashPayloads(t *testing.T) {
+func TestGetRejectsInvalidHashPayloads(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, cas.NewMemoryRawStore())
 
 	// Tree with an invalid entry hash string.
 	h := mustStoreEnv(t, repo, "tree@1", `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`)
-	if _, err := repo.Trees.GetTyped(ctx, h); err == nil {
+	if _, err := repo.Trees.Get(ctx, h); err == nil {
 		t.Fatal("tree with invalid entry hash must fail decode")
 	}
 	// Commit with an invalid tree hash.
 	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"nope:zz","author":"a"}`)
-	if _, err := repo.Commits.GetTyped(ctx, h); err == nil {
+	if _, err := repo.Commits.Get(ctx, h); err == nil {
 		t.Fatal("commit with invalid tree hash must fail decode")
 	}
 	// Commit with an invalid parent hash.
 	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parent":"nope:zz","author":"a"}`)
-	if _, err := repo.Commits.GetTyped(ctx, h); err == nil {
+	if _, err := repo.Commits.Get(ctx, h); err == nil {
 		t.Fatal("commit with invalid parent hash must fail decode")
 	}
 	// Tag with an invalid target hash.
 	h = mustStoreEnv(t, repo, "tag@1", `{"name":"v","target":"nope:zz","tagger":"t"}`)
-	if _, err := repo.Tags.GetTyped(ctx, h); err == nil {
+	if _, err := repo.Tags.Get(ctx, h); err == nil {
 		t.Fatal("tag with invalid target hash must fail decode")
 	}
 }
@@ -646,7 +646,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, err := repo.Trees.GetTyped(ctx, th)
+	back, err := repo.Trees.Get(ctx, th)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,7 +662,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cb, err := repo.Commits.GetTyped(ctx, ch)
+	cb, err := repo.Commits.Get(ctx, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tb, err := repo.Tags.GetTyped(ctx, tgh)
+	tb, err := repo.Tags.Get(ctx, tgh)
 	if err != nil {
 		t.Fatal(err)
 	}
