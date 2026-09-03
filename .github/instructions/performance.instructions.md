@@ -1,7 +1,7 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v6
+version: v7
 ---
 
 # Performance — go-cask
@@ -72,9 +72,9 @@ Rules:
    `b.ReportAllocs()`.
 2. Reuse buffers: `sync.Pool` for scratch buffers in the HTTP layer and the
    verify/hexdump paths.
-3. Never `io.ReadAll` a large object in `Get`/`GetRaw` — stream, or use a
-   bounded read. `GetTyped` may buffer only because `Codec.Decode` needs
-   bytes; document that.
+3. Never `io.ReadAll` a large object in a byte-layer read (`RawStore.Get`)
+   or in `Store.GetRaw` — stream, or use a bounded read. Typed `Store.Get`
+   may buffer only because `Codec.Decode` needs bytes; document that.
 4. No `fmt` in hot paths where avoidable — use `encoding/hex` directly, not
    `%x` formatting loops.
 5. No external dependencies for speed: no `unsafe`, no cgo, no assembly, no

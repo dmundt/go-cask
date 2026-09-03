@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v6
+version: v7
 ---
 
 # Library Design — go-cask
@@ -57,7 +57,7 @@ Rules:
 - `Verify` (and integrity checks on read) return `ErrHashMismatch`.
 - `ParseHash` returns `ErrInvalidHash` / `ErrUnknownAlgorithm`, wrapped with
   the offending input in the message.
-- `Store.GetTyped` returns `ErrCorrupt` when the stored payload cannot be
+- `Store.Get` returns `ErrCorrupt` when the stored payload cannot be
   decoded by the store codec (corrupted bytes or a wrong codec).
 - Deserializers return `ErrUnknownType` for an unregistered type name or
   major version (object-versioning §4).

@@ -130,7 +130,7 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("no commits yet: %w", err)
 	}
 	for h != nil {
-		c, err := a.repo.Commits.GetTyped(ctx, h)
+		c, err := a.repo.Commits.Get(ctx, h)
 		if err != nil {
 			return err
 		}

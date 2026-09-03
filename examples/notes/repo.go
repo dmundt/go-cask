@@ -47,15 +47,15 @@ type Resolver struct{ repo *Repository }
 func newResolver(repo *Repository) *Resolver { return &Resolver{repo: repo} }
 
 func (r *Resolver) ResolveNote(ctx context.Context, h cas.Hash) (*Note, error) {
-	return r.repo.Notes.GetTyped(ctx, h)
+	return r.repo.Notes.Get(ctx, h)
 }
 
 func (r *Resolver) ResolveTag(ctx context.Context, h cas.Hash) (*Tag, error) {
-	return r.repo.Tags.GetTyped(ctx, h)
+	return r.repo.Tags.Get(ctx, h)
 }
 
 func (r *Resolver) ResolveAttachment(ctx context.Context, h cas.Hash) (*Attachment, error) {
-	return r.repo.Attachments.GetTyped(ctx, h)
+	return r.repo.Attachments.Get(ctx, h)
 }
 
 // ResolveAny discovers the type from the self-describing envelope and

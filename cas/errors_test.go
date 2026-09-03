@@ -184,12 +184,13 @@ func TestStorePutDedupCancelled(t *testing.T) {
 
 // The typed layer is compile-time constrained to Object[T]: a type that does
 // not implement Object[T] cannot even be passed to NewStore. (Runtime proof:
-// the package would not compile otherwise; the old "decoded value is not an
-// Object" branch of Get no longer exists.)
+// the package would not compile otherwise; the pre-constraint "decoded value
+// is not an Object" branch is gone — Get returns the concrete T by
+// construction.)
 
-// TestGetTypedCorruptPayload pins ErrCorrupt: a stored payload the store
-// codec cannot decode surfaces as ErrCorrupt from GetTyped.
-func TestGetTypedCorruptPayload(t *testing.T) {
+// TestGetCorruptPayload pins ErrCorrupt: a stored payload the store
+// codec cannot decode surfaces as ErrCorrupt from Get.
+func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
 	raw := NewMemoryRawStore()
 	store, err := NewStore(raw, JSONCodec[testNote]{}, "sha256")
@@ -205,8 +206,8 @@ func TestGetTypedCorruptPayload(t *testing.T) {
 	if err := raw.Put(ctx, h, strings.NewReader(string(data))); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetTyped(ctx, h); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("GetTyped(corrupt payload) = %v, want ErrCorrupt", err)
+	if _, err := store.Get(ctx, h); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Get(corrupt payload) = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -226,8 +227,8 @@ func TestStoreBadEnvelope(t *testing.T) {
 		if err := raw.Put(ctx, h, strings.NewReader(garbage)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.GetTyped(ctx, h); !errors.Is(err, ErrUnknownType) {
-			t.Errorf("GetTyped(%q) = %v, want ErrUnknownType", garbage, err)
+		if _, err := s.Get(ctx, h); !errors.Is(err, ErrUnknownType) {
+			t.Errorf("Get(%q) = %v, want ErrUnknownType", garbage, err)
 		}
 	}
 }
@@ -249,7 +250,7 @@ func TestCachedLoadErrorMemoized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	co, err := c.Get(ctx, h)
+	co, err := c.Proxy(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}

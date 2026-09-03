@@ -19,7 +19,7 @@ import (
 // Stored objects use the self-describing envelope (cas-core §8, decision 1):
 // the serialized bytes are {"type": "<type>@<major>", "data": "<base64
 // payload>"}, where the payload is the codec output. Store.Put builds the
-// envelope from codec.Encode(obj) and obj.Type(); GetTyped strips the
+// envelope from codec.Encode(obj) and obj.Type(); Get strips the
 // envelope and decodes the payload with the store's codec. The base64
 // payload encoding keeps the envelope valid JSON for any codec output (JSON,
 // gzip, binary).
@@ -92,8 +92,7 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 
 // marshal builds the stored form of obj: payload := codec.Encode(obj),
 // wrapped in the self-describing envelope {"type","data"}. The codec is the
-// single serialization authority — the same codec decodes on read
-// (GetTyped). obj is the concrete T (the Store constraint), so no type
+// single serialization authority — the same codec decodes on read (Get). obj is the concrete T (the Store constraint), so no type
 // assertion is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	payload, err := s.codec.Encode(obj)
@@ -108,13 +107,13 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	return data, nil
 }
 
-// GetTyped reads the object at h and returns the concrete T directly — no
-// casts. It strips the envelope and decodes the payload with the store's
-// codec; it may buffer the object because Codec.Decode needs the full
-// payload bytes. When the decoded value implements Object[T], its Type()
-// must match the envelope's type name, otherwise ErrUnknownType is returned
-// (a self-describing store refuses to hand back a value of the wrong type).
-func (s *Store[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
+// Get reads the object at h and returns the concrete T directly — no casts.
+// It strips the envelope and decodes the payload with the store's codec; it
+// may buffer the object because Codec.Decode needs the full payload bytes.
+// When the decoded value implements Object[T], its Type() must match the
+// envelope's type name, otherwise ErrUnknownType is returned (a
+// self-describing store refuses to hand back a value of the wrong type).
+func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	var zero T
 	data, err := s.GetRaw(ctx, h)
 	if err != nil {
