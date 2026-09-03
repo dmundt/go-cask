@@ -19,6 +19,11 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- `examples/files`: new `audit` command — a derived per-object state report
+  (verified / orphaned / corrupt / unverified) built from `List` +
+  reachability-from-HEAD marking + per-object `Verify`, with a
+  `-no-verify` fast-orphan mode; states are scan results, never stored
+  (examples spec v8).
 - `cas-core` §3.1 layer diagram converted from a fragile ASCII box to a
   Mermaid flowchart (subgraphs per layer + dependency edges) (cas-core
   v15).

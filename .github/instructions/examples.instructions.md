@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the cas core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v7
+version: v8
 ---
 
 # Examples — go-cask
@@ -125,20 +125,25 @@ When creating or extending an example, follow these rules:
 
 **Goal.** A small CLI that stores file trees as content-addressed objects and
 commits them, using the `gitlike` layer end to end — the closest thing to a
-miniature Git built on CASK.
+miniature Git built on CASK. It also demonstrates the derived object-state
+report: every object is classified verified / orphaned / corrupt / unverified
+from the existing operations (`Verify` + reachability from `HEAD`), proving
+those states are scan results, never stored metadata.
 
 **Aspects covered.** `gitlike` object model (`Blob`/`Tree`/`Commit`/`Tag`),
 `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]` with
-`JSONCodec[T]`, `FSRawStore` fan-out layout, `Verify`, `Stats`, CLI with std
-`flag`.
+`JSONCodec[T]`, `FSRawStore` fan-out layout, `Verify`, `Stats`, derived
+object-state audit (`List` + reachability mark + per-object `Verify`), CLI
+with std `flag`.
 
 **Structure.**
 
 ```text
 examples/files/
-├── main.go      # CLI: add, commit, log, cat, graph, verify, stats
+├── main.go      # CLI: add, commit, log, cat, graph, audit, verify, stats
 ├── repo.go      # thin helpers over gitlike.Repository (head ref, index)
-├── main_test.go # round-trip: add → commit → log → cat; verify
+├── audit.go     # derived-state report: List → mark reachable from HEAD → Verify each
+├── main_test.go # round-trip: add → commit → log → cat; verify; audit states
 └── README.md    # required per §2 rule 8: core used/extended, walkthrough, mermaid
 ```
 
@@ -150,12 +155,21 @@ examples/files/
   head, if any); the head is a plain `Hash` value held in a small ref file.
 - `log` walks parents via `WalkGraph`/`References()`; `cat <hash>` resolves
   and prints blob bytes; `graph` prints the reachable graph with types.
+- `audit [-no-verify]` lists every stored object, marks the reachable set
+  from `HEAD` (`References()` walk), verifies each with `FSRawStore.Verify`,
+  and prints per-object state: `verified` (intact + reachable), `orphaned`
+  (intact, unreachable — GC candidate), `corrupt` (Verify failed), or
+  `unverified` (reachable, integrity skipped under `-no-verify`). States are
+  derived at scan time, never persisted (consistency §8).
 - `verify` recomputes every hash; `stats` prints per-algorithm counts and
   total size.
 
 **Acceptance criteria.** Add→commit→log→cat round-trips; identical content
 across commits does not create duplicate blobs; `verify` passes after a clean
-commit and reports a mismatch after a stored file is corrupted on disk.
+commit and reports a mismatch after a stored file is corrupted on disk;
+`audit` reports a clean store as all `verified`, an uncommitted `add`'s
+objects as `orphaned`, a corrupted object as `corrupt`, and under
+`-no-verify` reachable objects as `unverified`.
 
 ### 3.2 `examples/artifacts` — content-addressed build artifact cache
 
@@ -341,7 +355,7 @@ JS anywhere in the example.
 | Prefetch-on-access (own `SmartCache`)              |                 |                | ✓     |         |            |
 | Cache metrics (own `CacheMonitor`)                 |                 | ✓              |       |         |            |
 | Background `Preloader`                            |                 |                | ✓     |         |            |
-| `Stats` / `Verify` / `GC`                         | ✓ (verify/stats)| ✓ (gc/stats)   |       | ✓       | ✓          |
+| `Stats` / `Verify` / `GC`                         | ✓ (verify/audit)| ✓ (gc/stats)   |       | ✓       | ✓          |
 | HTTP-exposure pattern (server over `cas`)          |                 |                |       | ✓       |            |
 | Viewer: nested templates + htmx + dashboard       |                 |                |       |         | ✓          |
 | Security (authn/authz, sessions, CSRF)            |                 |                |       | ✓ (bearer) | ✓ (session)|

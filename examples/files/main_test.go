@@ -104,6 +104,86 @@ func TestDedup(t *testing.T) {
 	}
 }
 
+// Acceptance: audit classifies every object — verified when reachable and
+// intact, orphaned when stored but unreachable from HEAD, corrupt when
+// Verify fails. -no-verify downgrades intact reachable objects to
+// unverified (a fast orphan scan).
+func TestAuditStates(t *testing.T) {
+	ctx := context.Background()
+	work := t.TempDir()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := writeTempFile(t, work, "a.txt", "audit me")
+	if _, err := a.add(ctx, []string{f}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.commit(ctx, "c1"); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := a.audit(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.counts[stateCorrupt] != 0 || rep.counts[stateOrphaned] != 0 || rep.counts[stateUnverified] != 0 {
+		t.Fatalf("clean store audit = %+v, want all verified", rep.counts)
+	}
+	if rep.counts[stateVerified] == 0 {
+		t.Fatal("clean store must have verified objects")
+	}
+
+	// An uncommitted add leaves its blob+tree stored but unreachable
+	// (INDEX is not a root): audit reports them orphaned.
+	g := writeTempFile(t, work, "b.txt", "staged, never committed")
+	if _, err := a.add(ctx, []string{g}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = a.audit(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.counts[stateOrphaned] != 2 { // blob b + its tree
+		t.Fatalf("after uncommitted add orphaned = %d, want 2 (%+v)", rep.counts[stateOrphaned], rep.counts)
+	}
+
+	// Corrupt a reachable object on disk: audit reports it corrupt.
+	hashes, err := a.raw.List(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := objectPath(a.dir, hashes[0].String())
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[0] ^= 0xff
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = a.audit(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.counts[stateCorrupt] != 1 {
+		t.Fatalf("after corruption corrupt = %d, want 1 (%+v)", rep.counts[stateCorrupt], rep.counts)
+	}
+
+	// -no-verify: no integrity pass, so nothing is corrupt/verified —
+	// intact reachable objects become unverified; orphans stay orphaned.
+	rep, err = a.audit(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.counts[stateCorrupt] != 0 || rep.counts[stateVerified] != 0 {
+		t.Fatalf("-no-verify audit = %+v, want no corrupt/verified", rep.counts)
+	}
+	if rep.counts[stateUnverified] == 0 || rep.counts[stateOrphaned] == 0 {
+		t.Fatalf("-no-verify audit = %+v, want unverified + orphaned", rep.counts)
+	}
+}
+
 // Acceptance: verify passes after a clean commit and reports a mismatch
 // after a stored file is corrupted on disk.
 func TestVerify(t *testing.T) {
