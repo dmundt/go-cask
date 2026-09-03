@@ -12,7 +12,7 @@ Acceptance: the demo round-trips a file (identical bytes); a viewer-role
 token gets 403 on `DELETE`; large payloads stream without buffering; the
 OpenAPI document is served and matches the routes.
 
-## Cas core parts used
+## `cas` core parts used
 
 | Component | Where |
 | --------- | ----- |
