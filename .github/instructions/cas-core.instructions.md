@@ -109,9 +109,8 @@ flowchart TB
         BACKENDS["Backends: FSRawStore (reference), MemoryRawStore (tests),<br/>S3, BadgerDB, PostgreSQL"]
     end
 
-    GITLIKE --> STORE
-    OTHER --> STORE
-    STORE --> RAW
+    APP -->|"depends on"| TYPED
+    TYPED -->|"depends on"| BYTE
 ```
 
 Dependency rule: the byte layer depends on nothing; the typed layer depends on
