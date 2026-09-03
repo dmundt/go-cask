@@ -31,7 +31,7 @@ version: v3
 
 ## 1. Model Alignment
 
-The viewer browses a **content-addressed store**, not buckets or files:
+The viewer browses a **content-addressable store**, not buckets or files:
 
 - Identity is the **hash** (`algo:hexdigest`, e.g. `sha256:a1b2…`);
 - objects are **immutable blobs** in a self-describing envelope

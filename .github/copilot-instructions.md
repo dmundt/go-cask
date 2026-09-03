@@ -4,12 +4,12 @@ description: The aggregator for Copilot — project context, architecture overvi
 version: v6
 ---
 
-# Copilot Instructions — go-cask (CASK: Content Addressed Storage Kit)
+# Copilot Instructions — go-cask (CASK: Content Addressable Store Kit)
 
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
-> content-addressed object storage component written in Go, fully type-safe via
+> content-addressable object store component written in Go, fully type-safe via
 > generics (no `any` in the public API), with pluggable hash algorithms, a
 > filesystem backend, typed object layers, lazy loading and caching.
 >
@@ -21,7 +21,7 @@ version: v6
 
 ## Project Context
 
-CASK is a reusable Go component implementing **content-addressed storage**: any
+CASK is a reusable Go component implementing a **content-addressable store**: any
 binary blob is stored once under the hash of its content; identical content
 deduplicates automatically, objects are immutable, and objects reference each
 other by hash (a Git-like blob/tree/commit/tag model). The storage layer knows
