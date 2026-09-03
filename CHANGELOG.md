@@ -13,9 +13,9 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 ### Added
 
 - Core-overview diagram of the `cas` interfaces (byte / typed / caching
-  layers and their dependencies) — canonical copy in `cas-core` §3.3;
-  README and `design/core-overview.md` point to it instead of duplicating
-  it (cas-core v13, v14).
+  layers and their dependencies) — canonical copy in `cas-core` §3.3, with
+  the same diagram embedded in the README; `design/core-overview.md` points
+  to the spec (cas-core v13, v14).
 
 ### Changed
 
