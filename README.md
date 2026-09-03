@@ -55,6 +55,72 @@ cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded view
 .github/   specification set + CI (see below)
 ```
 
+## Core interfaces at a glance
+
+`cas` is layered: a non-generic **byte layer** (`Hash`, `RawStore` + backends)
+below a generic, constrained **typed layer** (`Object[T]`, `Codec[T]`,
+`Store[T]`, `Walker[T]`), with caching wrappers on top. The typed layer
+depends only on the byte layer; apps build their own `Object[T]` models on
+`Store[T]`.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class Hash {
+        <<interface>>
+        +Algorithm() string
+        +String() string
+        +Equal(other Hash) bool
+    }
+    class RawStore {
+        <<interface>>
+        +Put(ctx, h, r) error
+        +Get(ctx, h) io.ReadCloser
+        +Exists(ctx, h) (bool, error)
+        +Delete(ctx, h) error
+        +List(ctx, algo) []Hash
+    }
+    class FSRawStore {
+        <<backend>>
+    }
+    class MemoryRawStore {
+        <<backend>>
+    }
+    RawStore <|.. FSRawStore : implements
+    RawStore <|.. MemoryRawStore : implements
+
+    class Object~T~ {
+        <<interface>>
+        +Type() string
+        +References() []Hash
+    }
+    class Codec~T~ {
+        <<interface>>
+        +Encode(v T) ([]byte, error)
+        +Decode(data []byte) (T, error)
+    }
+    class Store~T~ {
+        +Put(ctx, obj T) (Hash, error)
+        +GetTyped(ctx, h) (T, error)
+        +Delete(ctx, h) error
+    }
+    class Walker~T~ {
+        +Walk(ctx, h) error
+    }
+    Store~T~ o-- RawStore : raw
+    Store~T~ o-- Codec~T~ : codec
+    Store~T~ ..> Object~T~ : stores
+    Walker~T~ ..> Store~T~ : reads via GetTyped
+
+    class CachedStore~T~
+    class LRUCache~T~
+    CachedStore~T~ o-- Store~T~ : wraps
+    LRUCache~T~ --|> CachedStore~T~ : extends
+```
+
+The normative architecture lives in `.github/instructions/cas-core.instructions.md` §3.
+
 ## Quick start
 
 ```go
