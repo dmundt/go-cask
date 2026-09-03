@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v16
+version: v17
 ---
 
 # CAS Core — go-cask
@@ -824,6 +824,18 @@ Rules:
   viewer, or an app embedding the library; `examples/api` shows the HTTP
   pattern), and keep the "one store directory ↔ one process" invariant
   (backend-architecture §1).
+- **Cross-process subset that IS safe by construction** (no locking needed,
+  even across processes): concurrent readers never observe partial objects
+  (atomic rename), and concurrent `Put`s of the SAME hash are safe
+  (idempotent — identical bytes, atomic rename). What is NOT safe across
+  processes without coordination: any destructive op (`Delete`, `GC`,
+  `Prune`, `Clean`) racing another process's writes. The `cask` CLI enforces
+  the boundary at the application layer: mutating commands (`put`, `gc`,
+  `prune`, `clean`) and the viewer (`cask web`) take the store's exclusive
+  `.cask.lock` for the operation/process lifetime, so a second mutating
+  process is refused with the holder's PID (cli spec §2); reads never lock.
+  Applications embedding the library MUST provide equivalent coordination
+  themselves if they run more than one process per store directory.
 - Callers must close every `io.ReadCloser` from the byte layer's
   `RawStore.Get` (the typed layer returns bytes or concrete values, never a
   stream the caller must close).

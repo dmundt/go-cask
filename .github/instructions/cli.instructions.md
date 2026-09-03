@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v7
+version: v8
 ---
 
 # CLI — go-cask
@@ -62,6 +62,16 @@ Store operations speak to the store in-process over the library:
   error (exit 2).
 - `gc` and `prune` are destructive: `prune` defaults to `--dry-run` and
   `gc` prints the count of deleted objects (consistency §4–§5).
+- **Store lock:** mutating commands (`put`, `gc`, `prune`, `clean`) and
+  `web` take the store's exclusive cross-process lock (a `.cask.lock` file
+  at the store root holding the PID) for the operation — or, for `web`, for
+  the process lifetime. If another mutating process holds it, the command
+  fails with exit 1 and a message naming the holder's PID (and telling the
+  operator to remove a stale lock file when no such process runs). Read-only
+  commands (`get`, `list`, `meta`, `stats`, `verify`) never lock — reads are
+  lock-free (cas-core §6). The library itself has no inter-process locking;
+  this is the CLI's application-level enforcement of the "one store
+  directory ↔ one process" invariant.
 - Remote mode is gone with the network surface; every operation calls the
   library directly in-process.
 - `web` is the only subcommand that does not terminate: it runs the viewer
@@ -104,6 +114,8 @@ Store operations speak to the store in-process over the library:
 - [ ] Local-only: `-store` mode; `-algo` honored for writes; no remote flags
 - [ ] `web` starts the embedded viewer per backend-architecture §3; no
       separate server binary exists
+- [ ] Mutating commands + `web` hold the store lock; second mutator refused
+      with the holder's PID (exit 1); reads never lock (§2, cas-core §6)
 - [ ] All subcommands map to core operations or the viewer server
       composition — no new logic in the CLI
 - [ ] Hash arguments validated with `ParseHash` (exit 2 on malformed)
