@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v14
+version: v15
 ---
 
 # CAS Core — go-cask
@@ -87,30 +87,31 @@ These invariants are testable and tested — see the CAS laws in
 
 ### 3.1 Layers
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ Application / domain layer (per app, NOT part of the core)       │
-│   Example package examples/gitlike/: Blob, Tree, Commit, Tag,    │
-│     Repository, Resolver, ResolvedObject, WalkGraph,             │
-│     CachedRepository, Preloader                                  │
-│   Other apps: Note, Job, Document, ... (same pattern)            │
-├──────────────────────────────────────────────────────────────────┤
-│ Typed layer — GENERIC CORE (package cas, type-safe, no any)      │
-│                                                                  │
-│   Object[T]  — self-describing, reference-aware objects          │
-│   Codec[T]   — serialization (JSONCodec[T] default)              │
-│   Store[T]   — Put / Get / GetRaw / Exists / Delete              │
-│   Walker[T]  — generic graph traversal over References()         │
-│                                                                  │
-│   Caching / lazy loading layer (generic over T):                 │
-│   CachedObject[T] → CachedStore[T] → LRUCache[T]                │
-├──────────────────────────────────────────────────────────────────┤
-│ Byte layer (non-generic, package cas)                            │
-│   Hash (algo:digest) · HashFunc registry · ParseHash             │
-│   RawStore interface                                             │
-│   Backends: FSRawStore (reference), MemoryRawStore (tests),      │
-│             S3, BadgerDB, PostgreSQL                             │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph APP["Application / domain layer (per app, NOT part of the core)"]
+        GITLIKE["examples/gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
+        OTHER["Other apps: Note, Job, Document, ... (same pattern)"]
+    end
+
+    subgraph TYPED["Typed layer — GENERIC CORE (package cas, type-safe, no any)"]
+        OBJECT["Object[T] — self-describing, reference-aware objects"]
+        CODEC["Codec[T] — serialization (JSONCodec[T] default)"]
+        STORE["Store[T] — Put / Get / GetRaw / Exists / Delete"]
+        WALKER["Walker[T] — generic graph traversal over References()"]
+        CACHE["Caching / lazy loading layer (generic over T):<br/>CachedObject[T] → CachedStore[T] → LRUCache[T]"]
+        CACHE -. "wraps" .-> STORE
+    end
+
+    subgraph BYTE["Byte layer (non-generic, package cas)"]
+        HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
+        RAW["RawStore interface"]
+        BACKENDS["Backends: FSRawStore (reference), MemoryRawStore (tests),<br/>S3, BadgerDB, PostgreSQL"]
+    end
+
+    GITLIKE --> STORE
+    OTHER --> STORE
+    STORE --> RAW
 ```
 
 Dependency rule: the byte layer depends on nothing; the typed layer depends on
