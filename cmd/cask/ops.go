@@ -38,21 +38,15 @@ func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
 
-// gcCount deletes every object not in reachable and returns how many were
-// deleted (stats delta; cas GC itself returns no count).
-func gcCount(ctx context.Context, raw *cas.FSRawStore, reachable map[string]bool) (int64, error) {
-	before, err := raw.Stats(ctx)
+// pruneCount runs raw.Prune (delete unreachable-from-roots objects older
+// than minAge; dryRun reports without deleting) and returns how many objects
+// it deleted / would delete.
+func pruneCount(ctx context.Context, raw *cas.FSRawStore, roots []cas.Hash, minAge time.Duration, dryRun bool) (int, error) {
+	doomed, err := raw.Prune(ctx, roots, minAge, dryRun)
 	if err != nil {
 		return 0, err
 	}
-	if err := raw.GC(ctx, reachable); err != nil {
-		return 0, err
-	}
-	after, err := raw.Stats(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return before.ObjectCount - after.ObjectCount, nil
+	return len(doomed), nil
 }
 
 // --- put ---
@@ -301,22 +295,33 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 
 // --- gc ---
 
+// gcDefaultGrace is the default `gc --min-age`: sweeps reclaim only objects
+// older than this, so a concurrent writer's fresh objects are never deleted
+// (cas-core §6; Git's gc grace). Pass --min-age 0 for an immediate sweep —
+// the dangerous variant, only safe when no other process is writing.
+const gcDefaultGrace = 24 * time.Hour
+
 func opGC(ctx context.Context, t *target, args []string) error {
-	if len(args) == 0 {
-		return usagef("gc needs at least one root hash")
+	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
+	minAge := fs.Duration("min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
 	}
-	roots, err := parseHashes(args)
+	roots, err := parseHashes(fs.Args())
 	if err != nil {
 		return err
 	}
+	if len(roots) == 0 {
+		return usagef("gc needs at least one root hash")
+	}
+	if *minAge == 0 {
+		fmt.Fprintln(os.Stderr, "warning: gc --min-age 0 deletes every unreachable object immediately; only safe when no other process is writing (cas-core §6)")
+	}
 	// Reachability is the given roots themselves at the byte layer (the
 	// store cannot interpret references; graph-aware reachability is the
-	// app's job, cas-core §4.11).
-	reachable := make(map[string]bool, len(roots))
-	for _, h := range roots {
-		reachable[h.String()] = true
-	}
-	deleted, err := gcCount(ctx, t.raw, reachable)
+	// app's job, cas-core §4.11). Only objects older than minAge are
+	// reclaimed, so a concurrent writer's recent objects survive the sweep.
+	deleted, err := pruneCount(ctx, t.raw, roots, *minAge, false)
 	if err != nil {
 		return err
 	}

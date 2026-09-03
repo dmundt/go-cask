@@ -92,7 +92,7 @@ func TestLocalRoundTrip(t *testing.T) {
 		t.Fatalf("prune = (%q, %d), want dry-run", out, code)
 	}
 
-	// gc keeping h → h survives
+	// gc keeping h → h survives (gc is grace-gated; h is a root anyway).
 	if _, code := run(t, mf, "gc", h); code != 0 {
 		t.Fatalf("gc exit %d", code)
 	}
@@ -113,7 +113,8 @@ func TestLocalGcDeletesUnreferenced(t *testing.T) {
 	}
 	h1, h2 = strings.TrimSpace(h1), strings.TrimSpace(h2)
 
-	if _, code := run(t, mf, "gc", h1); code != 0 {
+	// Forced sweep (--min-age 0): the unreferenced object h2 must go.
+	if _, code := run(t, mf, "gc", "--min-age", "0", h1); code != 0 {
 		t.Fatal("gc failed")
 	}
 	if _, code := run(t, mf, "get", h2); code == 0 {

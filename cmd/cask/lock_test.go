@@ -7,9 +7,26 @@ import (
 	"testing"
 )
 
-// TestMutatingOpsTakeLock: a mutating op (put) refuses while another lock
-// holder is active, and the error names the holder's PID.
-func TestMutatingOpsTakeLock(t *testing.T) {
+// TestMaintenanceOpsTakeLock: a maintenance op (gc) refuses while another
+// lock holder is active, and the error names the holder's PID.
+func TestMaintenanceOpsTakeLock(t *testing.T) {
+	mf := localMF(t)
+	holder, err := acquireStoreLock(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.release()
+
+	h := "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	_, code := run(t, mf, "gc", h)
+	if code != 1 {
+		t.Fatalf("gc under an active lock: exit %d, want 1", code)
+	}
+}
+
+// TestPutDoesNotLock: writers (put) are lock-free — a put succeeds while
+// another process holds the maintenance lock (cas-core §6).
+func TestPutDoesNotLock(t *testing.T) {
 	mf := localMF(t)
 	holder, err := acquireStoreLock(mf.store)
 	if err != nil {
@@ -21,21 +38,18 @@ func TestMutatingOpsTakeLock(t *testing.T) {
 	if err := os.WriteFile(f, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, code := run(t, mf, "put", f)
-	if code != 1 {
-		t.Fatalf("put under an active lock: exit %d, want 1", code)
+	if _, code := run(t, mf, "put", f); code != 0 {
+		t.Fatalf("put under a maintenance lock: exit %d, want 0 (writers never lock)", code)
 	}
 }
 
-// TestLockReleasedAfterOp: after a mutating op completes, the lock is gone.
+// TestLockReleasedAfterOp: after a maintenance op completes, the lock is
+// gone.
 func TestLockReleasedAfterOp(t *testing.T) {
 	mf := localMF(t)
-	f := filepath.Join(t.TempDir(), "x.txt")
-	if err := os.WriteFile(f, []byte("data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, code := run(t, mf, "put", f); code != 0 {
-		t.Fatalf("put exit %d, want 0", code)
+	h := "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	if _, code := run(t, mf, "gc", "--min-age", "0", h); code != 0 {
+		t.Fatalf("gc exit %d, want 0", code)
 	}
 	lock, err := acquireStoreLock(mf.store)
 	if err != nil {
@@ -95,10 +109,9 @@ func TestLockFileRecordsPID(t *testing.T) {
 	}
 }
 
-// TestWebHoldsLock: runWeb acquires the lock for its lifetime (verified by
-// refusing a second acquisition while a viewer store is "running" — the
-// acquire path is the same one runWeb uses).
-func TestWebHoldsLock(t *testing.T) {
+// TestLockAcquireRelease: the maintenance lock is exclusive — a second
+// acquisition fails while one holder is active, and succeeds after release.
+func TestLockAcquireRelease(t *testing.T) {
 	dir := t.TempDir()
 	lock, err := acquireStoreLock(dir)
 	if err != nil {
