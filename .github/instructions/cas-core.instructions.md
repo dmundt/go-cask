@@ -28,7 +28,7 @@ version: v15
 
 ## 1. Purpose & Scope
 
-CASK is a reusable Go component for **content-addressed storage**: binary
+CASK is a reusable Go component for a **content-addressable store**: binary
 blobs are stored once, under the hash of their content, as immutable objects
 that reference each other by hash. It is Git-like (blob / tree / commit / tag
 model) but **generic across apps and domains**: the storage core knows nothing

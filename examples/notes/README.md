@@ -7,7 +7,7 @@ gitlike (examples spec §3.3). It shows cross-type resolution, lazy loading of
 large attachments, `SmartCache` prefetch, broken-reference detection, and the
 generic `Walker[T]`.
 
-## Cas core parts used
+## `cas` core parts used
 
 | Component | Where |
 | --------- | ----- |

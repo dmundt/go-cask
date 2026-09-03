@@ -19,6 +19,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Naming: the acronym expansion is **Content Addressable Store (Kit)** and is
+  written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
+  Go package — replacing the former "Content Addressed Storage (Kit)" wording
+  in README, specs, package comments, and example READMEs; the
+  "Cas core parts used" README headings are now "`cas` core parts used"
+  (AGENT.md v6).
 - `examples/files`: new `audit` command — a derived per-object state report
   (verified / orphaned / corrupt / unverified) built from `List` +
   reachability-from-HEAD marking + per-object `Verify`, with a
@@ -38,7 +44,7 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Added
 
-- **`cas` core library** — the generic, content-addressed storage core:
+- **`cas` core library** — the generic core of a content-addressable store:
   - byte layer: `Hash`/`ParseHash`/`NewHash`/`RegisterHash`/`NewHasher`/
     `HashBytes` (sha1 + sha256), `RawStore` contract, `FSRawStore`
     (fan-out layouts, atomic temp→`Sync()`→rename writes, lock-free reads,

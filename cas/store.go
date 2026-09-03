@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Store[T] is the generic, type-safe content-addressed store for objects of
+// Store[T] is the generic, type-safe content-addressable store for objects of
 // type T, over a RawStore backend, a Codec[T] and a hash algorithm. Type
 // safety comes from one store per type: Store[Blob] and Store[Commit] are
 // distinct, so passing a commit hash to a blob store is a compile-time

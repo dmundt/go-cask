@@ -1,14 +1,14 @@
 # files — a miniature Git on CASK
 
 **What it demonstrates.** A runnable CLI that stores file trees as
-content-addressed objects and commits them, using the `gitlike` example layer
+content-addressable objects and commits them, using the `gitlike` example layer
 end to end — the closest thing to a tiny Git built on the generic cas core
 (examples spec §3.1). Acceptance: `add → commit → log → cat` round-trips,
 identical content deduplicates across commits, `verify` detects corruption on
 disk, and `audit` reports every object's derived state
 (verified / orphaned / corrupt / unverified) from HEAD + `Verify`.
 
-## Cas core parts used
+## `cas` core parts used
 
 | Component | Where |
 | --------- | ----- |

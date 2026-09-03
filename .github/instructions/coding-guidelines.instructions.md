@@ -182,7 +182,7 @@ Consequences for this repo:
   variable) MUST have a doc comment that begins with its name:
 
   ```go
-  // Store is a generic, type-safe content-addressed store for objects of type T.
+  // Store is a generic, type-safe content-addressable store for objects of type T.
   type Store[T any] struct { ... }
 
   // Put stores obj and returns its content address.

@@ -6,7 +6,7 @@
 package** (not a runnable program) that other examples and apps copy as the
 pattern for building their own typed layers on `Store[T]`.
 
-## Cas core parts used
+## `cas` core parts used
 
 | Component | Where |
 | --------- | ----- |
