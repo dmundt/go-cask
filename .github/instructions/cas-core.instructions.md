@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v18
+version: v19
 ---
 
 # CAS Core — go-cask
@@ -499,11 +499,13 @@ in-process via the mutex, and across processes via the unique temp names
 above (with the POSIX/Windows rename caveat in §4.4). At most a single
 `sync.Mutex` coordinates `Put`/`Delete` within a process; reads are
 wait-free. **The cross-process guarantees stop at object writes**: there is
-no inter-process locking, so `Delete`/`GC`/`Prune`/`Clean` racing another
-process's writes are NOT safe. Multiple processes MUST NOT run destructive
-ops on the same store directory concurrently — run one process per store, or
-serialize access with application-level locking (`cask` mutating commands do
-this via `.cask.lock`; backend-architecture §1).
+no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/
+`Clean`) racing another process's writes is NOT safe. The **grace model**
+applies: sweeps that may race live writers MUST reclaim only objects older
+than a grace `--min-age`, so a concurrent writer's fresh objects survive —
+this is what the `cask` CLI does (`gc`/`prune` default 24h; forced
+`--min-age 0` is the documented dangerous variant, consistency §5,
+backend-architecture §1).
 
 **Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`, `Clean`;
 `Size(h)` returns an object's size in bytes (`ErrNotFound` when missing);
@@ -832,24 +834,23 @@ Rules:
 
 - `Store[T]` is safe for concurrent use if its `RawStore` is. **Concurrency
   safety is per-process**: all of the above (mutexes, `sync.Map`,
-  double-checked locking) coordinates threads of ONE process. Multiple OS
-  processes MUST NOT share one store directory concurrently — there is no
+  double-checked locking) coordinates threads of ONE process; the core has no
   inter-process locking. Serve many clients from one process (the CLI, the
   viewer, or an app embedding the library; `examples/api` shows the HTTP
-  pattern), and keep the "one store directory ↔ one process" invariant
-  (backend-architecture §1).
-- **Cross-process subset that IS safe by construction** (no locking needed,
-  even across processes): concurrent readers never observe partial objects
-  (atomic rename), and concurrent `Put`s of the SAME hash are safe
-  (idempotent — identical bytes, atomic rename). What is NOT safe across
-  processes without coordination: any destructive op (`Delete`, `GC`,
-  `Prune`, `Clean`) racing another process's writes. The `cask` CLI enforces
-  the boundary at the application layer: mutating commands (`put`, `gc`,
-  `prune`, `clean`) and the viewer (`cask web`) take the store's exclusive
-  `.cask.lock` for the operation/process lifetime, so a second mutating
-  process is refused with the holder's PID (cli spec §2); reads never lock.
-  Applications embedding the library MUST provide equivalent coordination
-  themselves if they run more than one process per store directory.
+  pattern).
+- **Cross-process model (grace, Git-style):** concurrent readers and
+  concurrent `Put`s of the SAME hash are safe by construction (atomic
+  rename, unique temps) — so writers and the viewer may run in several
+  processes on one store. What needs coordination is a maintenance sweep
+  (`Delete`/`GC`/`Prune`/`Clean`) racing another process's writes. The
+  `cask` CLI applies the grace model: maintenance sweeps (`gc`, `prune`,
+  `clean`) take the store's exclusive `.cask.lock` so two sweeps never
+  overlap, and reclaim only objects older than a grace `--min-age` (default
+  24h), so a concurrent writer's fresh objects survive. A forced sweep
+  (`--min-age 0`) is the dangerous variant — only safe when no other process
+  is writing; it prints a warning (cli spec §2, consistency §5). Applications
+  embedding the library MUST provide equivalent coordination themselves if
+  they run maintenance sweeps in more than one process per store directory.
 - Callers must close every `io.ReadCloser` from the byte layer's
   `RawStore.Get` (the typed layer returns bytes or concrete values, never a
   stream the caller must close).

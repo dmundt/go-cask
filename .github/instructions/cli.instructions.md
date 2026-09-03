@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v8
+version: v9
 ---
 
 # CLI — go-cask
@@ -52,7 +52,7 @@ Store operations speak to the store in-process over the library:
 | `meta <hash>`                 | metadata of one object (size, type)                            |
 | `stats`                       | storage statistics (per-algorithm counts, total size)           |
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
-| `gc <roots...>`               | mark-and-sweep from the given root hashes                       |
+| `gc --min-age <dur> <roots...>` | reclaim objects not reachable from the roots AND older than `min-age` (grace default 24h; `--min-age 0` = immediate, dangerous) |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
 | `clean [--min-age <dur>]`        | remove orphan `*.tmp` files (crash leftovers) older than `min-age` (default 24 h) |
 | `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) is deferred — flags only |
@@ -60,18 +60,24 @@ Store operations speak to the store in-process over the library:
 
 - Hash arguments are validated with `ParseHash` before use; malformed → usage
   error (exit 2).
-- `gc` and `prune` are destructive: `prune` defaults to `--dry-run` and
-  `gc` prints the count of deleted objects (consistency §4–§5).
-- **Store lock:** mutating commands (`put`, `gc`, `prune`, `clean`) and
-  `web` take the store's exclusive cross-process lock (a `.cask.lock` file
-  at the store root holding the PID) for the operation — or, for `web`, for
-  the process lifetime. If another mutating process holds it, the command
-  fails with exit 1 and a message naming the holder's PID (and telling the
-  operator to remove a stale lock file when no such process runs). Read-only
-  commands (`get`, `list`, `meta`, `stats`, `verify`) never lock — reads are
-  lock-free (cas-core §6). The library itself has no inter-process locking;
-  this is the CLI's application-level enforcement of the "one store
-  directory ↔ one process" invariant.
+- `gc` and `prune` are destructive and **grace-gated**: they reclaim only
+  objects unreachable from the roots AND older than `--min-age` (default
+  24h), so a concurrent writer's fresh objects survive (cas-core §6). `prune`
+  defaults to `--dry-run`; `gc` prints the count of deleted objects
+  (consistency §4–§5). A forced sweep (`--min-age 0`) is the dangerous
+  variant: it prints a warning and is only safe when no other process is
+  writing the store.
+- **Store lock:** maintenance sweeps (`gc`, `prune`, `clean`) take the
+  store's exclusive cross-process lock (a `.cask.lock` file at the store
+  root holding the PID), so two sweeps never overlap. If another sweep holds
+  it, the command fails with exit 1 and a message naming the holder's PID
+  (and telling the operator to remove a stale lock file when no such process
+  runs). Writers (`put`) and the viewer (`web`) never lock — object writes
+  are safe across processes by construction, and the grace period protects
+  fresh objects from concurrent sweeps (cas-core §6). Read-only commands
+  (`get`, `list`, `meta`, `stats`, `verify`) never lock. The library itself
+  has no inter-process locking; this lock is the CLI's way of keeping two
+  maintenance sweeps from racing.
 - Remote mode is gone with the network surface; every operation calls the
   library directly in-process.
 - `web` is the only subcommand that does not terminate: it runs the viewer
@@ -114,8 +120,11 @@ Store operations speak to the store in-process over the library:
 - [ ] Local-only: `-store` mode; `-algo` honored for writes; no remote flags
 - [ ] `web` starts the embedded viewer per backend-architecture §3; no
       separate server binary exists
-- [ ] Mutating commands + `web` hold the store lock; second mutator refused
-      with the holder's PID (exit 1); reads never lock (§2, cas-core §6)
+- [ ] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second
+      sweep refused with the holder's PID (exit 1); writers (`put`) and reads
+      never lock (§2, cas-core §6)
+- [ ] `gc`/`prune` are grace-gated by `--min-age` (default 24h); forced
+      `--min-age 0` prints a warning (§2, consistency §5)
 - [ ] All subcommands map to core operations or the viewer server
       composition — no new logic in the CLI
 - [ ] Hash arguments validated with `ParseHash` (exit 2 on malformed)
