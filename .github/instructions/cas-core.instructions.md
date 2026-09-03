@@ -474,18 +474,19 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
 **Write path (atomic):**
 
 ```text
-MkdirAll(dir) → CreateTemp(dir, "*.tmp") → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
+MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
 ```
 
-- The temp file has a **unique per-writer name** (`os.CreateTemp` in the
-  object's directory, so the rename stays on one filesystem). Because no two
-  writers ever share a temp inode, concurrent writers of the SAME hash —
-  even from different OS processes — cannot corrupt each other's in-flight
-  write or the stored object. The rename is atomic: on POSIX the last writer
-  wins with identical bytes; on Windows a concurrent rename-over-existing can
-  transiently fail (no cross-process last-wins), so a racing `Put` MAY return
-  an error — the object is never corrupted and the failed writer's temp file
-  is removed.
+- The temp name is **unique per writer**: the base is `<path>.tmp`, and if
+  `O_EXCL` fails (another writer holds it — only possible across processes,
+  since the in-process mutex serializes Puts) a numeric suffix
+  (`<path>.tmp.<n>`) is appended. No two writers ever share a temp inode, so
+  concurrent writers of the SAME hash — even from different OS processes —
+  cannot corrupt each other's in-flight write or the stored object.
+- The rename is atomic: on POSIX the last writer wins with identical bytes;
+  on Windows a concurrent rename-over-existing can transiently fail (no
+  cross-process last-wins), so a racing `Put` MAY return an error — the
+  object is never corrupted and the failed writer's temp file is removed.
 - On any failure the temp file is removed; readers never observe partial files.
 - `.tmp` files are ignored by `List`/`Stats`.
 
