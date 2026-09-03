@@ -64,6 +64,17 @@ depends only on the byte layer; apps build their own `Object[T]` models on
 `Store[T]`.
 
 ```mermaid
+flowchart TB
+    APP["Application layer<br/>(per app — gitlike, notes, files, …)"]
+    TYPED["Typed layer<br/>(generic cas core — Store[T], caches)"]
+    BYTE["Byte layer<br/>(Hash · RawStore · backends)"]
+    APP -->|"depends on"| TYPED
+    TYPED -->|"depends on"| BYTE
+```
+
+Interface detail:
+
+```mermaid
 classDiagram
     direction LR
 
