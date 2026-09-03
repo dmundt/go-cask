@@ -5,14 +5,15 @@
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
 // Resolver/ResolvedObject, WalkGraph, Store[T] with JSONCodec[T],
-// FSRawStore fan-out, Verify, Stats, and a std-flag CLI.
+// FSRawStore fan-out, Verify, Stats, derived object-state audit
+// (verified/orphaned/corrupt), and a std-flag CLI.
 //
 // Usage:
 //
 //	go run ./examples/files [-store <dir>] <command> [args]
 //
 // Commands: add <file...>, commit -m <msg>, log, cat <hash>, graph,
-// verify, stats.
+// audit [-no-verify], verify, stats.
 package main
 
 import (
@@ -36,6 +37,7 @@ commands:
   log               list commits from HEAD backwards
   cat <hash>        print a blob's bytes to stdout
   graph             print the object graph reachable from HEAD
+  audit [-no-verify]  report every object's state (verified/orphaned/corrupt)
   verify            recompute every stored hash
   stats             print per-algorithm counts and total size`
 
@@ -250,6 +252,17 @@ func main() {
 		}); err != nil {
 			fatal(err)
 		}
+	case "audit":
+		noVerify := len(rest) == 1 && rest[0] == "-no-verify"
+		if len(rest) > 1 || (len(rest) == 1 && !noVerify) {
+			fmt.Fprintln(os.Stderr, usage)
+			os.Exit(2)
+		}
+		rep, err := a.audit(ctx, noVerify)
+		if err != nil {
+			fatal(err)
+		}
+		rep.print(os.Stdout)
 	case "verify":
 		if err := a.verify(ctx); err != nil {
 			fatal(err)
