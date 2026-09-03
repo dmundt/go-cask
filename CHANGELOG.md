@@ -16,6 +16,15 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
   layers and their dependencies) — in README, `cas-core` §3.3, and
   `design/core-overview.md` (cas-core v13).
 
+### Changed
+
+- `cas` typed layer: reads renamed for symmetry — `Store.GetTyped` is now
+  `Store.Get` (concrete `T`), and the cached layer's loaded read is
+  `CachedStore.Get`/`LRUCache.Get` with the lazy proxy accessor renamed
+  `Get` → `Proxy`. `Put`/`Get`/`Delete` now read as a natural trio across
+  layers (cas-core v14, library-design v7, testing-strategy v8,
+  performance v7).
+
 ## [v0.1.0-alpha.1] - 2026-09-03
 
 ### Added

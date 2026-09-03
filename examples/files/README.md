@@ -14,7 +14,7 @@ corruption on disk.
 | `FSRawStore` (default fan-out 2/1) | `newApp` — the on-disk backend |
 | `gitlike.Repository` (per-type `Store[T]` over one `RawStore`) | `app.repo` |
 | `gitlike.Blob` / `Tree` / `Commit` — `Object[T]` with `JSONCodec[T]` | `add`, `commit` |
-| `Repository.Blobs/Trees/Commits.Put`, `GetTyped` | storing and reading objects |
+| `Repository.Blobs/Trees/Commits.Put`, `Get` | storing and reading objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph` |
 | `FSRawStore.Verify` | `verify` — recompute every hash |
 | `FSRawStore.Stats` (`StoreStats`) | `stats` |

@@ -69,7 +69,7 @@ func TestLazyAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	co, err := cached.Get(ctx, att)
+	co, err := cached.Proxy(ctx, att)
 	if err != nil {
 		t.Fatal(err)
 	}

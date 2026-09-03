@@ -23,7 +23,7 @@ func TestCachedObjectLazyLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	co, err := c.Get(ctx, h)
+	co, err := c.Proxy(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,21 +55,21 @@ func TestCachedObjectLazyLoad(t *testing.T) {
 	}
 }
 
-func TestCachedStoreGetTyped(t *testing.T) {
+func TestCachedStoreGet(t *testing.T) {
 	ctx := context.Background()
 	store, c := newCachedSuite(t)
 	h, err := store.Put(ctx, testNote{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	obj, err := c.GetTyped(ctx, h)
+	obj, err := c.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if obj.Type() != "note@1" {
 		t.Fatalf("Type() = %q", obj.Type())
 	}
-	if _, err := c.GetTyped(ctx, h); err != nil {
+	if _, err := c.Get(ctx, h); err != nil {
 		t.Fatal(err) // second read is a cache hit
 	}
 	st := c.CacheStats()
@@ -255,7 +255,7 @@ func TestCachedStoreConcurrent(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 50; j++ {
 				h := hashes[j%len(hashes)]
-				if _, err := c.GetTyped(ctx, h); err != nil {
+				if _, err := c.Get(ctx, h); err != nil {
 					t.Error(err)
 				}
 			}
@@ -264,7 +264,7 @@ func TestCachedStoreConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-// TestLRUCacheBoundViaAllAccessors guards the regression where GetTyped,
+// TestLRUCacheBoundViaAllAccessors guards the regression where Get,
 // Preload and Warmup bypassed the LRU policy (they inserted into the
 // embedded CachedStore without bookkeeping, so the bound never held).
 func TestLRUCacheBoundViaAllAccessors(t *testing.T) {
@@ -286,17 +286,17 @@ func TestLRUCacheBoundViaAllAccessors(t *testing.T) {
 		hashes = append(hashes, h)
 	}
 
-	// GetTyped (previously bypassing the bound) keeps the cache ≤ maxSize.
+	// Get (previously bypassing the bound) keeps the cache ≤ maxSize.
 	for _, h := range hashes {
-		if _, err := lru.GetTyped(ctx, h); err != nil {
+		if _, err := lru.Get(ctx, h); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if st := lru.CacheStats(); st.Size > 2 {
-		t.Fatalf("GetTyped exceeded bound: size = %d, want <= 2", st.Size)
+		t.Fatalf("Get exceeded bound: size = %d, want <= 2", st.Size)
 	}
-	// Evicted entries reload correctly through GetTyped.
-	if _, err := lru.GetTyped(ctx, hashes[0]); err != nil {
+	// Evicted entries reload correctly through Get.
+	if _, err := lru.Get(ctx, hashes[0]); err != nil {
 		t.Fatalf("reload after eviction: %v", err)
 	}
 	if st := lru.CacheStats(); st.Size > 2 {

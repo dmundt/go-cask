@@ -57,7 +57,7 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	if c.loaded { // double-checked locking
 		return c.obj, c.err
 	}
-	obj, err := c.store.GetTyped(ctx, c.hash)
+	obj, err := c.store.Get(ctx, c.hash)
 	c.obj, c.err, c.loaded = obj, err, true
 	return obj, err
 }
@@ -71,8 +71,8 @@ func (c *CachedObject[T]) IsLoaded() bool {
 }
 
 // CachedStore[T] wraps a Store[T] with a sync.Map of CachedObject[T] keyed by
-// h.String(). Get returns a not-yet-loaded reference (verifying existence
-// first); GetTyped loads it. Preload loads many objects in parallel.
+// h.String(). Proxy returns a not-yet-loaded reference (verifying existence
+// first); Get loads it. Preload loads many objects in parallel.
 type CachedStore[T Object[T]] struct {
 	store   *Store[T]
 	cache   sync.Map // string → *CachedObject[T]
@@ -85,9 +85,10 @@ func NewCachedStore[T Object[T]](store *Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
 }
 
-// Get returns the (possibly not-yet-loaded) cached object for h. It verifies
-// existence first: a missing object returns ErrNotFound and is not cached.
-func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], error) {
+// Proxy returns the (possibly not-yet-loaded) CachedObject for h. It
+// verifies existence first: a missing object returns ErrNotFound and is not
+// cached.
+func (c *CachedStore[T]) Proxy(ctx context.Context, h Hash) (*CachedObject[T], error) {
 	key := h.String()
 	if v, ok := c.cache.Load(key); ok {
 		c.metrics.Hits.Add(1)
@@ -109,10 +110,10 @@ func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (*CachedObject[T], err
 	return actual.(*CachedObject[T]), nil
 }
 
-// GetTyped returns the loaded object for h: Get + Load. A missing object
+// Get returns the loaded object for h: Proxy + Load. A missing object
 // returns ErrNotFound.
-func (c *CachedStore[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
-	co, err := c.Get(ctx, h)
+func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (T, error) {
+	co, err := c.Proxy(ctx, h)
 	if err != nil {
 		var zero T
 		return zero, err
@@ -121,7 +122,7 @@ func (c *CachedStore[T]) GetTyped(ctx context.Context, h Hash) (T, error) {
 }
 
 // Preload loads every hash in parallel (bounded worker goroutines) so
-// subsequent GetTyped calls hit the cache. It returns the first error
+// subsequent Get calls hit the cache. It returns the first error
 // encountered; the other loads still complete.
 func (c *CachedStore[T]) Preload(ctx context.Context, hashes []Hash) error {
 	const workers = 8
@@ -135,7 +136,7 @@ func (c *CachedStore[T]) Preload(ctx context.Context, hashes []Hash) error {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			if _, err := c.GetTyped(ctx, h); err != nil {
+			if _, err := c.Get(ctx, h); err != nil {
 				errCh <- err
 			}
 		}()
@@ -154,7 +155,7 @@ func (c *CachedStore[T]) Preload(ctx context.Context, hashes []Hash) error {
 // object it references. depth <= 0 loads only h. A missing object returns
 // ErrNotFound.
 func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h Hash, depth int) error {
-	obj, err := c.GetTyped(ctx, h)
+	obj, err := c.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -183,7 +184,7 @@ func (c *CachedStore[T]) Warmup(ctx context.Context, hashes []Hash) error {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			co, err := c.Get(ctx, h)
+			co, err := c.Proxy(ctx, h)
 			if err != nil {
 				return
 			}

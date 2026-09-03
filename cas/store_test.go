@@ -230,17 +230,17 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("algorithm = %q", h.Algorithm())
 	}
 
-	// GetTyped returns the concrete value with no casts.
-	note, err := s.GetTyped(ctx, h)
+	// Get returns the concrete value with no casts.
+	note, err := s.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if note.Title != "t" || note.Body != "b" {
-		t.Fatalf("GetTyped = %+v", note)
+		t.Fatalf("Get = %+v", note)
 	}
 
 	// The typed value exposes Object[T] methods (T is Object[T]).
-	note2, err := s.GetTyped(ctx, h)
+	note2, err := s.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,8 +271,8 @@ func TestStoreRoundTrip(t *testing.T) {
 	if ok, _ := s.Exists(ctx, h); ok {
 		t.Fatal("Exists after Delete")
 	}
-	if _, err := s.GetTyped(ctx, h); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("GetTyped(after delete) = %v", err)
+	if _, err := s.Get(ctx, h); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get(after delete) = %v", err)
 	}
 }
 
@@ -326,8 +326,8 @@ func TestStoreEmptyStore(t *testing.T) {
 	ctx := context.Background()
 	missing, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 
-	if _, err := s.GetTyped(ctx, missing); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("GetTyped = %v", err)
+	if _, err := s.Get(ctx, missing); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get = %v", err)
 	}
 	if ok, err := s.Exists(ctx, missing); err != nil || ok {
 		t.Fatalf("Exists = %v, %v", ok, err)
@@ -351,7 +351,7 @@ func TestStoreTypeSafety(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nodes.GetTyped(ctx, h); err == nil {
+	if _, err := nodes.Get(ctx, h); err == nil {
 		t.Fatal("decoding a note as a node must fail")
 	}
 }
@@ -385,12 +385,12 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	if _, err := ParseHash(h.String()); err != nil {
 		t.Fatalf("custom address must round-trip through ParseHash: %v", err)
 	}
-	note, err := s.GetTyped(ctx, h)
+	note, err := s.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if note.Title != "t" {
-		t.Fatalf("GetTyped = %+v", note)
+		t.Fatalf("Get = %+v", note)
 	}
 }
 
@@ -420,7 +420,7 @@ func TestStoreMixedAlgorithms(t *testing.T) {
 	}
 	// Both are readable regardless of which store wrote them.
 	for _, h := range []Hash{h256, h1} {
-		if _, err := s256.GetTyped(ctx, h); err != nil {
+		if _, err := s256.Get(ctx, h); err != nil {
 			t.Fatalf("sha256 store read %s: %v", h, err)
 		}
 	}
@@ -433,8 +433,8 @@ func TestStoreCancelledContext(t *testing.T) {
 	if _, err := s.Put(ctx, testNote{Title: "t"}); err == nil {
 		t.Fatal("Put on cancelled context must error")
 	}
-	if _, err := s.GetTyped(ctx, nil); err == nil {
-		t.Fatal("GetTyped on cancelled context must error")
+	if _, err := s.Get(ctx, nil); err == nil {
+		t.Fatal("Get on cancelled context must error")
 	}
 }
 

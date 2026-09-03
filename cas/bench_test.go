@@ -63,7 +63,7 @@ func BenchmarkStoreGet(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := s.GetTyped(ctx, h); err != nil {
+				if _, err := s.Get(ctx, h); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -171,7 +171,7 @@ func BenchmarkRoundTrip(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := s.GetTyped(ctx, h); err != nil {
+		if _, err := s.Get(ctx, h); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -241,7 +241,7 @@ func BenchmarkParallelPutGet(b *testing.B) {
 		for pb.Next() {
 			h := hashes[i%objects]
 			i++
-			if _, err := s.GetTyped(ctx, h); err != nil {
+			if _, err := s.Get(ctx, h); err != nil {
 				b.Fatal(err)
 			}
 		}
