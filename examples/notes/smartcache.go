@@ -24,7 +24,7 @@ type SmartCache[T cas.Object[T]] struct {
 
 // NewSmartCache wraps store with reference prefetching to prefetchDepth
 // levels. A depth <= 0 disables prefetching (GetWithPrefetch then behaves
-// like GetTyped).
+// like Get).
 func NewSmartCache[T cas.Object[T]](store *cas.CachedStore[T], prefetchDepth int) *SmartCache[T] {
 	return &SmartCache[T]{store: store, prefetchDepth: prefetchDepth}
 }
@@ -34,7 +34,7 @@ func NewSmartCache[T cas.Object[T]](store *cas.CachedStore[T], prefetchDepth int
 // It returns the loaded object; prefetch progress is observable through the
 // cache's stats.
 func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, h cas.Hash) (T, error) {
-	obj, err := c.store.GetTyped(ctx, h)
+	obj, err := c.store.Get(ctx, h)
 	if err != nil {
 		var zero T
 		return zero, err

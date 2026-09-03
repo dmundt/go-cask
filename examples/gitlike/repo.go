@@ -67,22 +67,22 @@ func NewResolver(repo *Repository) *Resolver {
 
 // ResolveCommit returns the commit at h, or ErrNotFound.
 func (r *Resolver) ResolveCommit(ctx context.Context, h cas.Hash) (*Commit, error) {
-	return r.repo.Commits.GetTyped(ctx, h)
+	return r.repo.Commits.Get(ctx, h)
 }
 
 // ResolveTree returns the tree at h, or ErrNotFound.
 func (r *Resolver) ResolveTree(ctx context.Context, h cas.Hash) (*Tree, error) {
-	return r.repo.Trees.GetTyped(ctx, h)
+	return r.repo.Trees.Get(ctx, h)
 }
 
 // ResolveBlob returns the blob at h, or ErrNotFound.
 func (r *Resolver) ResolveBlob(ctx context.Context, h cas.Hash) (*Blob, error) {
-	return r.repo.Blobs.GetTyped(ctx, h)
+	return r.repo.Blobs.Get(ctx, h)
 }
 
 // ResolveTag returns the tag at h, or ErrNotFound.
 func (r *Resolver) ResolveTag(ctx context.Context, h cas.Hash) (*Tag, error) {
-	return r.repo.Tags.GetTyped(ctx, h)
+	return r.repo.Tags.Get(ctx, h)
 }
 
 // ResolveAny determines the object's type from the self-describing envelope

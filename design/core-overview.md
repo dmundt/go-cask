@@ -51,7 +51,7 @@ classDiagram
     }
     class Store~T~ {
         +Put(ctx, obj T) (Hash, error)
-        +GetTyped(ctx, h) (T, error)
+        +Get(ctx, h) (T, error)
         +Delete(ctx, h) error
     }
     class Walker~T~ {
@@ -60,7 +60,7 @@ classDiagram
     Store~T~ o-- RawStore : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
-    Walker~T~ ..> Store~T~ : reads via GetTyped
+    Walker~T~ ..> Store~T~ : reads via Get
 
     class CachedStore~T~
     class LRUCache~T~
@@ -77,7 +77,7 @@ Reading the diagram:
   a `RawStore` (where bytes live) and a `Codec[T]` (how values serialize),
   and by constraint (`Store[T Object[T]]`) every value it handles is an
   `Object[T]`. `Walker[T]` traverses object graphs through a `Store[T]` via
-  `GetTyped` — no domain knowledge in the core.
+  `Get` — no domain knowledge in the core.
 - **Caching.** `CachedStore[T]` wraps `Store[T]` (lazy `CachedObject[T]`
   proxies); `LRUCache[T]` extends `CachedStore[T]` with a size bound.
 

@@ -102,7 +102,7 @@ classDiagram
     }
     class Store~T~ {
         +Put(ctx, obj T) (Hash, error)
-        +GetTyped(ctx, h) (T, error)
+        +Get(ctx, h) (T, error)
         +Delete(ctx, h) error
     }
     class Walker~T~ {
@@ -111,7 +111,7 @@ classDiagram
     Store~T~ o-- RawStore : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
-    Walker~T~ ..> Store~T~ : reads via GetTyped
+    Walker~T~ ..> Store~T~ : reads via Get
 
     class CachedStore~T~
     class LRUCache~T~
@@ -132,7 +132,7 @@ import (
 raw, _ := cas.NewFSRawStore("./objects")          // backend
 repo, _ := gitlike.NewRepository(raw, "sha256")   // typed layer on top
 h, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
-blob, _ := repo.Blobs.GetTyped(ctx, h)            // *gitlike.Blob
+blob, _ := repo.Blobs.Get(ctx, h)                // *gitlike.Blob
 ```
 
 For tests and ephemeral use, swap the backend:

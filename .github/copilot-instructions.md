@@ -1,7 +1,7 @@
 ---
 title: Copilot Instructions — go-cask
 description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in .github/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v5
+version: v6
 ---
 
 # Copilot Instructions — go-cask (CASK: Content Addressed Storage Kit)
@@ -196,7 +196,7 @@ flowchart TB
 | `MemoryRawStore` | In-memory backend for tests/benchmarks (no disk I/O, not persistent) |
 | `Codec[T]`       | Serialization contract for a type `T`                       |
 | `Object[T]`      | Self-describing, typed object with `References()`           |
-| `Store[T]`       | Generic store: Put/PutDedup/GetTyped/GetRaw/Exists/Delete      |
+| `Store[T]`       | Generic store: Put/PutDedup/Get/GetRaw/Exists/Delete          |
 | `Walker[T]`      | Generic graph traversal over `References()`                 |
 | `CachedStore[T]` | Lazy loading + caching wrapper around `Store[T]`            |
 | `LRUCache[T]`    | Size-bounded cache with LRU eviction                        |
@@ -366,8 +366,8 @@ gofmt -l .
   example package `examples/gitlike/` — it is NOT part of the generic `cas` core; the
   core stays app-agnostic.
 - **No `any`/`interface{}` in exported API.** The typed layer is constrained
-  (`Store[T Object[T]]`); reads return the concrete `T` via `GetTyped` — no
-  type assertions anywhere.
+  (`Store[T Object[T]]`); reads return the concrete `T` via `Store[T].Get` —
+  no type assertions anywhere.
 - Defaults: hash algorithm `sha256`, codec `JSONCodec[T]`, Git-like fan-out
   (`FanOut=2`, `FanLevels=1` → `<algo>/aa/<full-hex>`; any n-way/n-level
   layout via `WithFanOut`/`WithFanLevels`), directory permissions `0o755`,
