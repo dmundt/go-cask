@@ -43,15 +43,11 @@ func runWeb(ctx context.Context, args []string) {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
 	}
-	// The viewer may mutate the store (admin verify/delete/gc), so it holds
-	// the store's exclusive cross-process lock for its whole lifetime —
-	// mutating cask commands refuse while the viewer runs (cas-core §6).
-	lock, err := acquireStoreLock(*store)
-	if err != nil {
-		slog.Error("lock store", "err", err)
-		os.Exit(1)
-	}
-	defer lock.release()
+	// The viewer does not hold the store lock: its mutations are in-process
+	// on its own store instance, and writers/reads are lock-free across
+	// processes. External maintenance sweeps (cask gc/prune) may run while
+	// the viewer is live — their grace `--min-age` keeps recent objects safe
+	// (cas-core §6).
 	roleTokens := map[string]string{} // token → role, for viewer login
 	for _, pair := range strings.Split(*tokens, ",") {
 		role, tok, ok := strings.Cut(pair, "=")

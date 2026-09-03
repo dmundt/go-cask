@@ -20,24 +20,27 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 ### Changed
 
 - `cas` `FSRawStore.Put`: temp files now use **unique per-writer names**
-  (`os.CreateTemp`, `*.tmp`) instead of a deterministic `<path>.tmp` —
-  concurrent writers of the same hash never share a temp inode, so
-  cross-process same-hash writes cannot corrupt each other; on POSIX the
-  atomic rename gives last-wins, on Windows a racing Put may transiently
-  error but never corrupts (cas-core v18, operations v4).
-- `cask` mutating commands (`put`, `gc`, `prune`, `clean`) and `web` now take
-  the store's exclusive cross-process lock (`.cask.lock`, holding the PID):
-  a second mutating process is refused with the holder's PID; reads never
-  lock. The library has no inter-process locking — this is the CLI's
-  application-level enforcement of the one-store-per-process invariant
-  (cli spec v8, cas-core v17, backend-architecture v9).
-- Concurrency boundary documented: cas is **multi-client safe within one
+  (created with `O_CREATE|O_EXCL`; a numeric suffix is appended only when
+  another process holds `<path>.tmp`) instead of a deterministic
+  `<path>.tmp` — concurrent writers of the same hash never share a temp
+  inode, so cross-process same-hash writes cannot corrupt each other; on
+  POSIX the atomic rename gives last-wins, on Windows a racing Put may
+  transiently error but never corrupts (cas-core v18, operations v4).
+- `cask`: **grace-based maintenance sweeps, writers lock-free**. Writers
+  (`put`) and the viewer (`web`) never lock — object writes are safe across
+  processes by construction (unique temps + atomic rename). Maintenance
+  sweeps (`gc`, `prune`, `clean`) take the store's exclusive cross-process
+  lock (`.cask.lock`, holding the PID) so two sweeps never overlap, and
+  reclaim only objects older than `--min-age` (default 24h), so a concurrent
+  writer's fresh objects survive. A forced `--min-age 0` sweep is the
+  documented dangerous variant (prints a warning; only safe with no other
+  writer). `gc` gained the `--min-age` flag (was immediate)
+  (cli spec v9, cas-core v19, backend-architecture v10, consistency v6).
+- Concurrency model documented: cas is **multi-client safe within one
   process** (lock-free reads, per-process mutexes, atomic writes — cas-core
-  §6). Multiple OS processes MUST NOT share one store directory — there is
-  no inter-process locking; keep one store directory ↔ one process and serve
-  many clients from it. The cross-process-safe subset (concurrent readers +
-  idempotent same-hash `Put`s) is stated explicitly (cas-core v17,
-  backend-architecture v9, consistency v5).
+  §6); across processes, reads and same-hash `Put`s are safe by construction
+  while maintenance sweeps must be grace-gated against live writers
+  (cas-core v19, backend-architecture v10, consistency v6).
 - Naming: the acronym expansion is **Content Addressable Store (Kit)** and is
   written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
   Go package — replacing the former "Content Addressed Storage (Kit)" wording

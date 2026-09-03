@@ -24,8 +24,8 @@ commands:
   meta <hash>
   stats
   verify <hash|--all>
-  gc <roots...>
-  prune --min-age <dur> <roots...> [--dry-run]
+  gc --min-age <dur> <roots...>   reclaim unreachable objects older than the grace (default 24h; 0 = immediate, dangerous)
+  prune --min-age <dur> <roots...> [--dry-run] | age-based retention (dry-run default)
   clean [--min-age <dur>]   remove orphan *.tmp files (crash leftovers)
   web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]
   version
@@ -75,16 +75,20 @@ func parseGlobal(args []string) (modeFlags, string, []string, error) {
 // runOp dispatches a store operation and returns the exit code: 0 success,
 // 1 runtime error, 2 usage error (cli §3). web/version are handled in main.
 //
-// Mutating operations (put, gc, prune, clean) take the store's exclusive
-// cross-process lock first, so two processes never mutate one store
-// directory concurrently (cas-core §6); read-only operations never lock.
+// Maintenance operations (gc, prune, clean) take the store's exclusive
+// cross-process lock first, so two maintenance sweeps never run on one store
+// directory concurrently. Writers (put) and the viewer (web) never lock:
+// object writes are safe across processes by construction (unique temps +
+// atomic rename, cas-core §4.4), and sweeps reclaim only objects older than
+// their grace `--min-age` so a concurrent writer's fresh objects survive.
+// Read-only operations never lock.
 func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 	t, err := openTarget(ctx, mf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 2
 	}
-	if mutatingOp(cmd) {
+	if maintenanceOp(cmd) {
 		lock, err := acquireStoreLock(mf.store)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -128,12 +132,12 @@ func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 	return 0
 }
 
-// mutatingOp reports whether cmd writes to the store (put, gc, prune,
-// clean). These take the store's exclusive cross-process lock; all other
-// ops (get, list, meta, stats, verify) are read-only and never lock.
-func mutatingOp(cmd string) bool {
+// maintenanceOp reports whether cmd is a store maintenance sweep (gc, prune,
+// clean). These take the store's exclusive cross-process lock so two sweeps
+// never overlap; writers (put) and reads never lock (cas-core §6).
+func maintenanceOp(cmd string) bool {
 	switch cmd {
-	case "put", "gc", "prune", "clean":
+	case "gc", "prune", "clean":
 		return true
 	default:
 		return false
