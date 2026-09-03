@@ -19,6 +19,9 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- `cas-core` §3.1 layer diagram converted from a fragile ASCII box to a
+  Mermaid flowchart (subgraphs per layer + dependency edges) (cas-core
+  v15).
 - `cas` typed layer: reads renamed for symmetry — `Store.GetTyped` is now
   `Store.Get` (concrete `T`), and the cached layer's loaded read is
   `CachedStore.Get`/`LRUCache.Get` with the lazy proxy accessor renamed
