@@ -10,6 +10,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Added
+
+- Core-overview diagram of the `cas` interfaces (byte / typed / caching
+  layers and their dependencies) — in README, `cas-core` §3.3, and
+  `design/core-overview.md` (cas-core v13).
+
 ## [v0.1.0-alpha.1] - 2026-09-03
 
 ### Added
