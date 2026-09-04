@@ -30,6 +30,11 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
   along with the CI benchmark/refresh/gate steps and `contents: write`;
   benchmarks stay runnable on demand via `go test -bench` (performance v9,
   defaults v8).
+- New on-demand **state-scaling probes** (`BenchmarkScale{...}` in
+  `cas/scale_bench_test.go`): prefill a store to N objects (N from
+  `CASK_SCALE_OBJECTS`), time Put/Get/Exists/Delete/List/Stats at that
+  size, and project wall time + FS file bytes for a 10^10-object store.
+  Skipped unless the env var is set — never part of CI (performance v10).
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 
