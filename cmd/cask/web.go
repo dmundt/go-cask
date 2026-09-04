@@ -5,11 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +31,7 @@ func runWeb(ctx context.Context, args []string) {
 	bind := fs.String("bind", "127.0.0.1:8080", "listen address")
 	tokens := fs.String("tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=sekret,operator=op)")
 	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
+	noOpen := fs.Bool("no-open", false, "do not open the default browser")
 	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -85,6 +89,12 @@ func runWeb(ctx context.Context, args []string) {
 		}
 	}()
 
+	url := fmt.Sprintf("http://%s/viewer/?token=%s", *bind, token)
+	fmt.Fprintf(os.Stderr, "cask web: %s\n", url)
+	if !*noOpen {
+		openBrowser(url)
+	}
+
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -104,6 +114,23 @@ func isLoopbackBind(addr string) bool {
 		return host == "localhost"
 	}
 	return ip.IsLoopback()
+}
+
+// openBrowser opens the default browser to the given URL (cross-platform).
+func openBrowser(url string) {
+	var cmd string
+	var args []string
+	switch runtime.GOOS {
+	case "windows":
+		cmd, args = "cmd", []string{"/c", "start", url}
+	case "darwin":
+		cmd, args = "open", []string{url}
+	default:
+		cmd, args = "xdg-open", []string{url}
+	}
+	if err := exec.Command(cmd, args...).Start(); err != nil {
+		slog.Debug("open browser", "err", err) // not fatal
+	}
 }
 
 // randomToken returns 6 cryptographically random bytes as uppercase
