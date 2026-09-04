@@ -1,7 +1,7 @@
 ---
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v4
+version: v5
 ---
 
 # Versioning — go-cask
@@ -59,7 +59,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 - **Untagged commits**: consumers on an untagged commit get a Go
   **pseudo-version** (`v1.2.3-0.20260901120000-abcdef123456`) automatically —
   no action needed; tags are still the contract.
-- `go.mod`: `go 1.27` toolchain; library baseline Go 1.21+ (defaults §7).
+- `go.mod`: `go 1.27` toolchain; library baseline Go 1.27 (defaults §7).
 - Tags MUST be placed on the module root commit (Go resolves versions per
   module; a tag on the wrong commit breaks resolution).
 

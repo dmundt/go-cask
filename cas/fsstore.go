@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ type FSOption func(*fsConfig)
 type fsConfig struct {
 	fanOut    int
 	fanLevels int
+	dirSync   bool
 }
 
 // WithFanOut sets the number of hex characters per fan-out directory level.
@@ -42,6 +44,14 @@ func WithFanOut(n int) FSOption {
 // WithFanLevels sets the number of fan-out directory levels. 0 means "flat".
 func WithFanLevels(n int) FSOption {
 	return func(c *fsConfig) { c.fanLevels = n }
+}
+
+// WithDirSync enables a best-effort fsync of the parent directory after the
+// atomic rename that publishes an object, making the rename itself durable
+// against crashes. Platforms that cannot sync directories (Windows) make it a
+// no-op; see operations §1.
+func WithDirSync() FSOption {
+	return func(c *fsConfig) { c.dirSync = true }
 }
 
 // FSRawStore is the filesystem RawStore backend: each object is one file
@@ -60,6 +70,7 @@ type FSRawStore struct {
 	base      string
 	fanOut    int
 	fanLevels int
+	dirSync   bool
 
 	mu sync.Mutex // Put/Delete only
 }
@@ -82,7 +93,22 @@ func NewFSRawStore(basePath string, opts ...FSOption) (*FSRawStore, error) {
 	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create store base: %w", err)
 	}
-	return &FSRawStore{base: basePath, fanOut: cfg.fanOut, fanLevels: cfg.fanLevels}, nil
+	return &FSRawStore{base: basePath, fanOut: cfg.fanOut, fanLevels: cfg.fanLevels, dirSync: cfg.dirSync}, nil
+}
+
+// syncParentDir fsyncs the directory containing path so the rename that
+// published an object is durable. Platforms that cannot fsync directories
+// (Windows) make it a no-op (best-effort; operations §1).
+func syncParentDir(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 // hashPath returns the on-disk path for h:
@@ -166,6 +192,11 @@ func (s *FSRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 		os.Remove(tmp)
 		return fmt.Errorf("cas: publish object: %w", err)
 	}
+	if s.dirSync {
+		if err := syncParentDir(path); err != nil {
+			return fmt.Errorf("cas: sync object dir: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -241,8 +272,11 @@ func (s *FSRawStore) Delete(ctx context.Context, h Hash) error {
 }
 
 // Size returns the stored object's size in bytes. A missing object returns
-// ErrNotFound. Lock-free.
-func (s *FSRawStore) Size(h Hash) (int64, error) {
+// ErrNotFound. Lock-free. ctx is honored at entry for cancellation.
+func (s *FSRawStore) Size(ctx context.Context, h Hash) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	fi, err := os.Stat(s.hashPath(h))
 	if err != nil {
 		if os.IsNotExist(err) {

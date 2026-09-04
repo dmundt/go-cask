@@ -183,7 +183,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (library baseline: Go 1.21+). See `CONTRIBUTING.md` for the
+Requires Go 1.27 (self-managing toolchain; library baseline Go 1.27). See `CONTRIBUTING.md` for the
 development workflow, and `docs/benchmarks.md` for how to run and read the
 benchmarks (the regular perf suite and the on-demand scale probes).
 

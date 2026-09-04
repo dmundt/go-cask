@@ -201,7 +201,7 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 		return d
 	}
 	for _, h := range index.Paginate(hashes, 0, 10) {
-		d.Sample = append(d.Sample, objectRow{h.String(), shortHash(h), s.objectType(ctx, h), s.objectSize(h)})
+		d.Sample = append(d.Sample, objectRow{h.String(), shortHash(h), s.objectType(ctx, h), s.objectSize(ctx, h)})
 	}
 	d.HasSample = len(d.Sample) > 0
 	return d
@@ -226,7 +226,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		rows = append(rows, objectRow{h.String(), shortHash(h), typ, s.objectSize(h)})
+		rows = append(rows, objectRow{h.String(), shortHash(h), typ, s.objectSize(r.Context(), h)})
 	}
 	data := struct {
 		Algo    string
@@ -369,8 +369,8 @@ func (s *Server) readBounded(ctx context.Context, h cas.Hash) ([]byte, error) {
 }
 
 // objectSize returns an object's size in bytes (0 when unavailable).
-func (s *Server) objectSize(h cas.Hash) int64 {
-	n, err := s.store.Size(h)
+func (s *Server) objectSize(ctx context.Context, h cas.Hash) int64 {
+	n, err := s.store.Size(ctx, h)
 	if err != nil {
 		return 0
 	}
