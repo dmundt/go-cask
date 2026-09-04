@@ -126,8 +126,11 @@ Consistency rules:
 - Messages are actionable ("unknown hash algorithm: md4") but never disclose
   internals or existence in the 401/403 cases.
 - The library's sentinel errors (`ErrNotFound`, `ErrHashMismatch`,
-  `ErrInvalidHash`, `ErrUnknownAlgorithm`) map to HTTP statuses: 404, 409/500
-  on verify mismatch, 400, 400 — the mapping is defined per surface.
+  `ErrInvalidHash`, `ErrUnknownAlgorithm`) map to HTTP statuses: 404, 409/500,
+  400, 400 — the mapping is defined per surface. Exception: the `verify`
+  action is a query that returns a result (`{"valid":true/false}`) on 200, not
+  a 409/500 error; `ErrHashMismatch` maps to the error status only on
+  mutation paths.
 
 ---
 
