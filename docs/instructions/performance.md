@@ -1,7 +1,7 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v9
+version: v10
 ---
 
 # Performance — go-cask
@@ -95,6 +95,7 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 | `BenchmarkVerify`          | intact object                                |
 | `BenchmarkParseHash`       | valid + invalid inputs                       |
 | `BenchmarkParallelPutGet`  | concurrent writers/readers (exercises §2)    |
+| `BenchmarkScale{...}`      | on-demand state-scaling probes (see below)   |
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
 - Benchmarks that isolate store logic from disk noise run against
@@ -105,6 +106,17 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
   CI runners are too noisy for wall-clock gating, and allocation
   regressions are caught by the P-03 bounded-allocations requirement and
   code review.
+- **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`
+  in `cas/scale_bench_test.go`) answer "how does the store behave with N
+  objects already in it?" — each prefills a store to N, times the op at
+  that size, and logs a projection of wall time (and FS file bytes) for
+  10^10 objects. They are **not part of CI, twice over**: CI runs no
+  `-bench` steps, and the benchmarks skip unless `CASK_SCALE_OBJECTS` is
+  set — e.g.
+  `CASK_SCALE_OBJECTS=1000000 go test -bench=Scale -run=^$ -benchtime=100x -v ./cas/`.
+  10^10 unique objects exceed any real store (projection output shows the
+  disk/time demand); run at increasing N on real hardware to read the
+  scaling curve.
 - The lock-free claim is exercised by `-race` tests (testing-strategy §4.4)
   and `BenchmarkParallelPutGet`.
 
