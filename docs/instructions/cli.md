@@ -52,7 +52,7 @@ Store operations speak to the store in-process over the library:
 | `meta <hash>`                 | metadata of one object (size, type)                            |
 | `stats`                       | storage statistics (per-algorithm counts, total size)           |
 | `verify <hash>\|--all`        | integrity check (single object or full scan)                    |
-| `gc --min-age <dur> <roots...>` | reclaim objects not reachable from the roots AND older than `min-age` (grace default 24h; `--min-age 0` = immediate, dangerous) |
+| `gc --min-age <dur> <roots...>` | reclaim objects not reachable from the roots AND older than `min-age` (grace default 1h; `--min-age 0` = immediate, dangerous) |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default)             |
 | `clean [--min-age <dur>]`        | remove orphan `*.tmp` files (crash leftovers) older than `min-age` (default 24 h) |
 | `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) is deferred — flags only |

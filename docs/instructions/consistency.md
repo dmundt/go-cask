@@ -97,7 +97,7 @@ space** — never about repairing torn writes.
   needed **within one process**. Across OS processes, the **grace model**
   applies (cas-core §6): a sweep that may race a live writer MUST reclaim
   only objects older than a grace `--min-age`, so recent writes survive the
-  sweep — this is what the `cask` CLI does (`gc`/`prune` default 24h). A
+  sweep — this is what the `cask` CLI does (`gc`/`prune` default 1h). A
   forced `--min-age 0` sweep is the dangerous variant: only safe when no
   other process is writing. Maintenance sweeps never run concurrently with
   each other (`cask` serializes via `.cask.lock`, cli §2).
