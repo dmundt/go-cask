@@ -1,7 +1,7 @@
 ---
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v4
+version: v5
 ---
 
 # Extensions — go-cask
@@ -66,6 +66,17 @@ spec instead of restating the design (AGENT.md §4: no duplicated drift).
 Rule for extending this catalog: an extension is listed only once a real
 design exists in an owning spec (like performance §9/§10); a wish without a
 design is not an entry.
+
+**Deferral decision (2026-09):** every catalog entry stays deferred — no new
+core surface before v1.0.0. The scale-probe anchors (benchmarks §6,
+Windows/NTFS, per-object layout) set the data-driven revisit triggers:
+build **packfiles** (with its `.idx` index) only when a real workload stores
+≳10^5–10^6 objects or needs bulk small-object ingest — the ~1–2 ms per-file
+write floor is the crossover; build **compression** or **encryption** only
+when an actual app needs compressible large blobs or encryption at rest;
+build **content-defined chunking** only when very large blobs need
+chunk-granular dedup. Below those triggers the current per-object layout is
+the leaner choice.
 
 ---
 

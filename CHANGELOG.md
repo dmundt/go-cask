@@ -19,6 +19,11 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Deferred-extension catalog (`docs/instructions/extensions.md` §3) records
+  the 2026-09 deferral decision with data-driven revisit triggers: packfiles
+  (incl. its `.idx` index) only past ~10^5–10^6 objects or for bulk
+  small-object ingest; compression/encryption only when an app needs them;
+  chunking only for chunk-granular dedup of very large blobs (extensions v5).
 - Instruction specs relocated to a **host-agnostic home**: the specification
   set moved from `.github/instructions/` to `docs/instructions/`, and the
   `.instructions.md` filename suffix was dropped — plain topic names now
