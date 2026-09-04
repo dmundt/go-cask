@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v21
+version: v22
 ---
 
 # CAS Core — go-cask
@@ -458,8 +458,11 @@ deep 2/2 (2,2):          <base>/sha256/a1/b2/a1b2c3d4...e0
 wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
 ```
 
-- The default (2, 1) is Git-like: `objects/<algo>/aa/<full-hex>` — the same
-  shape as Git loose objects (`objects/aa/<40-hex>`), i.e. 256 directories.
+- The default (2, 1) is Git-like in its *directories* only:
+  `objects/<algo>/aa/<full-hex>` — 256 dirs, as in Git loose objects. The
+  file name is always the **complete digest**, never the Git-style
+  remainder (Git stores `objects/aa/<remaining-38-hex>`); here the full
+  digest is the file name at every fan-out level.
 - Any n-way / n-level fan-out layout is allowed:
   `NewFSRawStore(basePath, opts ...FSOption)` accepts `WithFanOut(n)` and
   `WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length

@@ -19,6 +19,11 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Fan-out layout clarified (no code change): file names were already always
+  the complete digest at any fan-out level (verified on disk) — cas-core §4.4
+  now states it explicitly and corrects the Git comparison (Git loose
+  objects use the remainder `<38-hex>` as file name, we keep the full hash);
+  defaults fan-out row rewording (cas-core v22, defaults v9).
 - Examples spec §2 rule 11 records the 2026-09 decision: cache/recipe
   helpers (`SmartCache`, `CacheMonitor`, …) stay inlined per-example
   teaching code — a shared home appears only when a second consumer of the

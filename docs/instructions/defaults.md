@@ -1,7 +1,7 @@
 ---
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v8
+version: v9
 ---
 
 # Defaults & Behavior — go-cask
@@ -41,7 +41,7 @@ version: v8
 | Built-in hash algorithms          | `sha1`, `sha256` (others via `RegisterHash`)       | cas-core §4.2       |
 | Hash string format                | `"<algo>:<lowercase-hex>"` (e.g. `sha256:a1b2…`)   | cas-core §4.1       |
 | Hash validation pattern           | `^[a-z0-9]+:[0-9a-f]+$`                            | api-design §3       |
-| Fan-out layout                    | `FanOut=2`, `FanLevels=1` (Git-like)               | cas-core §4.4       |
+| Fan-out layout                    | `FanOut=2`, `FanLevels=1` — prefix dirs; file name is always the full digest | cas-core §4.4       |
 | Fan-out bound                     | `FanLevels × FanOut ≤ 64` (40 for SHA-1)           | cas-core §4.4       |
 | Directory permissions             | `0o755`                                            | cas-core §4.4       |
 | File permissions                  | `0o644`                                            | cas-core §4.4       |
