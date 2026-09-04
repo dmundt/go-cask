@@ -292,12 +292,12 @@ Consequences for this repo:
 
 ## 11. Pre-Commit Checklist
 
-- [ ] `gofmt -l .` is clean; `go vet` and `go test` pass
+- [x] `gofmt -l .` is clean; `go vet` and `go test` pass
 - [x] `go.mod` declares `go 1.27`; zero external Go dependencies, or each one
       justified and vendored
 - [x] No CSS, no hand-written JS, no `<style>`/`<script>` in templates — htmx
       only
-- [ ] HTML rendered exclusively via `html/template` using the latest template
+- [x] HTML rendered exclusively via `html/template` using the latest template
       feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`,
       `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)

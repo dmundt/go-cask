@@ -124,14 +124,15 @@ func TestFSListIgnoresRootStray(t *testing.T) {
 }
 
 func TestFSHashPathDigestClamp(t *testing.T) {
-	// sha1 digests are 40 hex chars; layouts that exceed the digest length
-	// must clamp (end > len) or stop (start >= len) rather than overrun.
-	h, _ := hashData("sha1", []byte("clamp"))
+	// Layouts that exceed the digest length must clamp (end > len) or
+	// stop (start >= len) rather than overrun. SHA-256 (64 hex) with
+	// deep fan-out exercises this.
+	h, _ := hashData("sha256", []byte("clamp"))
 	cases := []struct {
 		opts []FSOption
 	}{
-		{[]FSOption{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk clamps: 32..40
-		{[]FSOption{WithFanOut(16), WithFanLevels(4)}}, // 4th level breaks: 48 >= 40
+		{[]FSOption{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
+		{[]FSOption{WithFanOut(16), WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
 		{[]FSOption{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
 	}
 	for _, tc := range cases {

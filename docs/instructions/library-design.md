@@ -122,4 +122,4 @@ Rules:
 - [x] sentinel errors + `errors.Is` everywhere; no string-compared errors
 - [x] no mutable globals; registry init-only or per-store hasher
 - [x] functional options; zero values usable; `context.Context` first
-- [ ] compatibility policy documented and honored
+- [x] compatibility policy documented and honored

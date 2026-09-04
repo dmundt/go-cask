@@ -159,7 +159,7 @@ Rules:
 
 ## 10. Checklist
 
-- [ ] All HTML rendered by `html/template`; templates nested via
+- [x] All HTML rendered by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [x] Fragments reuse the same partials as full pages (one source of truth)
 - [x] Interactivity via htmx attributes only; no hand-written JS/CSS

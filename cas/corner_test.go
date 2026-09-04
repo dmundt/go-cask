@@ -96,7 +96,7 @@ func TestMemoryRawStoreSuite(t *testing.T) {
 	m := NewMemoryRawStore()
 	ctx := context.Background()
 	h1, _ := hashData("sha256", []byte("alpha"))
-	h2, _ := hashData("sha1", []byte("beta"))
+	h2, _ := hashData("sha256", []byte("beta"))
 
 	if err := m.Put(ctx, h1, strings.NewReader("alpha")); err != nil {
 		t.Fatal(err)

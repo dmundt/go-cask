@@ -2,7 +2,6 @@ package cas
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -142,15 +141,10 @@ var (
 )
 
 func init() {
-	RegisterHash("sha1", func(data []byte) Hash {
-		sum := sha1.Sum(data)
-		return hash{algo: "sha1", bytes: sum[:]}
-	})
 	RegisterHash("sha256", func(data []byte) Hash {
 		sum := sha256.Sum256(data)
 		return hash{algo: "sha256", bytes: sum[:]}
 	})
-	registerStreamHash("sha1", sha1.New)
 	registerStreamHash("sha256", sha256.New)
 }
 
