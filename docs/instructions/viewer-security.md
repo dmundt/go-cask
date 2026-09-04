@@ -349,20 +349,20 @@ When in doubt, choose the more secure implementation.
 
 ## 15. Compliance Checklist
 
-- [ ] Viewer runs only via explicit `cask web`; loopback bind by default; non-loopback
+- [x] Viewer runs only via explicit `cask web`; loopback bind by default; non-loopback
       requires HTTPS or `allow_insecure_bind: true` (§3–§4)
-- [ ] Authentication required; login throttled (5 failures/IP/min, backoff,
+- [x] Authentication required; login throttled (5 failures/IP/min, backoff,
       audit-logged without the token value) (§5)
-- [ ] Startup token accepted only by `POST /login`; regenerated per start;
+- [x] Startup token accepted only by `POST /login`; regenerated per start;
       never stored in plaintext (§5.1)
-- [ ] Sessions: idle 30 min / max 8 h; re-authentication on expiry/restart (§6)
-- [ ] Cookies `HttpOnly` + `SameSite=Strict` (+ `Secure` over HTTPS); no
+- [x] Sessions: idle 30 min / max 8 h; re-authentication on expiry/restart (§6)
+- [x] Cookies `HttpOnly` + `SameSite=Strict` (+ `Secure` over HTTPS); no
       sensitive data in browser-accessible cookies (§7)
-- [ ] Roles viewer/operator/admin enforced; authn and authz separated (§8)
+- [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)
 - [ ] All administrative actions audit-logged; secrets never logged (§9)
-- [ ] Browser talks only to the backend API; all authz in the backend (§10)
+- [x] Browser talks only to the backend API; all authz in the backend (§10)
 - [ ] Secrets never hardcoded/committed/logged/returned (§11)
 - [ ] Remote access only via VPN + reverse proxy + OIDC/SSO; role derived
       from the configured claim (§12)
-- [ ] Input validated everywhere; 401/403 empty bodies never disclose
+- [x] Input validated everywhere; 401/403 empty bodies never disclose
       existence (§13)

@@ -136,12 +136,12 @@ nothing about the library's release.
 
 ## 7. Checklist
 
-- [ ] First public tag is the pre-release `v0.1.0-alpha.1` on the module
+- [x] First public tag is the pre-release `v0.1.0-alpha.1` on the module
       root commit; `v1.0.0` follows once the stable surface is frozen
-- [ ] Tags are annotated, immutable, and never re-tagged
+- [x] Tags are annotated, immutable, and never re-tagged
 - [ ] Bump decided from commits (breaking → MAJOR, feature → MINOR, fix →
       PATCH) with `BREAKING CHANGE` footers
 - [ ] `gofmt`/`go vet`/`go test -race`/benchmark gate green before tagging
-- [ ] CHANGELOG.md updated on every release; `Unreleased` section maintained
+- [x] CHANGELOG.md updated on every release; `Unreleased` section maintained
 - [ ] v2+ uses the `/v2` module path suffix and the `cas/v2/` layout
-- [ ] Example-surface majors and doc versions never conflated with library versions
+- [x] Example-surface majors and doc versions never conflated with library versions

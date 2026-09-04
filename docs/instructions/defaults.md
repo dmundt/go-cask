@@ -154,8 +154,8 @@ default targets, not absolutes.
 
 ## 9. Checklist
 
-- [ ] Every default value/constant in this document matches its owning spec
-- [ ] Area specs reference (not contradict) this list for defaults
+- [x] Every default value/constant in this document matches its owning spec
+- [x] Area specs reference (not contradict) this list for defaults
 - [ ] Defaults changed only via the §8 procedure (both docs + version bumps)
 - [ ] New defaults added here when new capabilities land (e.g. packfiles,
       prune tuning)

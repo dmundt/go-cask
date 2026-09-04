@@ -181,14 +181,14 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 
 ## 6. Checklist
 
-- [ ] all CAS laws in §1 covered by tests
+- [x] all CAS laws in §1 covered by tests
 - [ ] every requirement ID (P-01…P-05, sentinel errors, ops, defaults,
       example-API acceptance) has at least one test, named with the ID (§2)
 - [ ] corner & error inventory of §3 covered per component
 - [ ] fuzz targets present, corpora committed, CI runs them
-- [ ] `-race` concurrent test green (lock-free read path proven)
-- [ ] corruption test proves `Verify` fails on a flipped byte
-- [ ] golden hash vectors assert exact digests
+- [x] `-race` concurrent test green (lock-free read path proven)
+- [x] corruption test proves `Verify` fails on a flipped byte
+- [x] golden hash vectors assert exact digests
 - [ ] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every
       exported identifier exercised; untested branches commented
 - [ ] every HTTP route tested (success + 400/401/403/404/429)

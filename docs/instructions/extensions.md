@@ -82,14 +82,14 @@ the leaner choice.
 
 ## 4. Extension Checklist
 
-- [ ] Lives in its own package; `cas`/`gitlike` untouched
-- [ ] Uses only the stable surface (cas-core §7.1)
-- [ ] Follows the matching recipe (cas-core §7.2); no workarounds for missing core features
-- [ ] No `any`/reflection in the public API
-- [ ] Sentinel errors wrapped with `%w`; `errors.Is` on read
-- [ ] Streaming and lock-free-read contracts honored
-- [ ] Tests cover the relevant CAS laws; `-race` green
-- [ ] Std-lib only unless justified + vendored
-- [ ] Exported identifiers documented; OpenAPI if HTTP
+- [x] Lives in its own package; `cas`/`gitlike` untouched
+- [x] Uses only the stable surface (cas-core §7.1)
+- [x] Follows the matching recipe (cas-core §7.2); no workarounds for missing core features
+- [x] No `any`/reflection in the public API
+- [x] Sentinel errors wrapped with `%w`; `errors.Is` on read
+- [x] Streaming and lock-free-read contracts honored
+- [x] Tests cover the relevant CAS laws; `-race` green
+- [x] Std-lib only unless justified + vendored
+- [x] Exported identifiers documented; OpenAPI if HTTP
 - [ ] Simple: one job, nothing speculative
-- [ ] Catalog entries (§3) reference an owning spec; no design-less wishes
+- [x] Catalog entries (§3) reference an owning spec; no design-less wishes

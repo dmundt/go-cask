@@ -254,11 +254,11 @@ an example surface.
 
 ## 10. Checklist
 
-- [ ] One mux; every route under `/viewer`; no data-API surface exists
-- [ ] Middleware order fixed: sessions → role → CSRF → handler
+- [x] One mux; every route under `/viewer`; no data-API surface exists
+- [x] Middleware order fixed: sessions → role → CSRF → handler
 - [ ] Handlers thin; all logic in the library; backend selection via config
 - [ ] Raw object views stream; no full buffering
 - [ ] Errors per api-design §5/§6; 401/403 empty bodies
 - [ ] Config shape per §6; startup/shutdown lifecycle implemented
 - [ ] slog + audit logging; metrics via the viewer stats page and logs
-- [ ] No network JSON API ships; `examples/api` is the documented pattern
+- [x] No network JSON API ships; `examples/api` is the documented pattern

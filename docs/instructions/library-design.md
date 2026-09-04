@@ -114,7 +114,7 @@ Rules:
 ## 6. Lean Checklist
 
 - [ ] `cas/` ≤ ~1500 LOC and ≤ ~20 exported identifiers
-- [ ] sentinel errors + `errors.Is` everywhere; no string-compared errors
-- [ ] no mutable globals; registry init-only or per-store hasher
-- [ ] functional options; zero values usable; `context.Context` first
+- [x] sentinel errors + `errors.Is` everywhere; no string-compared errors
+- [x] no mutable globals; registry init-only or per-store hasher
+- [x] functional options; zero values usable; `context.Context` first
 - [ ] compatibility policy documented and honored

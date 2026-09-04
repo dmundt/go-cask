@@ -161,12 +161,12 @@ Rules:
 
 - [ ] All HTML rendered by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
-- [ ] Fragments reuse the same partials as full pages (one source of truth)
-- [ ] Interactivity via htmx attributes only; no hand-written JS/CSS
-- [ ] GET side-effect free; mutations = POST + CSRF
-- [ ] URLs are the state (`hx-push-url`); refresh/back work
-- [ ] Semantic HTML + accessibility per §7
-- [ ] Single binary, no build step; htmx vendored and pinned
-- [ ] Security per §9 (cookies, CSRF, empty-body 401/403)
+- [x] Fragments reuse the same partials as full pages (one source of truth)
+- [x] Interactivity via htmx attributes only; no hand-written JS/CSS
+- [x] GET side-effect free; mutations = POST + CSRF
+- [x] URLs are the state (`hx-push-url`); refresh/back work
+- [x] Semantic HTML + accessibility per §7
+- [x] Single binary, no build step; htmx vendored and pinned
+- [x] Security per §9 (cookies, CSRF, empty-body 401/403)
 - [ ] New frontends follow this architecture; viewer screens per
       `viewer-design.md`

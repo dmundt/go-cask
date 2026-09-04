@@ -396,9 +396,9 @@ When asked to "create an example" or "show how to X":
       meaningful output
 - [ ] No external dependencies; no CSS/JS in the viewer example; no `any` in
       example APIs
-- [ ] No example imports another example except the shared reference
+- [x] No example imports another example except the shared reference
       support library `gitlike` (rule 11)
-- [ ] Examples use only documented public APIs of `cas`/`gitlike`; the
+- [x] Examples use only documented public APIs of `cas`/`gitlike`; the
       libraries themselves are untouched
 - [ ] Each example ships a `README.md` with the §2 rule 8 content (core used,
       extended, code walkthrough, Mermaid diagram, how to run) plus a package
