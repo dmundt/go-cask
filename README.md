@@ -14,10 +14,11 @@ domains.
 - **Generic core, typed apps** — the `cas` core knows nothing about your
   types; each app layers its own `Object[T]` model on top (the `gitlike`
   package is the reference example).
-- **Pluggable** — hash algorithms, codecs, and storage backends
-  (filesystem, memory, S3, …) behind one `RawStore` contract.
-- **Simple, fast, powerful** — lock-free reads, streaming I/O, semver-versioned
-  object models, GC from roots, age-based pruning — no over-engineering.
+- **Pluggable** — hash algorithms, codecs, and storage backends (filesystem
+  and memory ship; more plug in behind one `RawStore` contract).
+- **Simple, fast, powerful** — lock-free reads, streaming I/O,
+  multi-process-safe writers, semver-versioned object models, GC from roots
+  with a Git-style grace period — no over-engineering.
 
 ## Design principles & grounding
 
@@ -41,6 +42,11 @@ decisions that shape the repo (each named spec is the normative contract):
 - **The byte layer is policy-free.** GC/prune take app-supplied roots;
   roots are pins (there is no per-object pinned property); the store never
   interprets typed references (consistency §4).
+- **Concurrent by construction.** Object writes are safe across processes
+  (unique per-writer temps + atomic rename); maintenance sweeps
+  (`gc`/`prune`/`clean`) take an exclusive lock and reclaim only objects
+  older than their `--min-age` grace, so a concurrent writer's fresh
+  objects always survive (cas-core §6).
 - **Examples teach, never ship.** `gitlike` is the shared reference object
   model; `artifacts` shows the compression-codec seam; `api` shows how an
   app exposes a store over HTTP.
@@ -52,7 +58,10 @@ cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
 examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
-.github/   specification set + CI (see below)
+docs/instructions/  the specification set (19 specs + AGENT.md)
+docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
+AGENTS.md  the agent aggregator at the repo root
+.github/   CI only
 ```
 
 ## Core interfaces at a glance
@@ -158,8 +167,12 @@ This project is specified, not guessed: `docs/instructions/` contains the
 complete design contract — core architecture (`cas-core`), coding guidelines,
 library design, performance, testing, consistency (GC/pruning), the viewer
 HTTP surface, viewer design & security, versioning, defaults, examples,
-and extensions. `AGENT.md` in that folder is the meta-guide; read it before
-editing any spec. The full inventory is in `AGENT.md` §10.
+and extensions. `docs/instructions/AGENT.md` in that folder is the
+meta-guide; read it before editing any spec. The full inventory is in
+`AGENT.md` §10. Non-normative design material lives in `docs/design/`
+(the core-overview pointer and the viewer design brief). AI agents working
+in this repo auto-load the repo-root `AGENTS.md`, which points at the full
+set.
 
 ## Building & testing
 
