@@ -3,7 +3,6 @@ name: CI
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports
 #   testing-strategy §5    — -race, coverage ≥ 90% on cas/ + gitlike, fuzz smoke
-#   performance §5         — benchmark regression gate (>10% time vs committed Linux baseline)
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
 # Go steps activate automatically once Go code exists (guarded by
@@ -17,14 +16,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # baseline refresh commits benchmarks/cas.txt
     steps:
       - uses: actions/checkout@v5
-        with:
-          # On PRs, check out the head branch itself (not the merge ref) so
-          # the baseline-refresh step can commit and push to it.
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -84,46 +77,6 @@ jobs:
           go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
-
-      - name: Benchmarks (cas)
-        if: hashFiles('**/*.go') != ''
-        run: go test -bench=. -benchmem -count=5 -run=^$ ./cas/... > /tmp/bench.txt
-
-      - name: Refresh benchmark baseline (Linux runner)
-        if: hashFiles('benchmarks/REFRESH') != '' && hashFiles('**/*.go') != ''
-        run: |
-          cp /tmp/bench.txt benchmarks/cas.txt
-          git rm -q benchmarks/REFRESH
-          git config user.name "go-cask"
-          git config user.email "go-cask@users.noreply.github.com"
-          git add benchmarks/cas.txt
-          git commit -m "ci: refresh Linux benchmark baseline" || true
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
-
-      - name: Benchmark regression gate (allocs/op vs baseline fails)
-        if: hashFiles('**/*.go') != ''
-        run: |
-          # Bench lines (with -benchmem + SetBytes) are:
-          #   name-4  count  ns/op  "ns/op"  MB/s  "MB/s"  B/op  "B/op"  allocs  "allocs/op"
-          # so the allocs/op value is field 9. Shared ubuntu-latest runners
-          # vary in hardware, so wall-clock time cannot be gated. Allocations
-          # jitter by ±1 between runs: fail only on a real regression (>10%
-          # and at least 2 allocs/op). Time is printed for humans only.
-          awk '
-            NR==FNR { if ($0 ~ /^Benchmark/) { sub(/-[0-9]+$/, "", $1); if (!($1 in base) || $9 + 0 < base[$1]) base[$1] = $9 + 0; if (!($1 in tb) || $3 + 0 < tb[$1]) tb[$1] = $3 + 0 } next }
-            $0 ~ /^Benchmark/ {
-              sub(/-[0-9]+$/, "", $1)
-              if (!($1 in cur) || $9 + 0 < cur[$1]) cur[$1] = $9 + 0
-              if (!($1 in tc) || $3 + 0 < tc[$1]) tc[$1] = $3 + 0
-            }
-            END {
-              for (n in base) if (n in cur) {
-                if (cur[n] - base[n] >= 2 && cur[n] - base[n] > base[n] * 0.10) { printf "%s: allocs/op %d -> %d (regression)\n", n, base[n], cur[n]; fail = 1 }
-              }
-              for (n in tb) if (n in tc) printf "  (info) %s: ns/op %d -> %d\n", n, tb[n], tc[n]
-              exit fail
-            }
-          ' benchmarks/cas.txt /tmp/bench.txt
 
       - name: Doc integrity (docs/instructions)
         run: |

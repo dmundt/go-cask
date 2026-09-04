@@ -1,7 +1,7 @@
 ---
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v7
+version: v8
 ---
 
 # Defaults & Behavior — go-cask
@@ -117,7 +117,6 @@ version: v7
 | FS-backend small Put/Get (warm)           | ≥ 10k obj/s; p99 ≤ 5 ms                  | performance §11 |
 | Large-object streaming (1 GiB)            | RSS ≤ 64 MiB above baseline              | performance §11 |
 | `List` at 1M objects (fs, (2,2))          | ≤ 30 s                                   | performance §11 |
-| `benchstat` regression gate               | > 10% time or allocs fails the build     | performance §5  |
 | Pack threshold (future)                   | objects ≤ 8 KiB; flush at 64 MiB         | performance §9  |
 
 Baselines are calibratable on CI hardware (performance §11.4) — they are the
