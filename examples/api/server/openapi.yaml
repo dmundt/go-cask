@@ -61,7 +61,7 @@ paths:
   /objects/{hash}:
     get:
       summary: Retrieve object bytes
-      description: Streams the raw bytes with X-CAS-Algorithm/Size/Type headers.
+      description: Streams the raw bytes with X-CAS-Algorithm/Size headers.
       parameters:
         - name: hash
           in: path

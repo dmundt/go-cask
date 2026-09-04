@@ -69,7 +69,7 @@ version: v10
 | Example JSON rate limit       | 2 req/s per IP, burst 20; loopback exempt; 429 + `Retry-After` + `X-RateLimit-*` | api-design §8 |
 | Example list pagination       | `limit=100` (1–1000), `offset=0` (≥0); `{total, objects}` envelope | api-design §10 |
 | Error body (JSON surfaces)    | `{"error": "<message>"}`                               | api-design §6       |
-| Binary payloads               | `application/octet-stream` + `X-CAS-Algorithm/Size/Type` headers | api-design §11 |
+| Binary payloads               | `application/octet-stream` + `X-CAS-Algorithm/Size` headers | api-design §11 |
 | 401/403 (viewer)              | **empty body** (never disclose existence)              | api-design §5       |
 | OpenAPI documents             | separate embedded `.yaml` per JSON surface (`examples/api/server/openapi.yaml`); the viewer needs none | api-design §13 |
 

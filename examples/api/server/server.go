@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -165,6 +166,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.sizes[h.String()] = size
+	slog.Info("cas api audit", "action", "put", "hash", h.String(), "size", size, "deduplicated", exists)
 	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
 
@@ -232,6 +234,7 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.sizes, h.String())
+	slog.Info("cas api audit", "action", "delete", "hash", h.String())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -285,9 +288,11 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	valid := recomputed.Equal(h)
+	slog.Info("cas api audit", "action", "verify", "hash", h.String(), "valid", valid)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hash":       h.String(),
-		"valid":      recomputed.Equal(h),
+		"valid":      valid,
 		"recomputed": recomputed.String(),
 	})
 }
@@ -315,7 +320,9 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reachable []string `json:"reachable"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reachable set"})
 		return
 	}
@@ -340,6 +347,7 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 			delete(s.sizes, hs)
 		}
 	}
+	slog.Info("cas api audit", "action", "gc", "deleted", deleted)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
