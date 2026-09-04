@@ -301,7 +301,7 @@ Consequences for this repo:
       feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`,
       `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)
-- [ ] Generic types/functions used where needed (incl. generic methods);
+- [x] Generic types/functions used where needed (incl. generic methods);
       nothing over-engineered, no features newer than the declared `go` directive
 - [x] `context.Context` first, errors wrapped with `%w`, no panics in library
       code

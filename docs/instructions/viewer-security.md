@@ -361,7 +361,7 @@ When in doubt, choose the more secure implementation.
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)
 - [x] All administrative actions audit-logged; secrets never logged (§9)
 - [x] Browser talks only to the backend API; all authz in the backend (§10)
-- [ ] Secrets never hardcoded/committed/logged/returned (§11)
+- [x] Secrets never hardcoded/committed/logged/returned (§11)
 - [x] Remote access only via VPN + reverse proxy + OIDC/SSO; role derived
       from the configured claim (§12)
 - [x] Input validated everywhere; 401/403 empty bodies never disclose

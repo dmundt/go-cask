@@ -249,22 +249,22 @@ points at this folder; it follows the same style rules where they apply.
 Before committing any change to a file in this folder:
 
 - [x] Frontmatter present, `title` == H1, one-line `description`
-- [ ] `version` bumped by one when the change is material (new/removed
+- [x] `version` bumped by one when the change is material (new/removed
       requirements, contract changes, restructure); unchanged for cosmetic
       edits (§3)
 - [x] Structure follows §4; `---` between sections; checklist at the end
   where applicable
 - [x] Terminology matches §6 exactly (no "debug UI", no "go-coding-guidelines",
       no "Repository in core")
-- [ ] Normative language per §5 (MUST/SHALL/MAY used consistently)
+- [x] Normative language per §5 (MUST/SHALL/MAY used consistently)
 - [x] Cross-references updated in ALL files that mention the changed term;
       `grep` over `docs/instructions/` and `.github/` for old terms returns
       nothing
 - [x] New files added to the `AGENTS.md` aggregator's "Related specs" list
       and to the §10 inventory
-- [ ] No contradictions with higher-precedence files (§8); conflicts resolved
+- [x] No contradictions with higher-precedence files (§8); conflicts resolved
       in the more specific document
-- [ ] Diagrams valid mermaid; fences tagged; no stale ASCII misalignment
+- [x] Diagrams valid mermaid; fences tagged; no stale ASCII misalignment
 - [x] Every mermaid block balanced (` ```mermaid ` count == its ` ``` `
       closers per file), unless explicitly stated as an illustrative fragment
       (§9)

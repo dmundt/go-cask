@@ -210,13 +210,13 @@ Stats()                 # what is stored, per algorithm
 ## 10. Checklist
 
 - [x] `Verify` detects any single flipped byte (`ErrHashMismatch`)
-- [ ] Broken objects are quarantined + audit-logged, never auto-"fixed"
-- [ ] Dangling-reference scan is O(refs) lock-free; reported as diagnostics
+- [x] Broken objects are quarantined + audit-logged, never auto-"fixed"
+- [x] Dangling-reference scan is O(refs) lock-free; reported as diagnostics
 - [x] GC is mark-and-sweep from app-supplied roots; explicit only
 - [x] `Prune(roots, minAge, dryRun)` keeps unreachable-young objects as a
       grace period; dry-run default
 - [x] Sweeps racing live writers are grace-gated (`--min-age`); forced
       `--min-age 0` is the documented dangerous variant (cas-core §6)
-- [ ] The dangerous all-objects prune is admin + dry-run + confirm
+- [x] The dangerous all-objects prune is admin + dry-run + confirm
 - [x] No refcounts, no automatic GC, no GC transactions (§8)
-- [ ] CLI + viewer expose verify/GC/prune per the conventions (cli §2)
+- [x] CLI + viewer expose verify/GC/prune per the conventions (cli §2)

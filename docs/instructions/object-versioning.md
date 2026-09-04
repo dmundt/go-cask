@@ -121,11 +121,11 @@ deserializer — demonstrating the pattern for app models.
 
 - [x] Every `Object[T].Type()` returns `<type>@<major>`
 - [x] The versioned name travels with the serialized bytes (envelope)
-- [ ] Deserializers are registered per full versioned name; multiple majors
+- [x] Deserializers are registered per full versioned name; multiple majors
       coexist in one store
-- [ ] Within a MAJOR: old data decodes with the new reader (additive fields
+- [x] Within a MAJOR: old data decodes with the new reader (additive fields
       with defaults)
-- [ ] Across a MAJOR: old deserializer registered or data migrated; old
+- [x] Across a MAJOR: old deserializer registered or data migrated; old
       objects never dropped by the store
 - [x] Unknown type/major → `ErrUnknownType` (graceful)
 - [x] Object-model versions never conflated with library/HTTP/doc versions
