@@ -99,7 +99,7 @@ version: v5
 
 ## 7. Checklist
 
-- [ ] fsync-before-rename enforced; directory fsync configurable
+- [x] fsync-before-rename enforced; directory fsync configurable
 - [x] orphan `*.tmp` sweep documented/implemented
 - [ ] slog logging for mutations, login-throttle rejections, slow ops, and
       GC runs

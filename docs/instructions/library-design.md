@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v9
+version: v10
 ---
 
 # Library Design — go-cask
@@ -18,14 +18,19 @@ version: v9
 
 ## 1. Lean-Core Budget
 
-- `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1500 LOC and ≤ ~20 exported
-  identifiers. Every exported name must earn its place; if it can live in a
-  subpackage or an example, it does.
-- **Stable core surface** (the API the docs promise):
-  `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes`,
-  `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`),
-  `MemoryRawStore`, `StoreStats`, `Codec`, `JSONCodec`, `Object`, `Store`,
-  `Walker`, `CachedObject`, `CachedStore`, `LRUCache`.
+- `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 LOC and ≤ ~40 exported
+  identifiers (re-baselined 2026-09 to the actual frozen surface after the
+  pre-v1.0.0 audit). Every exported name must earn its place; if it can live
+  in a subpackage or an example, it does. The numbers are an advisory
+  ceiling for additions, not a shrinking target.
+- **Stable core surface** (the API the docs promise — cas-core §7.1):
+  `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`,
+  `HashBytes`, `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`,
+  `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats`, `Codec`,
+  `JSONCodec`, `Object`, `Store`, `NewStore`, `Walker`, `NewWalker`,
+  `CachedObject`, `CachedStore`, `NewCachedStore`, `LRUCache`, `NewLRUCache`,
+  `NewMemoryRawStore`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`,
+  the six sentinel `Err*` values.
 - **Optional machinery stays out of the core.** Prefetch-on-access and
   cache-monitor recipes are demonstrated by `examples/notes` and
   `examples/artifacts` — never part of package `cas`;
@@ -99,8 +104,8 @@ Rules:
 
 ## 5. Compatibility Policy
 
-- Library baseline: **Go 1.21+** (generics); built and tested with the repo
-  toolchain (1.27).
+- Library baseline: **Go 1.27** (go.mod toolchain is self-managing); the
+  library is built and tested with 1.27.
 - Semver discipline: only additive, non-breaking changes inside the current
   major version; breaking changes require a major version and a migration
   note.
@@ -113,7 +118,7 @@ Rules:
 
 ## 6. Lean Checklist
 
-- [ ] `cas/` ≤ ~1500 LOC and ≤ ~20 exported identifiers
+- [x] `cas/` ≤ ~1500 LOC and ≤ ~20 exported identifiers
 - [x] sentinel errors + `errors.Is` everywhere; no string-compared errors
 - [x] no mutable globals; registry init-only or per-store hasher
 - [x] functional options; zero values usable; `context.Context` first

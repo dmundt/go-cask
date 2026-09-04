@@ -19,6 +19,7 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
 - Fan-out decision recorded (cas-core §4.4): the file-name style is **not
   configurable** — full-hash names are the only layout. A Git-remainder
   option was considered and rejected (no Git interop under either style,
@@ -74,6 +75,7 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
 - `cas` `FSRawStore.Put`: temp files now use **unique per-writer names**
   (created with `O_CREATE|O_EXCL`; a numeric suffix is appended only when
   another process holds `<path>.tmp`) instead of a deterministic
@@ -156,6 +158,7 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
 - Layout: `internal/` for all implementation detail (Go-enforced privacy);
   the viewer lives in `internal/web/`; `cas/` stays at the repo root.
 - The server became `cask web` — the embedded viewer only, no JSON API

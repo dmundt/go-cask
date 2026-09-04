@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v9
+version: v10
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -364,7 +364,7 @@ gofmt -l .
 
 ## Constraints & Conventions
 
-- Go **1.21+** required (generics); repo toolchain is 1.27. Module: the repo
+- Go **1.27** required (self-managing toolchain). Module: the repo
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the

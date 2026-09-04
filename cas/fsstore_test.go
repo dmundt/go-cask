@@ -569,12 +569,12 @@ func TestSizeAndClean(t *testing.T) {
 	if err := s.Put(ctx, h, strings.NewReader("size me")); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Size(h)
+	got, err := s.Size(ctx, h)
 	if err != nil || got != 7 {
 		t.Fatalf("Size = %d, %v; want 7", got, err)
 	}
 	missing, _ := hashData("sha256", []byte("missing"))
-	if _, err := s.Size(missing); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Size(ctx, missing); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Size(missing) err = %v, want ErrNotFound", err)
 	}
 
@@ -617,5 +617,26 @@ func TestSizeAndClean(t *testing.T) {
 	}
 	if _, err := os.Stat(freshTmp); !os.IsNotExist(err) {
 		t.Fatal("fresh tmp still present after Clean(0)")
+	}
+}
+
+// TestWithDirSyncPut verifies the optional parent-directory fsync is a no-op
+// on platforms that cannot sync directories, and otherwise succeeds.
+func TestWithDirSyncPut(t *testing.T) {
+	s, err := NewFSRawStore(t.TempDir(), WithDirSync())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := hashData("sha256", []byte("durable"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := s.Put(ctx, h, strings.NewReader("durable")); err != nil {
+		t.Fatalf("Put with WithDirSync: %v", err)
+	}
+	got, err := s.Size(ctx, h)
+	if err != nil || got != 7 {
+		t.Fatalf("Size = %d, %v; want 7", got, err)
 	}
 }

@@ -123,7 +123,7 @@ Store operations speak to the store in-process over the library:
 - [x] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second
       sweep refused with the holder's PID (exit 1); writers (`put`) and reads
       never lock (§2, cas-core §6)
-- [ ] `gc`/`prune` are grace-gated by `--min-age` (default 24h); forced
+- [x] `gc`/`prune` are grace-gated by `--min-age` (default 24h); forced
       `--min-age 0` prints a warning (§2, consistency §5)
 - [x] All subcommands map to core operations or the viewer server
       composition — no new logic in the CLI

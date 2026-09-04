@@ -158,3 +158,34 @@ func TestClean(t *testing.T) {
 		t.Fatalf("clean = (%q, %d)", out, code)
 	}
 }
+
+func TestPruneRequiresRoot(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "prune"); code != 2 {
+		t.Fatalf("prune without root: exit %d, want 2 (usage)", code)
+	}
+}
+
+func TestPruneForcedDeletesUnreferenced(t *testing.T) {
+	mf := localMF(t)
+	h1, code := run(t, mf, "put", writeTemp(t, "one"))
+	if code != 0 {
+		t.Fatal("put one failed")
+	}
+	h2, code := run(t, mf, "put", writeTemp(t, "two"))
+	if code != 0 {
+		t.Fatal("put two failed")
+	}
+	h1, h2 = strings.TrimSpace(h1), strings.TrimSpace(h2)
+
+	// Forced prune (--min-age 0, --dry-run=false): unreferenced h2 must go.
+	if _, code := run(t, mf, "prune", "--min-age", "0", "--dry-run=false", h1); code != 0 {
+		t.Fatal("prune failed")
+	}
+	if _, code := run(t, mf, "get", h2); code == 0 {
+		t.Fatal("unreferenced object survived prune")
+	}
+	if _, code := run(t, mf, "get", h1); code != 0 {
+		t.Fatal("referenced object deleted")
+	}
+}

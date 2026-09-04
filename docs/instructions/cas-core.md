@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v23
+version: v24
 ---
 
 # CAS Core — go-cask
@@ -489,6 +489,11 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
 MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
 ```
 
+- **Directory fsync is optional** via `WithDirSync()`: it fsyncs the parent
+  directory after the rename so the publish itself is crash-durable.
+  Best-effort only — platforms that cannot sync directories (Windows) make
+  it a no-op (operations §1); default off.
+
 - The temp name is **unique per writer**: the base is `<path>.tmp`, and if
   `O_EXCL` fails (another writer holds it — only possible across processes,
   since the in-process mutex serializes Puts) a numeric suffix
@@ -883,7 +888,7 @@ The stable API the core promises (library-design §1):
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`), `MemoryRawStore`, `StoreStats` |
+| Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
 | Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |

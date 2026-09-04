@@ -194,7 +194,7 @@ func opList(ctx context.Context, t *target, args []string) error {
 	total := len(hashes)
 	items := make([]item, 0, total)
 	for _, h := range index.Paginate(hashes, *offset, *limit) {
-		size, err := t.raw.Size(h)
+		size, err := t.raw.Size(ctx, h)
 		if err != nil {
 			return err
 		}
@@ -352,7 +352,7 @@ func opClean(ctx context.Context, t *target, args []string) error {
 
 func opPrune(ctx context.Context, t *target, args []string) error {
 	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
-	minAge := fs.Duration("min-age", time.Hour, "minimum age of unreachable objects to delete")
+	minAge := fs.Duration("min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
 	dryRun := fs.Bool("dry-run", true, "report without deleting (default true)")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
@@ -360,6 +360,12 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	roots, err := parseHashes(fs.Args())
 	if err != nil {
 		return err
+	}
+	if len(roots) == 0 {
+		return usagef("prune needs at least one root hash")
+	}
+	if *minAge == 0 {
+		fmt.Fprintln(os.Stderr, "warning: prune --min-age 0 deletes every unreachable object immediately; only safe when no other process is writing (cas-core §6)")
 	}
 	doomed, err := t.raw.Prune(ctx, roots, *minAge, *dryRun)
 	if err != nil {
