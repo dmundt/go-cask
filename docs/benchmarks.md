@@ -1,7 +1,7 @@
 ---
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (cas/bench_test.go) and the on-demand state-scaling probes (cas/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v1
+version: v2
 ---
 
 # Benchmarks — go-cask
@@ -59,23 +59,27 @@ write into a temp dir that is cleaned up automatically.
 
 ### 3.2 Run them
 
-> **PowerShell note — package first.** This shell (observed in PowerShell
-> 7.6) splits an unquoted `-flag=value` token at the `=`, so
-> `go test -bench=. ./cas/` makes `go test` treat `.` as the package list
-> and fail with "no Go files". Put the package path **before** the flags and
-> every token lands where it belongs:
-> `go test ./cas/ -bench=. …`. (cmd and bash do not have this quirk, but
-> the package-first order works in every shell.)
+The canonical "run all benchmarks" command — identical in PowerShell,
+cmd, and bash:
 
 ```powershell
-# PowerShell — everything
-go test ./cas/ -bench=. -benchmem -run=^$
+go test -bench='.' -benchmem -run=^$ ./cas/
+```
 
+> **PowerShell note — quote `-flag=value` tokens.** This shell (observed in
+> PowerShell 7.6) mis-parses an *unquoted* `-bench=.` token: `go test`
+> then treats `.` as the package list and fails with "no Go files".
+> Quoting the value (`-bench='.'`) fixes it and is the canonical form
+> above. Putting the package path first (`go test ./cas/ -bench=. …`)
+> also works in every shell, as does dropping `-run=^$` if you accept the
+> unit tests running first.
+
+```powershell
 # one family, 5 repeats for stable numbers
 go test ./cas/ -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$
 
 # a single benchmark, exact iteration count
-go test ./cas/ -bench=^BenchmarkRoundTrip$ -benchmem -benchtime=10000x -run=^$
+go test ./cas/ -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$
 ```
 
 ```bash
@@ -192,7 +196,85 @@ store scales.
   number to watch for regressions (performance §5: hot paths keep allocations
   flat — P-03).
 
-## 6. Reference
+## 6. Sample measurements & extrapolation (Windows/NTFS anchor)
+
+Anchor run: 2026-09-04, Windows 11 (NTFS), 13th Gen Intel i7-13800H, Go
+1.27, default fan-out (2,1). Measured with the scale probes
+(`CASK_SCALE_OBJECTS=<N> go test ./cas/ -run=^$ -bench=Scale -benchtime=NNx -v`).
+Per-op numbers are for a store that **already holds N objects**; List/Stats
+are full scans. These are a *sample*, not a contract — re-measure on your
+machine (§5) before quoting numbers.
+
+### 6.1 Measured anchors
+
+| Store size N | Backend | Put | Get | Exists | List (per call) | Stats |
+| ------------ | ------- | --- | --- | ------ | --------------- | ----- |
+| 10^4 | FS | 2.61 ms | 70 µs | 26 µs | 66 ms | 60 ms |
+| 10^5 | FS | 2.90 ms | 119 µs | — | — | — |
+| 10^5 | Memory | 0.67 µs | 0.26 µs | 0.26 µs | 0.69 s | (no Stats) |
+| 10^6 | Memory | 0.67 µs | 0.38 µs | 0.29 µs | 8.1 s | (no Stats) |
+
+Memory per-op cost is **flat** from 10^5 → 10^6 (O(1) map ops). FS per-op
+cost **grows slowly** with N (larger fan-out dirs: Put +11 % per decade,
+Get ~×1.7 per decade); List/Stats are **linear** in N.
+
+### 6.2 Model fits (used for the extrapolation)
+
+- Memory Put/Get/Exists ≈ **flat** at the 10^6 anchors (0.67 / 0.38 /
+  0.29 µs).
+- FS Put ≈ `1.7×10^6 · N^0.046` ns; FS Get ≈ `10.6 · N^0.21` µs (N in
+  objects).
+- List (both backends) and FS Stats ≈ **N × ~7 µs/object** per full scan.
+
+### 6.3 Estimated per-op cost at store size N (10^5 … 10^10)
+
+| N | Mem Put/Get/Exists | FS Put | FS Get | FS Exists* |
+| - | ------------------ | ------ | ------ | ---------- |
+| 10^5 | ~0.3–0.7 µs | 2.9 ms | 0.12 ms | ~0.03 ms |
+| 10^6 | ~0.3–0.7 µs | 3.2 ms | 0.19 ms | ~0.03 ms |
+| 10^7 | ~0.3–0.7 µs | 3.6 ms | 0.31 ms | ~0.04 ms |
+| 10^8 | ~0.3–0.7 µs | 4.0 ms | 0.51 ms | ~0.04 ms |
+| 10^9 | ~0.3–0.7 µs | 4.4 ms | 0.82 ms | ~0.05 ms |
+| 10^10 | ~0.3–0.7 µs | 4.9 ms | 1.3 ms | ~0.06 ms |
+
+\* Exists has no anchor past 10^4 (26 µs); shown as a mild-growth estimate.
+
+### 6.4 Full scans, build-up and footprint
+
+| N | Mem List (per call) | FS List / Stats (per call) | FS single-writer fill (cumulative) | Mem store RAM† | FS disk‡ |
+| - | ------------------- | -------------------------- | ---------------------------------- | -------------- | -------- |
+| 10^5 | 0.7 s | ~0.7 s | ~5 min | 20 MB | ~0.2 GB |
+| 10^6 | 8 s | ~7 s | ~50 min | 200 MB | ~2 GB |
+| 10^7 | ~75 s | ~70 s | ~10 h | 2 GB | ~20 GB |
+| 10^8 | ~12 min | ~12 min | ~4 days | 20 GB | ~0.2 TB |
+| 10^9 | ~2 h | ~2 h | ~50 days | 200 GB | ~2 TB |
+| 10^10 | ~21 h | ~18 h | **~1.5 years** | **2 TB** | ~20 TB |
+
+† Assumes ~0.2 KB retained per object (map entry + 64 B payload).
+‡ Assumes ~2 KiB on disk per object (64 B payload + filesystem overhead);
+the real figure is FS-dependent, roughly 1–4 KiB/object (§4.6).
+
+### 6.5 Takeaways
+
+- The store is **O(1)-per-op on both backends** up to physical limits —
+  Put/Get/Exists/Delete stay flat in time; only the FS file cost (ms vs µs)
+  and its slow directory growth separate the backends.
+- **List and Stats are O(N)** scans; at 10^9 they cost hours per call, and
+  Memory's List additionally churns ~7 KB of allocations per object per
+  call (≈ 740 GB allocated per call at 10^8 — unusable before the time
+  matters).
+- **10^10 is not a wall-clock question but a physics question**: an FS fill
+  would take ~1.5 years single-threaded and land at ~20 TB with ~4×10^7
+  files per fan-out directory — past NTFS/ext4 file-count ceilings
+  (~4×10^9 max, practical limits far lower); the Memory store would need
+  ~2 TB of RAM.
+
+Caveats: single-threaded, single-machine Windows/NTFS numbers; the fits use
+2–3 anchor points and are rough at the extremes (nothing past 10^6 on FS
+was measured — the fan-out layout may degrade harder in pathological
+per-directory counts).
+
+## 7. Reference
 
 - `docs/instructions/performance.md` §5 — the benchmark suite contract;
   §11 — scenario-test targets and defaults.
