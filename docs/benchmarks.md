@@ -59,19 +59,27 @@ write into a temp dir that is cleaned up automatically.
 
 ### 3.2 Run them
 
+> **PowerShell note — package first.** This shell (observed in PowerShell
+> 7.6) splits an unquoted `-flag=value` token at the `=`, so
+> `go test -bench=. ./cas/` makes `go test` treat `.` as the package list
+> and fail with "no Go files". Put the package path **before** the flags and
+> every token lands where it belongs:
+> `go test ./cas/ -bench=. …`. (cmd and bash do not have this quirk, but
+> the package-first order works in every shell.)
+
 ```powershell
 # PowerShell — everything
-go test -bench=. -benchmem -run=^$ ./cas/
+go test ./cas/ -bench=. -benchmem -run=^$
 
 # one family, 5 repeats for stable numbers
-go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./cas/
+go test ./cas/ -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$
 
 # a single benchmark, exact iteration count
-go test -bench=^BenchmarkRoundTrip$ -benchmem -benchtime=10000x -run=^$ ./cas/
+go test ./cas/ -bench=^BenchmarkRoundTrip$ -benchmem -benchtime=10000x -run=^$
 ```
 
 ```bash
-# bash / macOS / Linux
+# bash / macOS / Linux (flags-first is fine here)
 go test -bench=. -benchmem -run=^$ ./cas/
 ```
 
@@ -121,12 +129,12 @@ at large N and is **not** part of the per-operation numbers.
 ### 4.4 Run them
 
 ```powershell
-# PowerShell (env var syntax)
+# PowerShell (env var syntax; package first, see §3.2 note)
 $env:CASK_SCALE_OBJECTS = 100000
-go test -run=^$ -bench=Scale -benchtime=1000x -v ./cas/
+go test ./cas/ -run=^$ -bench=Scale -benchtime=1000x -v
 
 $env:CASK_SCALE_OBJECTS = 1000000   # FS: expect several GBs of temp files
-go test -run=^$ -bench=Scale -benchtime=100x -v -timeout 0 ./cas/
+go test ./cas/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
 ```
 
 ```bash
