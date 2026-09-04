@@ -132,7 +132,9 @@ expiration.
   can break references. Documented as the one operation that can destroy
   reachable data; it exists for legal/temp-data eviction.
 - **Surface**: exposed as a `cask` CLI operation (`prune --min-age <dur>
-  <roots...> [--dry-run]`, cli §2) and a viewer admin action with confirm.
+  <roots...> [--dry-run]`, cli §2). The viewer exposes verify and GC
+  admin actions (viewer-design §6); prune stays CLI-only — its dry-run
+  semantics and root-based interface don't fit the hypermedia surface.
   There is no HTTP surface (backend-architecture §1).
 
 ---

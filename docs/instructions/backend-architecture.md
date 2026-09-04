@@ -149,9 +149,9 @@ Rules:
 ## 4. HTTP Layer
 
 - Content type is `text/html` (pages + htmx fragments) for every viewer
-  route; raw object views stream as `application/octet-stream` with
-  `X-CAS-*` metadata headers, never buffered (performance P-05,
-  api-design §11).
+  route; the viewer's raw view buffers at most 256 KiB for in-page hexdump
+  (a bounded preview, not a streaming download — api-design §11 streaming
+  applies to the API surface, not the hexdump UI).
 - Errors are minimal HTML pages/fragments; 401/403 are empty bodies and
   never disclose existence (api-design §5/§6, viewer-security).
 - OpenAPI: the product serves none. An HTTP surface that needs a documented
@@ -259,6 +259,6 @@ an example surface.
 - [ ] Handlers thin; all logic in the library; backend selection via config
 - [ ] Raw object views stream; no full buffering
 - [ ] Errors per api-design §5/§6; 401/403 empty bodies
-- [ ] Config shape per §6; startup/shutdown lifecycle implemented
+- [x] Config shape per §6; startup/shutdown lifecycle implemented
 - [ ] slog + audit logging; metrics via the viewer stats page and logs
 - [x] No network JSON API ships; `examples/api` is the documented pattern
