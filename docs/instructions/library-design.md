@@ -104,8 +104,8 @@ Rules:
 
 ## 5. Compatibility Policy
 
-- Library baseline: **Go 1.27** (go.mod toolchain is self-managing); the
-  library is built and tested with 1.27.
+- Library baseline: **Go 1.22+** (generics, enhanced routing, stdlib-only); the library is
+  built and tested with the repo toolchain (1.27).
 - Semver discipline: only additive, non-breaking changes inside the current
   major version; breaking changes require a major version and a migration
   note.
