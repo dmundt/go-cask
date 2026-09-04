@@ -76,10 +76,10 @@ go test -bench='.' -benchmem -run=^$ ./cas/
 
 ```powershell
 # one family, 5 repeats for stable numbers
-go test ./cas/ -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$
+go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./cas/
 
 # a single benchmark, exact iteration count
-go test ./cas/ -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$
+go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./cas/
 ```
 
 ```bash
