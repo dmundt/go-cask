@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v9
+version: v10
 ---
 
 # Examples — go-cask
@@ -117,6 +117,16 @@ When creating or extending an example, follow these rules:
     which examples MAY import (the `files` example does). Examples never
     depend on `files`, `artifacts`, `notes`, or `api`, and those never
     depend on each other.
+
+    > Decision (2026-09): cache/recipe helpers stay **inlined** —
+    > `SmartCache` (notes), `CacheMonitor` (artifacts), and similar
+    > per-example helpers are teaching code carried by their own example,
+    > not shared packages (they were extracted from `cas/extra` on exactly
+    > that principle). Create a shared home for one of them only when a
+    > **second consumer of that same helper** exists (the gitlike shared
+    > library exception covers the reference object model, not recipes);
+    > decide that home deliberately (example support vs. add-on) when the
+    > need appears.
 
 ---
 ## 3. Proposed Examples

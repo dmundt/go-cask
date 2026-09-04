@@ -19,6 +19,10 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Examples spec §2 rule 11 records the 2026-09 decision: cache/recipe
+  helpers (`SmartCache`, `CacheMonitor`, …) stay inlined per-example
+  teaching code — a shared home appears only when a second consumer of the
+  same helper exists, chosen deliberately then (examples v10).
 - Deferred-extension catalog (`docs/instructions/extensions.md` §3) records
   the 2026-09 deferral decision with data-driven revisit triggers: packfiles
   (incl. its `.idx` index) only past ~10^5–10^6 objects or for bulk
