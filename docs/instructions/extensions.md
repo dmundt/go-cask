@@ -91,5 +91,5 @@ the leaner choice.
 - [x] Tests cover the relevant CAS laws; `-race` green
 - [x] Std-lib only unless justified + vendored
 - [x] Exported identifiers documented; OpenAPI if HTTP
-- [ ] Simple: one job, nothing speculative
+- [x] Simple: one job, nothing speculative
 - [x] Catalog entries (§3) reference an owning spec; no design-less wishes

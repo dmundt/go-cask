@@ -256,9 +256,9 @@ an example surface.
 
 - [x] One mux; every route under `/viewer`; no data-API surface exists
 - [x] Middleware order fixed: sessions → role → CSRF → handler
-- [ ] Handlers thin; all logic in the library; backend selection via config
+- [x] Handlers thin; all logic in the library; backend selection via config
 - [ ] Raw object views stream; no full buffering
-- [ ] Errors per api-design §5/§6; 401/403 empty bodies
+- [x] Errors per api-design §5/§6; 401/403 empty bodies
 - [x] Config shape per §6; startup/shutdown lifecycle implemented
-- [ ] slog + audit logging; metrics via the viewer stats page and logs
+- [x] slog + audit logging; metrics via the viewer stats page and logs
 - [x] No network JSON API ships; `examples/api` is the documented pattern

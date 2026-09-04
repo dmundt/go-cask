@@ -303,7 +303,7 @@ Consequences for this repo:
 - [x] Every exported identifier documented (name-first doc comments)
 - [ ] Generic types/functions used where needed (incl. 1.27 generic methods);
       nothing over-engineered, no features newer than 1.27
-- [ ] `context.Context` first, errors wrapped with `%w`, no panics in library
+- [x] `context.Context` first, errors wrapped with `%w`, no panics in library
       code
-- [ ] Viewer changes re-checked against
+- [x] Viewer changes re-checked against
       `docs/instructions/viewer-security.md`
