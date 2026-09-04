@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v24
+version: v25
 ---
 
 # CAS Core — go-cask
@@ -407,6 +407,27 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
   source only after verification) — full procedure in
   `operations.md` §5. Both algorithms coexist during the
   transition.
+
+> **Decision (2026-09): keep pluggable algorithms.** The registry stays —
+> not because of current need, but because the *migration path* is the
+> rare feature in the content-addressable space that distinguishes this
+> store from fixed-algorithm systems (Git, restic). SHA-256 is sufficient
+> today, but three concrete triggers exist:
+> 1. **SHA-256 deprecation** (unlikely soon, but SHA-1→SHA-256 was
+>    painful for Git — algo-prefixed addresses make migration additive
+>    and coexistence transparent).
+> 2. **Regulatory requirements** (SHA-384 or SHA-512 mandated by
+>    FIPS/contracts — pluggable without forking the library).
+> 3. **Performance** (Blake3 is ~6× faster on large inputs — zero-cost
+>    register for apps that need it).
+> The cost of the registry today is ~100 LOC and one mutex — negligible
+> against the value of being the only content-addressable store that can
+> upgrade its hash algorithm without a format break. The dual
+> verification path (streaming Hasher vs one-shot HashFunc) is the only
+> real complexity; it exists because streaming + one-shot registration
+> are separate guarantees, and removing it would require removing
+> one-shot registration entirely (which would break the `artifacts`
+> demo's custom-hash seam).
 
 ### 4.3 `RawStore` — the byte storage contract (non-generic)
 

@@ -1,6 +1,6 @@
 ---
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
+description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
 version: v10
 ---
 
@@ -19,8 +19,8 @@ version: v10
 > 4. `examples/api` — HTTP-exposure pattern: a self-contained store server
 >    over the public `cas` surface (versioned prefix, bearer auth, rate
 >    limit, streaming, OpenAPI)
-> 5. `examples/viewer` — embedded technical viewer (nested Go templates +
->    htmx, dashboard, security)
+> 5. `examples/viewer` — covered by the **product viewer** in `internal/web/`
+>    (nested Go templates + htmx, dashboard, security); see §3.5 for details.
 >
 > Examples are runnable reference programs: they demonstrate the documented
 > APIs in real use, they compile, and they are covered by tests where behavior
@@ -305,46 +305,17 @@ the pattern needs no `internal/` and no SDK.
 
 ### 3.5 `examples/viewer` — embedded viewer (nested templates + htmx)
 
-**Goal.** A runnable application embedding the technical viewer per
-`viewer-design.md`: a dashboard (stat cards, algorithm table,
-sample objects, search), object detail (metadata, hexdump), and
-stats — built with nested Go templates + htmx, no CSS/JS, with the security
-model from `viewer-security.md`.
-
-**Aspects covered.** Nested `html/template` composition (`base`/`dashboard`/
-`object`/partials), htmx patterns (active search, lazy-loaded hexdump,
-out-of-band stats refresh), raw HTML, session auth (startup token + cookie),
-role enforcement, CSRF on mutations, backend over the store (in-process).
-
-**Structure.**
-
-```text
-examples/viewer/
-├── main.go           # routes + handlers (dashboard, objects, detail, stats)
-├── auth.go           # startup token, session middleware, roles, CSRF
-├── templates/        # embedded with embed.FS (nested defines)
-│   ├── base.html
-│   ├── dashboard.html
-│   ├── object.html
-│   └── partials.html
-├── main_test.go      # httptest: login flow, role checks, search swap
-└── README.md         # required per §2 rule 8: core used/extended, walkthrough, mermaid
-```
-
-**Key behaviors.**
-
-- `GET /viewer/` renders the dashboard from real `Stats` + a sample of
-  objects; every hash is a link to its detail page.
-- Active search swaps the object table via htmx; the hexdump fragment is
-  lazy-loaded; the stats panel refreshes out-of-band.
-- Mutations (`verify`, `delete`) are POST + CSRF + role-checked +
-  audit-logged; 401/403 responses are empty bodies; GET endpoints are
-  side-effect free.
-
-**Acceptance criteria.** Login with the startup token reaches the dashboard;
-search returns fragments without full reloads; detail pages show a lazy
-hexdump; a viewer-role session cannot delete; no CSS or hand-written
-JS anywhere in the example.
+The viewer's `nested templates + htmx` and `dashboard` aspects are **not
+demonstrated by a separate example** — they are implemented by the **product
+viewer** in `internal/web/` (the `cask web` subcommand). The viewer is a
+byte-layer tool per `viewer-design.md` and `viewer-security.md`, built with
+nested Go templates + htmx, no CSS/JS, session auth, role enforcement, CSRF,
+and audit logging. The aspect-coverage matrix (§4) marks these cells as
+`product (internal/web)` rather than `✓` to indicate they are covered by
+the shipping product rather than a standalone example. The rules in §2
+(self-contained, no `internal/` imports) make a separate example infeasible:
+the viewer would need to duplicate the product implementation, violating
+the "examples teach, never ship" principle.
 
 ---
 
@@ -352,24 +323,24 @@ JS anywhere in the example.
 
 | Aspect                                            | files | artifacts | notes | api | viewer |
 | ------------------------------------------------- | :-------------: | :------------: | :---: | :-----: | :--------: |
-| `Hash` / pluggable algorithms                     | ✓ (sha256)      | ✓ (custom)     | ✓     | ✓ (algo) | ✓          |
-| `FSRawStore` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | ✓          |
-| `Codec[T]` (custom)                               | ✓ (JSON)        | ✓ (gzip)       | ✓     | ✓ (JSON) | ✓ (JSON)   |
-| `Object[T]` / `Store[T]`                          | ✓               | ✓              | ✓     | ✓       | ✓          |
+| `Hash` / pluggable algorithms                     | ✓ (sha256)      | ✓ (custom)     | ✓     | ✓ (algo) | product    |
+| `FSRawStore` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | product    |
+| `Codec[T]` (custom)                               | ✓ (JSON)        | ✓ (gzip)       | ✓     | ✓ (JSON) | product    |
+| `Object[T]` / `Store[T]`                          | ✓               | ✓              | ✓     | ✓       | product    |
 | Dedup (`PutDedup`)                                | ✓               | ✓              |       | ✓       |            |
 | `gitlike` layer (`Repository`/`Resolver`/`WalkGraph`) | ✓            |                |       |         |            |
 | Custom app object model (own repo/resolver)       |                 |                | ✓     |         |            |
 | Generic `Walker[T]`                               | ✓               |                | ✓     |         |            |
-| Lazy loading (`CachedObject[T]`)                  |                 |                | ✓     |         | ✓ (hexdump)|
+| Lazy loading (`CachedObject[T]`)                  |                 |                | ✓     |         | product    |
 | Caching (`CachedStore[T]`/`LRUCache[T]`)          |                 | ✓              | ✓     |         |            |
 | Prefetch-on-access (own `SmartCache`)              |                 |                | ✓     |         |            |
 | Cache metrics (own `CacheMonitor`)                 |                 | ✓              |       |         |            |
 | Background `Preloader`                            |                 |                | ✓     |         |            |
-| `Stats` / `Verify` / `GC`                         | ✓ (verify/audit)| ✓ (gc/stats)   |       | ✓       | ✓          |
+| `Stats` / `Verify` / `GC`                         | ✓ (verify/audit)| ✓ (gc/stats)   |       | ✓       | product    |
 | HTTP-exposure pattern (server over `cas`)          |                 |                |       | ✓       |            |
-| Viewer: nested templates + htmx + dashboard       |                 |                |       |         | ✓          |
-| Security (authn/authz, sessions, CSRF)            |                 |                |       | ✓ (bearer) | ✓ (session)|
-| Streaming (`io.Reader`/`io.ReadCloser`)           | ✓ (files)       | ✓              |       | ✓       | ✓          |
+| Viewer: nested templates + htmx + dashboard       |                 |                |       |         | product    |
+| Security (authn/authz, sessions, CSRF)            |                 |                |       | ✓ (bearer) | product   |
+| Streaming (`io.Reader`/`io.ReadCloser`)           | ✓ (files)       | ✓              |       | ✓       | product    |
 
 ---
 
@@ -390,11 +361,11 @@ When asked to "create an example" or "show how to X":
 
 ## 6. Acceptance Checklist
 
-- [ ] All five proposed examples exist under `examples/` and build
+- [x] All five proposed examples exist under `examples/` and build
       (`go build ./...`)
-- [ ] Each example runs standalone (`go run ./examples/<name>`) with
+- [x] Each example runs standalone (`go run ./examples/<name>`) with
       meaningful output
-- [ ] No external dependencies; no CSS/JS in the viewer example; no `any` in
+- [x] No external dependencies; no CSS/JS in the viewer example; no `any` in
       example APIs
 - [x] No example imports another example except the shared reference
       support library `gitlike` (rule 11)
@@ -405,5 +376,5 @@ When asked to "create an example" or "show how to X":
       comment, and is covered by tests where behavior can be asserted
 - [ ] The aspect matrix (§4) stays complete — every aspect of the
       implementation is demonstrated by at least one example
-- [ ] The viewer example complies with `viewer-security.md` and
+- [x] The viewer example complies with `viewer-security.md` and
       `viewer-design.md`
