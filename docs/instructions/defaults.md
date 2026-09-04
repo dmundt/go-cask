@@ -129,7 +129,7 @@ default targets, not absolutes.
 | Item                          | Default / value                                        | Defined in           |
 | ----------------------------- | ------------------------------------------------------ | -------------------- |
 | Toolchain / `go.mod`          | Go 1.27                                                | coding-guidelines §1 |
-| Library baseline              | Go 1.27 (self-managing toolchain)                       | library-design §5    |
+| Library baseline              | Go 1.22+ (generics, enhanced routing; toolchain self-managing)                 | library-design §5    |
 | Dependencies                  | standard library only (external only if justified + vendored) | coding-guidelines §3 |
 | Frontend scripting            | htmx only; no hand-written JS/CSS                      | coding-guidelines §4 |
 | Lean-core budget              | `cas/` ≤ ~1500 LOC, ≤ ~20 exported identifiers         | library-design §1    |

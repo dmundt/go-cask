@@ -1,6 +1,6 @@
 ---
 title: Go Coding Guidelines — go-cask
-description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
+description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.22+ baseline (generics, enhanced routing) and the latest generics (toolchain 1.27).
 version: v7
 ---
 
@@ -16,27 +16,27 @@ version: v7
 > Summary of the rules: idiomatic Go, standard library only (no external Go
 > packages unless truly necessary), **no CSS, no JavaScript**, server-side
 > rendering with Go `html/template` plus **htmx** for interactivity, prefer raw
-> HTML, document every exported type and function, target **Go 1.27**, and use
+> HTML, document every exported type and function, target **Go 1.21+**, and use
 > the latest Go generics where they genuinely help.
 
 ---
 
 ## 1. Go Version & Toolchain
 
-- Target: **Go 1.27** — this is the installed local toolchain. The `go.mod`
-  MUST declare `go 1.27`.
-- Language features available and allowed in 1.27: generics (1.18+), type sets
-  / `~` unions (1.18+), `comparable`, `slices`/`maps`/`cmp` (1.21+), `range`
-  over integers (1.22+), `iter` / range-over-func (1.23+), generic type
-  aliases (1.24+), and the **Go 1.27 language additions** — generic methods,
-  generalized function type inference, and field-selector keys in struct
-  literals (details in §8).
+- **Library baseline: Go 1.22+** (generics, enhanced routing, stdlib-only). The `go.mod` declares
+  `go 1.21` with `toolchain go1.27` — the self-managing toolchain auto-downloads
+  1.27 for CI; consumers on 1.21+ can build the module.
+- Language features available and allowed in the library baseline (1.21+):
+  generics (1.18+), type sets / `~` unions (1.18+), `comparable`,
+  `slices`/`maps`/`cmp` (1.21+), `range` over integers (1.22+), `iter` /
+  range-over-func (1.23+), generic type aliases (1.24+), and subsequent
+  additions.
 - Go ≥ 1.21 toolchains are self-managing: `GOTOOLCHAIN=auto` (default) uses
   the toolchain declared by `go.mod`. CI MUST pin the same version so builds
   are reproducible.
-- Do not use language features from a *newer* toolchain than 1.27 — the
-  declared version is the contract.
-- Reference: [Go 1.27 release notes](https://go.dev/doc/go1.27).
+- Do not use language features from a *newer* toolchain than the declared
+  `go` directive — the declared version is the contract.
+- Reference: [Go 1.21 release notes](https://go.dev/doc/go1.21).
 
 ---
 
@@ -258,7 +258,7 @@ Consequences for this repo:
   IP-based rate limiter (std-lib token bucket per caller IP, 429 +
   `Retry-After` + `X-RateLimit-*`, loopback exempt — see `examples/api` and
   api-design §8).
-- `go.mod` at the repo root declaring `go 1.27`; module path matches the
+- `go.mod` at the repo root declaring `go 1.21` with `toolchain go1.27`; module path matches the
   repository.
 - No blank imports except the `embed` pattern; no init-based magic except
   object/hash registration per the architecture doc.
@@ -293,7 +293,7 @@ Consequences for this repo:
 ## 11. Pre-Commit Checklist
 
 - [x] `gofmt -l .` is clean; `go vet` and `go test` pass
-- [x] `go.mod` declares `go 1.27`; zero external Go dependencies, or each one
+- [x] `go.mod` declares `go 1.21` with `toolchain go1.27`; zero external Go dependencies, or each one
       justified and vendored
 - [x] No CSS, no hand-written JS, no `<style>`/`<script>` in templates — htmx
       only
@@ -301,8 +301,8 @@ Consequences for this repo:
       feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`,
       `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)
-- [ ] Generic types/functions used where needed (incl. 1.27 generic methods);
-      nothing over-engineered, no features newer than 1.27
+- [ ] Generic types/functions used where needed (incl. generic methods);
+      nothing over-engineered, no features newer than the declared `go` directive
 - [x] `context.Context` first, errors wrapped with `%w`, no panics in library
       code
 - [x] Viewer changes re-checked against

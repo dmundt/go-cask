@@ -364,7 +364,7 @@ gofmt -l .
 
 ## Constraints & Conventions
 
-- Go **1.27** required (self-managing toolchain). Module: the repo
+- Go **1.22+** required (generics, enhanced routing, stdlib-only); repo toolchain is 1.27. Module: the repo
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the
