@@ -299,7 +299,7 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 // older than this, so a concurrent writer's fresh objects are never deleted
 // (cas-core §6; Git's gc grace). Pass --min-age 0 for an immediate sweep —
 // the dangerous variant, only safe when no other process is writing.
-const gcDefaultGrace = 24 * time.Hour
+const gcDefaultGrace = 1 * time.Hour
 
 func opGC(ctx context.Context, t *target, args []string) error {
 	fs := flag.NewFlagSet("gc", flag.ContinueOnError)

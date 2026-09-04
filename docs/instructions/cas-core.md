@@ -541,7 +541,7 @@ no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/
 `Clean`) racing another process's writes is NOT safe. The **grace model**
 applies: sweeps that may race live writers MUST reclaim only objects older
 than a grace `--min-age`, so a concurrent writer's fresh objects survive —
-this is what the `cask` CLI does (`gc`/`prune` default 24h; forced
+this is what the `cask` CLI does (`gc`/`prune` default 1h; forced
 `--min-age 0` is the documented dangerous variant, consistency §5,
 backend-architecture §1).
 
@@ -884,7 +884,7 @@ Rules:
   `cask` CLI applies the grace model: maintenance sweeps (`gc`, `prune`,
   `clean`) take the store's exclusive `.cask.lock` so two sweeps never
   overlap, and reclaim only objects older than a grace `--min-age` (default
-  24h), so a concurrent writer's fresh objects survive. A forced sweep
+  1h), so a concurrent writer's fresh objects survive. A forced sweep
   (`--min-age 0`) is the dangerous variant — only safe when no other process
   is writing; it prints a warning (cli spec §2, consistency §5). Applications
   embedding the library MUST provide equivalent coordination themselves if
