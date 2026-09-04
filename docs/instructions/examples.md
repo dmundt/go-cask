@@ -374,7 +374,7 @@ When asked to "create an example" or "show how to X":
 - [x] Each example ships a `README.md` with the §2 rule 8 content (core used,
       extended, code walkthrough, Mermaid diagram, how to run) plus a package
       comment, and is covered by tests where behavior can be asserted
-- [ ] The aspect matrix (§4) stays complete — every aspect of the
+- [x] The aspect matrix (§4) stays complete — every aspect of the
       implementation is demonstrated by at least one example
 - [x] The viewer example complies with `viewer-security.md` and
       `viewer-design.md`
