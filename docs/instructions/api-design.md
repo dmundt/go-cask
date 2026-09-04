@@ -204,7 +204,9 @@ fixed at 5 failures/IP/min (viewer-security).
 - Binary bodies use `application/octet-stream` — **never base64 inside
   JSON**.
 - Metadata for a binary response travels in `X-CAS-*` headers
-  (`X-CAS-Algorithm`, `X-CAS-Size`, `X-CAS-Type`).
+  (`X-CAS-Algorithm` and `X-CAS-Size`; the byte layer has no envelope type,
+  so `X-CAS-Type` is not emitted — the `meta` endpoint may sniff it
+  best-effort from the envelope).
 - Large payloads stream (`io.Reader`/`io.ReadCloser`); handlers never buffer
   whole objects (performance spec P-05).
 
