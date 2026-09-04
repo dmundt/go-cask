@@ -189,7 +189,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 - [x] `-race` concurrent test green (lock-free read path proven)
 - [x] corruption test proves `Verify` fails on a flipped byte
 - [x] golden hash vectors assert exact digests
-- [ ] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every
+- [x] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every
       exported identifier exercised; untested branches commented
 - [ ] every HTTP route tested (success + 400/401/403/404/429)
 - [ ] new requirements come with their test (traceability is review-gated)

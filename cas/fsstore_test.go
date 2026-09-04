@@ -97,7 +97,7 @@ func TestLayoutEquivalence(t *testing.T) {
 // CAS law: path round-trip — pathToHash(hashPath(h)) == h (every layout).
 func TestPathRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	for _, algo := range []string{"sha256", "sha1"} {
+	for _, algo := range []string{"sha256"} {
 		h, _ := hashData(algo, []byte("path round trip"))
 		for _, opts := range [][]FSOption{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
 			s := mustFS(t, opts...)
@@ -315,7 +315,7 @@ func TestStats(t *testing.T) {
 	s := mustFS(t)
 	h1, _ := hashData("sha256", []byte("aaaa"))
 	h2, _ := hashData("sha256", []byte("bbbb"))
-	h3, _ := hashData("sha1", []byte("cccc"))
+	h3, _ := hashData("sha256", []byte("cccc"))
 	for _, h := range []Hash{h1, h2, h3} {
 		if err := s.Put(ctx, h, strings.NewReader("x")); err != nil {
 			t.Fatal(err)

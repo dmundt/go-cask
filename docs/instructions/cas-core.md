@@ -373,7 +373,7 @@ func NewHasher(algo string) (hash.Hash, error) // streaming, built-ins only
 func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 ```
 
-- Built-in algorithms: `sha1`, `sha256` (others registered at runtime, e.g.
+- Built-in algorithm: `sha256` (others registered at runtime, e.g.
   `blake3`).
 - `NewStore(raw, codec, algo)` resolves the algorithm at construction;
   `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot
@@ -487,7 +487,7 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
 - Any n-way / n-level fan-out layout is allowed:
   `NewFSRawStore(basePath, opts ...FSOption)` accepts `WithFanOut(n)` and
   `WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length
-  (64 for SHA-256, 40 for SHA-1); over-deep configurations are rejected at
+  (64 for SHA-256); over-deep configurations are rejected at
   construction.
 - `hashPath(h)` builds the path from the configured layout;
   `pathToHash(path)` rebuilds the `Hash` from the relative path — first part

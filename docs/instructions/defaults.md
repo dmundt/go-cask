@@ -42,7 +42,7 @@ version: v10
 | Hash string format                | `"<algo>:<lowercase-hex>"` (e.g. `sha256:a1b2…`)   | cas-core §4.1       |
 | Hash validation pattern           | `^[a-z0-9]+:[0-9a-f]+$`                            | api-design §3       |
 | Fan-out layout                    | `FanOut=2`, `FanLevels=1` — prefix dirs; file name is always the full digest | cas-core §4.4       |
-| Fan-out bound                     | `FanLevels × FanOut ≤ 64` (40 for SHA-1)           | cas-core §4.4       |
+| Fan-out bound                     | `FanLevels × FanOut ≤ 64`                              | cas-core §4.4       |
 | Directory permissions             | `0o755`                                            | cas-core §4.4       |
 | File permissions                  | `0o644`                                            | cas-core §4.4       |
 | Default codec                     | `JSONCodec[T]`                                     | cas-core §4.6       |
