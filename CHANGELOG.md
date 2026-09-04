@@ -19,6 +19,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ### Changed
 
+- Fan-out decision recorded (cas-core §4.4): the file-name style is **not
+  configurable** — full-hash names are the only layout. A Git-remainder
+  option was considered and rejected (no Git interop under either style,
+  a second mode in every layout-dependent method, and it loses the
+  self-describing "file name = full hash" property `List`/`Stats`/`Verify`
+  rely on); revisit only for a real consumer (cas-core v23).
 - Fan-out layout clarified (no code change): file names were already always
   the complete digest at any fan-out level (verified on disk) — cas-core §4.4
   now states it explicitly and corrects the Git comparison (Git loose
