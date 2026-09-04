@@ -8,8 +8,8 @@
 // the pattern).
 //
 // The public surface and its contracts are specified in
-// .github/instructions/cas-core.instructions.md and
-// .github/instructions/library-design.instructions.md.
+// docs/instructions/cas-core.md and
+// docs/instructions/library-design.md.
 package cas
 
 import "errors"

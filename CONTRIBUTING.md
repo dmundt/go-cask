@@ -1,9 +1,9 @@
 # Contributing to go-cask
 
 Thank you for contributing! This project is **specified, not guessed**: the
-`.github/instructions/` folder is the single source of truth for design,
+`docs/instructions/` folder is the single source of truth for design,
 contracts, and conventions. Before anything else, read
-`.github/instructions/AGENT.md` — it governs every other spec and this
+`docs/instructions/AGENT.md` — it governs every other spec and this
 repository.
 
 ## Development workflow
@@ -13,19 +13,19 @@ repository.
 - Go **1.27** (the toolchain is self-managing via `go.mod`; a Go ≥ 1.21
   install auto-downloads it).
 - `git` — the repo uses the branch and tag conventions in
-  `.github/instructions/branch-naming.instructions.md` and
-  `.github/instructions/versioning.instructions.md`.
+  `docs/instructions/branch-naming.md` and
+  `docs/instructions/versioning.md`.
 
 ### Where things live
 
-| Path        | What it is                                                  |
-| ----------- | ----------------------------------------------------------- |
-| `cas/`      | The public core library (package `cas`) — see `cas-core`    |
-| `internal/` | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
+| Path                 | What it is                                                  |
+| -------------------- | ----------------------------------------------------------- |
+| `cas/`               | The public core library (package `cas`) — see `cas-core`    |
+| `internal/`          | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
-| `cmd/cask`  | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.instructions.md` |
-| `examples/` | Runnable example programs (`examples.instructions.md`)      |
-| .github/instructions/ | The specification set (19 spec files + AGENT.md)          |
+| `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
+| `examples/`          | Runnable example programs (`examples.md`)                   |
+| `docs/instructions/` | The specification set (19 spec files + AGENT.md)            |
 
 ### Design decisions & constraints
 
@@ -77,7 +77,7 @@ Rules from the specs that always apply:
 2. Implement, keeping the relevant spec as the contract. If the change is
    **material** (new requirement, contract change), bump the owning
    instruction file's frontmatter `version` by one (AGENT.md §3) and update
-   `defaults.instructions.md` if a default changes (defaults §8).
+   `defaults.md` if a default changes (defaults §8).
 3. Add tests: unit + the relevant CAS laws; run `-race`.
 4. Commit with Conventional Commits (`feat:`, `fix:`, …; `BREAKING CHANGE:`
    footer for breaking changes) — `versioning` §4.

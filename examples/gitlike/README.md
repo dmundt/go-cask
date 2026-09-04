@@ -2,7 +2,7 @@
 
 **What it demonstrates.** The reference library-style example: a Git-like
 `Blob`/`Tree`/`Commit`/`Tag` object model layered on the generic cas core
-(`examples.instructions.md` §2.1, `cas-core` §4.12). It is an **importable
+(`examples.md` §2.1, `cas-core` §4.12). It is an **importable
 package** (not a runnable program) that other examples and apps copy as the
 pattern for building their own typed layers on `Store[T]`.
 

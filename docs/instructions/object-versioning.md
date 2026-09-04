@@ -1,7 +1,7 @@
 ---
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
-version: v1
+version: v2
 ---
 
 # Object Versioning — go-cask
@@ -12,11 +12,11 @@ version: v1
 > several model versions in one store, and clear compatibility rules — so
 > changing an object model never makes old data unreadable.
 >
-> Related: `.github/instructions/cas-core.instructions.md` §4.7 (the
-> `Object[T]` contract), §4.12 (gitlike example), `.github/instructions/
-> library-design.instructions.md` §2 (sentinel errors),
-> `.github/instructions/versioning.instructions.md` §6 (the other version
-> spaces), `.github/instructions/consistency.instructions.md` (migration
+> Related: `docs/instructions/cas-core.md` §4.7 (the
+> `Object[T]` contract), §4.12 (gitlike example), `docs/instructions/
+> library-design.md` §2 (sentinel errors),
+> `docs/instructions/versioning.md` §6 (the other version
+> spaces), `docs/instructions/consistency.md` (migration
 > safety).
 
 ---
@@ -100,7 +100,7 @@ RegisterType("blob@2", deserializeBlobV2) // both coexist in one store
 - **Read v1 → write v2**: an app-side migration reads old-major objects
   (registered `@1` deserializer), transforms them, and `Put`s the new-major
   objects — the new graph replaces the old roots.
-- Safety mirrors `operations.instructions.md` §5: keep both versions until
+- Safety mirrors `operations.md` §5: keep both versions until
   the new data is verified; old objects are only reclaimed by the app's
   reachability (consistency §4) — never by the store.
 - The versioned type name makes migrations **observable**: `Stats`/viewer can

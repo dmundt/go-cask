@@ -1,7 +1,7 @@
 ---
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v7
+version: v8
 ---
 
 # Library Design — go-cask
@@ -10,9 +10,9 @@ version: v7
 > thinking: small, obvious, and hard to misuse. This file sets the quality
 > bar for "lean but powerful".
 >
-> Related: `cas-core.instructions.md` (layering),
-> `coding-guidelines.instructions.md` (idiomatic Go, no `any`),
-> `performance.instructions.md` (fast paths must stay simple).
+> Related: `cas-core.md` (layering),
+> `coding-guidelines.md` (idiomatic Go, no `any`),
+> `performance.md` (fast paths must stay simple).
 
 ---
 

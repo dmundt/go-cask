@@ -1,15 +1,15 @@
 ---
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.27 and the latest generics.
-version: v6
+version: v7
 ---
 
 # Go Coding Guidelines — go-cask
 
 > Applies to **all Go code** in this repository (`cas/`, `internal/`,
 > `cmd/`).
-> Complements `.github/instructions/cas-core.instructions.md` (what to
-> build) and `.github/instructions/viewer-security.instructions.md` (how the
+> Complements `docs/instructions/cas-core.md` (what to
+> build) and `docs/instructions/viewer-security.md` (how the
 > viewer must be secured). Where this file conflicts with an older sketch in
 > another document, this file wins.
 >
@@ -98,7 +98,7 @@ MUST be:
 
 Consequences for this repo:
 
-- The LRU cache sketched in `cas-core.instructions.md` with
+- The LRU cache sketched in `cas-core.md` with
   `github.com/hashicorp/golang-lru/v2` SHALL be implemented in-tree with std-lib
   primitives (`container/list` + `sync.Mutex`, or a `sync.Map`-backed
   approximation) — this implements cas-core §8 decision 3.
@@ -122,7 +122,7 @@ Consequences for this repo:
   `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, ...) that request HTML
   fragments from the backend. There is no client-side state.
 - Rationale: minimal attack surface and auditability (per
-  `viewer-security.instructions.md`), no build pipeline, no secrets in the
+  `viewer-security.md`), no build pipeline, no secrets in the
   browser, and a viewer that works with JavaScript disabled except for the
   htmx enhancement itself.
 
@@ -155,7 +155,7 @@ Consequences for this repo:
 - htmx endpoints return **HTML fragments** (not JSON) for partial updates;
   full pages are returned for navigation. Forms use standard
   `method="POST"` with CSRF protection (see
-  `viewer-security.instructions.md`).
+  `viewer-security.md`).
 - Every mutation goes through the backend; the browser never talks to storage
   directly (architecture rule from the security spec).
 
@@ -204,7 +204,7 @@ Consequences for this repo:
 
 - This repo's core is generic by design — `Store[T]`, `Codec[T]`,
   `Object[T]`, and the cache wrappers (see
-  `cas-core.instructions.md`). Generics replace `any` + reflection and
+  `cas-core.md`). Generics replace `any` + reflection and
   move type errors to compile time.
 - Rules:
   - No `any` / `interface{}` in the exported API (architectural rule).
@@ -284,7 +284,7 @@ Consequences for this repo:
   `embed.FS`; htmx is one pinned file (vendored locally preferred; a CDN URL
   is acceptable only with an integrity attribute).
 - The viewer MUST comply with
-  `.github/instructions/viewer-security.instructions.md` (secure by default,
+  `docs/instructions/viewer-security.md` (secure by default,
   authn/authz, session management, CSRF, audit logging). The no-CSS/no-JS rule
   is part of keeping the viewer minimal and auditable.
 
@@ -306,4 +306,4 @@ Consequences for this repo:
 - [ ] `context.Context` first, errors wrapped with `%w`, no panics in library
       code
 - [ ] Viewer changes re-checked against
-      `.github/instructions/viewer-security.instructions.md`
+      `docs/instructions/viewer-security.md`

@@ -1,7 +1,7 @@
 ---
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v3
+version: v4
 ---
 
 # Viewer Security — go-cask
@@ -10,8 +10,8 @@ version: v3
 > weaken this file** (AGENT.md §8 precedence). The viewer design and its
 > HTTP surface MUST comply with it.
 >
-> Related: `.github/instructions/viewer-design.instructions.md` (the UI it
-> protects), `.github/instructions/api-design.instructions.md` (shared HTTP
+> Related: `docs/instructions/viewer-design.md` (the UI it
+> protects), `docs/instructions/api-design.md` (shared HTTP
 > conventions).
 
 ---

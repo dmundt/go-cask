@@ -1,7 +1,7 @@
 ---
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v1
+version: v2
 ---
 
 # Branch Naming — go-cask
@@ -11,7 +11,7 @@ version: v1
 > optional release branches**. No long-lived integration branches, no
 > per-developer branches, no ambiguity about what a branch is for.
 >
-> Related: `.github/instructions/versioning.instructions.md` §3 (branch
+> Related: `docs/instructions/versioning.md` §3 (branch
 > lifecycle) and §5 (release process — what branches carry), `AGENT.md`
 > (folder conventions).
 
