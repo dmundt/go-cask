@@ -21,6 +21,10 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
   it. AGENT.md, the CI doc-integrity gate, and every cross-reference were
   updated for the new home (AGENT.md v8, AGENTS.md v8, cas-core v21; the
   other renamed specs each +1, `defaults.md` v7 unchanged).
+- Non-code docs consolidated under `docs/`: the top-level `design/` folder
+  moved to `docs/design/` (`core-overview.md`, `viewer-brief.md`, the viewer
+  HTML mockup, the object-browser design JSON) — every doc now lives in the
+  `docs/` tree (AGENTS.md v9, viewer-design v7).
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 

@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v8
+version: v9
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -42,6 +42,7 @@ examples/gitlike/ example package (package gitlike) — Git-like object model
 examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
 docs/instructions/  the specification set (20 files: 19 specs + AGENT.md)
+docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
 AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/instructions/
 ```
@@ -62,7 +63,7 @@ Related specs that also constrain work in this repo:
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
-- `design/viewer-brief.md` — the design brief for the viewer's next
+- `docs/design/viewer-brief.md` — the design brief for the viewer's next
   iteration (OpenDesign input, not a normative spec): structure-only step 1,
   no JS/CSS; pages, components, and the htmx interaction map aligned to the
   cas model.

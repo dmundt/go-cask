@@ -1,7 +1,7 @@
 ---
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v6
+version: v7
 ---
 
 # Viewer Design — go-cask
@@ -27,7 +27,7 @@ version: v6
 >   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
 >   hypermedia-driven application philosophy this viewer implements.
-> - `design/viewer-brief.md` — the
+> - `docs/design/viewer-brief.md` — the
 >   non-normative design brief for the viewer's planned next iteration
 >   (OpenDesign input); it proposes a target grammar but changes nothing
 >   here until its outcomes are folded back into this spec (brief §7).
