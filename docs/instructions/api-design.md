@@ -1,7 +1,7 @@
 ---
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v3
+version: v4
 ---
 
 # API Design — go-cask
@@ -9,15 +9,15 @@ version: v3
 > This document defines the **common API design conventions** for every HTTP
 > endpoint in go-cask. The product's only HTTP surface is the viewer
 > (`/viewer/*`, HTML; concrete routes in
-> `.github/instructions/viewer-design.instructions.md`); the `examples/api`
+> `docs/instructions/viewer-design.md`); the `examples/api`
 > pattern demonstrates a JSON surface app authors can copy. **This document
 > defines HOW endpoints are designed** so product and example surfaces stay
 > consistent.
 >
-> Related: `.github/instructions/viewer-security.instructions.md`
-> (authn/authz), `.github/instructions/performance.instructions.md` (rate
-> limiting), `.github/instructions/library-design.instructions.md` (sentinel
-> errors), `.github/instructions/coding-guidelines.instructions.md` (Go
+> Related: `docs/instructions/viewer-security.md`
+> (authn/authz), `docs/instructions/performance.md` (rate
+> limiting), `docs/instructions/library-design.md` (sentinel
+> errors), `docs/instructions/coding-guidelines.md` (Go
 > implementation style).
 
 ---
@@ -236,7 +236,7 @@ fixed at 5 failures/IP/min (viewer-security).
 - The documents MUST match the implemented routes exactly; a CI check
   regenerates/compares them on route changes.
 - The HTML viewer needs no OpenAPI document — its surface is hypermedia,
-  defined by `viewer-design.instructions.md`.
+  defined by `viewer-design.md`.
 
 ---
 

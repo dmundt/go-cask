@@ -1,6 +1,6 @@
 // Command cask is the single entry point of go-cask: CLI store operations
 // over the library in-process and, via the web subcommand, the embedded
-// viewer — see cli.instructions.md. It is a thin main: all behavior lives in
+// viewer — see cli.md. It is a thin main: all behavior lives in
 // the cas library and the internal/ packages. The product ships no network
 // JSON API (backend-architecture §1).
 package main

@@ -6,9 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 (pre-release), heading toward `v1.0.0` once the stable surface is frozen
-(`versioning.instructions.md` §1).
+(`versioning.md` §1).
 
 ## [Unreleased]
+
+### Changed
+
+- Instruction specs relocated to a **host-agnostic home**: the specification
+  set moved from `.github/instructions/` to `docs/instructions/`, and the
+  `.instructions.md` filename suffix was dropped — plain topic names now
+  (`cas-core.md`, `cli.md`, `AGENT.md`, …). AGENT.md, the Copilot aggregator,
+  the CI doc-integrity gate, and every cross-reference were updated for the
+  new home (AGENT.md v7; the 18 renamed specs each bumped +1,
+  `defaults.md` v7 unchanged).
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 

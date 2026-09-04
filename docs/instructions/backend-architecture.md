@@ -1,7 +1,7 @@
 ---
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v10
+version: v11
 ---
 
 # Backend Architecture — go-cask
@@ -9,7 +9,7 @@ version: v10
 > This file governs the **backend architecture**: how the `cas` library is
 > composed into a runnable system (binary layout, HTTP layer, middleware,
 > config, startup/shutdown, observability, deployment). The library *internals*
-> are defined by `cas-core.instructions.md`; this file is about the
+> are defined by `cas-core.md`; this file is about the
 > process around them.
 >
 > **No network JSON API ships.** go-cask is a single-host kit: `cas` + CLI +
@@ -17,11 +17,11 @@ version: v10
 > surface; exposing a store to other machines is an app-author pattern
 > demonstrated by `examples/api` (AGENT §6 "CAS API").
 >
-> Related: `.github/instructions/viewer-design.instructions.md` and
-> `.github/instructions/viewer-security.instructions.md` (the viewer),
-> `.github/instructions/api-design.instructions.md` (HTTP conventions),
-> `.github/instructions/operations.instructions.md` (running it),
-> `.github/instructions/coding-guidelines.instructions.md`
+> Related: `docs/instructions/viewer-design.md` and
+> `docs/instructions/viewer-security.md` (the viewer),
+> `docs/instructions/api-design.md` (HTTP conventions),
+> `docs/instructions/operations.md` (running it),
+> `docs/instructions/coding-guidelines.md`
 > (implementation style).
 
 ---

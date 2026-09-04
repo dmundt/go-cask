@@ -1,19 +1,19 @@
 ---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v7
+version: v8
 ---
 
 # Performance — go-cask
 
 > "Fast" is a correctness-preserving property: every optimization MUST keep the
-> invariants of `cas-core.instructions.md` intact. Measure before and
+> invariants of `cas-core.md` intact. Measure before and
 > after — no micro-optimization without a benchmark.
 >
-> Related: `cas-core.instructions.md` (design/contracts),
-> `coding-guidelines.instructions.md` (std-lib only, no `any`),
-> `testing-strategy.instructions.md` (proving the fast paths are also correct),
-> `operations.instructions.md` (durability, backup — packfile trade-offs).
+> Related: `cas-core.md` (design/contracts),
+> `coding-guidelines.md` (std-lib only, no `any`),
+> `testing-strategy.md` (proving the fast paths are also correct),
+> `operations.md` (durability, backup — packfile trade-offs).
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v5
+version: v6
 ---
 
 # Viewer Design — go-cask
@@ -18,11 +18,11 @@ version: v5
 > consistent layout, clear information hierarchy, and obvious navigation.
 >
 > It MUST be read together with:
-> - `.github/instructions/viewer-security.instructions.md` — every security
+> - `docs/instructions/viewer-security.md` — every security
 >   requirement there applies to this viewer unchanged.
-> - `.github/instructions/coding-guidelines.instructions.md` — §4 (no
+> - `docs/instructions/coding-guidelines.md` — §4 (no
 >   CSS/JS), §5 (html/template + htmx), §6 (raw HTML), §10 (viewer boundary).
-> - `.github/instructions/cas-core.instructions.md` — the data model
+> - `docs/instructions/cas-core.md` — the data model
 >   the viewer displays (`Hash`, `Object[T]`, `RawStore.Stats`, `Verify`,
 >   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
@@ -97,7 +97,7 @@ via a new hash), JSON/data APIs, client-side state, charting libraries.
 
 ## 3. Security Alignment
 
-All requirements of `.github/instructions/viewer-security.instructions.md`
+All requirements of `docs/instructions/viewer-security.md`
 apply verbatim. The design-relevant consequences:
 
 - **Runs only when invoked**: `cask web` starts the viewer and no other
@@ -363,7 +363,7 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
       all with drill-down links
 - [ ] Simple, elegant, usable: consistent layout, scannable tables
       (`<caption>`/`<th scope>`), one purpose per page, no dead ends
-- [ ] Every requirement of `viewer-security.instructions.md` implemented
+- [ ] Every requirement of `viewer-security.md` implemented
       (secure by default, localhost, authn/authz, sessions, CSRF, audit)
 - [ ] No CSS, no hand-written JS anywhere in `internal/web/`
 - [ ] HTML rendered only by `html/template`; templates nested via

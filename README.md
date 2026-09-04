@@ -154,7 +154,7 @@ raw := cas.NewMemoryRawStore() // fast, deterministic, not persistent
 
 ## The specification set
 
-This project is specified, not guessed: `.github/instructions/` contains the
+This project is specified, not guessed: `docs/instructions/` contains the
 complete design contract — core architecture (`cas-core`), coding guidelines,
 library design, performance, testing, consistency (GC/pruning), the viewer
 HTTP surface, viewer design & security, versioning, defaults, examples,
