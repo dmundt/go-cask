@@ -89,7 +89,7 @@ Rules from the specs that always apply:
 
 Spec changes follow the same flow, plus AGENT.md's maintenance checklist
 (§11): frontmatter rules, terminology (§6), cross-reference updates, version
-bumps, and registration in AGENT.md §10 + `copilot-instructions.md`'s related
+bumps, and registration in AGENT.md §10 + `AGENTS.md`'s related
 specs. Run the folder audit (frontmatter, file refs, diagram balance) before
 opening the PR.
 

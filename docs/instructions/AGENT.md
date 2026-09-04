@@ -1,7 +1,7 @@
 ---
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v7
+version: v8
 ---
 
 # AGENT — go-cask Instruction Folder Guide
@@ -13,7 +13,7 @@ version: v7
 >
 > Scope: this folder contains the normative specs of the go-cask project
 > (core architecture, coding style, security, APIs, viewer design, examples,
-> performance, testing, operations). `.github/copilot-instructions.md` is the
+> performance, testing, operations). The repo-root `AGENTS.md` is the agent
 > aggregator that points at them; it is outside this folder and follows the
 > same style rules where they apply.
 
@@ -47,9 +47,10 @@ version: v7
 - One topic per file; `-api` / `-design` / `-security` suffixes disambiguate
   facets of the same domain (viewer).
 - The specs live in `docs/instructions/` — a host-agnostic home that is not
-  tied to GitHub (any host or agent can find it); the GitHub-specific
-  Copilot aggregator (`.github/copilot-instructions.md`) points at this
-  folder. This meta-guide is the sole `AGENT.md`.
+  tied to GitHub (any host or agent can find it); the repo-root agent
+  aggregator (`AGENTS.md`) points at this folder and is auto-read by any
+  agent that honors the AGENTS.md convention. This meta-guide is the sole
+  `AGENT.md`.
 
 ---
 
@@ -156,8 +157,8 @@ Forbidden / deprecated:
 - When a change affects a contract, update **all** files that reference it in
   one pass; a `grep` for the changed term across `docs/instructions/` and
   `.github/` must come back clean.
-- The copilot aggregator's "Related specs" list MUST list every instruction
-  file (add new files there when created).
+- The `AGENTS.md` aggregator's "Related specs" list MUST list every
+  instruction file (add new files there when created).
 
 ---
 
@@ -212,8 +213,8 @@ contradicting statements in the folder.
 
 All spec files live in `docs/instructions/` at the repo root — a neutral,
 host-agnostic location (not `.github/`, so discovery does not depend on the
-host being GitHub). `.github/copilot-instructions.md` is the GitHub-specific
-aggregator and follows the same style rules where they apply.
+host being GitHub). The repo-root `AGENTS.md` is the agent aggregator that
+points at this folder; it follows the same style rules where they apply.
 
 | File                                             | Role                                                            |
 | ------------------------------------------------ | --------------------------------------------------------------- |
@@ -259,8 +260,8 @@ Before committing any change to a file in this folder:
 - [ ] Cross-references updated in ALL files that mention the changed term;
       `grep` over `docs/instructions/` and `.github/` for old terms returns
       nothing
-- [ ] New files added to the copilot aggregator's "Related specs" list and to
-      the §10 inventory
+- [ ] New files added to the `AGENTS.md` aggregator's "Related specs" list
+      and to the §10 inventory
 - [ ] No contradictions with higher-precedence files (§8); conflicts resolved
       in the more specific document
 - [ ] Diagrams valid mermaid; fences tagged; no stale ASCII misalignment

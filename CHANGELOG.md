@@ -15,10 +15,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 - Instruction specs relocated to a **host-agnostic home**: the specification
   set moved from `.github/instructions/` to `docs/instructions/`, and the
   `.instructions.md` filename suffix was dropped — plain topic names now
-  (`cas-core.md`, `cli.md`, `AGENT.md`, …). AGENT.md, the Copilot aggregator,
-  the CI doc-integrity gate, and every cross-reference were updated for the
-  new home (AGENT.md v7; the 18 renamed specs each bumped +1,
-  `defaults.md` v7 unchanged).
+  (`cas-core.md`, `cli.md`, `AGENT.md`, …). The agent aggregator also moved
+  to the repo root as `AGENTS.md` (was `.github/copilot-instructions.md`)
+  and was de-branded from Copilot: any agent honoring AGENTS.md auto-reads
+  it. AGENT.md, the CI doc-integrity gate, and every cross-reference were
+  updated for the new home (AGENT.md v8, AGENTS.md v8, cas-core v21; the
+  other renamed specs each +1, `defaults.md` v7 unchanged).
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 
