@@ -1,14 +1,14 @@
 ---
 title: AGENT — go-cask Instruction Folder Guide
-description: The meta-guide for .github/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v6
+description: The meta-guide for docs/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
+version: v7
 ---
 
 # AGENT — go-cask Instruction Folder Guide
 
 > This file governs **the other files in this folder**. Every agent (Copilot,
 > other AI tooling) and every human maintainer editing any
-> `.github/instructions/*.instructions.md` MUST follow it, so the folder stays
+> `docs/instructions/*.md` MUST follow it, so the folder stays
 > a single, coherent specification set rather than a pile of docs.
 >
 > Scope: this folder contains the normative specs of the go-cask project
@@ -26,27 +26,30 @@ version: v6
 - Every file states **requirements** (what MUST/SHALL be true) and **context**
   (why), not prose about the project.
 - New files are added only when a real gap exists (see §5 of
-  `examples.instructions.md` for the example-generation analogue); prefer
+  `examples.md` for the example-generation analogue); prefer
   extending an existing file over creating a new one.
 
 ---
 
 ## 2. File Naming
 
-- Pattern: `<kebab-case-topic>.instructions.md`.
+- Pattern: `<Topic>.md` — one topic per file, where the topic is a lowercase
+  kebab-case domain noun. The folder name (`docs/instructions/`) already says
+  "instructions", so filenames carry **no** `.instructions` suffix.
 - Topics are domain nouns — the full set is: `api-design`,
   `backend-architecture`, `branch-naming`, `cas-core`, `cli`,
   `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`,
   `frontend-architecture`, `library-design`, `object-versioning`,
   `operations`, `performance`, `testing-strategy`, `versioning`,
   `viewer-design`, `viewer-security`.
-- No redundant prefixes: the folder already says "instructions" — do not
-  prefix topics with `go-` (the file is `coding-guidelines.instructions.md`,
-  not `go-coding-guidelines.instructions.md`).
+- No redundant prefixes: never prefix a topic with `go-` (the file is
+  `coding-guidelines.md`) and never repeat "instructions" inside a name.
 - One topic per file; `-api` / `-design` / `-security` suffixes disambiguate
   facets of the same domain (viewer).
-- The aggregator lives one level up (`.github/copilot-instructions.md`);
-  this meta-guide is the sole `AGENT.md`.
+- The specs live in `docs/instructions/` — a host-agnostic home that is not
+  tied to GitHub (any host or agent can find it); the GitHub-specific
+  Copilot aggregator (`.github/copilot-instructions.md`) points at this
+  folder. This meta-guide is the sole `AGENT.md`.
 
 ---
 
@@ -83,8 +86,8 @@ Rules:
    two sentences, then a `Related:` line listing the specs it must be read
    with (relative paths, backticked). Example:
    ```
-   > Related: `.github/instructions/cas-core.instructions.md` (…),
-   > `.github/instructions/coding-guidelines.instructions.md` (…).
+   > Related: `docs/instructions/cas-core.md` (…),
+   > `docs/instructions/coding-guidelines.md` (…).
    ```
 3. **Numbered `##` sections** — `## 1. Purpose & Scope` onwards. Sections are
    numbered; subsections are `### 3.1 …` (or `### 4.13` style when appended).
@@ -133,7 +136,7 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 | `Hash`             | Content address `algo:hexdigest`; validated with `ParseHash`.          |
 | fan-out            | The configurable directory layout (`FanOut`/`FanLevels`), Git-like default. |
 | lock-free reads    | `Get`/`Exists`/`List`/`Stats` take no lock (atomic rename).            |
-| CAS laws           | The invariants in `testing-strategy.instructions.md` §1.               |
+| CAS laws           | The invariants in `testing-strategy.md` §1.               |
 
 Forbidden / deprecated:
 
@@ -146,14 +149,13 @@ Forbidden / deprecated:
 
 ## 7. Cross-Referencing & Related Specs
 
-- Refer to sibling files by relative path in backticks:
-  `.github/instructions/<file>.instructions.md` (or a short
-  `<file>.instructions.md` name inside a `Related:` line).
+- Refer to sibling files by backticked path (`docs/instructions/cas-core.md`)
+  or, inside a `Related:` line, by short backticked name (`cas-core.md`).
 - Reference sections by their number (`§4.4`, `P-05`, `§2`) — never by
   approximate prose.
 - When a change affects a contract, update **all** files that reference it in
-  one pass; a `grep` for the changed term across `.github/` must come back
-  clean.
+  one pass; a `grep` for the changed term across `docs/instructions/` and
+  `.github/` must come back clean.
 - The copilot aggregator's "Related specs" list MUST list every instruction
   file (add new files there when created).
 
@@ -163,17 +165,17 @@ Forbidden / deprecated:
 
 When two files appear to conflict, this order decides (highest first):
 
-1. **Security** — `viewer-security.instructions.md` is non-negotiable for
+1. **Security** — `viewer-security.md` is non-negotiable for
    anything touching the viewer; nothing may weaken it.
-2. **Common conventions** — `api-design.instructions.md` (HTTP design),
-   `coding-guidelines.instructions.md` (Go style), `library-design.
-   instructions.md` (lean-core/errors).
-3. **Architecture** — `cas-core.instructions.md` defines the library
-   component contracts; `backend-architecture.instructions.md` and
-   `frontend-architecture.instructions.md` compose them into the viewer and
+2. **Common conventions** — `api-design.md` (HTTP design),
+   `coding-guidelines.md` (Go style), `library-design.md`
+   (lean-core/errors).
+3. **Architecture** — `cas-core.md` defines the library
+   component contracts; `backend-architecture.md` and
+   `frontend-architecture.md` compose them into the viewer and
    browser-facing system; `performance`/`testing-strategy`/`operations`
    refine them.
-4. **Examples** — `examples.instructions.md` may demonstrate, never redefine.
+4. **Examples** — `examples.md` may demonstrate, never redefine.
 5. **This file (AGENT.md)** governs the documents themselves.
 
 On any conflict: fix the **more specific** document to match the more general
@@ -208,31 +210,36 @@ contradicting statements in the folder.
 
 ## 10. Folder Inventory
 
+All spec files live in `docs/instructions/` at the repo root — a neutral,
+host-agnostic location (not `.github/`, so discovery does not depend on the
+host being GitHub). `.github/copilot-instructions.md` is the GitHub-specific
+aggregator and follows the same style rules where they apply.
+
 | File                                             | Role                                                            |
 | ------------------------------------------------ | --------------------------------------------------------------- |
 | `AGENT.md` (this file)                           | Meta-guide: style, terminology, precedence for this folder.     |
-| `cas-core.instructions.md`                 | The canonical core library spec — every component contract, flows,   |
+| `cas-core.md`                 | The canonical core library spec — every component contract, flows,   |
 |                                            | concurrency, and the extension contract for extensions/clients.      |
-| `backend-architecture.instructions.md`           | Server-side architecture: the `cask web` server, HTTP wiring,      |
+| `backend-architecture.md`           | Server-side architecture: the `cask web` server, HTTP wiring,      |
 |                                                  | middleware, config, lifecycle, deployment shapes.                  |
-| `frontend-architecture.instructions.md`          | Browser-facing architecture: hypermedia rendering, nested        |
+| `frontend-architecture.md`          | Browser-facing architecture: hypermedia rendering, nested        |
 |                                                  | templates, htmx model, URL-as-state, embedding.                  |
-| `coding-guidelines.instructions.md`              | Idiomatic Go, std-lib only, no CSS/JS, templates + htmx, docs.  |
-| `library-design.instructions.md`                 | Lean-core budget, sentinel errors, no mutable globals, compat.  |
-| `performance.instructions.md`                    | Lock-free reads, streaming, allocations, benchmarks, profiling. |
-| `testing-strategy.instructions.md`               | The CAS laws + unit/property/fuzz/race/corruption/golden tests. |
-| `operations.instructions.md`                     | Durability, recovery, observability, migration, backup.         |
-| `consistency.instructions.md`                    | Broken/dangling detection, GC from roots, age-based pruning.    |
-| `defaults.instructions.md`                       | Canonical defaults & behavior reference (all constants, grouped). |
-| `versioning.instructions.md`                     | Library Git versioning: semver tags, Go module v2+ rules, release process. |
-| `branch-naming.instructions.md`                  | Simple Git branch concept: main + short-lived typed branches, patterns, lifecycle. |
-| `cli.instructions.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local ops plus the `web` viewer subcommand. |
-| `object-versioning.instructions.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
-| `viewer-security.instructions.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
-| `viewer-design.instructions.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
-| `api-design.instructions.md`                     | Shared HTTP API design conventions (viewer + example HTTP surfaces).             |
-| `examples.instructions.md`                       | Example-program rules + the five proposed examples.             |
-| `extensions.instructions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
+| `coding-guidelines.md`              | Idiomatic Go, std-lib only, no CSS/JS, templates + htmx, docs.  |
+| `library-design.md`                 | Lean-core budget, sentinel errors, no mutable globals, compat.  |
+| `performance.md`                    | Lock-free reads, streaming, allocations, benchmarks, profiling. |
+| `testing-strategy.md`               | The CAS laws + unit/property/fuzz/race/corruption/golden tests. |
+| `operations.md`                     | Durability, recovery, observability, migration, backup.         |
+| `consistency.md`                    | Broken/dangling detection, GC from roots, age-based pruning.    |
+| `defaults.md`                       | Canonical defaults & behavior reference (all constants, grouped). |
+| `versioning.md`                     | Library Git versioning: semver tags, Go module v2+ rules, release process. |
+| `branch-naming.md`                  | Simple Git branch concept: main + short-lived typed branches, patterns, lifecycle. |
+| `cli.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local ops plus the `web` viewer subcommand. |
+| `object-versioning.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
+| `viewer-security.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
+| `viewer-design.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
+| `api-design.md`                     | Shared HTTP API design conventions (viewer + example HTTP surfaces).             |
+| `examples.md`                       | Example-program rules + the five proposed examples.             |
+| `extensions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
 
 ---
 
@@ -250,7 +257,8 @@ Before committing any change to a file in this folder:
       no "Repository in core")
 - [ ] Normative language per §5 (MUST/SHALL/MAY used consistently)
 - [ ] Cross-references updated in ALL files that mention the changed term;
-      `grep` over `.github/` for old terms returns nothing
+      `grep` over `docs/instructions/` and `.github/` for old terms returns
+      nothing
 - [ ] New files added to the copilot aggregator's "Related specs" list and to
       the §10 inventory
 - [ ] No contradictions with higher-precedence files (§8); conflicts resolved

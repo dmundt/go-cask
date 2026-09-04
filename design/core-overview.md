@@ -8,8 +8,8 @@ version: v2
 
 > Quick orientation to the `cas` core interfaces and their dependencies —
 > **not normative**. The canonical overview diagram (byte → typed → caching
-> layers) lives in `../.github/instructions/cas-core.instructions.md` §3.3,
+> layers) lives in `../docs/instructions/cas-core.md` §3.3,
 > alongside the four focused aspect diagrams; keep edits there so this
 > pointer and the README cannot drift from the spec.
 
-See [cas-core §3.3 — Core overview](../.github/instructions/cas-core.instructions.md).
+See [cas-core §3.3 — Core overview](../docs/instructions/cas-core.md).

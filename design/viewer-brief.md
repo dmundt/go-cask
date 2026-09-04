@@ -17,12 +17,12 @@ version: v3
 > bucket/file-store browser models.
 >
 > It complements, and MUST NOT contradict, the existing viewer specs:
-> `.github/instructions/viewer-design.instructions.md` (dashboard-first
+> `docs/instructions/viewer-design.md` (dashboard-first
 > hypermedia UI, templates + htmx, no CSS/JS, **byte-layer**: objects, bytes,
 > integrity — never typed reference graphs),
-> `.github/instructions/viewer-security.instructions.md` (authn/authz,
-> sessions, CSRF, audit), `.github/instructions/api-design.instructions.md`
-> (HTTP conventions), `.github/instructions/coding-guidelines.instructions.md`
+> `docs/instructions/viewer-security.md` (authn/authz,
+> sessions, CSRF, audit), `docs/instructions/api-design.md`
+> (HTTP conventions), `docs/instructions/coding-guidelines.md`
 > (no CSS/JS rules). Where this brief targets a future state (the deferred CSS
 > step), that step stays gated on an explicit decision to relax the no-CSS
 > rule — this brief changes nothing by itself (AGENT §8).
@@ -215,8 +215,8 @@ posture):
 3. **Polish**: selected-row affordance, reduced-motion handling, keyboard
    focus order.
 4. **Fold-in & retire**: as step 1/2 outcomes are implemented, merge the
-   accepted results back into `.github/instructions/viewer-design.
-   instructions.md` (version bump there) and **delete this brief** — it is a
+   accepted results back into `docs/instructions/viewer-design.md`
+   (version bump there) and **delete this brief** — it is a
    proposal for a planned iteration, not a permanent spec (AGENT §1: prefer
    extending an existing file over keeping a parallel one).
 

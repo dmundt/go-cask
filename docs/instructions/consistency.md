@@ -1,7 +1,7 @@
 ---
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v6
+version: v7
 ---
 
 # Consistency — go-cask
@@ -13,10 +13,10 @@ version: v6
 > CASK "the last CAS you need": one consistent model, five maintenance
 > operations, no machinery beyond that.
 >
-> Related: `cas-core.instructions.md` §4.11 (Maintenance: `Verify`, `GC`),
-> `operations.instructions.md` (integrity cadence, quarantine),
-> `viewer-design.instructions.md` (diagnostics UI),
-> `testing-strategy.instructions.md` (the CAS laws).
+> Related: `cas-core.md` §4.11 (Maintenance: `Verify`, `GC`),
+> `operations.md` (integrity cadence, quarantine),
+> `viewer-design.md` (diagnostics UI),
+> `testing-strategy.md` (the CAS laws).
 
 ---
 
@@ -198,7 +198,7 @@ Stats()                 # what is stored, per algorithm
 - **CLI (cli §2)**: `verify`, `gc`, `prune`, `clean` operate in-process
   over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan
   `*.tmp` files older than a threshold (operations §2).
-- **Viewer (viewer-design.instructions.md)**: integrity diagnostics
+- **Viewer (viewer-design.md)**: integrity diagnostics
   (`Verify`); admin actions for verify/GC/prune with confirm. The viewer is
   a byte-layer tool and does not surface typed references (viewer-design
   §7).

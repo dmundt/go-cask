@@ -1,7 +1,7 @@
 ---
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v8
+version: v9
 ---
 
 # Testing Strategy — go-cask
@@ -11,11 +11,11 @@ version: v8
 > requirement**, not just the happy paths. Coverage is pushed **as high as
 > practical**; a requirement without a test is a bug in the suite.
 >
-> Related: `cas-core.instructions.md` (the contracts under test),
-> `performance.instructions.md` (P-01…P-05, benchmark gates),
-> `library-design.instructions.md` (sentinel errors), `consistency.
-> instructions.md` (GC/prune), `defaults.instructions.md` (defaults under
-> test), `examples.instructions.md` (integration-level tests).
+> Related: `cas-core.md` (the contracts under test),
+> `performance.md` (P-01…P-05, benchmark gates),
+> `library-design.md` (sentinel errors), `consistency.md` (GC/prune),
+> `defaults.md` (defaults under test), `examples.md` (integration-level
+> tests).
 
 ---
 
