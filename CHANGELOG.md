@@ -25,6 +25,11 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
   moved to `docs/design/` (`core-overview.md`, `viewer-brief.md`, the viewer
   HTML mockup, the object-browser design JSON) — every doc now lives in the
   `docs/` tree (AGENTS.md v9, viewer-design v7).
+- The CI allocs regression gate and its committed baseline were removed:
+  `benchmarks/` deleted (was `cas.txt` + the `REFRESH` self-refresh marker),
+  along with the CI benchmark/refresh/gate steps and `contents: write`;
+  benchmarks stay runnable on demand via `go test -bench` (performance v9,
+  defaults v8).
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 
