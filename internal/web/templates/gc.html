@@ -1,0 +1,14 @@
+{{define "gc"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body><main>
+<nav><p><a href="/viewer/">Dashboard</a></p></nav>
+<h1>Maintenance GC</h1>
+<form hx-post="/viewer/gc" hx-target="#gc-result" hx-swap="innerHTML">
+<label for="roots">Root hashes (one per line)</label>
+<textarea id="roots" name="roots" rows="5" cols="64" required></textarea>
+<button type="submit">Run GC</button>
+</form>
+<div id="gc-result"></div>
+</main></body>
+</html>{{end}}

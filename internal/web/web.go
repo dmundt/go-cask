@@ -150,7 +150,12 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.loginThrottle.reset(ip)
-	sess := s.sessions.create(role)
+	sess, err := s.sessions.create(role)
+	if err != nil {
+		slog.Error("viewer login", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	setSessionCookie(w, sess, s.cfg.Secure)
 	slog.Info("viewer login", "role", role, "ip", ip)
 	http.Redirect(w, r, "/viewer/", http.StatusSeeOther)
@@ -284,10 +289,10 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Verify(r.Context(), h); err != nil {
-		fmt.Fprintf(w, "<p class=\"result\">corrupt: %v</p>", template.HTMLEscapeString(err.Error()))
+		s.render(w, "result", "corrupt: "+template.HTMLEscapeString(err.Error()))
 		return
 	}
-	fmt.Fprint(w, "<p class=\"result\">ok</p>")
+	s.render(w, "result", "ok")
 }
 
 func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
@@ -296,11 +301,11 @@ func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Delete(r.Context(), h); err != nil {
-		fmt.Fprint(w, "<p class=\"result\">delete failed</p>")
+		s.render(w, "result", "delete failed")
 		return
 	}
 	slog.Info("viewer audit", "action", "object.delete", "hash", h)
-	fmt.Fprint(w, "<p class=\"result\">deleted</p>")
+	s.render(w, "result", "deleted")
 }
 
 // --- gc ---
@@ -312,7 +317,7 @@ func (s *Server) gcPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
 	roots, err := parseHashLines(r.FormValue("roots"))
 	if err != nil {
-		fmt.Fprint(w, "<p class=\"result\">invalid root hash</p>")
+		s.render(w, "result", "invalid root hash")
 		return
 	}
 	reachable := make(map[string]bool, len(roots))
@@ -321,11 +326,11 @@ func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
 	}
 	deleted, err := gcCount(r.Context(), s.store, reachable)
 	if err != nil {
-		fmt.Fprint(w, "<p class=\"result\">gc failed</p>")
+		s.render(w, "result", "gc failed")
 		return
 	}
 	slog.Info("viewer audit", "action", "gc", "deleted", deleted)
-	fmt.Fprintf(w, "<p class=\"result\">gc: deleted %d objects</p>", deleted)
+	s.render(w, "result", fmt.Sprintf("gc: deleted %d objects", deleted))
 }
 
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {

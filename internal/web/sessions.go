@@ -8,6 +8,7 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -39,18 +40,26 @@ type sessions struct {
 
 func newSessions() *sessions { return &sessions{byID: make(map[string]*Session)} }
 
-func (s *sessions) create(role string) *Session {
+func (s *sessions) create(role string) (*Session, error) {
+	id, err := randomHex(32)
+	if err != nil {
+		return nil, err
+	}
+	csrf, err := randomHex(32)
+	if err != nil {
+		return nil, err
+	}
 	sess := &Session{
-		ID:       randomHex(32),
+		ID:       id,
 		Role:     role,
 		Created:  time.Now(),
 		LastSeen: time.Now(),
-		CSRF:     randomHex(32),
+		CSRF:     csrf,
 	}
 	s.mu.Lock()
 	s.byID[sess.ID] = sess
 	s.mu.Unlock()
-	return sess
+	return sess, nil
 }
 
 // get returns the session for id, enforcing idle and lifetime expiry and
@@ -107,11 +116,12 @@ func sessionID(r *http.Request) string {
 	return c.Value
 }
 
-// randomHex returns n cryptographically random bytes as lowercase hex.
-func randomHex(n int) string {
+// randomHex returns n cryptographically random bytes as lowercase hex, or
+// an error if the OS entropy source cannot be read.
+func randomHex(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		panic("web: crypto/rand failed: " + err.Error()) // unrecoverable
+		return "", fmt.Errorf("web: crypto/rand: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }

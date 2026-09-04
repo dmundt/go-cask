@@ -26,7 +26,7 @@ func runWeb(ctx context.Context, args []string) {
 	fs := flag.NewFlagSet("web", flag.ExitOnError)
 	store := fs.String("store", "./objects", "filesystem store directory")
 	bind := fs.String("bind", "127.0.0.1:8080", "listen address")
-	tokens := fs.String("tokens", "viewer=viewer,operator=operator,admin=admin", "comma-separated role=token pairs for viewer login")
+	tokens := fs.String("tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=sekret,operator=op)")
 	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	fs.Parse(args)
 
