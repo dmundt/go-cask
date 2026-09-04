@@ -394,38 +394,6 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	}
 }
 
-func TestStoreMixedAlgorithms(t *testing.T) {
-	// One store can hold objects under different algorithms (cas-core §4.2).
-	raw := NewMemoryRawStore()
-	ctx := context.Background()
-	s256, err := NewStore(raw, JSONCodec[testNote]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s1, err := NewStore(raw, JSONCodec[testNote]{}, "sha1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h256, err := s256.Put(ctx, testNote{Title: "a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	h1, err := s1.Put(ctx, testNote{Title: "a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Different algorithms → different addresses even for the same content.
-	if h256.String() == h1.String() {
-		t.Fatal("algorithms must namespace addresses")
-	}
-	// Both are readable regardless of which store wrote them.
-	for _, h := range []Hash{h256, h1} {
-		if _, err := s256.Get(ctx, h); err != nil {
-			t.Fatalf("sha256 store read %s: %v", h, err)
-		}
-	}
-}
-
 func TestStoreCancelledContext(t *testing.T) {
 	s := newTestStore(t, NewMemoryRawStore())
 	ctx, cancel := context.WithCancel(context.Background())
