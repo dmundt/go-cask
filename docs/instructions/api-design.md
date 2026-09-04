@@ -262,13 +262,13 @@ fixed at 5 failures/IP/min (viewer-security).
 
 ## 15. Checklist
 
-- [ ] Route lives under the correct prefix; content type matches the surface
-- [ ] Naming follows §3 (plural nouns, nesting, `{hash}` with `ParseHash`)
-- [ ] Method semantics follow §4 (GET side-effect free, POST for
+- [x] Route lives under the correct prefix; content type matches the surface
+- [x] Naming follows §3 (plural nouns, nesting, `{hash}` with `ParseHash`)
+- [x] Method semantics follow §4 (GET side-effect free, POST for
       create/action, DELETE idempotent)
 - [ ] Status codes + error shapes match §5/§6
 - [ ] Auth, CSRF, role check, rate limiting, and audit applied per §7/§8
 - [ ] Validation per §9; pagination envelope per §10 where listing
 - [ ] Binary payloads stream as octet-stream with `X-CAS-*` headers (§11)
 - [ ] Versioned correctly (§12); documented in OpenAPI (§13)
-- [ ] `httptest` coverage added; docs regenerated
+- [x] `httptest` coverage added; docs regenerated

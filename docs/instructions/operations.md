@@ -100,10 +100,10 @@ version: v5
 ## 7. Checklist
 
 - [ ] fsync-before-rename enforced; directory fsync configurable
-- [ ] orphan `*.tmp` sweep documented/implemented
+- [x] orphan `*.tmp` sweep documented/implemented
 - [ ] slog logging for mutations, login-throttle rejections, slow ops, and
       GC runs
 - [ ] verify cadence defined; mismatch → quarantine + audit + alert
-- [ ] migration procedures (algorithm and layout) documented with
+- [x] migration procedures (algorithm and layout) documented with
       verify-before-delete
-- [ ] backup procedure documented
+- [x] backup procedure documented

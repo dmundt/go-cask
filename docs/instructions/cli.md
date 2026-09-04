@@ -117,17 +117,17 @@ Store operations speak to the store in-process over the library:
 
 ## 5. Checklist
 
-- [ ] Local-only: `-store` mode; `-algo` honored for writes; no remote flags
-- [ ] `web` starts the embedded viewer per backend-architecture §3; no
+- [x] Local-only: `-store` mode; `-algo` honored for writes; no remote flags
+- [x] `web` starts the embedded viewer per backend-architecture §3; no
       separate server binary exists
-- [ ] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second
+- [x] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second
       sweep refused with the holder's PID (exit 1); writers (`put`) and reads
       never lock (§2, cas-core §6)
 - [ ] `gc`/`prune` are grace-gated by `--min-age` (default 24h); forced
       `--min-age 0` prints a warning (§2, consistency §5)
-- [ ] All subcommands map to core operations or the viewer server
+- [x] All subcommands map to core operations or the viewer server
       composition — no new logic in the CLI
-- [ ] Hash arguments validated with `ParseHash` (exit 2 on malformed)
+- [x] Hash arguments validated with `ParseHash` (exit 2 on malformed)
 - [ ] Output plain text by default, `-json` on request; errors on stderr
 - [ ] Exit codes 0/1/2 per §3
-- [ ] Streaming for large objects; no token leakage
+- [x] Streaming for large objects; no token leakage

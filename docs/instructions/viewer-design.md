@@ -365,20 +365,20 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
       (`<caption>`/`<th scope>`), one purpose per page, no dead ends
 - [ ] Every requirement of `viewer-security.md` implemented
       (secure by default, localhost, authn/authz, sessions, CSRF, audit)
-- [ ] No CSS, no hand-written JS anywhere in `internal/web/`
-- [ ] HTML rendered only by `html/template`; templates nested via
+- [x] No CSS, no hand-written JS anywhere in `internal/web/`
+- [x] HTML rendered only by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [ ] Full pages and htmx fragments share the same partials (incl.
       `stats-panel` on the dashboard and as OOB swaps)
-- [ ] Objects viewable: 8-char short-hash links (full hash on the detail
+- [x] Objects viewable: 8-char short-hash links (full hash on the detail
       page and in link targets), algorithm, type, size; generic lists show
       `<shorthash> (<type>)`
-- [ ] No typed references/graph anywhere in `internal/web/` (byte-layer
+- [x] No typed references/graph anywhere in `internal/web/` (byte-layer
       viewer; §7)
 - [ ] Blobs viewable: raw bytes + hex dump, lazy-loaded for large objects
 - [ ] Mutations (verify/delete/GC) are POST + CSRF + role-checked +
       audit-logged; GET endpoints are side-effect free
 - [ ] Works with htmx disabled (progressive enhancement): links and forms
       still function
-- [ ] `{hash}` parameters validated with `ParseHash`; malformed input → 400,
+- [x] `{hash}` parameters validated with `ParseHash`; malformed input → 400,
       missing session → 401 (empty), insufficient role → 403 (empty)

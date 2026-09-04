@@ -302,12 +302,12 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 
 ## 12. Checklist
 
-- [ ] `Get`/`Exists`/`List`/`Stats` are lock-free (no lock in those methods)
+- [x] `Get`/`Exists`/`List`/`Stats` are lock-free (no lock in those methods)
 - [ ] hash-on-write in a single pass (`io.TeeReader`)
-- [ ] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
-- [ ] `-race` concurrent Put/Get/Delete test green
-- [ ] no reflection/`unsafe`/external speed dependencies
-- [ ] profiling workflow documented and reproducible
-- [ ] fan-out layout chosen per expected object count (§8.1)
+- [x] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
+- [x] `-race` concurrent Put/Get/Delete test green
+- [x] no reflection/`unsafe`/external speed dependencies
+- [x] profiling workflow documented and reproducible
+- [x] fan-out layout chosen per expected object count (§8.1)
 - [ ] performance-test scenarios T-01…T-08 exist and pass their thresholds
 - [ ] packfiles (§9), when implemented, meet all acceptance criteria
