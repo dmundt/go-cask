@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v19
+version: v20
 ---
 
 # CAS Core — go-cask
@@ -13,15 +13,14 @@ version: v19
 >
 > **Origin:** extracted from the DeepSeek design conversation at
 > <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r> (final converged
-> state). This document is the canonical core spec; `.github/copilot-
-> instructions.md` is the aggregator that points here.
+> state). This document is the canonical core spec; the aggregator
+> (`.github/copilot-instructions.md`) points here.
 >
-> Related: `.github/instructions/library-design.instructions.md` (lean-core
-> contract, sentinel errors, compatibility), `.github/instructions/
-> performance.instructions.md` (lock-free reads, allocations),
-> `.github/instructions/testing-strategy.instructions.md` (the CAS laws),
-> `.github/instructions/examples.instructions.md` (runnable demonstrations),
-> `.github/instructions/backend-architecture.instructions.md` (server
+> Related: `docs/instructions/library-design.md` (lean-core contract,
+> sentinel errors, compatibility), `docs/instructions/performance.md`
+> (lock-free reads, allocations), `docs/instructions/testing-strategy.md`
+> (the CAS laws), `docs/instructions/examples.md` (runnable
+> demonstrations), `docs/instructions/backend-architecture.md` (server
 > composition).
 
 ---
@@ -64,7 +63,7 @@ example) live outside it (§4.12).
      configured algorithm is only the default for NEW writes;
    - **changing the hash type never makes the system useless**: existing
      objects stay addressable under their own algorithm, and migration is
-     optional (§4.2, `operations.instructions.md` §5).
+     optional (§4.2, `operations.md` §5).
 5. **Layering.** The byte layer is **non-generic** (`Hash` + `io.Reader` only).
    All generics live in the typed layer above it.
 6. **No `any` in the public API.** Every object type has its own `Store[T]`;
@@ -74,12 +73,12 @@ example) live outside it (§4.12).
 7. **Streaming I/O.** The byte layer moves `io.Reader`/`io.ReadCloser`; large
    objects are never fully buffered by the backend.
 8. **Thread safety by default.** Backends have lock-free reads (atomic
-   rename; see `performance.instructions.md` §2), one `sync.Mutex` for
+   rename; see `performance.md` §2), one `sync.Mutex` for
    `Put`/`Delete`; caches use `sync.Map`/`atomic`; writes are atomic (temp
    file + `Sync()` + rename).
 
 These invariants are testable and tested — see the CAS laws in
-`testing-strategy.instructions.md` §1.
+`testing-strategy.md` §1.
 
 ---
 
@@ -406,7 +405,7 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 - **Migration is optional**: `MigrateStore` re-hashes content under a target
   algorithm (list → read → re-hash → write → VERIFY each target → delete
   source only after verification) — full procedure in
-  `operations.instructions.md` §5. Both algorithms coexist during the
+  `operations.md` §5. Both algorithms coexist during the
   transition.
 
 ### 4.3 `RawStore` — the byte storage contract (non-generic)
@@ -493,7 +492,7 @@ MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync
 **Concurrency (lock-free reads):** writes are atomic (unique temp file →
 `f.Sync()` → `os.Rename`), so `Get`/`Exists`/`List`/`Stats` take **no lock** —
 a reader observes either the old or the new file, never a partial one (see
-`performance.instructions.md` §2). `Put` is idempotent (same hash ⇒ same
+`performance.md` §2). `Put` is idempotent (same hash ⇒ same
 bytes), so concurrent writers of the same hash never corrupt the object —
 in-process via the mutex, and across processes via the unique temp names
 above (with the POSIX/Windows rename caveat in §4.4). At most a single
@@ -560,7 +559,7 @@ type Object[T any] interface {
 - `Type()` makes objects self-describing without an external schema. It
   returns a **versioned type name** `<type>@<major>` (e.g. `commit@1`) — the
   object model is semantically versioned and several majors coexist in one
-  store (`.github/instructions/object-versioning.instructions.md`).
+  store (`docs/instructions/object-versioning.md`).
 - `References()` is the single source of truth for graph traversal, preloading,
   and GC reachability.
 - Serialization is NOT an object concern: `Store.Put` encodes the value with
@@ -664,7 +663,7 @@ demonstrates a cache monitor emitting snapshots — see their READMEs.
   AND older than `minAge` (age = file mtime ≈ first-`Put` time); `dryRun`
   returns the would-be-deleted set. Detection of broken/dangling objects and
   the full consistency model are defined in
-  `.github/instructions/consistency.instructions.md`.
+  `docs/instructions/consistency.md`.
 
 ### 4.12 Example layer: `gitlike` (NOT generic core)
 
@@ -682,7 +681,7 @@ types; this set is the reference example:
 | `Tag`     | `Name`, `Target Hash`, `Tagger`, `Message`    | target                         |
 
 - All four types are **versioned from the start**: `blob@1`, `tree@1`,
-  `commit@1`, `tag@1` (object-versioning.instructions.md §6) — a future
+  `commit@1`, `tag@1` (object-versioning.md §6) — a future
   incompatible change becomes `type@2` with the old deserializer registered.
 - `Parent`/`Target` are `nil`-able (`Hash` interface) — nil marks root/leaf.
 - Cross-type references are plain `Hash` values; the type of the target is
@@ -887,7 +886,7 @@ additive-compatible (library-design §5).
    filter, `Get` → `ErrNotFound` on missing (library-design §2).
 2. Keep the byte layer non-generic; everything above works unchanged.
 3. `MemoryRawStore` (§4.5) is the minimal reference implementation.
-4. Add durability/atomicity per `operations.instructions.md` §1 where the
+4. Add durability/atomicity per `operations.md` §1 where the
    backend is persistent.
 
 **Add an object type** (e.g. `Document`):
@@ -924,9 +923,9 @@ type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
 - Sentinel errors are the wire between core and clients: map them to HTTP
   statuses in the API layer (api-design §6), never string-compare.
 - Performance contracts (lock-free reads, one-pass hashing, bounded
-  allocations) are part of the design — see `performance.instructions.md`.
+  allocations) are part of the design — see `performance.md`.
 - The CAS laws are the correctness contract — see
-  `testing-strategy.instructions.md` §1.
+  `testing-strategy.md` §1.
 
 ---
 
@@ -948,7 +947,7 @@ Resolved decisions (recorded here so implementation never re-litigates them):
    (`container/list` + map, or an equivalent) per coding-guidelines §3 — no
    vendored/golang-lru dependency.
 6. **GC reachability — RESOLVED**: mark-and-sweep from application roots,
-   with age-based pruning for retention — see `consistency.instructions.md`
+   with age-based pruning for retention — see `consistency.md`
    §4–§5 (reference counting rejected).
 7. **Large-file streaming — RESOLVED**: hash computation streams via
    `io.TeeReader` (performance contract for `Store.Put`).
@@ -957,7 +956,7 @@ Open follow-ups (future extensions, not blocking):
 
 4. **Packfiles** — Git-style packing (group small objects into
    `pack-<ts>.pack` files); design and acceptance criteria in
-   `performance.instructions.md` §9.
+   `performance.md` §9.
 5. **Compression layer** — `CompressedStore` wrapping `RawStore` with gzip via
    `io.Pipe`; deferred until a real need appears.
 8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with
@@ -973,17 +972,17 @@ Open follow-ups (future extensions, not blocking):
 
 - `.github/copilot-instructions.md` — aggregator: project context,
   conversation history, principles, extension guide, constraints.
-- `.github/instructions/library-design.instructions.md` — lean-core budget,
+- `docs/instructions/library-design.md` — lean-core budget,
   sentinel errors, API shape, compatibility policy.
-- `.github/instructions/performance.instructions.md` — lock-free reads,
+- `docs/instructions/performance.md` — lock-free reads,
   one-pass hashing, allocations, benchmarks.
-- `.github/instructions/testing-strategy.instructions.md` — the CAS laws and
+- `docs/instructions/testing-strategy.md` — the CAS laws and
   how the core is proven.
-- `.github/instructions/backend-architecture.instructions.md` — how the core
+- `docs/instructions/backend-architecture.md` — how the core
   is composed into the server.
-- `.github/instructions/examples.instructions.md` — runnable demonstrations
+- `docs/instructions/examples.md` — runnable demonstrations
   of the core.
-- `.github/instructions/consistency.instructions.md` — broken/dangling
+- `docs/instructions/consistency.md` — broken/dangling
   detection, GC from roots, age-based pruning (the maintenance model of
   §4.11).
-- `.github/instructions/AGENT.md` — the folder's meta-guide.
+- `docs/instructions/AGENT.md` — the folder's meta-guide.

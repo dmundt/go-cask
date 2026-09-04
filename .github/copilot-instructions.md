@@ -1,7 +1,7 @@
 ---
 title: Copilot Instructions — go-cask
-description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in .github/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v6
+description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
+version: v7
 ---
 
 # Copilot Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -37,24 +37,26 @@ internal/  implementation detail (web — the viewer —, storage, index);
 examples/gitlike/ example package (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
                  WalkGraph
-examples/  runnable example programs (per examples.instructions.md)
+examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
-.github/   copilot instructions (this file + related specs)
+docs/instructions/  the specification set (20 files: 19 specs + AGENT.md)
+.github/   Copilot aggregator (this file); GitHub-specific, points at the
+           specs in docs/instructions/
 ```
 
 Related specs that also constrain work in this repo:
 
-- `.github/instructions/cas-core.instructions.md` — the canonical core
+- `docs/instructions/cas-core.md` — the canonical core
   library specification (layers, every component contract with code, data
   flows, concurrency, and the extension contract); the reference
   implementation of this repo.
-- `.github/instructions/coding-guidelines.instructions.md` — idiomatic Go,
+- `docs/instructions/coding-guidelines.md` — idiomatic Go,
   standard-library-only, no CSS/JS, `html/template` + htmx, raw HTML,
   doc-comment rules, Go 1.27, latest generics.
-- `.github/instructions/viewer-security.instructions.md` — security
+- `docs/instructions/viewer-security.md` — security
   requirements for the embedded viewer (secure-by-default, authn/authz,
   session management, audit logging). Any viewer code MUST comply with it.
-- `.github/instructions/viewer-design.instructions.md` — design of the
+- `docs/instructions/viewer-design.md` — design of the
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
@@ -62,54 +64,54 @@ Related specs that also constrain work in this repo:
   iteration (OpenDesign input, not a normative spec): structure-only step 1,
   no JS/CSS; pages, components, and the htmx interaction map aligned to the
   cas model.
-- `.github/instructions/examples.instructions.md` — how example programs are
+- `docs/instructions/examples.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
   the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
-- `.github/instructions/extensions.instructions.md` — the simple requirements
+- `docs/instructions/extensions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
   designed-but-deferred possible extensions (packfiles, compression layer,
   encryption layer, chunking).
-- `.github/instructions/consistency.instructions.md` — the consistency model:
+- `docs/instructions/consistency.md` — the consistency model:
   broken/dangling object detection, mark-and-sweep GC from roots,
   age-based pruning (retention), informed by Git/IPFS/restic without
   over-engineering.
-- `.github/instructions/defaults.instructions.md` — the canonical reference
+- `docs/instructions/defaults.md` — the canonical reference
   for default behavior and every default value/constant (hash algo, fan-out,
   rate limits, sessions, performance baselines, Go/project defaults).
-- `.github/instructions/versioning.instructions.md` — library Git versioning:
+- `docs/instructions/versioning.md` — library Git versioning:
   semver tags, Go module v2+ path-suffix rules, branches, changelog, release
   process; distinct from HTTP API and doc versions.
-- `.github/instructions/branch-naming.instructions.md` — the simple Git
+- `docs/instructions/branch-naming.md` — the simple Git
   branch concept: one permanent `main`, short-lived `<type>/<kebab>` branches,
   on-demand `release/vX.Y`; patterns, examples, lifecycle.
-- `.github/instructions/cli.instructions.md` — the `cmd/cask` CLI contract:
+- `docs/instructions/cli.md` — the `cmd/cask` CLI contract:
   subcommands, flags, output format, exit codes, local (`-store`) ops and the `web` viewer subcommand.
-- `.github/instructions/object-versioning.instructions.md` — object-model
+- `docs/instructions/object-versioning.md` — object-model
   semver: versioned type names (`type@major`), coexisting model versions in
   one store, compatibility rules and migration.
-- `.github/instructions/performance.instructions.md` — lock-free reads,
+- `docs/instructions/performance.md` — lock-free reads,
   one-pass streaming hashing, allocation budgets, benchmark suite + CI
   gates, profiling workflow.
-- `.github/instructions/library-design.instructions.md` — lean-core contract:
+- `docs/instructions/library-design.md` — lean-core contract:
   exported-surface budget, sentinel errors, no mutable globals, API shape,
   compatibility policy.
-- `.github/instructions/testing-strategy.instructions.md` — the CAS laws and
+- `docs/instructions/testing-strategy.md` — the CAS laws and
   the unit/property/fuzz/race/corruption/golden tests that prove them.
-- `.github/instructions/operations.instructions.md` — durability, crash
+- `docs/instructions/operations.md` — durability, crash
   recovery, observability, integrity cadence, hash/layout migration, backup.
-- `.github/instructions/api-design.instructions.md` — shared HTTP API design
+- `docs/instructions/api-design.md` — shared HTTP API design
   conventions: naming, methods, status codes, errors, authn/authz, rate
   limiting, validation, pagination, streaming, versioning, OpenAPI docs —
   applied consistently to the viewer surface and to example HTTP surfaces.
-- `.github/instructions/AGENT.md` — the meta-guide for the instruction folder:
+- `docs/instructions/AGENT.md` — the meta-guide for the instruction folder:
   file naming, frontmatter, document structure, terminology, precedence, and
   the maintenance checklist that keeps every instruction file consistent.
-- `.github/instructions/backend-architecture.instructions.md` — server-side
+- `docs/instructions/backend-architecture.md` — server-side
   architecture: the single `cmd/cask` binary and its `cask web` server, HTTP
   wiring, middleware pipeline, storage backend selection, config, lifecycle,
   deployment shapes.
-- `.github/instructions/frontend-architecture.instructions.md` — browser-facing
+- `docs/instructions/frontend-architecture.md` — browser-facing
   architecture: hypermedia-driven rendering, nested templates, htmx
   interaction model, URL-as-state, embedding.
 
@@ -241,7 +243,7 @@ build their own equivalents for their own types.
 ## Reference Implementation
 
 > The full reference implementation (signatures, behaviors, and code) lives in
-> **`.github/instructions/cas-core.instructions.md`** — section 4 (component
+> **`docs/instructions/cas-core.md`** — section 4 (component
 > specifications with code) and section 5 (data flows). This aggregator does
 > not duplicate it: keep implementations and docs in sync with cas-core.
 
@@ -377,12 +379,12 @@ gofmt -l .
 - Immutability: never mutate stored objects in place; always re-`Put` to
   change content (which yields a new hash).
 - Concurrency: backend reads are lock-free (atomic rename; see
-  `performance.instructions.md` §2); one `sync.Mutex` coordinates
+  `performance.md` §2); one `sync.Mutex` coordinates
   `Put`/`Delete`; caches use `sync.Map` + `atomic` counters; `hashRegistry`
   must be guarded by a `sync.RWMutex` once hash registration can happen after
   startup.
 - Serialization format: RESOLVED and implemented — self-describing envelope
   `{"type": "...@major", "data": <base64 payload>}` (cas-core §8 decision 1),
   enabling `parseType`/`ResolveAny` without a side registry.
-- Follow the sibling spec `.github/instructions/viewer-security.instructions.md`
+- Follow the sibling spec `docs/instructions/viewer-security.md`
   for anything touching the embedded viewer (`internal/web/`).

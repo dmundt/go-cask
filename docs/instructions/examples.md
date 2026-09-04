@@ -1,7 +1,7 @@
 ---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus five proposed non-trivial examples that together cover every aspect of the implementation — generic core, gitlike layer, custom app object models, caching/maintenance, an HTTP-exposure pattern (examples/api), and the embedded viewer (templates + htmx). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v8
+version: v9
 ---
 
 # Examples — go-cask
@@ -26,12 +26,12 @@ version: v8
 > APIs in real use, they compile, and they are covered by tests where behavior
 > can be asserted. They are **not** part of the `cas`/`gitlike` libraries.
 >
-> Related specs: `.github/instructions/cas-core.instructions.md`
-> (the design the examples exercise), `.github/instructions/coding-
-> guidelines.instructions.md` (how the Go code must be written),
-> `.github/instructions/api-design.instructions.md` (HTTP conventions for
-> example surfaces), `.github/instructions/viewer-security.instructions.md`
-> and `.github/instructions/viewer-design.instructions.md` (viewer rules).
+> Related specs: `docs/instructions/cas-core.md`
+> (the design the examples exercise), `docs/instructions/coding-guidelines.md`
+> (how the Go code must be written), `docs/instructions/api-design.md`
+> (HTTP conventions for example surfaces),
+> `docs/instructions/viewer-security.md`
+> and `docs/instructions/viewer-design.md` (viewer rules).
 
 ---
 
@@ -296,10 +296,10 @@ the pattern needs no `internal/` and no SDK.
 ### 3.5 `examples/viewer` — embedded viewer (nested templates + htmx)
 
 **Goal.** A runnable application embedding the technical viewer per
-`viewer-design.instructions.md`: a dashboard (stat cards, algorithm table,
+`viewer-design.md`: a dashboard (stat cards, algorithm table,
 sample objects, search), object detail (metadata, hexdump), and
 stats — built with nested Go templates + htmx, no CSS/JS, with the security
-model from `viewer-security.instructions.md`.
+model from `viewer-security.md`.
 
 **Aspects covered.** Nested `html/template` composition (`base`/`dashboard`/
 `object`/partials), htmx patterns (active search, lazy-loaded hexdump,
@@ -395,5 +395,5 @@ When asked to "create an example" or "show how to X":
       comment, and is covered by tests where behavior can be asserted
 - [ ] The aspect matrix (§4) stays complete — every aspect of the
       implementation is demonstrated by at least one example
-- [ ] The viewer example complies with `viewer-security.instructions.md` and
-      `viewer-design.instructions.md`
+- [ ] The viewer example complies with `viewer-security.md` and
+      `viewer-design.md`

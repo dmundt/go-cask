@@ -1,7 +1,7 @@
 ---
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v3
+version: v4
 ---
 
 # Extensions — go-cask
@@ -10,11 +10,10 @@ version: v3
 > types, codecs, hash algorithms, services, or apps that build on the `cas`
 > core. It is intentionally short — the details live in the referenced specs.
 >
-> Related: `.github/instructions/cas-core.instructions.md` §7 (the extension
-> contract and recipes), `.github/instructions/library-design.instructions.md`
-> (lean-core, errors, compatibility), `.github/instructions/coding-guidelines.
-> instructions.md` (Go style), `.github/instructions/examples.instructions.md`
-> (runnable demonstrations).
+> Related: `docs/instructions/cas-core.md` §7 (the extension
+> contract and recipes), `docs/instructions/library-design.md`
+> (lean-core, errors, compatibility), `docs/instructions/coding-guidelines.md`
+> (Go style), `docs/instructions/examples.md` (runnable demonstrations).
 
 ---
 
@@ -45,7 +44,7 @@ version: v3
 | 6 | Correctness: cover the relevant CAS laws for your extension's surface (testing-strategy §1); run `-race` tests. |
 | 7 | Dependencies: standard library first; any external package MUST be justified and vendored (coding-guidelines §3). |
 | 8 | Documentation: doc comments on every exported identifier (coding-guidelines §7); OpenAPI for any HTTP surface (api-design §13). |
-| 9 | Demonstrations: if your extension is a good teaching example, propose it in `examples.instructions.md` instead of growing the core. |
+| 9 | Demonstrations: if your extension is a good teaching example, propose it in `examples.md` instead of growing the core. |
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v9
+version: v10
 ---
 
 # CLI — go-cask
@@ -13,12 +13,12 @@ version: v9
 > viewer server composition (backend-architecture §3). The product ships
 > no network JSON API (backend-architecture §1).
 >
-> Related: `.github/instructions/cas-core.instructions.md` (operations),
-> `.github/instructions/backend-architecture.instructions.md` (the `web`
-> viewer server), `.github/instructions/viewer-design.instructions.md` and
-> `.github/instructions/viewer-security.instructions.md` (the viewer),
-> `.github/instructions/consistency.instructions.md` (GC/prune),
-> `.github/instructions/versioning.instructions.md` (version output).
+> Related: `docs/instructions/cas-core.md` (operations),
+> `docs/instructions/backend-architecture.md` (the `web`
+> viewer server), `docs/instructions/viewer-design.md` and
+> `docs/instructions/viewer-security.md` (the viewer),
+> `docs/instructions/consistency.md` (GC/prune),
+> `docs/instructions/versioning.md` (version output).
 
 ---
 

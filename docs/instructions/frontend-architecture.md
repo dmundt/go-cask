@@ -1,7 +1,7 @@
 ---
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
-version: v2
+version: v3
 ---
 
 # Frontend Architecture — go-cask
@@ -9,14 +9,14 @@ version: v2
 > This file governs the **browser-facing architecture** of go-cask: how pages
 > and fragments are rendered and updated. It applies to the viewer (the
 > reference frontend) and to any future frontend. The concrete viewer screens,
-> routes, and wireframe are defined by `viewer-design.instructions.md`; this
+> routes, and wireframe are defined by `viewer-design.md`; this
 > file is the architecture behind them.
 >
-> Related: `.github/instructions/viewer-design.instructions.md` (the viewer's
-> screens), `.github/instructions/viewer-security.instructions.md` (authn,
-> sessions, CSRF), `.github/instructions/coding-guidelines.instructions.md`
-> (no CSS/JS, templates + htmx), `.github/instructions/api-design.
-> instructions.md` (HTTP conventions).
+> Related: `docs/instructions/viewer-design.md` (the viewer's
+> screens), `docs/instructions/viewer-security.md` (authn,
+> sessions, CSRF), `docs/instructions/coding-guidelines.md`
+> (no CSS/JS, templates + htmx), `docs/instructions/api-design.md`
+> (HTTP conventions).
 
 ---
 
@@ -62,7 +62,7 @@ flowchart LR
   file I/O, no build step.
 - **Nested composition** via `{{define}}` / `{{template}}` / `{{block}}`.
   The concrete template tree (pages and partials) is defined once in
-  `viewer-design.instructions.md` §4 — this document does not duplicate it;
+  `viewer-design.md` §4 — this document does not duplicate it;
   any frontend follows the same nesting pattern with its own pages/partials.
 - **Fragments are the same partials rendered standalone**: an htmx endpoint
   returns a named template; the identical partial serves full-page
@@ -141,7 +141,7 @@ Rules:
   (viewer-design §7 for screens and wireframe).
 - Any new frontend MUST follow this document's architecture and reuse the
   template/htmx conventions; concrete screen design lives in
-  `viewer-design.instructions.md`.
+  `viewer-design.md`.
 
 ---
 
@@ -169,4 +169,4 @@ Rules:
 - [ ] Single binary, no build step; htmx vendored and pinned
 - [ ] Security per §9 (cookies, CSRF, empty-body 401/403)
 - [ ] New frontends follow this architecture; viewer screens per
-      `viewer-design.instructions.md`
+      `viewer-design.md`

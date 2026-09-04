@@ -1,16 +1,14 @@
 ---
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v4
+version: v5
 ---
 
 # Operations — go-cask
 
 > How a CASK-backed deployment stays durable, observable, and migratable.
-> Related: `cas-core.
-> instructions.md` (`StoreStats`/`Verify`/`GC`), `viewer-security.
-> instructions.md` (audit logging), `library-design.instructions.md`
-> (`ErrHashMismatch`).
+> Related: `cas-core.md` (`StoreStats`/`Verify`/`GC`), `viewer-security.md`
+> (audit logging), `library-design.md` (`ErrHashMismatch`).
 
 ---
 
@@ -52,7 +50,7 @@ version: v4
   unless
   required (coding-guidelines §3) — if it becomes necessary, expose a small
   interface the deployment implements.
-- Audit logging follows `viewer-security.instructions.md`: never log tokens
+- Audit logging follows `viewer-security.md`: never log tokens
   or secrets.
 
 ---
