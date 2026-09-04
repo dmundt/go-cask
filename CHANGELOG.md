@@ -10,6 +10,13 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Added
+
+- `docs/benchmarks.md` — operator's guide to the benchmarks: the regular
+  perf suite and the on-demand scale probes, with commands, parameters
+  (`CASK_SCALE_OBJECTS`), purpose of each benchmark, and how to read the
+  output (README points to it).
+
 ### Changed
 
 - Instruction specs relocated to a **host-agnostic home**: the specification
