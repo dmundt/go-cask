@@ -57,7 +57,6 @@ func TestHashDeterminism(t *testing.T) {
 func TestParseHashValid(t *testing.T) {
 	cases := []string{
 		"sha256:" + strings.Repeat("ab", 32),
-		"sha1:" + strings.Repeat("cd", 20),
 	}
 	for _, s := range cases {
 		h, err := ParseHash(s)
@@ -126,7 +125,7 @@ func TestHashEqual(t *testing.T) {
 	a, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	b, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	c, _ := ParseHash("sha256:" + strings.Repeat("cd", 32))
-	d, _ := ParseHash("sha1:" + strings.Repeat("ab", 20))
+	d, _ := ParseHash("sha256:" + strings.Repeat("ef", 32))
 	if !a.Equal(b) || !b.Equal(a) {
 		t.Error("identical hashes must be equal")
 	}

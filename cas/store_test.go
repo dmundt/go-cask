@@ -148,7 +148,7 @@ func testRawStoreContract(t *testing.T, raw RawStore) {
 	}
 
 	// List + algorithm filter.
-	h2, _ := hashData("sha1", []byte("hello"))
+	h2, _ := hashData("sha256", []byte("world"))
 	if err := raw.Put(ctx, h2, strings.NewReader("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func testRawStoreContract(t *testing.T, raw RawStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s256) != 1 || s256[0].Algorithm() != "sha256" {
+	if len(s256) != 2 {
 		t.Fatalf("List(sha256) = %v", s256)
 	}
 

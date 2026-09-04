@@ -371,7 +371,7 @@ When asked to "create an example" or "show how to X":
       support library `gitlike` (rule 11)
 - [x] Examples use only documented public APIs of `cas`/`gitlike`; the
       libraries themselves are untouched
-- [ ] Each example ships a `README.md` with the §2 rule 8 content (core used,
+- [x] Each example ships a `README.md` with the §2 rule 8 content (core used,
       extended, code walkthrough, Mermaid diagram, how to run) plus a package
       comment, and is covered by tests where behavior can be asserted
 - [ ] The aspect matrix (§4) stays complete — every aspect of the

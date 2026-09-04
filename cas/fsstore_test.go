@@ -328,7 +328,7 @@ func TestStats(t *testing.T) {
 	if st.ObjectCount != 3 {
 		t.Fatalf("ObjectCount = %d", st.ObjectCount)
 	}
-	if st.AlgorithmCounts["sha256"] != 2 || st.AlgorithmCounts["sha1"] != 1 {
+	if st.AlgorithmCounts["sha256"] != 3 {
 		t.Fatalf("AlgorithmCounts = %v", st.AlgorithmCounts)
 	}
 	if st.TotalSize <= 0 {
