@@ -139,6 +139,6 @@ release/1.2             # missing the v (versioning §3: release/vX.Y)
 - [x] `main` is the only permanent branch; everything else short-lived
 - [x] Branch names match `<type>/<kebab-description>` (type from §2)
 - [x] ≤ 50 chars, lowercase/ASCII/hyphens; no forbidden names
-- [ ] Feature/fix/hotfix branches merged via PR and deleted
-- [ ] `release/vX.Y` created on demand, PATCH-only, deleted when unmaintained
+- [x] Feature/fix/hotfix branches merged via PR and deleted
+- [x] `release/vX.Y` created on demand, PATCH-only, deleted when unmaintained
 - [x] No `develop`/per-developer/long-lived branches

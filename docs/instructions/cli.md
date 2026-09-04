@@ -128,6 +128,6 @@ Store operations speak to the store in-process over the library:
 - [x] All subcommands map to core operations or the viewer server
       composition — no new logic in the CLI
 - [x] Hash arguments validated with `ParseHash` (exit 2 on malformed)
-- [ ] Output plain text by default, `-json` on request; errors on stderr
-- [ ] Exit codes 0/1/2 per §3
+- [x] Output plain text by default, `-json` on request; errors on stderr
+- [x] Exit codes 0/1/2 per §3
 - [x] Streaming for large objects; no token leakage

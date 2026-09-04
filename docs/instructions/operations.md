@@ -101,9 +101,9 @@ version: v5
 
 - [x] fsync-before-rename enforced; directory fsync configurable
 - [x] orphan `*.tmp` sweep documented/implemented
-- [ ] slog logging for mutations, login-throttle rejections, slow ops, and
+- [x] slog logging for mutations, login-throttle rejections, slow ops, and
       GC runs
-- [ ] verify cadence defined; mismatch → quarantine + audit + alert
+- [x] verify cadence defined; mismatch → quarantine + audit + alert
 - [x] migration procedures (algorithm and layout) documented with
       verify-before-delete
 - [x] backup procedure documented

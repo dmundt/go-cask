@@ -271,9 +271,9 @@ fixed at 5 failures/IP/min (viewer-security).
 - [x] Naming follows §3 (plural nouns, nesting, `{hash}` with `ParseHash`)
 - [x] Method semantics follow §4 (GET side-effect free, POST for
       create/action, DELETE idempotent)
-- [ ] Status codes + error shapes match §5/§6
-- [ ] Auth, CSRF, role check, rate limiting, and audit applied per §7/§8
-- [ ] Validation per §9; pagination envelope per §10 where listing
-- [ ] Binary payloads stream as octet-stream with `X-CAS-*` headers (§11)
-- [ ] Versioned correctly (§12); documented in OpenAPI (§13)
+- [x] Status codes + error shapes match §5/§6
+- [x] Auth, CSRF, role check, rate limiting, and audit applied per §7/§8
+- [x] Validation per §9; pagination envelope per §10 where listing
+- [x] Binary payloads stream as octet-stream with `X-CAS-*` headers (§11)
+- [x] Versioned correctly (§12); documented in OpenAPI (§13)
 - [x] `httptest` coverage added; docs regenerated

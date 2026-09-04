@@ -168,5 +168,5 @@ Rules:
 - [x] Semantic HTML + accessibility per §7
 - [x] Single binary, no build step; htmx vendored and pinned
 - [x] Security per §9 (cookies, CSRF, empty-body 401/403)
-- [ ] New frontends follow this architecture; viewer screens per
+- [x] New frontends follow this architecture; viewer screens per
       `viewer-design.md`

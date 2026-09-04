@@ -358,27 +358,27 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 
 ## 9. Acceptance Checklist
 
-- [ ] **Dashboard is the landing page**: stat cards (objects, size,
+- [x] **Dashboard is the landing page**: stat cards (objects, size,
       algorithms), algorithm breakdown, sample objects, search, quick nav —
       all with drill-down links
-- [ ] Simple, elegant, usable: consistent layout, scannable tables
+- [x] Simple, elegant, usable: consistent layout, scannable tables
       (`<caption>`/`<th scope>`), one purpose per page, no dead ends
-- [ ] Every requirement of `viewer-security.md` implemented
+- [x] Every requirement of `viewer-security.md` implemented
       (secure by default, localhost, authn/authz, sessions, CSRF, audit)
 - [x] No CSS, no hand-written JS anywhere in `internal/web/`
 - [x] HTML rendered only by `html/template`; templates nested via
       `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
-- [ ] Full pages and htmx fragments share the same partials (incl.
+- [x] Full pages and htmx fragments share the same partials (incl.
       `stats-panel` on the dashboard and as OOB swaps)
 - [x] Objects viewable: 8-char short-hash links (full hash on the detail
       page and in link targets), algorithm, type, size; generic lists show
       `<shorthash> (<type>)`
 - [x] No typed references/graph anywhere in `internal/web/` (byte-layer
       viewer; §7)
-- [ ] Blobs viewable: raw bytes + hex dump, lazy-loaded for large objects
-- [ ] Mutations (verify/delete/GC) are POST + CSRF + role-checked +
+- [x] Blobs viewable: raw bytes + hex dump, lazy-loaded for large objects
+- [x] Mutations (verify/delete/GC) are POST + CSRF + role-checked +
       audit-logged; GET endpoints are side-effect free
-- [ ] Works with htmx disabled (progressive enhancement): links and forms
+- [x] Works with htmx disabled (progressive enhancement): links and forms
       still function
 - [x] `{hash}` parameters validated with `ParseHash`; malformed input → 400,
       missing session → 401 (empty), insufficient role → 403 (empty)
