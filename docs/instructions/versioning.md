@@ -1,7 +1,7 @@
 ---
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v5
+version: v6
 ---
 
 # Versioning — go-cask
@@ -120,7 +120,67 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 ---
 
-## 6. What Is NOT Library Versioning
+## 6. v1.0.0 Definition of Done
+
+The following checklist defines when `v1.0.0` can be tagged. Every item
+MUST be satisfied before the first stable release.
+
+### 6.1 Stable surface freeze
+
+- [x] cas-core §7.1 stable surface enumerated — every exported identifier
+  in the contract is documented; renames and breaking changes are closed
+- [x] Hash naming decided: keep `Hash` (algo:hexdigest) — no rename
+- [x] Fan-out file-name style decided: full-hash names only, Git-remainder
+  option rejected
+- [x] Pluggable algorithms kept: sha256 built-in, `RegisterHash` for custom
+  algos; sha1 removed from core
+- [x] GC concurrency model documented: writers lock-free, maintenance
+  sweeps exclusive + grace-gated (--min-age 24h default)
+- [x] Lean-core export budget re-baselined to ~40 (library-design v10)
+- [x] Library baseline declared Go 1.22 (toolchain 1.27)
+
+### 6.2 Release mechanics
+
+- [x] `v0.1.0-alpha.1` and `v0.1.0-alpha.2` tags exist (pre-release route)
+- [x] `v0.1.0` (first non-prerelease) tagged before `v1.0.0`
+- [x] CHANGELOG captures all changes since the last tag
+- [x] `gofmt -l .` clean, `go vet ./...`, `go test -race ./...` green
+- [x] Doc-integrity gate passes (mermaid balance, `.md` refs)
+
+### 6.3 Spec compliance
+
+- [x] All 20 instruction specs' acceptance checklists fully ticked (zero
+  unchecked items — all audit items triaged 2026-09)
+- [x] All recorded decisions have provenance in their owning specs with
+  version bumps
+
+### 6.4 Examples
+
+- [x] Four runnable examples exist (`files`, `artifacts`, `notes`, `api`)
+  plus `gitlike` shared library; `examples/viewer` covered by product
+  viewer in `internal/web/` (decision recorded)
+- [x] Each example has a README.md with `cas core parts used` list,
+  code walkthrough, and mermaid diagram
+
+### 6.5 Viewer
+
+- [x] Viewer is byte-layer tool, never imports `examples/` (coding-guidelines §9)
+- [x] Sessions, CSRF, role checks, rate limiting, audit logging implemented
+  (viewer-security checklist)
+- [x] `cask web` starts viewer, prints URL + token, auto-opens browser
+  (`--no-open` to suppress)
+- [x] GC template exists (`gc.html`), raw-HTML fragments converted to templates
+
+### 6.6 Extensions
+
+- [x] Extension catalog (extensions.md §3) records deferral decisions with
+  triggers (packfiles, compression, encryption, chunking)
+- [x] Cache/recipe helpers (`SmartCache`, `CacheMonitor`) stay inlined as
+  per-example teaching code — shared home only when a second consumer exists
+
+---
+
+## 7. What Is NOT Library Versioning
 
 | Versioned thing                    | Version scheme                 | Who bumps it                     |
 | ---------------------------------- | ------------------------------ | -------------------------------- |
