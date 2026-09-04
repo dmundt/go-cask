@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v22
+version: v23
 ---
 
 # CAS Core — go-cask
@@ -472,6 +472,16 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
   `pathToHash(path)` rebuilds the `Hash` from the relative path — first part
   = algorithm, last part = full hex digest (fan-out directories in between
   are not needed for reconstruction); unrecognized files are skipped.
+
+> Decision (2026-09): the file-name style is **not configurable** — full-hash
+> names are the only layout. A Git-style remainder option (name = digest
+> minus the fan-out prefix, like Git loose objects) was considered and
+> rejected: it offers no interop (this store is not Git-readable under
+> either style — raw payloads under `<algo>/`, no Git loose-object format),
+> costs a second mode in every layout-dependent method, and loses the
+> self-describing "file name = full hash" property that `List`/`Stats`/
+> `Verify` rely on. Revisit only if a real consumer requires
+> remainder-looking names.
 
 **Write path (atomic):**
 
