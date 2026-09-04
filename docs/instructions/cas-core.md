@@ -1,7 +1,7 @@
 ---
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v20
+version: v21
 ---
 
 # CAS Core — go-cask
@@ -14,7 +14,7 @@ version: v20
 > **Origin:** extracted from the DeepSeek design conversation at
 > <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r> (final converged
 > state). This document is the canonical core spec; the aggregator
-> (`.github/copilot-instructions.md`) points here.
+> (`AGENTS.md` at the repo root) points here.
 >
 > Related: `docs/instructions/library-design.md` (lean-core contract,
 > sentinel errors, compatibility), `docs/instructions/performance.md`
@@ -970,7 +970,7 @@ Open follow-ups (future extensions, not blocking):
 
 ## 9. Related Documents
 
-- `.github/copilot-instructions.md` — aggregator: project context,
+- `AGENTS.md` (repo root) — aggregator: project context,
   conversation history, principles, extension guide, constraints.
 - `docs/instructions/library-design.md` — lean-core budget,
   sentinel errors, API shape, compatibility policy.

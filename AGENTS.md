@@ -1,10 +1,10 @@
 ---
-title: Copilot Instructions — go-cask
-description: The aggregator for Copilot — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest).
-version: v7
+title: Agent Instructions — go-cask
+description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
+version: v8
 ---
 
-# Copilot Instructions — go-cask (CASK: Content Addressable Store Kit)
+# Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
 
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
@@ -13,9 +13,11 @@ version: v7
 > generics (no `any` in the public API), with pluggable hash algorithms, a
 > filesystem backend, typed object layers, lazy loading and caching.
 >
-> Use this file as the authoritative design contract for all Copilot-assisted
-> changes to the core `cas` package. Code produced for this repo MUST follow the
-> architecture and conventions below unless the user explicitly overrides them.
+> Use this file as the authoritative design contract for all agent-assisted
+> changes to the core `cas` package — any tool that honors `AGENTS.md`
+> (GitHub Copilot, OpenAI Codex, Claude Code, …). Code produced for this repo
+> MUST follow the architecture and conventions below unless the user
+> explicitly overrides them.
 
 ---
 
@@ -40,7 +42,7 @@ examples/gitlike/ example package (package gitlike) — Git-like object model
 examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
 docs/instructions/  the specification set (20 files: 19 specs + AGENT.md)
-.github/   Copilot aggregator (this file); GitHub-specific, points at the
+AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/instructions/
 ```
 
@@ -315,7 +317,7 @@ raw := cas.NewMemoryRawStore() // in-memory: fast, deterministic, not persistent
 
 ---
 
-## Extension Guide (how Copilot should extend this library)
+## Extension Guide (how an agent should extend this library)
 
 **Add a new storage backend** (S3, BadgerDB, PostgreSQL, ...):
 1. Implement `RawStore` exactly (`Put/Get/Exists/Delete/List`), honoring
