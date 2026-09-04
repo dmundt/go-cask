@@ -136,7 +136,7 @@ jobs:
           done
           for ref in $(grep -rho '[a-z0-9-]*\.md' . | sort -u); do
             case "$ref" in
-              .md|CHANGELOG.md|README.md|copilot-instructions.md|viewer-brief.md) continue ;; # repo-root / pattern-literal tokens, not sibling specs
+              .md|CHANGELOG.md|README.md|viewer-brief.md) continue ;; # repo-root / pattern-literal tokens, not sibling specs
             esac
             [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
           done
