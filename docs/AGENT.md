@@ -1,7 +1,7 @@
 ---
 title: AGENT — go-cask
 description: Meta-guide for the docs/ folder — file naming, frontmatter conventions, versioning, and the maintenance checklist that keeps every document in this tree consistent. This file governs docs/index.md, docs/instructions/, docs/design/, and docs/benchmarks.md.
-version: v1
+version: v2
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -12,9 +12,12 @@ version: v1
 > [`AGENT.md`](instructions/AGENT.md). This file fills the gap for documents
 > outside that folder.
 >
-> **Before every change, read [`docs/index.md`](index.md) first.** It maps
-> the path you are working on to the corresponding rule file. Then read this
-> file (or `docs/instructions/AGENT.md`) for the detailed conventions.
+> **To reduce token usage, consult the hierarchical index first.**
+> 1. Start at [`docs/index.md`](index.md) — the top-level rule index maps
+>    any path to its rule file.
+> 2. For design docs, open [`docs/design/index.md`](design/index.md).
+> 3. For instruction specs, open [`docs/instructions/index.md`](instructions/index.md).
+> 4. Only after matching your path should you open the detailed spec file.
 
 ---
 
@@ -38,7 +41,7 @@ YAML frontmatter, exactly three keys:
 ---
 title: <Title> — go-cask
 description: One sentence describing the document's purpose.
-version: v1
+version: v2
 ---
 ```
 
