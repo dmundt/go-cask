@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v10
+version: v11
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -18,6 +18,11 @@ version: v10
 > (GitHub Copilot, OpenAI Codex, Claude Code, …). Code produced for this repo
 > MUST follow the architecture and conventions below unless the user
 > explicitly overrides them.
+>
+> **Before every change, read `docs/index.md` first.** It maps the path you
+> are working on to the corresponding spec file. The detailed convention
+> enters context a few lines later by reading that spec file. This ensures
+> you never miss a rule that applies to your change.
 
 ---
 
@@ -43,6 +48,7 @@ examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
 docs/instructions/  the specification set (20 files: 19 specs + AGENT.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
+docs/index.md  rule file index — read this first, then the matching spec
 AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/instructions/
 ```
