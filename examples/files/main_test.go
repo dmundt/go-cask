@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/examples/gitlike"
 )
 
@@ -223,5 +224,144 @@ func TestVerify(t *testing.T) {
 	}
 	if err := a.verify(ctx); err == nil {
 		t.Fatal("verify must report corruption")
+	}
+}
+
+func TestShortHash(t *testing.T) {
+	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	s := short(h)
+	if len(s) == 0 {
+		t.Fatal("short() empty")
+	}
+}
+
+func TestErrorPaths(t *testing.T) {
+	ctx := context.Background()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := a.log(ctx, &buf); err == nil {
+		t.Fatal("log on empty must error")
+	}
+	if _, err := a.commit(ctx, "x"); err == nil {
+		t.Fatal("commit with no tree must error")
+	}
+	// verify on empty store: should not crash.
+	_ = a.verify(ctx)
+}
+
+func TestCatTree(t *testing.T) {
+	ctx := context.Background()
+	work := t.TempDir()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := writeTempFile(t, work, "a.txt", "tree cat")
+	tree, err := a.add(ctx, []string{f})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := a.cat(ctx, tree, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("cat of tree returned no output")
+	}
+}
+
+func TestAddReadError(t *testing.T) {
+	ctx := context.Background()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.add(ctx, []string{"/nonexistent/file.txt"}); err == nil {
+		t.Fatal("add of missing file must error")
+	}
+}
+
+func TestRunCommands(t *testing.T) {
+	ctx := context.Background()
+	store := t.TempDir()
+	work := t.TempDir()
+	f := writeTempFile(t, work, "a.txt", "run me")
+
+	var stdout, stderr bytes.Buffer
+
+	// add
+	if code := run(ctx, []string{"-store", store, "add", f}, &stdout, &stderr); code != 0 {
+		t.Fatalf("add code=%d stderr=%s", code, stderr.String())
+	}
+	hash := strings.TrimSpace(stdout.String())
+	if hash == "" {
+		t.Fatal("add stdout empty")
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// commit
+	if code := run(ctx, []string{"-store", store, "commit", "-m", "first"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("commit code=%d stderr=%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// log
+	if code := run(ctx, []string{"-store", store, "log"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "first") {
+		t.Fatalf("log code=%d out=%q stderr=%s", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// cat
+	if code := run(ctx, []string{"-store", store, "cat", hash}, &stdout, &stderr); code != 0 || stdout.String() != "run me" {
+		t.Fatalf("cat code=%d out=%q stderr=%s", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// stats
+	if code := run(ctx, []string{"-store", store, "stats"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("stats code=%d stderr=%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// verify
+	if code := run(ctx, []string{"-store", store, "verify"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("verify code=%d stderr=%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// audit
+	if code := run(ctx, []string{"-store", store, "audit"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("audit code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestRunUsageErrors(t *testing.T) {
+	ctx := context.Background()
+	var stdout, stderr bytes.Buffer
+	cases := [][]string{
+		{},                     // no args
+		{"-store"},             // -store missing value
+		{"add"},                // add missing file
+		{"commit"},             // commit missing -m
+		{"cat"},                // cat missing hash
+		{"unknown"},            // unknown command
+		{"audit", "-badflag"},  // bad audit flag
+		{"-store", "x", "add"}, // add missing file
+	}
+	for _, c := range cases {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(ctx, c, &stdout, &stderr); code != 2 {
+			t.Fatalf("args %v: code=%d, want 2", c, code)
+		}
 	}
 }

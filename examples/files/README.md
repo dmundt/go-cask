@@ -63,7 +63,7 @@ root, which the store's `List`/`Stats` ignore.
   pass for a fast orphan scan.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["add file..."] --> B["Blobs.Put (dedup by hash)"]
     B --> C["Tree.Put"] --> I["write INDEX"]
     I --> D["commit -m"] --> E["Commit.Put (parent = HEAD)"]

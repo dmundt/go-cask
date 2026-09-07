@@ -71,7 +71,7 @@ deployment are app concerns).
   openapi, 400 malformed hash.
 
 ```mermaid
-flowchart LR
+flowchart TB
     REQ["HTTP request"] --> IP["rate limit (per-IP token bucket)"]
     IP -->|"429 + Retry-After + X-RateLimit-*"| R1["reject"]
     IP -->|"ok"| AUTH["bearer role auth"]

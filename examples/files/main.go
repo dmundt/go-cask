@@ -182,104 +182,120 @@ func short(h cas.Hash) string {
 	return h.String()
 }
 
-func main() {
-	ctx := context.Background()
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, usage)
-		os.Exit(2)
+// run executes the CLI and returns the process exit code. It is factored out
+// of main so the subcommand dispatch is testable. stdout/stderr are injectable
+// for tests; in production they are os.Stdout/os.Stderr.
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, usage)
+		return 2
 	}
 	dir := "./objects"
-	args := os.Args[1:]
 	if args[0] == "-store" {
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		dir, args = args[1], args[2:]
+		if len(args) < 1 {
+			fmt.Fprintln(stderr, usage)
+			return 2
+		}
 	}
 	a, err := newApp(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "add":
 		if len(rest) == 0 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		h, err := a.add(ctx, rest)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Println(h)
+		fmt.Fprintln(stdout, h)
 	case "commit":
 		if len(rest) < 2 || rest[0] != "-m" {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		h, err := a.commit(ctx, rest[1])
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Println(h)
+		fmt.Fprintln(stdout, h)
 	case "log":
-		if err := a.log(ctx, os.Stdout); err != nil {
-			fatal(err)
+		if err := a.log(ctx, stdout); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 	case "cat":
 		if len(rest) != 1 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		h, err := cas.ParseHash(rest[0])
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		if err := a.cat(ctx, h, os.Stdout); err != nil {
-			fatal(err)
+		if err := a.cat(ctx, h, stdout); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 	case "graph":
 		h, err := a.headCommit()
 		if err != nil {
-			fatal(fmt.Errorf("no commits yet: %w", err))
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 		res := gitlike.NewResolver(a.repo)
 		if err := gitlike.WalkGraph(ctx, res, h, func(ro *gitlike.ResolvedObject) error {
-			fmt.Printf("%-12s %s\n", ro.Type, gitlike.PrintObject(ro))
+			fmt.Fprintf(stdout, "%-12s %s\n", ro.Type, gitlike.PrintObject(ro))
 			return nil
 		}); err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 	case "audit":
 		noVerify := len(rest) == 1 && rest[0] == "-no-verify"
 		if len(rest) > 1 || (len(rest) == 1 && !noVerify) {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		rep, err := a.audit(ctx, noVerify)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		rep.print(os.Stdout)
+		rep.print(stdout)
 	case "verify":
 		if err := a.verify(ctx); err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 	case "stats":
 		st, err := a.raw.Stats(ctx)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Println(st)
+		fmt.Fprintln(stdout, st)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n%s\n", cmd, usage)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "unknown command %q\n%s\n", cmd, usage)
+		return 2
 	}
+	return 0
 }
 
-func fatal(err error) {
-	fmt.Fprintf(os.Stderr, "error: %v\n", err)
-	os.Exit(1)
+func main() {
+	code := run(context.Background(), os.Args[1:], os.Stdout, os.Stderr)
+	os.Exit(code)
 }

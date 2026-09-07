@@ -51,7 +51,7 @@ unreferenced artifacts.
   - `stats` / `monitor`.
 
 ```mermaid
-flowchart LR
+flowchart TB
     P["put name file"] --> A["Artifact.PutDedup (sha256double)"]
     A --> M["Manifest.Put (references artifact)"]
     M -->|"previous manifest deleted"| G1["old artifact unreferenced"]

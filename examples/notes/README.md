@@ -47,7 +47,7 @@ generic `Walker[T]`.
   cache, broken ref → `ErrNotFound`, walker chain.
 
 ```mermaid
-flowchart LR
+flowchart TB
     N["Note (tags, attachments, related)"] -->|"references by hash"| T["Tag"]
     N --> A["Attachment (large blob)"]
     N --> R["Related note (same type)"]
