@@ -1,7 +1,7 @@
 ---
 title: go-cask Rules Index
 description: Quick-reference index of every specification file in docs/instructions/. Match the path you are working on to the corresponding rule file, then read that file for the detailed convention. Updated whenever a rule file is added, removed, or materially changed.
-status: stable
+version: v1
 ---
 
 # go-cask Rules Index
