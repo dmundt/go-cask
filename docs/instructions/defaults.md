@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
 version: v10
@@ -159,3 +160,4 @@ default targets, not absolutes.
 - [x] Defaults changed only via the §8 procedure (both docs + version bumps)
 - [x] New defaults added here when new capabilities land (e.g. packfiles,
       prune tuning)
+

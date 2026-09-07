@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.22+ baseline (generics, enhanced routing) and the latest generics (toolchain 1.27).
 version: v7
@@ -307,3 +308,4 @@ Consequences for this repo:
       code
 - [x] Viewer changes re-checked against
       `docs/instructions/viewer-security.md`
+

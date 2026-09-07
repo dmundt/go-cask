@@ -1,7 +1,10 @@
----
+﻿---
+type: Agent Instructions
 title: AGENT — go-cask (docs/performance/)
 description: This file governs docs/performance/ — benchmark docs and performance-testing guides. Follows conventions in docs/AGENT.md.
 version: v1
+tags: [go-cask]
+status: stable
 ---
 
 # AGENT — go-cask (docs/performance/)

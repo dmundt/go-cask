@@ -1,4 +1,5 @@
----
+﻿---
+okf_version: "0.2"
 title: go-cask Performance Docs
 description: Benchmark guidance and performance documentation.
 version: v1

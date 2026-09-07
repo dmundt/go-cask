@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
 version: v2
@@ -142,3 +143,4 @@ release/1.2             # missing the v (versioning §3: release/vX.Y)
 - [x] Feature/fix/hotfix branches merged via PR and deleted
 - [x] `release/vX.Y` created on demand, PATCH-only, deleted when unmaintained
 - [x] No `develop`/per-developer/long-lived branches
+

@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
 version: v3
@@ -170,3 +171,4 @@ Rules:
 - [x] Security per §9 (cookies, CSRF, empty-body 401/403)
 - [x] New frontends follow this architecture; viewer screens per
       `viewer-design.md`
+

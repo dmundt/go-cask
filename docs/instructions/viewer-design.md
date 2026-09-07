@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
 version: v7
@@ -382,3 +383,4 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
       still function
 - [x] `{hash}` parameters validated with `ParseHash`; malformed input → 400,
       missing session → 401 (empty), insufficient role → 403 (empty)
+

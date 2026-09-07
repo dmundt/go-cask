@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
 version: v7
@@ -220,3 +221,4 @@ Stats()                 # what is stored, per algorithm
 - [x] The dangerous all-objects prune is admin + dry-run + confirm
 - [x] No refcounts, no automatic GC, no GC transactions (§8)
 - [x] CLI + viewer expose verify/GC/prune per the conventions (cli §2)
+

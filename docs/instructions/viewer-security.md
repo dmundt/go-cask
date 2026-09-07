@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
 version: v4
@@ -366,3 +367,4 @@ When in doubt, choose the more secure implementation.
       from the configured claim (§12)
 - [x] Input validated everywhere; 401/403 empty bodies never disclose
       existence (§13)
+

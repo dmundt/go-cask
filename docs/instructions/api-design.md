@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
 version: v4
@@ -277,3 +278,4 @@ fixed at 5 failures/IP/min (viewer-security).
 - [x] Binary payloads stream as octet-stream with `X-CAS-*` headers (§11)
 - [x] Versioned correctly (§12); documented in OpenAPI (§13)
 - [x] `httptest` coverage added; docs regenerated
+

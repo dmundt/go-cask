@@ -1,7 +1,10 @@
 ﻿---
+type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
 version: v8
+tags: [go-cask]
+status: stable
 ---
 
 # AGENT — go-cask Instruction Folder Guide
@@ -233,3 +236,4 @@ Before committing any change to a file in this folder:
 - [x] Every mermaid block balanced (` ```mermaid ` count == its ` ``` `
       closers per file), unless explicitly stated as an illustrative fragment
       (§9)
+

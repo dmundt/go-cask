@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
 version: v10
@@ -123,3 +124,4 @@ Rules:
 - [x] no mutable globals; registry init-only or per-store hasher
 - [x] functional options; zero values usable; `context.Context` first
 - [x] compatibility policy documented and honored
+

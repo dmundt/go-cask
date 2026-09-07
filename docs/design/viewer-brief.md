@@ -1,4 +1,5 @@
----
+﻿---
+type: Design Document
 title: Viewer Design Brief — go-cask
 description: The design brief for the viewer's next iteration (input for OpenDesign) — pure server-side Go templates + htmx only, no JS, no CSS in step 1; a master-detail object browser (list + inspector) with URL-as-state, informed by the cas-kit viewer prototype and the byte-layer viewer design, strictly aligned to the cas model.
 version: v3
@@ -238,3 +239,4 @@ posture):
       bucket/file-store vocabulary
 - [ ] Security requirements of viewer-security unchanged and honored
 - [ ] CSS step (§6) not started until the no-CSS rule is explicitly relaxed
+

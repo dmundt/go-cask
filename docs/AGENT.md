@@ -1,4 +1,5 @@
-﻿---
+---
+type: Agent Instructions
 title: AGENT — go-cask
 description: Meta-guide for the docs/ folder — file naming, frontmatter conventions, versioning, and the maintenance checklist that keeps every document in this tree consistent. This file governs docs/index.md, docs/instructions/, docs/design/, docs/performance/, and any future subdirectories.
 version: v2

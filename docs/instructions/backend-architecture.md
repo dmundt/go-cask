@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
 version: v11
@@ -262,3 +263,4 @@ an example surface.
 - [x] Config shape per §6; startup/shutdown lifecycle implemented
 - [x] slog + audit logging; metrics via the viewer stats page and logs
 - [x] No network JSON API ships; `examples/api` is the documented pattern
+

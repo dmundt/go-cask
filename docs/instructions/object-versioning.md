@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
 version: v2
@@ -129,3 +130,4 @@ deserializer — demonstrating the pattern for app models.
       objects never dropped by the store
 - [x] Unknown type/major → `ErrUnknownType` (graceful)
 - [x] Object-model versions never conflated with library/HTTP/doc versions
+

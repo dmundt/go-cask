@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
 version: v5
@@ -93,3 +94,4 @@ the leaner choice.
 - [x] Exported identifiers documented; OpenAPI if HTTP
 - [x] Simple: one job, nothing speculative
 - [x] Catalog entries (§3) reference an owning spec; no design-less wishes
+

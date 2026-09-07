@@ -1,4 +1,5 @@
 ﻿---
+type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
 version: v10
@@ -311,3 +312,4 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 - [x] fan-out layout chosen per expected object count (§8.1)
 - [x] performance-test scenarios T-01…T-08 exist and pass their thresholds
 - [x] packfiles (§9), when implemented, meet all acceptance criteria
+

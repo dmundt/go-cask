@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
 version: v25
@@ -1025,3 +1026,4 @@ Open follow-ups (future extensions, not blocking):
   detection, GC from roots, age-based pruning (the maintenance model of
   §4.11).
 - `docs/instructions/AGENT.md` — the folder's meta-guide.
+

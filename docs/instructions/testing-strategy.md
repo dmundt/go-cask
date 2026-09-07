@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
 version: v9
@@ -193,3 +194,4 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
       exported identifier exercised; untested branches commented
 - [x] every HTTP route tested (success + 400/401/403/404/429)
 - [x] new requirements come with their test (traceability is review-gated)
+

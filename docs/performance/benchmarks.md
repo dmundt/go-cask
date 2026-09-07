@@ -1,4 +1,5 @@
 ﻿---
+type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (cas/bench_test.go) and the on-demand state-scaling probes (cas/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
 version: v2
@@ -204,3 +205,4 @@ store scales.
   memory-backend small Put/Get ≥ 100k obj/s, ≤ 5 allocs/op).
 - This guide's examples assume PowerShell (Windows) or bash; the `go test`
   flags are identical everywhere.
+

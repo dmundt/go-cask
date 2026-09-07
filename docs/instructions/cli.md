@@ -1,4 +1,5 @@
----
+﻿---
+type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
 version: v10
@@ -131,3 +132,4 @@ Store operations speak to the store in-process over the library:
 - [x] Output plain text by default, `-json` on request; errors on stderr
 - [x] Exit codes 0/1/2 per §3
 - [x] Streaming for large objects; no token leakage
+
