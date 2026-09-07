@@ -29,7 +29,7 @@ func demo() error {
 	// cache for notes.
 	attachments := cache.NewCachedStore(repo.Attachments)
 	noteCache := cache.NewCachedStore(repo.Notes)
-	smart := NewSmartCache(noteCache, 2)
+	smart := cache.NewSmartCache(noteCache, 2)
 
 	// Tags.
 	workTag, err := repo.Tags.Put(ctx, &Tag{Name: "work"})

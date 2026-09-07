@@ -90,7 +90,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newTestRepo(t)
 	noteCache := cache.NewCachedStore(repo.Notes)
-	smart := NewSmartCache(noteCache, 2)
+	smart := cache.NewSmartCache(noteCache, 2)
 
 	second, err := repo.Notes.Put(ctx, &Note{Title: "second"})
 	if err != nil {
