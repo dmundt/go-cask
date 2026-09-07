@@ -1,13 +1,13 @@
----
+﻿---
 title: AGENT — go-cask
-description: Meta-guide for the docs/ folder — file naming, frontmatter conventions, versioning, and the maintenance checklist that keeps every document in this tree consistent. This file governs docs/index.md, docs/instructions/, docs/design/, and docs/benchmarks.md.
+description: Meta-guide for the docs/ folder — file naming, frontmatter conventions, versioning, and the maintenance checklist that keeps every document in this tree consistent. This file governs docs/index.md, docs/instructions/, docs/design/, docs/performance/, and any future subdirectories.
 version: v2
 ---
 
 # AGENT — go-cask (docs/ folder)
 
 > This file governs **all non-instruction docs in `docs/`**: `docs/index.md`,
-> `docs/design/`, `docs/benchmarks.md`, and any future top-level `.md` files.
+> `docs/design/`, `docs/performance/`, and any future subdirectories.
 > The instruction specs under `docs/instructions/` are governed by their own
 > [`AGENT.md`](instructions/AGENT.md). This file fills the gap for documents
 > outside that folder.
@@ -17,7 +17,8 @@ version: v2
 >    any path to its rule file.
 > 2. For design docs, open [`docs/design/index.md`](design/index.md).
 > 3. For instruction specs, open [`docs/instructions/index.md`](instructions/index.md).
-> 4. Only after matching your path should you open the detailed spec file.
+> 4. For performance/benchmark docs, open [`docs/performance/index.md`](performance/index.md).
+> 5. Only after matching your path should you open the detailed spec file.
 
 ---
 
