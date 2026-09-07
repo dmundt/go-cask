@@ -1,4 +1,4 @@
----
+﻿---
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
 version: v8
@@ -209,42 +209,7 @@ contradicting statements in the folder.
 
 ---
 
-## 10. Folder Inventory
-
-All spec files live in `docs/instructions/` at the repo root — a neutral,
-host-agnostic location (not `.github/`, so discovery does not depend on the
-host being GitHub). The repo-root `AGENTS.md` is the agent aggregator that
-points at this folder; it follows the same style rules where they apply.
-
-| File                                             | Role                                                            |
-| ------------------------------------------------ | --------------------------------------------------------------- |
-| `AGENT.md` (this file)                           | Meta-guide: style, terminology, precedence for this folder.     |
-| `cas-core.md`                 | The canonical core library spec — every component contract, flows,   |
-|                                            | concurrency, and the extension contract for extensions/clients.      |
-| `backend-architecture.md`           | Server-side architecture: the `cask web` server, HTTP wiring,      |
-|                                                  | middleware, config, lifecycle, deployment shapes.                  |
-| `frontend-architecture.md`          | Browser-facing architecture: hypermedia rendering, nested        |
-|                                                  | templates, htmx model, URL-as-state, embedding.                  |
-| `coding-guidelines.md`              | Idiomatic Go, std-lib only, no CSS/JS, templates + htmx, docs.  |
-| `library-design.md`                 | Lean-core budget, sentinel errors, no mutable globals, compat.  |
-| `performance.md`                    | Lock-free reads, streaming, allocations, benchmarks, profiling. |
-| `testing-strategy.md`               | The CAS laws + unit/property/fuzz/race/corruption/golden tests. |
-| `operations.md`                     | Durability, recovery, observability, migration, backup.         |
-| `consistency.md`                    | Broken/dangling detection, GC from roots, age-based pruning.    |
-| `defaults.md`                       | Canonical defaults & behavior reference (all constants, grouped). |
-| `versioning.md`                     | Library Git versioning: semver tags, Go module v2+ rules, release process. |
-| `branch-naming.md`                  | Simple Git branch concept: main + short-lived typed branches, patterns, lifecycle. |
-| `cli.md`                            | cmd/cask contract: subcommands, flags, output, exit codes, local ops plus the `web` viewer subcommand. |
-| `object-versioning.md`              | Object-model semver: versioned type names, coexisting majors, migration. |
-| `viewer-security.md`                | Viewer security requirements (authn/authz, sessions, audit).    |
-| `viewer-design.md`                  | Viewer UI design (dashboard, templates + htmx, low-level views).|
-| `api-design.md`                     | Shared HTTP API design conventions (viewer + example HTTP surfaces).             |
-| `examples.md`                       | Example-program rules + the five proposed examples.             |
-| `extensions.md`                     | Minimal requirements for future extensions/clients of the core; catalog of designed-but-deferred possible extensions. |
-
----
-
-## 11. Editing & Maintenance Checklist
+## 10. Editing & Maintenance Checklist
 
 Before committing any change to a file in this folder:
 

@@ -1,4 +1,4 @@
----
+﻿---
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
 version: v10
@@ -253,13 +253,13 @@ Acceptance: a design decision first, then implementation behind the same
 
 ---
 
-## 11. Performance Test Requirements
+## 10. Performance Test Requirements
 
 Go benchmarks (with `-benchmem`, reporting allocs) are the unit level. The
 following **scenario tests** prove end-to-end behavior at scale. Run them on
 every material core change (CI smoke: subset) and fully in nightly.
 
-### 11.1 Scenarios
+### 10.1 Scenarios
 
 | # | Scenario                          | Setup                                                    |
 | - | --------------------------------- | -------------------------------------------------------- |
@@ -272,12 +272,12 @@ every material core change (CI smoke: subset) and fully in nightly.
 | T-07 | Fan-out comparison            | flat vs. (2,1) vs. (2,2) vs. (4,1) at 100k objects       |
 | T-08 | HTTP end-to-end               | client → CAS API: streaming upload/download, 429 under load |
 
-### 11.2 Metrics
+### 10.2 Metrics
 
 Throughput (objects/s, MiB/s), latency p50/p95/p99, allocs/op, peak RSS,
 disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 
-### 11.3 Reference thresholds (defaults, calibrate on CI hardware)
+### 10.3 Reference thresholds (defaults, calibrate on CI hardware)
 
 | Metric                                  | Target                                    |
 | --------------------------------------- | ----------------------------------------- |
@@ -287,7 +287,7 @@ disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 | List at 1M objects (fs, (2,2))          | ≤ 30 s; Stats similar                     |
 | Concurrent readers (T-04)               | scales ~linearly; mutex profile clean     |
 
-### 11.4 Report & environment
+### 10.4 Report & environment
 
 - Record: CPU model, RAM, disk type (SSD/HDD), filesystem, Go version; run
   each scenario 3× and take the median.

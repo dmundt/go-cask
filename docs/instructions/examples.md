@@ -1,4 +1,4 @@
----
+﻿---
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
 version: v10
@@ -302,22 +302,6 @@ examples/api/
 stream without buffering; `GET /api/cas/v1/openapi.yaml` is served and
 matches the routes. The server imports nothing but `cas` and stdlib — proof
 the pattern needs no `internal/` and no SDK.
-
-### 3.5 `examples/viewer` — embedded viewer (nested templates + htmx)
-
-The viewer's `nested templates + htmx` and `dashboard` aspects are **not
-demonstrated by a separate example** — they are implemented by the **product
-viewer** in `internal/web/` (the `cask web` subcommand). The viewer is a
-byte-layer tool per `viewer-design.md` and `viewer-security.md`, built with
-nested Go templates + htmx, no CSS/JS, session auth, role enforcement, CSRF,
-and audit logging. The aspect-coverage matrix (§4) marks these cells as
-`product (internal/web)` rather than `✓` to indicate they are covered by
-the shipping product rather than a standalone example. The rules in §2
-(self-contained, no `internal/` imports) make a separate example infeasible:
-the viewer would need to duplicate the product implementation, violating
-the "examples teach, never ship" principle.
-
----
 
 ## 4. Aspect Coverage Matrix
 
