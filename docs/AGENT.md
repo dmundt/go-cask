@@ -1,71 +1,115 @@
 ---
-type: Agent Instructions
-title: AGENT — go-cask
-description: Meta-guide for the docs/ folder — file naming, frontmatter conventions, versioning, and the maintenance checklist that keeps every document in this tree consistent. This file governs docs/index.md, docs/instructions/, docs/design/, docs/performance/, and any future subdirectories.
-version: v2
+title: AGENT — go-cask (docs/ folder)
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/instructions/, docs/design/, docs/performance/, and any future subdirectories. The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+version: v3
 ---
 
 # AGENT — go-cask (docs/ folder)
 
-> This file governs **all non-instruction docs in `docs/`**: `docs/index.md`,
-> `docs/design/`, `docs/performance/`, and any future subdirectories.
-> The instruction specs under `docs/instructions/` are governed by their own
+> This file governs all non-instruction docs in `docs/`. The instruction
+> specs under `docs/instructions/` have their own
 > [`AGENT.md`](instructions/AGENT.md). This file fills the gap for documents
 > outside that folder.
 >
-> **To reduce token usage, consult the hierarchical index first.**
-> 1. Start at [`docs/index.md`](index.md) — the top-level rule index maps
->    any path to its rule file.
-> 2. For design docs, open [`docs/design/index.md`](design/index.md).
-> 3. For instruction specs, open [`docs/instructions/index.md`](instructions/index.md).
-> 4. For performance/benchmark docs, open [`docs/performance/index.md`](performance/index.md).
-> 5. Only after matching your path should you open the detailed spec file.
+> **Before any change**, read [`docs/index.md`](index.md) first — it maps
+> path → spec file in one table. Then read this file (or
+> `docs/instructions/AGENT.md`) for detailed conventions.
 
 ---
 
-## 1. File Naming
+## 1. Format — OKF v0.2
 
-- **Top-level docs** at `docs/*.md` use lowercase kebab-case:
-  `index.md`, `benchmarks.md`, etc.
-- **Design docs** in `docs/design/` use lowercase kebab-case:
-  `core-overview.md`, `viewer-brief.md`, `go-cask-viewer.html`.
-- Instruction specs in `docs/instructions/` follow the naming rules in
-  `docs/instructions/AGENT.md` §2.
+Every `.md` file in `docs/` MUST be a valid
+[Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+concept document.
+
+### 1.1 Frontmatter rules
+
+| Field | When | Example |
+|---|---|---|
+| `type:` | Every non-index file | `type: Specification`, `type: Design Document`, `type: Guide`, `type: Agent Instructions` |
+| `okf_version: "0.2"` | Only `index.md` files (root + subdirectory) | `okf_version: "0.2"` |
+| `title:` | Always | `title: CAS Core — go-cask` |
+| `description:` | Always (single line) | `description: Core library specification for go-cask.` |
+| `version:` | Always (our custom key) | `version: v1` |
+| `tags:` | Optional | `tags: [go-cask]` |
+| `status:` | Optional — stable \| draft \| deprecated | `status: stable` |
+
+Both `type` and `version` are required. All other OKF standard keys
+(`sources`, `generated`, `verified`, `stale_after`, `tags`, `status`) are
+optional but MUST be used when applicable.
+
+### 1.2 Type values and their locations
+
+| Type | Applies to |
+|---|---|
+| `Specification` | Every file in `docs/instructions/` |
+| `Design Document` | Every file in `docs/design/` |
+| `Guide` | `docs/performance/benchmarks.md` and similar how-to files |
+| `Agent Instructions` | Any `AGENT.md` file |
+
+### 1.3 Index files
+
+Every subdirectory MUST have an `index.md` (OKF progressive disclosure).
+Root `docs/index.md` is the top-level rule index. Subdirectory index files
+(`docs/design/index.md`, `docs/instructions/index.md`,
+`docs/performance/index.md`) are shorter. All index files carry
+`okf_version: "0.2"` in frontmatter and no `type`.
 
 ---
 
-## 2. Frontmatter (required)
+## 2. Trimming — keep minimal, never duplicate
 
-Every `.md` file in `docs/` (outside `docs/instructions/`) MUST begin with
-YAML frontmatter, exactly three keys:
-
-```yaml
----
-title: <Title> — go-cask
-description: One sentence describing the document's purpose.
-version: v2
----
-```
-
-- `version` is a simple marker (`v1`, `v2`, …). Bump by one whenever the
-  file is materially extended or changed. Cosmetic fixes (typos, formatting)
-  do NOT bump the version.
-- The `description` is a single line: imperative, mentions the key
-  components.
-
----
-
-## 3. Cross-Referencing
-
-- Refer to sibling files by relative path in backticks:
-  `[design/index.md](design/some-doc.md)`.
-- Reference the rule index as the entry point: see `docs/index.md`.
-- When a change affects a documented convention, update **all** files that
-  reference it in one pass.
+- **Every doc must earn its bytes.** If a doc can be replaced by a pointer
+  to another doc, replace it. If a section repeats information already in
+  another spec, remove it and reference the canonical source.
+- **Cross-document duplication must be eliminated.** Each fact lives in one
+  place (typically `defaults.md` or the owning spec) and is referenced, not
+  restated. If you find the same number or rule in two files, remove one
+  and add a link.
+- **Mermaid diagrams are exempt from trimming.** They visualize complex
+  relationships and are kept even when large. Their token cost is justified.
+- **Dead code-style sections** (design sketches for deferred features,
+  historical rationales, single-run benchmark samples) should be removed
+  and replaced with a brief pointer to the deferral record.
+- **Keep the three directory structure:**
+  - `docs/instructions/` — normative specs (20 files)
+  - `docs/design/` — non-normative design documents
+  - `docs/performance/` — benchmark and performance guides
 
 ---
 
-## 4. Diagram & Formatting Rules
+## 3. Adding a new file
+
+1. Create the file at the correct path under `docs/`.
+2. Add OKF frontmatter with at minimum `type`, `title`, `description`,
+   `version`.
+3. Add a row to the parent directory's `index.md`.
+4. If the file introduces a new path pattern that agents should match,
+   add a row to `docs/index.md`.
+
+---
+
+## 4. Removing or renaming a file
+
+1. Remove or update its row in the parent directory's `index.md`.
+2. Remove or update its row in `docs/index.md`.
+3. Update all cross-references in other docs.
+4. Bump `version` on every affected file.
+
+---
+
+## 5. Versioning
+
+- `version: v1`, `v2`, … — bump by one on material changes.
+- Cosmetic fixes (typos, formatting) do NOT bump.
+- The `version` field is our custom key; OKF defines no required version
+  field. We keep it because it is the mechanism for consumers to detect
+  staleness.
+
+---
+
+## 6. Diagram & Formatting Rules
 
 - Mermaid for relationships/flow, ASCII only alongside mermaid (raw views).
 - Code fences always carry a language tag: `go`, `yaml`, `text`, `mermaid`.
@@ -73,14 +117,16 @@ version: v2
 
 ---
 
-## 5. Editing & Maintenance Checklist
+## 7. Editing & Maintenance Checklist
 
 Before committing any change to a file in `docs/` (outside `docs/instructions/`):
 
-- [ ] Frontmatter present, `title` == H1, one-line `description`
-- [ ] `version` bumped by one when the change is material (§2)
+- [ ] OKF frontmatter present (`type`, `title`, `description`, `version` for
+      concept docs; `okf_version: "0.2"` for index files)
+- [ ] `version` bumped on material change
+- [ ] Duplication avoided — check `defaults.md` and owning specs first
 - [ ] Cross-references updated in ALL files that mention the changed term
-- [ ] Diagrams valid mermaid; fences tagged
-- [ ] Every mermaid block balanced (openers == closers)
-- [ ] `docs/index.md` updated when a rule file is added, removed, or its
-      scope materially changes
+- [ ] If a file is added/removed/renamed, `docs/index.md` and the parent
+      `index.md` updated
+- [ ] Mermaid blocks balanced (openers == closers); all code fences tagged
+- [ ] LF endings, UTF-8
