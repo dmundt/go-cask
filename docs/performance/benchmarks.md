@@ -10,7 +10,7 @@ version: v2
 The go-cask benchmarks measure the `cas` core's speed and allocation
 behavior. They are **manual, on-demand tools** — nothing in CI runs `-bench`
 (CI enforces correctness, race, coverage, and fuzz only). The normative
-contract for what is benchmarked and why is `docs/instructions/performance.md`
+contract for what is benchmarked and why is `docs/specs/performance.md`
 §5 (suite) and §11 (scenario targets); this file is the operator's guide to
 running and reading the benchmarks themselves.
 
@@ -199,9 +199,9 @@ store scales.
 
 ## 6. Reference
 
-- `docs/instructions/performance.md` §5 — the benchmark suite contract;
+- `docs/specs/performance.md` §5 — the benchmark suite contract;
   §11 — scenario-test targets and defaults.
-- `docs/instructions/defaults.md` §6 — default performance targets (e.g.
+- `docs/specs/defaults.md` §6 — default performance targets (e.g.
   memory-backend small Put/Get ≥ 100k obj/s, ≤ 5 allocs/op).
 - This guide's examples assume PowerShell (Windows) or bash; the `go test`
   flags are identical everywhere.

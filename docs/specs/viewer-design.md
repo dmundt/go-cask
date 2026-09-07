@@ -19,11 +19,11 @@ version: v7
 > consistent layout, clear information hierarchy, and obvious navigation.
 >
 > It MUST be read together with:
-> - `docs/instructions/viewer-security.md` — every security
+> - `docs/specs/viewer-security.md` — every security
 >   requirement there applies to this viewer unchanged.
-> - `docs/instructions/coding-guidelines.md` — §4 (no
+> - `docs/specs/coding-guidelines.md` — §4 (no
 >   CSS/JS), §5 (html/template + htmx), §6 (raw HTML), §10 (viewer boundary).
-> - `docs/instructions/cas-core.md` — the data model
+> - `docs/specs/cas-core.md` — the data model
 >   the viewer displays (`Hash`, `Object[T]`, `RawStore.Stats`, `Verify`,
 >   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
@@ -98,7 +98,7 @@ via a new hash), JSON/data APIs, client-side state, charting libraries.
 
 ## 3. Security Alignment
 
-All requirements of `docs/instructions/viewer-security.md`
+All requirements of `docs/specs/viewer-security.md`
 apply verbatim. The design-relevant consequences:
 
 - **Runs only when invoked**: `cask web` starts the viewer and no other

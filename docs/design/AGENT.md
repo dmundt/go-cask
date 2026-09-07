@@ -12,7 +12,7 @@ status: stable
 > This file governs **`docs/design/`** — non-normative design artifacts:
 > the core-overview pointer doc, the viewer design brief, the object-browser
 > design JSON, and the viewer HTML mockup. Instruction specs live in
-> `docs/instructions/` (governed by `docs/instructions/AGENT.md`); this file
+> `docs/specs/` (governed by `docs/specs/AGENT.md`); this file
 > covers everything else in `docs/design/`.
 >
 > The repo-root `AGENTS.md` is the entry point for AI agents. Before any
@@ -51,7 +51,7 @@ version: v1
 
 ## 3. Cross-Referencing
 
-- Refer to instruction specs by their `docs/instructions/` paths.
+- Refer to instruction specs by their `docs/specs/` paths.
 - Refer to sibling design docs by relative path (`./viewer-brief.md`).
 - Reference the rule index as the entry point: `docs/index.md`.
 

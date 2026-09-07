@@ -11,8 +11,8 @@ version: v4
 > weaken this file** (AGENT.md §8 precedence). The viewer design and its
 > HTTP surface MUST comply with it.
 >
-> Related: `docs/instructions/viewer-design.md` (the UI it
-> protects), `docs/instructions/api-design.md` (shared HTTP
+> Related: `docs/specs/viewer-design.md` (the UI it
+> protects), `docs/specs/api-design.md` (shared HTTP
 > conventions).
 
 ---

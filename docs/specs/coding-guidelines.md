@@ -9,8 +9,8 @@ version: v7
 
 > Applies to **all Go code** in this repository (`cas/`, `internal/`,
 > `cmd/`).
-> Complements `docs/instructions/cas-core.md` (what to
-> build) and `docs/instructions/viewer-security.md` (how the
+> Complements `docs/specs/cas-core.md` (what to
+> build) and `docs/specs/viewer-security.md` (how the
 > viewer must be secured). Where this file conflicts with an older sketch in
 > another document, this file wins.
 >
@@ -285,7 +285,7 @@ Consequences for this repo:
   `embed.FS`; htmx is one pinned file (vendored locally preferred; a CDN URL
   is acceptable only with an integrity attribute).
 - The viewer MUST comply with
-  `docs/instructions/viewer-security.md` (secure by default,
+  `docs/specs/viewer-security.md` (secure by default,
   authn/authz, session management, CSRF, audit logging). The no-CSS/no-JS rule
   is part of keeping the viewer minimal and auditable.
 
@@ -307,5 +307,5 @@ Consequences for this repo:
 - [x] `context.Context` first, errors wrapped with `%w`, no panics in library
       code
 - [x] Viewer changes re-checked against
-      `docs/instructions/viewer-security.md`
+      `docs/specs/viewer-security.md`
 

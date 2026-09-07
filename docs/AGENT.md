@@ -1,20 +1,20 @@
----
+﻿---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/instructions/, docs/design/, docs/performance/, and any future subdirectories. The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, docs/performance/, and any future subdirectories. The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
 version: v3
 ---
 
 # AGENT — go-cask (docs/ folder)
 
 > This file governs all non-instruction docs in `docs/`. The instruction
-> specs under `docs/instructions/` have their own
+> specs under `docs/specs/` have their own
 > [`AGENT.md`](instructions/AGENT.md). This file fills the gap for documents
 > outside that folder.
 >
 > **Before any change**, read [`docs/index.md`](index.md) first — it maps
 > path → spec file in one table. Then read this file (or
-> `docs/instructions/AGENT.md`) for detailed conventions.
+> `docs/specs/AGENT.md`) for detailed conventions.
 
 ---
 
@@ -44,7 +44,7 @@ optional but MUST be used when applicable.
 
 | Type | Applies to |
 |---|---|
-| `Specification` | Every file in `docs/instructions/` |
+| `Specification` | Every file in `docs/specs/` |
 | `Design Document` | Every file in `docs/design/` |
 | `Guide` | `docs/performance/benchmarks.md` and similar how-to files |
 | `Agent Instructions` | Any `AGENT.md` file |
@@ -53,7 +53,7 @@ optional but MUST be used when applicable.
 
 Every subdirectory MUST have an `index.md` (OKF progressive disclosure).
 Root `docs/index.md` is the top-level rule index. Subdirectory index files
-(`docs/design/index.md`, `docs/instructions/index.md`,
+(`docs/design/index.md`, `docs/specs/index.md`,
 `docs/performance/index.md`) are shorter. All index files carry
 `okf_version: "0.2"` in frontmatter and no `type`.
 
@@ -74,7 +74,7 @@ Root `docs/index.md` is the top-level rule index. Subdirectory index files
   historical rationales, single-run benchmark samples) should be removed
   and replaced with a brief pointer to the deferral record.
 - **Keep the three directory structure:**
-  - `docs/instructions/` — normative specs (20 files)
+  - `docs/specs/` — normative specs (20 files)
   - `docs/design/` — non-normative design documents
   - `docs/performance/` — benchmark and performance guides
 
@@ -120,7 +120,7 @@ Root `docs/index.md` is the top-level rule index. Subdirectory index files
 
 ## 7. Editing & Maintenance Checklist
 
-Before committing any change to a file in `docs/` (outside `docs/instructions/`):
+Before committing any change to a file in `docs/` (outside `docs/specs/`):
 
 - [ ] OKF frontmatter present (`type`, `title`, `description`, `version` for
       concept docs; `okf_version: "0.2"` for index files)

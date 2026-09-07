@@ -17,11 +17,11 @@ version: v25
 > state). This document is the canonical core spec; the aggregator
 > (`AGENTS.md` at the repo root) points here.
 >
-> Related: `docs/instructions/library-design.md` (lean-core contract,
-> sentinel errors, compatibility), `docs/instructions/performance.md`
-> (lock-free reads, allocations), `docs/instructions/testing-strategy.md`
-> (the CAS laws), `docs/instructions/examples.md` (runnable
-> demonstrations), `docs/instructions/backend-architecture.md` (server
+> Related: `docs/specs/library-design.md` (lean-core contract,
+> sentinel errors, compatibility), `docs/specs/performance.md`
+> (lock-free reads, allocations), `docs/specs/testing-strategy.md`
+> (the CAS laws), `docs/specs/examples.md` (runnable
+> demonstrations), `docs/specs/backend-architecture.md` (server
 > composition).
 
 ---
@@ -599,7 +599,7 @@ type Object[T any] interface {
 - `Type()` makes objects self-describing without an external schema. It
   returns a **versioned type name** `<type>@<major>` (e.g. `commit@1`) — the
   object model is semantically versioned and several majors coexist in one
-  store (`docs/instructions/object-versioning.md`).
+  store (`docs/specs/object-versioning.md`).
 - `References()` is the single source of truth for graph traversal, preloading,
   and GC reachability.
 - Serialization is NOT an object concern: `Store.Put` encodes the value with
@@ -703,7 +703,7 @@ demonstrates a cache monitor emitting snapshots — see their READMEs.
   AND older than `minAge` (age = file mtime ≈ first-`Put` time); `dryRun`
   returns the would-be-deleted set. Detection of broken/dangling objects and
   the full consistency model are defined in
-  `docs/instructions/consistency.md`.
+  `docs/specs/consistency.md`.
 
 ### 4.12 Example layer: `gitlike` (NOT generic core)
 
@@ -1012,17 +1012,17 @@ Open follow-ups (future extensions, not blocking):
 
 - `AGENTS.md` (repo root) — aggregator: project context,
   conversation history, principles, extension guide, constraints.
-- `docs/instructions/library-design.md` — lean-core budget,
+- `docs/specs/library-design.md` — lean-core budget,
   sentinel errors, API shape, compatibility policy.
-- `docs/instructions/performance.md` — lock-free reads,
+- `docs/specs/performance.md` — lock-free reads,
   one-pass hashing, allocations, benchmarks.
-- `docs/instructions/testing-strategy.md` — the CAS laws and
+- `docs/specs/testing-strategy.md` — the CAS laws and
   how the core is proven.
-- `docs/instructions/backend-architecture.md` — how the core
+- `docs/specs/backend-architecture.md` — how the core
   is composed into the server.
-- `docs/instructions/examples.md` — runnable demonstrations
+- `docs/specs/examples.md` — runnable demonstrations
   of the core.
-- `docs/instructions/consistency.md` — broken/dangling
+- `docs/specs/consistency.md` — broken/dangling
   detection, GC from roots, age-based pruning (the maintenance model of
   §4.11).
-- `docs/instructions/AGENT.md` — the folder's meta-guide.
+- `docs/specs/AGENT.md` — the folder's meta-guide.

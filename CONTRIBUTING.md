@@ -1,9 +1,9 @@
-# Contributing to go-cask
+﻿# Contributing to go-cask
 
 Thank you for contributing! This project is **specified, not guessed**: the
-`docs/instructions/` folder is the single source of truth for design,
+`docs/specs/` folder is the single source of truth for design,
 contracts, and conventions. Before anything else, read
-`docs/instructions/AGENT.md` — it governs every other spec and this
+`docs/specs/AGENT.md` — it governs every other spec and this
 repository.
 
 ## Development workflow
@@ -13,8 +13,8 @@ repository.
 - Go **1.27** (the toolchain is self-managing via `go.mod`; a Go ≥ 1.21
   install auto-downloads it).
 - `git` — the repo uses the branch and tag conventions in
-  `docs/instructions/branch-naming.md` and
-  `docs/instructions/versioning.md`.
+  `docs/specs/branch-naming.md` and
+  `docs/specs/versioning.md`.
 
 ### Where things live
 
@@ -25,7 +25,7 @@ repository.
 | `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
 | `examples/`          | Runnable example programs (`examples.md`)                   |
-| `docs/instructions/` | The specification set (19 spec files + AGENT.md)            |
+| `docs/specs/` | The specification set (19 spec files + AGENT.md)            |
 
 ### Design decisions & constraints
 

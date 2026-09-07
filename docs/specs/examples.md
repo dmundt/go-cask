@@ -27,12 +27,12 @@ version: v10
 > APIs in real use, they compile, and they are covered by tests where behavior
 > can be asserted. They are **not** part of the `cas`/`gitlike` libraries.
 >
-> Related specs: `docs/instructions/cas-core.md`
-> (the design the examples exercise), `docs/instructions/coding-guidelines.md`
-> (how the Go code must be written), `docs/instructions/api-design.md`
+> Related specs: `docs/specs/cas-core.md`
+> (the design the examples exercise), `docs/specs/coding-guidelines.md`
+> (how the Go code must be written), `docs/specs/api-design.md`
 > (HTTP conventions for example surfaces),
-> `docs/instructions/viewer-security.md`
-> and `docs/instructions/viewer-design.md` (viewer rules).
+> `docs/specs/viewer-security.md`
+> and `docs/specs/viewer-design.md` (viewer rules).
 
 ---
 

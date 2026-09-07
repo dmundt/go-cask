@@ -13,11 +13,11 @@ version: v2
 > several model versions in one store, and clear compatibility rules — so
 > changing an object model never makes old data unreadable.
 >
-> Related: `docs/instructions/cas-core.md` §4.7 (the
-> `Object[T]` contract), §4.12 (gitlike example), `docs/instructions/
+> Related: `docs/specs/cas-core.md` §4.7 (the
+> `Object[T]` contract), §4.12 (gitlike example), `docs/specs/
 > library-design.md` §2 (sentinel errors),
-> `docs/instructions/versioning.md` §6 (the other version
-> spaces), `docs/instructions/consistency.md` (migration
+> `docs/specs/versioning.md` §6 (the other version
+> spaces), `docs/specs/consistency.md` (migration
 > safety).
 
 ---

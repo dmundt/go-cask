@@ -1,7 +1,7 @@
 ﻿---
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
-description: The meta-guide for docs/instructions/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
+description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
 version: v8
 tags: [go-cask]
 status: stable
@@ -11,7 +11,7 @@ status: stable
 
 > This file governs **the other files in this folder**. Every agent (Copilot,
 > other AI tooling) and every human maintainer editing any
-> `docs/instructions/*.md` MUST follow it, so the folder stays
+> `docs/specs/*.md` MUST follow it, so the folder stays
 > a single, coherent specification set rather than a pile of docs.
 >
 > Scope: this folder contains the normative specs of the go-cask project
@@ -37,7 +37,7 @@ status: stable
 ## 2. File Naming
 
 - Pattern: `<Topic>.md` — one topic per file, where the topic is a lowercase
-  kebab-case domain noun. The folder name (`docs/instructions/`) already says
+  kebab-case domain noun. The folder name (`docs/specs/`) already says
   "instructions", so filenames carry **no** `.instructions` suffix.
 - Topics are domain nouns — the full set is: `api-design`,
   `backend-architecture`, `branch-naming`, `cas-core`, `cli`,
@@ -49,7 +49,7 @@ status: stable
   `coding-guidelines.md`) and never repeat "instructions" inside a name.
 - One topic per file; `-api` / `-design` / `-security` suffixes disambiguate
   facets of the same domain (viewer).
-- The specs live in `docs/instructions/` — a host-agnostic home that is not
+- The specs live in `docs/specs/` — a host-agnostic home that is not
   tied to GitHub (any host or agent can find it); the repo-root agent
   aggregator (`AGENTS.md`) points at this folder and is auto-read by any
   agent that honors the AGENTS.md convention. This meta-guide is the sole
@@ -90,8 +90,8 @@ Rules:
    two sentences, then a `Related:` line listing the specs it must be read
    with (relative paths, backticked). Example:
    ```
-   > Related: `docs/instructions/cas-core.md` (…),
-   > `docs/instructions/coding-guidelines.md` (…).
+   > Related: `docs/specs/cas-core.md` (…),
+   > `docs/specs/coding-guidelines.md` (…).
    ```
 3. **Numbered `##` sections** — `## 1. Purpose & Scope` onwards. Sections are
    numbered; subsections are `### 3.1 …` (or `### 4.13` style when appended).
@@ -153,12 +153,12 @@ Forbidden / deprecated:
 
 ## 7. Cross-Referencing & Related Specs
 
-- Refer to sibling files by backticked path (`docs/instructions/cas-core.md`)
+- Refer to sibling files by backticked path (`docs/specs/cas-core.md`)
   or, inside a `Related:` line, by short backticked name (`cas-core.md`).
 - Reference sections by their number (`§4.4`, `P-05`, `§2`) — never by
   approximate prose.
 - When a change affects a contract, update **all** files that reference it in
-  one pass; a `grep` for the changed term across `docs/instructions/` and
+  one pass; a `grep` for the changed term across `docs/specs/` and
   `.github/` must come back clean.
 - The `AGENTS.md` aggregator's "Related specs" list MUST list every
   instruction file (add new files there when created).
@@ -226,7 +226,7 @@ Before committing any change to a file in this folder:
       no "Repository in core")
 - [x] Normative language per §5 (MUST/SHALL/MAY used consistently)
 - [x] Cross-references updated in ALL files that mention the changed term;
-      `grep` over `docs/instructions/` and `.github/` for old terms returns
+      `grep` over `docs/specs/` and `.github/` for old terms returns
       nothing
 - [x] New files added to the `AGENTS.md` aggregator's "Related specs" list
       and to the §10 inventory

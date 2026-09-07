@@ -1,4 +1,4 @@
-# CASK — Content Addressable Store Kit
+﻿# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
@@ -58,7 +58,7 @@ cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
 examples/  runnable example programs (incl. the gitlike reference object model)
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
-docs/instructions/  the specification set (19 specs + AGENT.md)
+docs/specs/  the specification set (19 specs + AGENT.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
 AGENTS.md  the agent aggregator at the repo root
 .github/   CI only
@@ -163,11 +163,11 @@ raw := cas.NewMemoryRawStore() // fast, deterministic, not persistent
 
 ## The specification set
 
-This project is specified, not guessed: `docs/instructions/` contains the
+This project is specified, not guessed: `docs/specs/` contains the
 complete design contract — core architecture (`cas-core`), coding guidelines,
 library design, performance, testing, consistency (GC/pruning), the viewer
 HTTP surface, viewer design & security, versioning, defaults, examples,
-and extensions. `docs/instructions/AGENT.md` in that folder is the
+and extensions. `docs/specs/AGENT.md` in that folder is the
 meta-guide; read it before editing any spec. The full inventory is in
 `AGENT.md` §10. Non-normative design material lives in `docs/design/`
 (the core-overview pointer and the viewer design brief). AI agents working

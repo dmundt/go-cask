@@ -1,6 +1,6 @@
----
+﻿---
 title: Agent Instructions — go-cask
-description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/instructions/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
+description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
 version: v11
 ---
 
@@ -46,26 +46,26 @@ examples/gitlike/ example package (package gitlike) — Git-like object model
                  WalkGraph
 examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
-docs/instructions/  the specification set (20 files: 19 specs + AGENT.md)
+docs/specs/  the specification set (20 files: 19 specs + AGENT.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
 docs/index.md  rule file index — read this first, then the matching spec
 AGENTS.md  this file — the repo-root agent aggregator; points at the
-           specs in docs/instructions/
+           specs in docs/specs/
 ```
 
 Related specs that also constrain work in this repo:
 
-- `docs/instructions/cas-core.md` — the canonical core
+- `docs/specs/cas-core.md` — the canonical core
   library specification (layers, every component contract with code, data
   flows, concurrency, and the extension contract); the reference
   implementation of this repo.
-- `docs/instructions/coding-guidelines.md` — idiomatic Go,
+- `docs/specs/coding-guidelines.md` — idiomatic Go,
   standard-library-only, no CSS/JS, `html/template` + htmx, raw HTML,
   doc-comment rules, Go 1.27, latest generics.
-- `docs/instructions/viewer-security.md` — security
+- `docs/specs/viewer-security.md` — security
   requirements for the embedded viewer (secure-by-default, authn/authz,
   session management, audit logging). Any viewer code MUST comply with it.
-- `docs/instructions/viewer-design.md` — design of the
+- `docs/specs/viewer-design.md` — design of the
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
   object/reference/blob inspection).
@@ -73,54 +73,54 @@ Related specs that also constrain work in this repo:
   iteration (OpenDesign input, not a normative spec): structure-only step 1,
   no JS/CSS; pages, components, and the htmx interaction map aligned to the
   cas model.
-- `docs/instructions/examples.md` — how example programs are
+- `docs/specs/examples.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
   the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
-- `docs/instructions/extensions.md` — the simple requirements
+- `docs/specs/extensions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
   designed-but-deferred possible extensions (packfiles, compression layer,
   encryption layer, chunking).
-- `docs/instructions/consistency.md` — the consistency model:
+- `docs/specs/consistency.md` — the consistency model:
   broken/dangling object detection, mark-and-sweep GC from roots,
   age-based pruning (retention), informed by Git/IPFS/restic without
   over-engineering.
-- `docs/instructions/defaults.md` — the canonical reference
+- `docs/specs/defaults.md` — the canonical reference
   for default behavior and every default value/constant (hash algo, fan-out,
   rate limits, sessions, performance baselines, Go/project defaults).
-- `docs/instructions/versioning.md` — library Git versioning:
+- `docs/specs/versioning.md` — library Git versioning:
   semver tags, Go module v2+ path-suffix rules, branches, changelog, release
   process; distinct from HTTP API and doc versions.
-- `docs/instructions/branch-naming.md` — the simple Git
+- `docs/specs/branch-naming.md` — the simple Git
   branch concept: one permanent `main`, short-lived `<type>/<kebab>` branches,
   on-demand `release/vX.Y`; patterns, examples, lifecycle.
-- `docs/instructions/cli.md` — the `cmd/cask` CLI contract:
+- `docs/specs/cli.md` — the `cmd/cask` CLI contract:
   subcommands, flags, output format, exit codes, local (`-store`) ops and the `web` viewer subcommand.
-- `docs/instructions/object-versioning.md` — object-model
+- `docs/specs/object-versioning.md` — object-model
   semver: versioned type names (`type@major`), coexisting model versions in
   one store, compatibility rules and migration.
-- `docs/instructions/performance.md` — lock-free reads,
+- `docs/specs/performance.md` — lock-free reads,
   one-pass streaming hashing, allocation budgets, benchmark suite + CI
   gates, profiling workflow.
-- `docs/instructions/library-design.md` — lean-core contract:
+- `docs/specs/library-design.md` — lean-core contract:
   exported-surface budget, sentinel errors, no mutable globals, API shape,
   compatibility policy.
-- `docs/instructions/testing-strategy.md` — the CAS laws and
+- `docs/specs/testing-strategy.md` — the CAS laws and
   the unit/property/fuzz/race/corruption/golden tests that prove them.
-- `docs/instructions/operations.md` — durability, crash
+- `docs/specs/operations.md` — durability, crash
   recovery, observability, integrity cadence, hash/layout migration, backup.
-- `docs/instructions/api-design.md` — shared HTTP API design
+- `docs/specs/api-design.md` — shared HTTP API design
   conventions: naming, methods, status codes, errors, authn/authz, rate
   limiting, validation, pagination, streaming, versioning, OpenAPI docs —
   applied consistently to the viewer surface and to example HTTP surfaces.
-- `docs/instructions/AGENT.md` — the meta-guide for the instruction folder:
+- `docs/specs/AGENT.md` — the meta-guide for the instruction folder:
   file naming, frontmatter, document structure, terminology, precedence, and
   the maintenance checklist that keeps every instruction file consistent.
-- `docs/instructions/backend-architecture.md` — server-side
+- `docs/specs/backend-architecture.md` — server-side
   architecture: the single `cmd/cask` binary and its `cask web` server, HTTP
   wiring, middleware pipeline, storage backend selection, config, lifecycle,
   deployment shapes.
-- `docs/instructions/frontend-architecture.md` — browser-facing
+- `docs/specs/frontend-architecture.md` — browser-facing
   architecture: hypermedia-driven rendering, nested templates, htmx
   interaction model, URL-as-state, embedding.
 
@@ -252,7 +252,7 @@ build their own equivalents for their own types.
 ## Reference Implementation
 
 > The full reference implementation (signatures, behaviors, and code) lives in
-> **`docs/instructions/cas-core.md`** — section 4 (component
+> **`docs/specs/cas-core.md`** — section 4 (component
 > specifications with code) and section 5 (data flows). This aggregator does
 > not duplicate it: keep implementations and docs in sync with cas-core.
 
@@ -395,5 +395,5 @@ gofmt -l .
 - Serialization format: RESOLVED and implemented — self-describing envelope
   `{"type": "...@major", "data": <base64 payload>}` (cas-core §8 decision 1),
   enabling `parseType`/`ResolveAny` without a side registry.
-- Follow the sibling spec `docs/instructions/viewer-security.md`
+- Follow the sibling spec `docs/specs/viewer-security.md`
   for anything touching the embedded viewer (`internal/web/`).

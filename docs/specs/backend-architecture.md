@@ -18,11 +18,11 @@ version: v11
 > surface; exposing a store to other machines is an app-author pattern
 > demonstrated by `examples/api` (AGENT §6 "CAS API").
 >
-> Related: `docs/instructions/viewer-design.md` and
-> `docs/instructions/viewer-security.md` (the viewer),
-> `docs/instructions/api-design.md` (HTTP conventions),
-> `docs/instructions/operations.md` (running it),
-> `docs/instructions/coding-guidelines.md`
+> Related: `docs/specs/viewer-design.md` and
+> `docs/specs/viewer-security.md` (the viewer),
+> `docs/specs/api-design.md` (HTTP conventions),
+> `docs/specs/operations.md` (running it),
+> `docs/specs/coding-guidelines.md`
 > (implementation style).
 
 ---

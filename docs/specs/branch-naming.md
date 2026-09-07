@@ -12,7 +12,7 @@ version: v2
 > optional release branches**. No long-lived integration branches, no
 > per-developer branches, no ambiguity about what a branch is for.
 >
-> Related: `docs/instructions/versioning.md` §3 (branch
+> Related: `docs/specs/versioning.md` §3 (branch
 > lifecycle) and §5 (release process — what branches carry), `AGENT.md`
 > (folder conventions).
 

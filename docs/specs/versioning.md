@@ -13,10 +13,10 @@ version: v6
 > stable surface is frozen; this document defines the rules from the first
 > tag onward.
 >
-> Related: `docs/instructions/library-design.md` §5
+> Related: `docs/specs/library-design.md` §5
 > (compatibility policy — the semantic contract this versioning implements),
-> `docs/instructions/defaults.md` §7 (Go baseline),
-> `docs/instructions/AGENT.md` §3 (document versions — a different thing,
+> `docs/specs/defaults.md` §7 (Go baseline),
+> `docs/specs/AGENT.md` §3 (document versions — a different thing,
 > see §6).
 
 ---
@@ -73,7 +73,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
   or re-release a version with different content. If a release is broken,
   ship `vX.Y.Z+1` (PATCH) — never re-tag.
 - **Branches**: full naming patterns, examples, and lifecycle rules are in
-  `docs/instructions/branch-naming.md`; the essentials:
+  `docs/specs/branch-naming.md`; the essentials:
   - `main` — default development branch; version tags land here.
   - `release/vX.Y` — created when a minor ships and still needs maintenance;
     PATCH releases for it are tagged on that branch.

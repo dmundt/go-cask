@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports

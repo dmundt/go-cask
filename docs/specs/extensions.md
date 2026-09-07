@@ -11,10 +11,10 @@ version: v5
 > types, codecs, hash algorithms, services, or apps that build on the `cas`
 > core. It is intentionally short — the details live in the referenced specs.
 >
-> Related: `docs/instructions/cas-core.md` §7 (the extension
-> contract and recipes), `docs/instructions/library-design.md`
-> (lean-core, errors, compatibility), `docs/instructions/coding-guidelines.md`
-> (Go style), `docs/instructions/examples.md` (runnable demonstrations).
+> Related: `docs/specs/cas-core.md` §7 (the extension
+> contract and recipes), `docs/specs/library-design.md`
+> (lean-core, errors, compatibility), `docs/specs/coding-guidelines.md`
+> (Go style), `docs/specs/examples.md` (runnable demonstrations).
 
 ---
 

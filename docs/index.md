@@ -34,10 +34,10 @@ version: v3
 | `cas/errors.go`; any exported `cas.*` identifier | [`library-design.md`](instructions/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](instructions/testing-strategy.md) |
 | `cas/bench_test.go`, `scale_bench_test.go` | [`performance.md`](instructions/performance.md) + [`docs/performance/benchmarks.md`](performance/benchmarks.md) |
-| `docs/instructions/*.md` | [`docs/instructions/AGENT.md`](instructions/AGENT.md) |
+| `docs/specs/*.md` | [`docs/specs/AGENT.md`](instructions/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](instructions/AGENT.md) §9 + [`testing-strategy.md`](instructions/testing-strategy.md) §5 |
-| Everything else | [`docs/instructions/AGENT.md`](instructions/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
+| Everything else | [`docs/specs/AGENT.md`](instructions/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
 
 **Updating:** add/remove/re-target rows when rule files change. Bump version on material change.
 
-**Sibling indexes:** [`docs/design/index.md`](design/index.md), [`docs/instructions/index.md`](instructions/index.md), [`docs/performance/index.md`](performance/index.md).
+**Sibling indexes:** [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](instructions/index.md), [`docs/performance/index.md`](performance/index.md).

@@ -14,12 +14,12 @@ version: v10
 > viewer server composition (backend-architecture §3). The product ships
 > no network JSON API (backend-architecture §1).
 >
-> Related: `docs/instructions/cas-core.md` (operations),
-> `docs/instructions/backend-architecture.md` (the `web`
-> viewer server), `docs/instructions/viewer-design.md` and
-> `docs/instructions/viewer-security.md` (the viewer),
-> `docs/instructions/consistency.md` (GC/prune),
-> `docs/instructions/versioning.md` (version output).
+> Related: `docs/specs/cas-core.md` (operations),
+> `docs/specs/backend-architecture.md` (the `web`
+> viewer server), `docs/specs/viewer-design.md` and
+> `docs/specs/viewer-security.md` (the viewer),
+> `docs/specs/consistency.md` (GC/prune),
+> `docs/specs/versioning.md` (version output).
 
 ---
 

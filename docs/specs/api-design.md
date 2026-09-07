@@ -10,15 +10,15 @@ version: v4
 > This document defines the **common API design conventions** for every HTTP
 > endpoint in go-cask. The product's only HTTP surface is the viewer
 > (`/viewer/*`, HTML; concrete routes in
-> `docs/instructions/viewer-design.md`); the `examples/api`
+> `docs/specs/viewer-design.md`); the `examples/api`
 > pattern demonstrates a JSON surface app authors can copy. **This document
 > defines HOW endpoints are designed** so product and example surfaces stay
 > consistent.
 >
-> Related: `docs/instructions/viewer-security.md`
-> (authn/authz), `docs/instructions/performance.md` (rate
-> limiting), `docs/instructions/library-design.md` (sentinel
-> errors), `docs/instructions/coding-guidelines.md` (Go
+> Related: `docs/specs/viewer-security.md`
+> (authn/authz), `docs/specs/performance.md` (rate
+> limiting), `docs/specs/library-design.md` (sentinel
+> errors), `docs/specs/coding-guidelines.md` (Go
 > implementation style).
 
 ---

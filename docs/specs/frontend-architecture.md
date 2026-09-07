@@ -13,10 +13,10 @@ version: v3
 > routes, and wireframe are defined by `viewer-design.md`; this
 > file is the architecture behind them.
 >
-> Related: `docs/instructions/viewer-design.md` (the viewer's
-> screens), `docs/instructions/viewer-security.md` (authn,
-> sessions, CSRF), `docs/instructions/coding-guidelines.md`
-> (no CSS/JS, templates + htmx), `docs/instructions/api-design.md`
+> Related: `docs/specs/viewer-design.md` (the viewer's
+> screens), `docs/specs/viewer-security.md` (authn,
+> sessions, CSRF), `docs/specs/coding-guidelines.md`
+> (no CSS/JS, templates + htmx), `docs/specs/api-design.md`
 > (HTTP conventions).
 
 ---
