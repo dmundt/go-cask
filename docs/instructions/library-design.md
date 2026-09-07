@@ -29,7 +29,7 @@ version: v10
   `HashBytes`, `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`,
   `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats`, `Codec`,
   `JSONCodec`, `Object`, `Store`, `NewStore`, `Walker`, `NewWalker`,
-  `CachedObject`, `CachedStore`, `NewCachedStore`, `LRUCache`, `NewLRUCache`,
+  `cache.CachedObject`, `cache.CachedStore`, `Newcache.CachedStore`, `cache.LRUCache`, `Newcache.LRUCache`,
   `NewMemoryRawStore`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`,
   the six sentinel `Err*` values.
 - **Optional machinery stays out of the core.** Prefetch-on-access and

@@ -656,19 +656,19 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 
 ### 4.10 Caching & lazy loading
 
-**`CachedObject[T]`** — lazy proxy for one hash:
+**`cache.CachedObject[T]`** — lazy proxy for one hash:
 
-- Fields: `hash`, back-pointer to its `CachedStore[T]`, `sync.RWMutex`,
+- Fields: `hash`, back-pointer to its `cache.CachedStore[T]`, `sync.RWMutex`,
   `obj`, `loaded`, `err`.
 - `Load(ctx)` uses **double-checked locking**; loads from the underlying
   `Store[T]` exactly once, then memoizes (object AND error).
 - `IsLoaded()` reports state without loading.
 
-**`CachedStore[T]`** — wraps `Store[T]`:
+**`cache.CachedStore[T]`** — wraps `Store[T]`:
 
-- Cache: `sync.Map` keyed by `h.String()` → `*CachedObject[T]`.
+- Cache: `sync.Map` keyed by `h.String()` → `*cache.CachedObject[T]`.
 - Metrics: `CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic counters).
-- `Proxy(ctx, h)` returns a **not-yet-loaded** `*CachedObject[T]` reference
+- `Proxy(ctx, h)` returns a **not-yet-loaded** `*cache.CachedObject[T]` reference
   (verifies existence first); `Get` = `Proxy` + `Load`, returning the
   concrete `T`.
 - `Preload(ctx, hashes)` loads many objects in parallel (worker goroutines +
@@ -676,16 +676,16 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 - `CacheStats()` (hit rate, size, loads, evicts), `Evict(h)`, `Clear()`,
   `Warmup(ctx, hashes)`.
 
-**`LRUCache[T]`** — size-bounded cache:
+**`cache.LRUCache[T]`** — size-bounded cache:
 
-- Embeds `CachedStore[T]`; adds an LRU with `maxSize` (in-tree std-lib
+- Embeds `cache.CachedStore[T]`; adds an LRU with `maxSize` (in-tree std-lib
   implementation per coding-guidelines §3 — see §8, decision 3);
   overrides `Proxy` and `Get` to track LRU and promote existing entries.
-- `NewLRUCache(store, maxSize)` rejects `maxSize <= 0`.
+- `Newcache.LRUCache(store, maxSize)` rejects `maxSize <= 0`.
 
 Prefetch-on-access (`SmartCache`) and periodic cache observability
 (`CacheMonitor`) are **example recipes, not part of `cas`**: `examples/notes`
-demonstrates prefetch-on-access over `CachedStore[T]`, and `examples/artifacts`
+demonstrates prefetch-on-access over `cache.CachedStore[T]`, and `examples/artifacts`
 demonstrates a cache monitor emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
@@ -768,7 +768,7 @@ type ResolvedObject struct {
   `WalkGraph(ctx, resolver, h, visit func(*ResolvedObject) error)`; its
   type-switch dispatch makes it specific to the example's object set, not
   generic (the generic alternative is `Walker[T]`, §4.9).
-- **`CachedRepository`** — per-type `LRUCache` wrappers plus an internal
+- **`CachedRepository`** — per-type `cache.LRUCache` wrappers plus an internal
   `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`.
 - **`Preloader`** — background worker pool consuming a `chan Hash`, running
   `Commits.PreloadRecursive(ctx, h, 2)`; non-blocking `Preload`, `Stop()`
@@ -806,7 +806,7 @@ raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (G
 ### 5.3 Lazy/cached read path
 
 ```text
-CachedStore.Proxy(ctx, h) ──► *CachedObject[T] (not loaded)
+CachedStore.Proxy(ctx, h) ──► *cache.CachedObject[T] (not loaded)
         │
         ▼ (first access)
 CachedObject.Load(ctx) ──► store.Get ──► memoize (obj, err)
@@ -912,7 +912,7 @@ The stable API the core promises (library-design §1):
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
 | Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
-| Caching       | `CachedObject[T]`, `CachedStore[T]`, `LRUCache[T]`, `CacheMetrics`, `CacheStats` |
+| Caching       | `cache.CachedObject[T]`, `cache.CachedStore[T]`, `cache.LRUCache[T]`, `CacheMetrics`, `CacheStats` |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
 
 Everything else is internal and MUST NOT be relied upon. The surface stays
@@ -949,8 +949,8 @@ algorithms remain readable (the algorithm lives in the address).
 Implement `Codec[T]` (e.g. wrap `JSONCodec[T]` with compression/encryption)
 and pass it to `NewStore`. Do not change the byte layer.
 
-**Add a cache policy**: wrap or extend `CachedStore[T]`; keep the
-`CachedObject[T]` lazy-load contract and the metrics counters.
+**Add a cache policy**: wrap or extend `cache.CachedStore[T]`; keep the
+`cache.CachedObject[T]` lazy-load contract and the metrics counters.
 
 **Add maintenance ops**: add methods on `FSRawStore` (or a backend-specific
 type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
@@ -1026,4 +1026,3 @@ Open follow-ups (future extensions, not blocking):
   detection, GC from roots, age-based pruning (the maintenance model of
   §4.11).
 - `docs/instructions/AGENT.md` — the folder's meta-guide.
-

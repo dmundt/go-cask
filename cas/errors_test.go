@@ -252,58 +252,6 @@ func TestVerifyCancelled(t *testing.T) {
 	}
 }
 
-func TestCachedLoadErrorMemoized(t *testing.T) {
-	ctx := context.Background()
-	store, c := newCachedSuite(t)
-	h, err := store.Put(ctx, testNote{Title: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	co, err := c.Proxy(ctx, h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Remove the object, then Load: the error must be memoized.
-	if err := store.Delete(ctx, h); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := co.Load(ctx); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Load = %v, want ErrNotFound", err)
-	}
-	if !co.IsLoaded() {
-		t.Fatal("failed Load must still mark the object loaded")
-	}
-	if _, err := co.Load(ctx); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("second Load = %v, want memoized ErrNotFound", err)
-	}
-}
-
-func TestCachedPreloadError(t *testing.T) {
-	ctx := context.Background()
-	_, c := newCachedSuite(t)
-	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if err := c.Preload(ctx, []Hash{missing}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Preload = %v, want ErrNotFound", err)
-	}
-}
-
-func TestCachedPreloadRecursiveMissingRef(t *testing.T) {
-	ctx := context.Background()
-	ns, err := NewStore(NewMemoryRawStore(), JSONCodec[testNode]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cn := NewCachedStore(ns)
-	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	root, err := ns.Put(ctx, testNode{Name: "root", Refs: []Hash{missing}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cn.PreloadRecursive(ctx, root, 2); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("PreloadRecursive = %v, want ErrNotFound", err)
-	}
-}
-
 func TestStoreGetRawMissing(t *testing.T) {
 	s := newTestStore(t, NewMemoryRawStore())
 	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")

@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 // prefetchTimeout bounds every asynchronous prefetch.
 const prefetchTimeout = 5 * time.Second
 
-// SmartCache[T] wraps a cas.CachedStore[T] and adds prefetch-on-access:
+// SmartCache[T] wraps a cache.CachedStore[T] and adds prefetch-on-access:
 // GetWithPrefetch loads the requested object and then asynchronously
 // prefetches its references (to prefetchDepth levels) so later reads hit
 // the cache. Prefetching never blocks or fails the caller — it runs in a
@@ -18,14 +19,14 @@ const prefetchTimeout = 5 * time.Second
 // the example's own prefetch recipe (formerly cas/extra), inlined per the
 // self-contained-examples rule.
 type SmartCache[T cas.Object[T]] struct {
-	store         *cas.CachedStore[T]
+	store         *cache.CachedStore[T]
 	prefetchDepth int
 }
 
 // NewSmartCache wraps store with reference prefetching to prefetchDepth
 // levels. A depth <= 0 disables prefetching (GetWithPrefetch then behaves
 // like Get).
-func NewSmartCache[T cas.Object[T]](store *cas.CachedStore[T], prefetchDepth int) *SmartCache[T] {
+func NewSmartCache[T cas.Object[T]](store *cache.CachedStore[T], prefetchDepth int) *SmartCache[T] {
 	return &SmartCache[T]{store: store, prefetchDepth: prefetchDepth}
 }
 

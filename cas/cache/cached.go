@@ -1,10 +1,12 @@
-package cas
+package cache
 
 import (
 	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dmundt/go-cask/cas"
 )
 
 // CacheMetrics are atomic counters tracking cache behavior: hits, misses,
@@ -32,9 +34,9 @@ type CacheStats struct {
 // underlying Store[T] exactly once (double-checked locking) and memoizes the
 // result — object AND error — for every later Load. IsLoaded reports state
 // without loading.
-type CachedObject[T Object[T]] struct {
-	store  *Store[T]
-	hash   Hash
+type CachedObject[T cas.Object[T]] struct {
+	store  *cas.Store[T]
+	hash   cas.Hash
 	mu     sync.RWMutex
 	obj    T
 	err    error
@@ -51,10 +53,9 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 		return obj, err
 	}
 	c.mu.RUnlock()
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.loaded { // double-checked locking
+	if c.loaded {
 		return c.obj, c.err
 	}
 	obj, err := c.store.Get(ctx, c.hash)
@@ -73,22 +74,20 @@ func (c *CachedObject[T]) IsLoaded() bool {
 // CachedStore[T] wraps a Store[T] with a sync.Map of CachedObject[T] keyed by
 // h.String(). Proxy returns a not-yet-loaded reference (verifying existence
 // first); Get loads it. Preload loads many objects in parallel.
-type CachedStore[T Object[T]] struct {
-	store   *Store[T]
-	cache   sync.Map // string → *CachedObject[T]
+type CachedStore[T cas.Object[T]] struct {
+	store   *cas.Store[T]
+	cache   sync.Map
 	metrics CacheMetrics
 	onNew   func(key string) // policy hook: called once per newly cached key
 }
 
 // NewCachedStore wraps store in a lazy-loading cache.
-func NewCachedStore[T Object[T]](store *Store[T]) *CachedStore[T] {
+func NewCachedStore[T cas.Object[T]](store *cas.Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
 }
 
-// Proxy returns the (possibly not-yet-loaded) CachedObject for h. It
-// verifies existence first: a missing object returns ErrNotFound and is not
-// cached.
-func (c *CachedStore[T]) Proxy(ctx context.Context, h Hash) (*CachedObject[T], error) {
+// Proxy returns the (possibly not-yet-loaded) CachedObject for h.
+func (c *CachedStore[T]) Proxy(ctx context.Context, h cas.Hash) (*CachedObject[T], error) {
 	key := h.String()
 	if v, ok := c.cache.Load(key); ok {
 		c.metrics.Hits.Add(1)
@@ -100,7 +99,7 @@ func (c *CachedStore[T]) Proxy(ctx context.Context, h Hash) (*CachedObject[T], e
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("cas: %w: %s", ErrNotFound, h)
+		return nil, fmt.Errorf("cache: %w: %s", cas.ErrNotFound, h)
 	}
 	co := &CachedObject[T]{store: c.store, hash: h}
 	actual, loaded := c.cache.LoadOrStore(key, co)
@@ -110,9 +109,8 @@ func (c *CachedStore[T]) Proxy(ctx context.Context, h Hash) (*CachedObject[T], e
 	return actual.(*CachedObject[T]), nil
 }
 
-// Get returns the loaded object for h: Proxy + Load. A missing object
-// returns ErrNotFound.
-func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (T, error) {
+// Get returns the loaded object for h: Proxy + Load.
+func (c *CachedStore[T]) Get(ctx context.Context, h cas.Hash) (T, error) {
 	co, err := c.Proxy(ctx, h)
 	if err != nil {
 		var zero T
@@ -121,10 +119,8 @@ func (c *CachedStore[T]) Get(ctx context.Context, h Hash) (T, error) {
 	return co.Load(ctx)
 }
 
-// Preload loads every hash in parallel (bounded worker goroutines) so
-// subsequent Get calls hit the cache. It returns the first error
-// encountered; the other loads still complete.
-func (c *CachedStore[T]) Preload(ctx context.Context, hashes []Hash) error {
+// Preload loads every hash in parallel (bounded worker goroutines).
+func (c *CachedStore[T]) Preload(ctx context.Context, hashes []cas.Hash) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
 	errCh := make(chan error, len(hashes))
@@ -152,9 +148,8 @@ func (c *CachedStore[T]) Preload(ctx context.Context, hashes []Hash) error {
 }
 
 // PreloadRecursive loads the object at h and, to the given depth, every
-// object it references. depth <= 0 loads only h. A missing object returns
-// ErrNotFound.
-func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h Hash, depth int) error {
+// object it references. depth <= 0 loads only h.
+func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h cas.Hash, depth int) error {
 	obj, err := c.Get(ctx, h)
 	if err != nil {
 		return err
@@ -170,10 +165,8 @@ func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h Hash, depth int
 	return nil
 }
 
-// Warmup preloads hashes into the cache; missing objects are tolerated (they
-// are simply not cached). Use it to populate a cache without failing on
-// stale references.
-func (c *CachedStore[T]) Warmup(ctx context.Context, hashes []Hash) error {
+// Warmup preloads hashes into the cache; missing objects are tolerated.
+func (c *CachedStore[T]) Warmup(ctx context.Context, hashes []cas.Hash) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
@@ -216,7 +209,7 @@ func (c *CachedStore[T]) CacheStats() CacheStats {
 }
 
 // Evict removes the cached object for h, if present.
-func (c *CachedStore[T]) Evict(h Hash) {
+func (c *CachedStore[T]) Evict(h cas.Hash) {
 	if _, ok := c.cache.LoadAndDelete(h.String()); ok {
 		c.metrics.Evicts.Add(1)
 	}

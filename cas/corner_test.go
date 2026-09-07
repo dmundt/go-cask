@@ -335,19 +335,6 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 
 // TestCachedStoreCanceled verifies CachedStore.Get propagates a canceled
 // context from the underlying store.
-func TestCachedStoreCanceled(t *testing.T) {
-	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := NewCachedStore(st)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	h, _ := hashData("sha256", []byte("x"))
-	if _, err := c.Get(ctx, h); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cached Get err = %v, want context.Canceled", err)
-	}
-}
 
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).

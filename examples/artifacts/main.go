@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 const usage = `usage: artifacts [-store <dir>] <command> [args]
@@ -128,7 +129,7 @@ type app struct {
 	raw       *cas.FSRawStore
 	artifacts *cas.Store[*Artifact]
 	manifests *cas.Store[*Manifest]
-	cache     *cas.LRUCache[*Artifact]
+	cache     *cache.LRUCache[*Artifact]
 	monitor   *CacheMonitor[*Artifact]
 }
 
@@ -145,7 +146,7 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	cache, err := cas.NewLRUCache(artifacts, 100)
+	cache, err := cache.NewLRUCache(artifacts, 100)
 	if err != nil {
 		return nil, err
 	}

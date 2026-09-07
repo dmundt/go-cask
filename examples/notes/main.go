@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,
@@ -26,8 +27,8 @@ func demo() error {
 
 	// Lazy attachment cache (large blobs load on demand) and the prefetch
 	// cache for notes.
-	attachments := cas.NewCachedStore(repo.Attachments)
-	noteCache := cas.NewCachedStore(repo.Notes)
+	attachments := cache.NewCachedStore(repo.Attachments)
+	noteCache := cache.NewCachedStore(repo.Notes)
 	smart := NewSmartCache(noteCache, 2)
 
 	// Tags.

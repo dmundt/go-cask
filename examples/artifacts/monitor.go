@@ -5,18 +5,19 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 // CacheSnapshot is the periodic observation a CacheMonitor emits: the
 // cache's hit/miss/load/evict counters, hit rate, and current size.
-type CacheSnapshot = cas.CacheStats
+type CacheSnapshot = cache.CacheStats
 
-// CacheMonitor[T] observes a cas.CachedStore[T] and emits CacheSnapshot
+// CacheMonitor[T] observes a cache.CachedStore[T] and emits CacheSnapshot
 // values through onSnapshot on a fixed interval, starting at construction,
 // until Stop is called. This is the example's own monitor recipe (formerly
 // cas/extra), inlined per the self-contained-examples rule.
 type CacheMonitor[T cas.Object[T]] struct {
-	store      *cas.CachedStore[T]
+	store      *cache.CachedStore[T]
 	interval   time.Duration
 	onSnapshot func(CacheSnapshot)
 
@@ -28,7 +29,7 @@ type CacheMonitor[T cas.Object[T]] struct {
 // NewCacheMonitor starts monitoring store: every interval, onSnapshot is
 // called with the current cache stats. Call Stop to end monitoring (it
 // blocks until the monitor goroutine has exited).
-func NewCacheMonitor[T cas.Object[T]](store *cas.CachedStore[T], interval time.Duration, onSnapshot func(CacheSnapshot)) *CacheMonitor[T] {
+func NewCacheMonitor[T cas.Object[T]](store *cache.CachedStore[T], interval time.Duration, onSnapshot func(CacheSnapshot)) *CacheMonitor[T] {
 	m := &CacheMonitor[T]{
 		store:      store,
 		interval:   interval,

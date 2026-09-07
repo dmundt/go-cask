@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
@@ -63,7 +64,7 @@ func TestCrossTypeResolution(t *testing.T) {
 func TestLazyAttachment(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newTestRepo(t)
-	cached := cas.NewCachedStore(repo.Attachments)
+	cached := cache.NewCachedStore(repo.Attachments)
 
 	att, err := repo.Attachments.Put(ctx, &Attachment{Data: []byte("lazy")})
 	if err != nil {
@@ -88,7 +89,7 @@ func TestLazyAttachment(t *testing.T) {
 func TestPrefetchWarmsCache(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newTestRepo(t)
-	noteCache := cas.NewCachedStore(repo.Notes)
+	noteCache := cache.NewCachedStore(repo.Notes)
 	smart := NewSmartCache(noteCache, 2)
 
 	second, err := repo.Notes.Put(ctx, &Note{Title: "second"})

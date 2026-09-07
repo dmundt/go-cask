@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/cache"
 )
 
 // CachedRepository wraps a Repository with per-type LRUCache[T] wrappers and
@@ -12,29 +13,29 @@ import (
 // carries an internal Resolver for cross-type resolution.
 type CachedRepository struct {
 	repo     *Repository
-	Blobs    *cas.LRUCache[*Blob]
-	Trees    *cas.LRUCache[*Tree]
-	Commits  *cas.LRUCache[*Commit]
-	Tags     *cas.LRUCache[*Tag]
+	Blobs    *cache.LRUCache[*Blob]
+	Trees    *cache.LRUCache[*Tree]
+	Commits  *cache.LRUCache[*Commit]
+	Tags     *cache.LRUCache[*Tag]
 	resolver *Resolver
 }
 
 // NewCachedRepository wraps repo with per-type LRU caches of maxSize entries
 // each. maxSize must be > 0.
 func NewCachedRepository(repo *Repository, maxSize int) (*CachedRepository, error) {
-	blobs, err := cas.NewLRUCache(repo.Blobs, maxSize)
+	blobs, err := cache.NewLRUCache(repo.Blobs, maxSize)
 	if err != nil {
 		return nil, err
 	}
-	trees, err := cas.NewLRUCache(repo.Trees, maxSize)
+	trees, err := cache.NewLRUCache(repo.Trees, maxSize)
 	if err != nil {
 		return nil, err
 	}
-	commits, err := cas.NewLRUCache(repo.Commits, maxSize)
+	commits, err := cache.NewLRUCache(repo.Commits, maxSize)
 	if err != nil {
 		return nil, err
 	}
-	tags, err := cas.NewLRUCache(repo.Tags, maxSize)
+	tags, err := cache.NewLRUCache(repo.Tags, maxSize)
 	if err != nil {
 		return nil, err
 	}
