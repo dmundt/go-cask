@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -128,5 +130,66 @@ func TestGetMissing(t *testing.T) {
 	}
 	if _, err := a.get(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("get(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRunCommands(t *testing.T) {
+	store := t.TempDir()
+	work := t.TempDir()
+	f := filepath.Join(work, "a.bin")
+	if err := os.WriteFile(f, []byte("hello artifacts"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	// put
+	if code := run([]string{"-store", store, "put", "v1", f}, &stdout, &stderr); code != 0 {
+		t.Fatalf("put code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "deduplicated: false") {
+		t.Fatalf("put out=%q", stdout.String())
+	}
+	hash := strings.Split(stdout.String(), " ")[0]
+	stdout.Reset()
+	stderr.Reset()
+
+	// get
+	if code := run([]string{"-store", store, "get", hash}, &stdout, &stderr); code != 0 {
+		t.Fatalf("get code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "15 bytes") {
+		t.Fatalf("get out=%q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// stats
+	if code := run([]string{"-store", store, "stats"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("stats code=%d", code)
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// gc
+	if code := run([]string{"-store", store, "gc"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("gc code=%d", code)
+	}
+}
+
+func TestRunUsageErrors(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cases := [][]string{
+		{},          // no args
+		{"-store"},  // -store missing value
+		{"put"},     // put missing args
+		{"get"},     // get missing hash
+		{"unknown"}, // unknown command
+	}
+	for _, c := range cases {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(c, &stdout, &stderr); code != 2 {
+			t.Fatalf("args %v: code=%d, want 2", c, code)
+		}
 	}
 }
