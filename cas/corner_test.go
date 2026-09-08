@@ -26,6 +26,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // TestContextCancellationFS verifies every FSBackend operation honors a
@@ -37,7 +38,7 @@ func TestContextCancellationFS(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, err := hashData("sha256", []byte("x"))
+	h, err := test.HashData("sha256", []byte("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +71,8 @@ func TestContextCancellationFS(t *testing.T) {
 func TestMemoryBackendSuite(t *testing.T) {
 	m := mem.New()
 	ctx := context.Background()
-	h1, _ := hashData("sha256", []byte("alpha"))
-	h2, _ := hashData("sha256", []byte("beta"))
+	h1, _ := test.HashData("sha256", []byte("alpha"))
+	h2, _ := test.HashData("sha256", []byte("beta"))
 
 	if err := m.Put(ctx, h1, strings.NewReader("alpha")); err != nil {
 		t.Fatal(err)
@@ -92,7 +93,7 @@ func TestMemoryBackendSuite(t *testing.T) {
 	if err != nil || string(data) != "alpha" {
 		t.Fatalf("Get = %q, %v", data, err)
 	}
-	missing, _ := hashData("sha256", []byte("missing"))
+	missing, _ := test.HashData("sha256", []byte("missing"))
 	if _, err := m.Get(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) err = %v, want ErrNotFound", err)
 	}
@@ -172,7 +173,7 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, _ := hashData("sha256", []byte("data"))
+	h, _ := test.HashData("sha256", []byte("data"))
 	// Failing reader: Put errors and the temp file is removed (no object).
 	if err := s.Put(ctx, h, errReader{err: io.ErrClosedPipe}); err == nil {
 		t.Fatal("Put with failing reader must error")
@@ -185,8 +186,8 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	}
 
 	// Prune with minAge 0: every unreachable object is doomed.
-	a, _ := hashData("sha256", []byte("keep"))
-	b, _ := hashData("sha256", []byte("drop"))
+	a, _ := test.HashData("sha256", []byte("keep"))
+	b, _ := test.HashData("sha256", []byte("drop"))
 	for _, x := range []struct {
 		h cas.Hash
 		d string
@@ -240,11 +241,11 @@ func TestHashOneShotRegistration(t *testing.T) {
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
-	st, err := cas.New(raw, jsoncodec.New[testNote](), "sha256")
+	st, err := cas.New(raw, jsoncodec.New[test.Note](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := (jsoncodec.New[testNote]()).Encode(testNote{Title: "legacy"})
+	payload, err := (jsoncodec.New[test.Note]()).Encode(test.Note{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +260,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	buf.WriteString("note")
 	buf.Write(payload)
 	env := buf.Bytes()
-	h, err := hashData("sha256", env)
+	h, err := test.HashData("sha256", env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,19 +279,19 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Note](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, _ := hashData("sha256", []byte("x"))
+	h, _ := test.HashData("sha256", []byte("x"))
 	for _, tc := range []struct {
 		name string
 		run  func() error
 	}{
-		{"Put", func() error { _, err := st.Put(ctx, testNote{Title: "t"}); return err }},
-		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, testNote{Title: "t"}); return err }},
+		{"Put", func() error { _, err := st.Put(ctx, test.Note{Title: "t"}); return err }},
+		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, test.Note{Title: "t"}); return err }},
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
 		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
 		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
@@ -309,33 +310,33 @@ func TestStoreCanceledOps(t *testing.T) {
 // child propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st, err := cas.New(mem.New(), jsoncodec.New[testNode](), "sha256")
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Node](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	leafH, err := st.Put(ctx, testNode{Name: "leaf"})
+	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, testNode{Name: "root", Refs: []cas.Hash{leafH}})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Hash{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	missingH, _ := hashData("sha256", []byte("missing"))
-	brokenH, err := st.Put(ctx, testNode{Name: "broken", Refs: []cas.Hash{missingH}})
+	missingH, _ := test.HashData("sha256", []byte("missing"))
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Hash{missingH}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// A missing reference during recursion → ErrNotFound.
-	w := cas.NewWalker(st, func(testNode) error { return nil })
+	w := cas.NewWalker(st, func(test.Node) error { return nil })
 	if err := w.Walk(ctx, brokenH); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Walk over broken ref = %v, want ErrNotFound", err)
 	}
 
 	// A visit error from a child propagates (not just from the root).
 	seen := 0
-	w2 := cas.NewWalker(st, func(o testNode) error {
+	w2 := cas.NewWalker(st, func(o test.Node) error {
 		seen++
 		if o.References() == nil { // the leaf
 			return errors.New("stop at leaf")

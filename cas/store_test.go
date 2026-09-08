@@ -10,9 +10,10 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
-// Shared test object types (testNote, testNode), backend factories
+// Shared test object types (test.Note, test.Node), backend factories
 // (backendFactory, fsFactory, memFactory), the backend contract
 // (testBackendContract), readAllAndClose and newTestStore are defined in
 // external_test.go.
@@ -37,7 +38,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
-	h, err := s.Put(ctx, testNote{Title: "t", Body: "b"})
+	h, err := s.Put(ctx, test.Note{Title: "t", Body: "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if env.Type != "note@1" {
 		t.Fatalf("stored type = %q, want note@1", env.Type)
 	}
-	var payloadNote testNote
+	var payloadNote test.Note
 	if err := json.Unmarshal(env.Data, &payloadNote); err != nil {
 		t.Fatalf("stored payload is not JSON: %v", err)
 	}
@@ -102,11 +103,11 @@ func TestStoreDedup(t *testing.T) {
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
-	h1, err := s.Put(ctx, testNote{Title: "same"})
+	h1, err := s.Put(ctx, test.Note{Title: "same"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h2, err := s.Put(ctx, testNote{Title: "same"})
+	h2, err := s.Put(ctx, test.Note{Title: "same"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,14 +123,14 @@ func TestStoreDedup(t *testing.T) {
 	}
 
 	// PutDedup: first write reports stored, repeat reports deduplicated.
-	h3, dedup, err := s.PutDedup(ctx, testNote{Title: "same"})
+	h3, dedup, err := s.PutDedup(ctx, test.Note{Title: "same"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !dedup || h3.String() != h1.String() {
 		t.Fatalf("PutDedup repeat = (%s, %v), want dedup=true", h3, dedup)
 	}
-	h4, dedup, err := s.PutDedup(ctx, testNote{Title: "different"})
+	h4, dedup, err := s.PutDedup(ctx, test.Note{Title: "different"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,11 +164,11 @@ func TestStoreTypeSafety(t *testing.T) {
 	raw := mem.New()
 	ctx := context.Background()
 	notes := newTestStore(t, raw)
-	h, err := notes.Put(ctx, testNote{Title: "t"})
+	h, err := notes.Put(ctx, test.Note{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, err := cas.New(raw, jsoncodec.New[testNode](), "sha256")
+	nodes, err := cas.New(raw, jsoncodec.New[test.Node](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestStoreTypeSafety(t *testing.T) {
 }
 
 func TestNewStoreUnknownAlgorithm(t *testing.T) {
-	_, err := cas.New[testNote](mem.New(), jsoncodec.New[testNote](), "nope")
+	_, err := cas.New[test.Note](mem.New(), jsoncodec.New[test.Note](), "nope")
 	if !errors.Is(err, cas.ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
 	}
@@ -192,11 +193,11 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	})
 	raw := mem.New()
 	ctx := context.Background()
-	s, err := cas.New(raw, jsoncodec.New[testNote](), "testblob")
+	s, err := cas.New(raw, jsoncodec.New[test.Note](), "testblob")
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := s.Put(ctx, testNote{Title: "t"})
+	h, err := s.Put(ctx, test.Note{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestStoreCancelledContext(t *testing.T) {
 	s := newTestStore(t, mem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.Put(ctx, testNote{Title: "t"}); err == nil {
+	if _, err := s.Put(ctx, test.Note{Title: "t"}); err == nil {
 		t.Fatal("Put on cancelled context must error")
 	}
 	if _, err := s.Get(ctx, nil); err == nil {
@@ -234,7 +235,7 @@ func TestEnvelopeFormat(t *testing.T) {
 	// objects no longer serialize themselves).
 	ctx := context.Background()
 	s := newTestStore(t, mem.New())
-	h, err := s.Put(ctx, testNote{Title: "t"})
+	h, err := s.Put(ctx, test.Note{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func TestEnvelopeFormat(t *testing.T) {
 	if env.Type != "note@1" {
 		t.Fatalf("type = %q, want note@1", env.Type)
 	}
-	var note testNote
+	var note test.Note
 	if err := json.Unmarshal(env.Data, &note); err != nil {
 		t.Fatalf("payload not JSON: %v", err)
 	}
@@ -260,18 +261,18 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[test.Note](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, dedup, err := s.PutDedup(ctx, testNote{Title: "dedup"})
+	h, dedup, err := s.PutDedup(ctx, test.Note{Title: "dedup"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dedup {
 		t.Fatal("first put must not be dedup")
 	}
-	_, dedup, err = s.PutDedup(ctx, testNote{Title: "dedup"})
+	_, dedup, err = s.PutDedup(ctx, test.Note{Title: "dedup"})
 	if err != nil {
 		t.Fatal(err)
 	}
