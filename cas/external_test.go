@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	backmem "github.com/dmundt/go-cask/cas/backend/memory"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -201,7 +202,7 @@ func testBackendContract(t *testing.T, raw cas.Backend) {
 }
 
 // mustFS builds a fresh filesystem Backend for a test.
-func mustFS(t *testing.T, opts ...fs.Option) *fs.Backend {
+func mustFS(t *testing.T, opts ...backend.Option) *fs.Backend {
 	s, err := fs.New(t.TempDir(), opts...)
 	if err != nil {
 		t.Fatal(err)

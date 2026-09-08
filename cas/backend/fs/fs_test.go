@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
 )
 
 func hashData(algo string, data []byte) (cas.Hash, error) {
@@ -23,7 +24,7 @@ func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 	return io.ReadAll(rc)
 }
 
-func mustFS(t *testing.T, opts ...Option) *Backend {
+func mustFS(t *testing.T, opts ...backend.Option) *Backend {
 	s, err := New(t.TempDir(), opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -36,13 +37,13 @@ func TestFanOutLayouts(t *testing.T) {
 	h, _ := cas.ParseHash("sha256:" + digest)
 	cases := []struct {
 		name     string
-		opts     []Option
+		opts     []backend.Option
 		wantPath string
 	}{
-		{"flat", []Option{WithFanOut(0), WithFanLevels(0)}, filepath.Join("sha256", digest)},
+		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}, filepath.Join("sha256", digest)},
 		{"gitlike-default", nil, filepath.Join("sha256", "a1", digest)},
-		{"deep-2-2", []Option{WithFanOut(2), WithFanLevels(2)}, filepath.Join("sha256", "a1", "a1", digest)},
-		{"wide-4-1", []Option{WithFanOut(4), WithFanLevels(1)}, filepath.Join("sha256", "a1a1", digest)},
+		{"deep-2-2", []backend.Option{backend.WithFanOut(2), backend.WithFanLevels(2)}, filepath.Join("sha256", "a1", "a1", digest)},
+		{"wide-4-1", []backend.Option{backend.WithFanOut(4), backend.WithFanLevels(1)}, filepath.Join("sha256", "a1a1", digest)},
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
@@ -56,14 +57,14 @@ func TestFanOutLayouts(t *testing.T) {
 
 func TestFanOutBounds(t *testing.T) {
 	for _, tc := range []struct {
-		opts []Option
+		opts []backend.Option
 		ok   bool
 	}{
-		{[]Option{WithFanOut(0), WithFanLevels(0)}, true},
-		{[]Option{WithFanOut(33), WithFanLevels(2)}, false},
-		{[]Option{WithFanOut(64), WithFanLevels(1)}, true},
-		{[]Option{WithFanOut(-1)}, false},
-		{[]Option{WithFanLevels(-1)}, false},
+		{[]backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}, true},
+		{[]backend.Option{backend.WithFanOut(33), backend.WithFanLevels(2)}, false},
+		{[]backend.Option{backend.WithFanOut(64), backend.WithFanLevels(1)}, true},
+		{[]backend.Option{backend.WithFanOut(-1)}, false},
+		{[]backend.Option{backend.WithFanLevels(-1)}, false},
 	} {
 		_, err := New(t.TempDir(), tc.opts...)
 		if tc.ok && err != nil {
@@ -79,11 +80,11 @@ func TestLayoutEquivalence(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("the same bytes")
 	h, _ := hashData("sha256", content)
-	layouts := [][]Option{
+	layouts := [][]backend.Option{
 		nil,
-		{WithFanOut(0), WithFanLevels(0)},
-		{WithFanOut(2), WithFanLevels(2)},
-		{WithFanOut(4), WithFanLevels(1)},
+		{backend.WithFanOut(0), backend.WithFanLevels(0)},
+		{backend.WithFanOut(2), backend.WithFanLevels(2)},
+		{backend.WithFanOut(4), backend.WithFanLevels(1)},
 	}
 	for _, opts := range layouts {
 		s := mustFS(t, opts...)
@@ -105,7 +106,7 @@ func TestPathRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	for _, algo := range []string{"sha256"} {
 		h, _ := hashData(algo, []byte("path round trip"))
-		for _, opts := range [][]Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
+		for _, opts := range [][]backend.Option{nil, {backend.WithFanOut(0), backend.WithFanLevels(0)}, {backend.WithFanOut(2), backend.WithFanLevels(2)}, {backend.WithFanOut(4), backend.WithFanLevels(1)}} {
 			s := mustFS(t, opts...)
 			if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
 				t.Fatal(err)
@@ -204,11 +205,11 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	// deep fan-out exercises this.
 	h, _ := hashData("sha256", []byte("clamp"))
 	cases := []struct {
-		opts []Option
+		opts []backend.Option
 	}{
-		{[]Option{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
-		{[]Option{WithFanOut(16), WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
-		{[]Option{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
+		{[]backend.Option{backend.WithFanOut(16), backend.WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
+		{[]backend.Option{backend.WithFanOut(16), backend.WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
+		{[]backend.Option{backend.WithFanOut(8), backend.WithFanLevels(8)}},  // many levels, digest exhausted
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)

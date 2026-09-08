@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
 )
 
 // Default fan-out parameters, Git-like: <base>/<algo>/<2 hex>/<full hex>.
@@ -27,60 +28,33 @@ const (
 	MaxFanDepth = 64
 )
 
-// Option configures a Backend. Functional options per library-design §4.
-type Option func(*config)
-
-type config struct {
-	fanOut    int
-	fanLevels int
-	dirSync   bool
-}
-
-// WithFanOut sets the number of hex characters per fan-out directory level.
-// 0 means "flat" (no fan-out directories).
-func WithFanOut(n int) Option {
-	return func(c *config) { c.fanOut = n }
-}
-
-// WithFanLevels sets the number of fan-out directory levels. 0 means "flat".
-func WithFanLevels(n int) Option {
-	return func(c *config) { c.fanLevels = n }
-}
-
-// WithDirSync enables a best-effort fsync of the parent directory after the
-// atomic rename that publishes an object.
-func WithDirSync() Option {
-	return func(c *config) { c.dirSync = true }
-}
-
 // Backend is the filesystem backend: each object is one file under
 // <base>/<algorithm>/<fan-out dirs>/<full-hex-digest>.
 type Backend struct {
-	base      string
-	fanOut    int
-	fanLevels int
-	dirSync   bool
+	base    string
+	cfg     backend.Config
+	options []backend.Option
 
 	mu sync.Mutex // Put/Delete only
 }
 
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
-func New(basePath string, opts ...Option) (*Backend, error) {
-	cfg := config{fanOut: DefaultFanOut, fanLevels: DefaultFanLevels}
+func New(basePath string, opts ...backend.Option) (*Backend, error) {
+	cfg := backend.Config{FanOut: DefaultFanOut, FanLevels: DefaultFanLevels}
 	for _, o := range opts {
 		o(&cfg)
 	}
-	if cfg.fanOut < 0 || cfg.fanLevels < 0 {
-		return nil, fmt.Errorf("cas: negative fan-out parameters (fanOut=%d, fanLevels=%d)", cfg.fanOut, cfg.fanLevels)
+	if cfg.FanOut < 0 || cfg.FanLevels < 0 {
+		return nil, fmt.Errorf("cas: negative fan-out parameters (fanOut=%d, fanLevels=%d)", cfg.FanOut, cfg.FanLevels)
 	}
-	if cfg.fanOut*cfg.fanLevels > MaxFanDepth {
-		return nil, fmt.Errorf("cas: fan-out %d×%d exceeds max depth %d", cfg.fanOut, cfg.fanLevels, MaxFanDepth)
+	if cfg.FanOut*cfg.FanLevels > MaxFanDepth {
+		return nil, fmt.Errorf("cas: fan-out %d×%d exceeds max depth %d", cfg.FanOut, cfg.FanLevels, MaxFanDepth)
 	}
 	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create store base: %w", err)
 	}
-	return &Backend{base: basePath, fanOut: cfg.fanOut, fanLevels: cfg.fanLevels, dirSync: cfg.dirSync}, nil
+	return &Backend{base: basePath, cfg: cfg}, nil
 }
 
 // syncParentDir fsyncs the directory containing path.
@@ -100,13 +74,13 @@ func syncParentDir(path string) error {
 func (s *Backend) hashPath(h cas.Hash) string {
 	hexDigest := hex.EncodeToString(h.Bytes())
 	p := filepath.Join(s.base, h.Algorithm())
-	if s.fanOut > 0 && s.fanLevels > 0 {
-		for i := 0; i < s.fanLevels; i++ {
-			start := i * s.fanOut
+	if s.cfg.FanOut > 0 && s.cfg.FanLevels > 0 {
+		for i := 0; i < s.cfg.FanLevels; i++ {
+			start := i * s.cfg.FanOut
 			if start >= len(hexDigest) {
 				break
 			}
-			end := start + s.fanOut
+			end := start + s.cfg.FanOut
 			if end > len(hexDigest) {
 				end = len(hexDigest)
 			}
@@ -161,7 +135,7 @@ func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 		os.Remove(tmp)
 		return fmt.Errorf("cas: publish object: %w", err)
 	}
-	if s.dirSync {
+	if s.cfg.DirSync {
 		if err := syncParentDir(path); err != nil {
 			return fmt.Errorf("cas: sync object dir: %w", err)
 		}

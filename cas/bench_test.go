@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	backmem "github.com/dmundt/go-cask/cas/backend/memory"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -79,9 +80,9 @@ func BenchmarkStoreGet(b *testing.B) {
 func BenchmarkFSBackendPut(b *testing.B) {
 	for _, layout := range []struct {
 		name string
-		opts []fs.Option
+		opts []backend.Option
 	}{
-		{"flat", []fs.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
+		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
@@ -120,9 +121,9 @@ func BenchmarkFSBackendPut(b *testing.B) {
 func BenchmarkFSBackendGet(b *testing.B) {
 	for _, layout := range []struct {
 		name string
-		opts []fs.Option
+		opts []backend.Option
 	}{
-		{"flat", []fs.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
+		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
