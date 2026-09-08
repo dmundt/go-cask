@@ -236,24 +236,24 @@ func (a *app) gc(ctx context.Context) (int, error) {
 	return before - len(reachable), nil
 }
 
-func main() {
+func run(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
-	args := os.Args[1:]
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, usage)
-		os.Exit(2)
+		fmt.Fprintln(stderr, usage)
+		return 2
 	}
 	dir := "./objects"
 	if args[0] == "-store" {
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		dir, args = args[1], args[2:]
 	}
 	a, err := newApp(dir)
 	if err != nil {
-		fatal(err)
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
 	defer a.close()
 
@@ -261,59 +261,66 @@ func main() {
 	switch cmd {
 	case "put":
 		if len(rest) != 2 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		h, dedup, err := a.put(ctx, rest[0], rest[1])
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Printf("%s deduplicated: %v\n", h, dedup)
+		fmt.Fprintf(stdout, "%s deduplicated: %v\n", h, dedup)
 	case "get":
 		if len(rest) != 1 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
 		h, err := cas.ParseHash(rest[0])
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
 		art, err := a.get(ctx, h)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Printf("%s (%d bytes)\n", art.Name, len(art.Data))
+		fmt.Fprintf(stdout, "%s (%d bytes)\n", art.Name, len(art.Data))
 	case "gc":
 		n, err := a.gc(ctx)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Printf("gc: deleted %d unreachable objects\n", n)
+		fmt.Fprintf(stdout, "gc: deleted %d unreachable objects\n", n)
 	case "stats":
 		st, err := a.raw.Stats(ctx)
 		if err != nil {
-			fatal(err)
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
 		}
-		fmt.Println(st)
+		fmt.Fprintln(stdout, st)
 	case "monitor":
 		for _, s := range rest {
 			h, err := cas.ParseHash(s)
 			if err != nil {
-				fatal(err)
+				fmt.Fprintf(stderr, "error: %v\n", err)
+				return 1
 			}
 			if _, err := a.get(ctx, h); err != nil {
-				fatal(err)
+				fmt.Fprintf(stderr, "error: %v\n", err)
+				return 1
 			}
 		}
 		st := a.cache.CacheStats()
-		fmt.Printf("final: hits=%d misses=%d hit-rate=%.2f size=%d\n", st.Hits, st.Misses, st.HitRate, st.Size)
+		fmt.Fprintf(stdout, "final: hits=%d misses=%d hit-rate=%.2f size=%d\n", st.Hits, st.Misses, st.HitRate, st.Size)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n%s\n", cmd, usage)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "unknown command %q\n%s\n", cmd, usage)
+		return 2
 	}
+	return 0
 }
 
-func fatal(err error) {
-	fmt.Fprintf(os.Stderr, "error: %v\n", err)
-	os.Exit(1)
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }

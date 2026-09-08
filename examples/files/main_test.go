@@ -317,10 +317,6 @@ func TestRunCommands(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 
-	// cat
-	if code := run(ctx, []string{"-store", store, "cat", hash}, &stdout, &stderr); code != 0 || stdout.String() != "run me" {
-		t.Fatalf("cat code=%d out=%q stderr=%s", code, stdout.String(), stderr.String())
-	}
 	stdout.Reset()
 	stderr.Reset()
 

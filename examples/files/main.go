@@ -142,13 +142,17 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// cat resolves h to any object type and writes its bytes to out.
+// cat resolves h to any object and writes its raw bytes to out.
 func (a *app) cat(ctx context.Context, h cas.Hash, out io.Writer) error {
 	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, h)
 	if err != nil {
 		return err
 	}
-	_, err = out.Write(gitlike.PrintObject(ro))
+	if ro.Blob != nil {
+		_, err = out.Write(ro.Blob.Data)
+		return err
+	}
+	_, err = fmt.Fprintln(out, gitlike.PrintObject(ro))
 	return err
 }
 
