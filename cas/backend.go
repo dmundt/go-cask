@@ -5,19 +5,41 @@ import (
 	"io"
 )
 
-// Backend is the non-generic byte-storage contract. Every backend (FS,
-// memory, S3, …) implements these five methods; the typed layer above
-// (Store[T]) and every application works unchanged over any backend.
+// Backend stores immutable content-addressed blobs.
 //
-// Per-method contracts every backend MUST honor:
+// A blob is identified solely by its Hash. Backends are responsible only
+// for storing and retrieving bytes; they know nothing about envelopes,
+// codecs, object types, or generics.
 //
-//   - Put: idempotent — the same hash always means the same bytes, so a
-//     repeated Put of an identical hash is safe.
-//   - Get: returns a stream the caller MUST close. A missing object returns
-//     ErrNotFound (wrapped with %w).
-//   - Exists: boolean presence check.
-//   - Delete: a missing object is a no-op (no error).
-//   - List: returns all stored hashes; algo != "" filters by algorithm.
+// Implementations must be safe for concurrent use.
+//
+// Backend guarantees — every implementation MUST provide:
+//
+//   - Content-addressability: the hash IS the object identity. Same hash
+//     always means same bytes. A backend must never return bytes different
+//     from those associated with the hash.
+//   - Immutability: objects are immutable once written. A repeated Put of
+//     identical content is safe (same hash → same bytes). A conflict
+//     (different bytes, same hash) must be impossible by construction:
+//     the hash is the hash of the content; see ErrHashMismatch.
+//   - Idempotent writes: Put(ctx, h, r) called twice on the same hash
+//     produces the same final state.
+//   - Streaming: implementations stream from r and serve Get readers
+//     without buffering the entire object in memory.
+//   - Concurrent safety: safe for concurrent goroutines without external
+//     synchronization.
+//   - Stable errors: a missing object returns ErrNotFound (wrapped with
+//     %w). Delete of a missing object is a no-op (returns nil).
+//   - List returns hashes only — no storage metadata (paths, timestamps,
+//     permissions, S3 keys).
+//
+// Separation of responsibilities:
+//
+//	Backend:  Hash → Bytes
+//	Store:    Object ↔ Codec ↔ Envelope ↔ Bytes
+//
+// This keeps the backend contract stable while allowing codecs, envelopes,
+// caches, and object models to evolve independently.
 type Backend interface {
 	Put(ctx context.Context, h Hash, r io.Reader) error
 	Get(ctx context.Context, h Hash) (io.ReadCloser, error)
