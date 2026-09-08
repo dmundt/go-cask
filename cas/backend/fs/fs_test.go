@@ -40,10 +40,10 @@ func TestFanOutLayouts(t *testing.T) {
 		opts     []backend.Option
 		wantPath string
 	}{
-		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}, filepath.Join("sha256", digest)},
+		{"flat", []backend.Option{WithFanOut(0), WithFanLevels(0)}, filepath.Join("sha256", digest)},
 		{"gitlike-default", nil, filepath.Join("sha256", "a1", digest)},
-		{"deep-2-2", []backend.Option{backend.WithFanOut(2), backend.WithFanLevels(2)}, filepath.Join("sha256", "a1", "a1", digest)},
-		{"wide-4-1", []backend.Option{backend.WithFanOut(4), backend.WithFanLevels(1)}, filepath.Join("sha256", "a1a1", digest)},
+		{"deep-2-2", []backend.Option{WithFanOut(2), WithFanLevels(2)}, filepath.Join("sha256", "a1", "a1", digest)},
+		{"wide-4-1", []backend.Option{WithFanOut(4), WithFanLevels(1)}, filepath.Join("sha256", "a1a1", digest)},
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
@@ -60,11 +60,11 @@ func TestFanOutBounds(t *testing.T) {
 		opts []backend.Option
 		ok   bool
 	}{
-		{[]backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}, true},
-		{[]backend.Option{backend.WithFanOut(33), backend.WithFanLevels(2)}, false},
-		{[]backend.Option{backend.WithFanOut(64), backend.WithFanLevels(1)}, true},
-		{[]backend.Option{backend.WithFanOut(-1)}, false},
-		{[]backend.Option{backend.WithFanLevels(-1)}, false},
+		{[]backend.Option{WithFanOut(0), WithFanLevels(0)}, true},
+		{[]backend.Option{WithFanOut(33), WithFanLevels(2)}, false},
+		{[]backend.Option{WithFanOut(64), WithFanLevels(1)}, true},
+		{[]backend.Option{WithFanOut(-1)}, false},
+		{[]backend.Option{WithFanLevels(-1)}, false},
 	} {
 		_, err := New(t.TempDir(), tc.opts...)
 		if tc.ok && err != nil {
@@ -82,9 +82,9 @@ func TestLayoutEquivalence(t *testing.T) {
 	h, _ := hashData("sha256", content)
 	layouts := [][]backend.Option{
 		nil,
-		{backend.WithFanOut(0), backend.WithFanLevels(0)},
-		{backend.WithFanOut(2), backend.WithFanLevels(2)},
-		{backend.WithFanOut(4), backend.WithFanLevels(1)},
+		{WithFanOut(0), WithFanLevels(0)},
+		{WithFanOut(2), WithFanLevels(2)},
+		{WithFanOut(4), WithFanLevels(1)},
 	}
 	for _, opts := range layouts {
 		s := mustFS(t, opts...)
@@ -106,7 +106,7 @@ func TestPathRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	for _, algo := range []string{"sha256"} {
 		h, _ := hashData(algo, []byte("path round trip"))
-		for _, opts := range [][]backend.Option{nil, {backend.WithFanOut(0), backend.WithFanLevels(0)}, {backend.WithFanOut(2), backend.WithFanLevels(2)}, {backend.WithFanOut(4), backend.WithFanLevels(1)}} {
+		for _, opts := range [][]backend.Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
 			s := mustFS(t, opts...)
 			if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
 				t.Fatal(err)
@@ -207,9 +207,9 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	cases := []struct {
 		opts []backend.Option
 	}{
-		{[]backend.Option{backend.WithFanOut(16), backend.WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
-		{[]backend.Option{backend.WithFanOut(16), backend.WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
-		{[]backend.Option{backend.WithFanOut(8), backend.WithFanLevels(8)}},  // many levels, digest exhausted
+		{[]backend.Option{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
+		{[]backend.Option{WithFanOut(16), WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
+		{[]backend.Option{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)

@@ -82,7 +82,7 @@ func BenchmarkFSBackendPut(b *testing.B) {
 		name string
 		opts []backend.Option
 	}{
-		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}},
+		{"flat", []backend.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
@@ -123,7 +123,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 		name string
 		opts []backend.Option
 	}{
-		{"flat", []backend.Option{backend.WithFanOut(0), backend.WithFanLevels(0)}},
+		{"flat", []backend.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
