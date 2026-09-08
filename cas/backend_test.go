@@ -640,3 +640,16 @@ func TestWithDirSyncPut(t *testing.T) {
 		t.Fatalf("Size = %d, %v; want 7", got, err)
 	}
 }
+
+func TestMemoryBackendExistsFalse(t *testing.T) {
+	b := NewMemoryBackend()
+	ctx := context.Background()
+	h, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	ok, err := b.Exists(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("missing object must not exist")
+	}
+}
