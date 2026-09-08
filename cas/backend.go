@@ -11,6 +11,10 @@ import (
 // for storing and retrieving bytes; they know nothing about envelopes,
 // codecs, object types, or generics.
 //
+// Integrity is provided by the address hash: the hash is the content,
+// so any corruption is detected the moment the bytes are read — the
+// calling layer can recompute the hash and compare.
+//
 // Implementations must be safe for concurrent use.
 //
 // Backend guarantees — every implementation MUST provide:
