@@ -61,7 +61,7 @@ version: v7
 - **Interfaces:** prefer small interfaces defined at the consumer side;
   "accept interfaces, return concrete types".
 - **Zero values:** make zero values useful; use `NewX` constructors only when
-  setup is non-trivial (e.g. `NewFSRawStore` must create directories).
+  setup is non-trivial (e.g. `NewFSBackend` must create directories).
 - **Tests:** table-driven tests with the std `testing` package; `t.Run` for
   subtests; `t.Parallel()` where safe.
 

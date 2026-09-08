@@ -9,16 +9,16 @@ import (
 	"github.com/dmundt/go-cask/cas/codec"
 )
 
-// Repository bundles the per-type stores over one RawStore — the app's own
+// Repository bundles the per-type stores over one Backend — the app's own
 // repository, copied from the gitlike pattern (cas-core §4.12).
 type Repository struct {
-	raw         cas.RawStore
+	raw         cas.Backend
 	Notes       *cas.Store[*Note]
 	Tags        *cas.Store[*Tag]
 	Attachments *cas.Store[*Attachment]
 }
 
-func newRepository(raw cas.RawStore) (*Repository, error) {
+func newRepository(raw cas.Backend) (*Repository, error) {
 	notes, err := cas.NewStore(raw, codec.JSONCodec[*Note]{}, "sha256")
 	if err != nil {
 		return nil, err

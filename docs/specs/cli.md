@@ -30,7 +30,7 @@ Store operations speak to the store in-process over the library:
 
 | Mode  | Flag            | What it talks to                              | Auth               |
 | ----- | --------------- | --------------------------------------------- | ------------------ |
-| local | `-store <path>` | the library in-process (`FSRawStore`)         | none (filesystem trust) |
+| local | `-store <path>` | the library in-process (`FSBackend`)         | none (filesystem trust) |
 
 - `-store` is required for store operations. There is no remote mode — the
   product ships no network JSON API (backend-architecture §1).

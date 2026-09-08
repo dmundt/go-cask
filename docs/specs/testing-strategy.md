@@ -26,12 +26,12 @@ version: v9
 | --------------------- | ----------------------------------------------------------------- |
 | Determinism           | same bytes → same `Hash.String()` every time                      |
 | Dedup                 | `Put` twice → one object; `PutDedup` reports `deduplicated: true` |
-| Round-trip            | byte layer: `Put` → `RawStore.Get` → identical bytes; typed layer: `Put` → `Get` → value equal via codec |
+| Round-trip            | byte layer: `Put` → `Backend.Get` → identical bytes; typed layer: `Put` → `Get` → value equal via codec |
 | Immutability          | stored bytes never change after `Put`                              |
 | Integrity             | `Verify` passes on an intact object, fails after ANY byte flip    |
 | Layout equivalence    | same content addressable under every `FanOut`/`FanLevels` combo   |
 | Path round-trip       | `pathToHash(hashPath(h)) == h` for every layout and algorithm     |
-| Errors                | missing object on any read (`RawStore.Get`, `GetRaw`, `Get`) → `ErrNotFound`; `ParseHash` garbage → `ErrInvalidHash` |
+| Errors                | missing object on any read (`Backend.Get`, `GetRaw`, `Get`) → `ErrNotFound`; `ParseHash` garbage → `ErrInvalidHash` |
 
 ### 1.1 Every Test Is Explicit (normative)
 
@@ -106,7 +106,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 
 **Concurrency (with `-race`)**
 - concurrent `Put` of the SAME hash (idempotent writers)
-- concurrent `RawStore.Get` while `Delete` runs (POSIX open-FD behavior)
+- concurrent `Backend.Get` while `Delete` runs (POSIX open-FD behavior)
 - parallel `List`/`Stats` during writes (lock-free read path)
 
 **Maintenance**
@@ -142,9 +142,9 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
    Commit corpora for regressions; run each target for a few seconds in CI,
    longer in nightly.
 4. **Concurrency/race** — `go test -race` with concurrent
-   `RawStore` ops (`Put`/`Get`/`Delete`/`List`) on one store; proves the lock-free read path
+   `Backend` ops (`Put`/`Get`/`Delete`/`List`) on one store; proves the lock-free read path
    (performance §2) and the cache's double-checked locking (§3 inventory).
-5. **Corruption** — flip bytes on disk → `Verify` fails; `RawStore.Get` returns the
+5. **Corruption** — flip bytes on disk → `Verify` fails; `Backend.Get` returns the
    corrupted bytes (the store MUST NOT silently fix).
 6. **Golden/NIST vectors** — `sha256("") == e3b0c442…`,
    `sha256("abc") == ba7816bf…`, SHA-1 vectors; assert the `Hash.String()`
@@ -153,9 +153,9 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
    limit → 429, streaming round-trip, OpenAPI served) and viewer routes
    (login, session, CSRF, fragments) — every route and every status per §2/§3.
 8. **Backends under test** — unit/property/fuzz tests run against
-   `MemoryRawStore` by default (fast, deterministic, no disk I/O); the CAS
+   `MemoryBackend` by default (fast, deterministic, no disk I/O); the CAS
    laws (§1) and the §3 inventory are table-driven over **both**
-   `MemoryRawStore` and `FSRawStore` (including every fan-out layout), so the
+   `MemoryBackend` and `FSBackend` (including every fan-out layout), so the
    fs backend's integration behavior — atomic writes, fan-out paths, `.tmp`
    handling — stays covered where it differs.
 

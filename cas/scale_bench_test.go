@@ -56,17 +56,17 @@ func scaleObjectCount(b *testing.B) int {
 	return n
 }
 
-// scaleBackend pairs a name with a RawStore constructor.
+// scaleBackend pairs a name with a Backend constructor.
 type scaleBackend struct {
 	name string
-	new  func(tb testing.TB) RawStore
+	new  func(tb testing.TB) Backend
 }
 
 func scaleBackends() []scaleBackend {
 	return []scaleBackend{
-		{"Memory", func(tb testing.TB) RawStore { return NewMemoryRawStore() }},
-		{"FS", func(tb testing.TB) RawStore {
-			s, err := NewFSRawStore(tb.TempDir())
+		{"Memory", func(tb testing.TB) Backend { return NewMemoryBackend() }},
+		{"FS", func(tb testing.TB) Backend {
+			s, err := NewFSBackend(tb.TempDir())
 			if err != nil {
 				tb.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func scalePayload(p []byte, i int) {
 }
 
 // scaleFill prefills raw with n unique objects and returns their hashes.
-func scaleFill(b *testing.B, ctx context.Context, raw RawStore, n int) []Hash {
+func scaleFill(b *testing.B, ctx context.Context, raw Backend, n int) []Hash {
 	b.Helper()
 	hs := make([]Hash, n)
 	p := make([]byte, scaleObjSize)
@@ -108,12 +108,12 @@ func scaleFill(b *testing.B, ctx context.Context, raw RawStore, n int) []Hash {
 // extrapolation to scaleTarget objects. For the FS backend it also reports
 // file bytes per object (Stats counts object-file bytes only — directory
 // entries, fan-out dirs and inode overhead are on top of that).
-func scaleReport(b *testing.B, op string, n int, raw RawStore) {
+func scaleReport(b *testing.B, op string, n int, raw Backend) {
 	rate := float64(b.N) / b.Elapsed().Seconds()
 	hours := float64(scaleTarget) / rate / 3600
 	line := fmt.Sprintf("[scale] %s @ %d objects: %.0f obj/s -> 10^10 objects ~ %.1f h",
 		op, n, rate, hours)
-	if fs, ok := raw.(*FSRawStore); ok {
+	if fs, ok := raw.(*FSBackend); ok {
 		if st, err := fs.Stats(context.Background()); err == nil && st.ObjectCount > 0 {
 			per := float64(st.TotalSize) / float64(st.ObjectCount)
 			line += fmt.Sprintf(" | %.2f B/obj file bytes -> %.1f GiB for 10^10", per,
@@ -269,14 +269,14 @@ func BenchmarkScaleList(b *testing.B) {
 }
 
 // BenchmarkScaleStats measures StoreStats at CASK_SCALE_OBJECTS objects
-// (FSRawStore only — MemoryRawStore has no Stats).
+// (FSBackend only — MemoryBackend has no Stats).
 func BenchmarkScaleStats(b *testing.B) {
 	for _, be := range scaleBackends() {
 		b.Run(be.name, func(b *testing.B) {
 			n := scaleObjectCount(b)
 			ctx := context.Background()
 			raw := be.new(b)
-			fs, ok := raw.(*FSRawStore)
+			fs, ok := raw.(*FSBackend)
 			if !ok {
 				b.Skip("backend has no Stats")
 			}

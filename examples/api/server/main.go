@@ -32,7 +32,7 @@ func main() {
 	)
 	flag.Parse()
 
-	raw, err := cas.NewFSRawStore(*store)
+	raw, err := cas.NewFSBackend(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)

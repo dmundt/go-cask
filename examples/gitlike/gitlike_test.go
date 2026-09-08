@@ -15,7 +15,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 )
 
-func newRepo(t *testing.T, raw cas.RawStore) *Repository {
+func newRepo(t *testing.T, raw cas.Backend) *Repository {
 	repo, err := NewRepository(raw, "sha256")
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func putBlob(t *testing.T, repo *Repository, data string) cas.Hash {
 
 func TestObjectRoundTrips(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 
 	hb := putBlob(t, repo, "hello")
 	blob, err := repo.Blobs.Get(ctx, hb)
@@ -109,7 +109,7 @@ func TestVersionedTypeNames(t *testing.T) {
 
 func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	h := putBlob(t, repo, "x")
 	raw, err := repo.Blobs.GetRaw(ctx, h)
 	if err != nil {
@@ -157,7 +157,7 @@ func TestReferences(t *testing.T) {
 
 func TestResolverTyped(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "data")
@@ -176,7 +176,7 @@ func TestResolverTyped(t *testing.T) {
 }
 
 func TestResolverResolveAnyMissing(t *testing.T) {
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveAny(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
@@ -185,14 +185,14 @@ func TestResolverResolveAnyMissing(t *testing.T) {
 }
 
 func TestNewRepositoryUnknownAlgorithm(t *testing.T) {
-	if _, err := NewRepository(cas.NewMemoryRawStore(), "nope"); !errors.Is(err, cas.ErrUnknownAlgorithm) {
+	if _, err := NewRepository(cas.NewMemoryBackend(), "nope"); !errors.Is(err, cas.ErrUnknownAlgorithm) {
 		t.Fatalf("NewRepository err = %v, want ErrUnknownAlgorithm", err)
 	}
 }
 
 func TestResolverResolveAny(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "data")
@@ -239,7 +239,7 @@ func TestResolverResolveAny(t *testing.T) {
 // the @1 default (object-versioning §2).
 func TestResolveAnyLegacyUnversioned(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 
 	payload := base64.StdEncoding.EncodeToString([]byte(`{"data":"bGVnYWN5"}`))
@@ -262,7 +262,7 @@ func TestResolveAnyLegacyUnversioned(t *testing.T) {
 
 func TestResolveAnyUnknownType(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 	// Store an envelope with an unknown type name.
 	payload := base64.StdEncoding.EncodeToString([]byte(`{}`))
@@ -326,7 +326,7 @@ func TestPrintObject(t *testing.T) {
 
 func TestWalkGraph(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "content")
@@ -386,7 +386,7 @@ func TestWalkGraph(t *testing.T) {
 // A visit error must stop the walk and propagate.
 func TestWalkGraphVisitError(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	res := NewResolver(repo)
 	hb := putBlob(t, repo, "x")
 	sentinel := errors.New("stop walking")
@@ -400,7 +400,7 @@ func TestWalkGraphVisitError(t *testing.T) {
 
 func TestCachedRepository(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	cached, err := NewCachedRepository(repo, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -447,7 +447,7 @@ func TestCachedRepository(t *testing.T) {
 
 func TestCachedRepositoryMissing(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	cached, err := NewCachedRepository(repo, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -466,7 +466,7 @@ func TestCachedRepositoryMissing(t *testing.T) {
 
 func TestPreloaderDefaultWorkers(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	cached, err := NewCachedRepository(repo, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -492,7 +492,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 
 func TestPreloader(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 	cached, err := NewCachedRepository(repo, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -571,7 +571,7 @@ func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) 
 
 func TestGetRejectsInvalidHashPayloads(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 
 	// Tree with an invalid entry hash string.
 	h := mustStoreEnv(t, repo, "tree@1", `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`)
@@ -596,7 +596,7 @@ func TestGetRejectsInvalidHashPayloads(t *testing.T) {
 }
 
 func TestRepositoryErrorPaths(t *testing.T) {
-	raw := cas.NewMemoryRawStore()
+	raw := cas.NewMemoryBackend()
 	if _, err := NewRepository(raw, "bogusalgo"); err == nil {
 		t.Fatal("NewRepository with unknown algo must error")
 	}
@@ -639,7 +639,7 @@ func TestPrintObjectNilHash(t *testing.T) {
 // nil-hash tree entry).
 func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, cas.NewMemoryRawStore())
+	repo := newRepo(t, cas.NewMemoryBackend())
 
 	tree := &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}} // nil Hash entry
 	th, err := repo.Trees.Put(ctx, tree)

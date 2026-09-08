@@ -126,7 +126,7 @@ func gunzipJSON[T any](data []byte) (*T, error) {
 
 // app bundles the store, typed stores, and the LRU cache.
 type app struct {
-	raw       *cas.FSRawStore
+	raw       *cas.FSBackend
 	artifacts *cas.Store[*Artifact]
 	manifests *cas.Store[*Manifest]
 	cache     *cache.LRUCache[*Artifact]
@@ -134,7 +134,7 @@ type app struct {
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := cas.NewFSRawStore(dir)
+	raw, err := cas.NewFSBackend(dir)
 	if err != nil {
 		return nil, err
 	}

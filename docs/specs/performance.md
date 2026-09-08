@@ -26,11 +26,11 @@ version: v10
 | P-02 | **One-pass streaming**        | hash computed *while* writing via `io.TeeReader`; never read bytes twice |
 | P-03 | **Bounded allocations**       | hot paths keep allocations flat; every benchmark calls `b.ReportAllocs()` |
 | P-04 | **No reflection**             | generics monomorphize; no runtime type assertions in hot paths       |
-| P-05 | **Large objects never buffered** | `RawStore` streams `io.Reader`; HTTP layer streams bodies           |
+| P-05 | **Large objects never buffered** | `Backend` streams `io.Reader`; HTTP layer streams bodies           |
 
 ---
 
-## 2. Lock-Free Reads (`FSRawStore`)
+## 2. Lock-Free Reads (`FSBackend`)
 
 The single biggest "fast" win, and it makes the code *simpler*:
 
@@ -51,7 +51,7 @@ Rules:
 
 1. `Get`/`Exists`/`List`/`Stats` MUST NOT acquire a lock.
 2. `Put`/`Delete` MAY use one `sync.Mutex` (not `RWMutex`).
-3. Document the atomicity argument in the `FSRawStore` type comment so the
+3. Document the atomicity argument in the `FSBackend` type comment so the
    lock-free design survives refactors.
 
 ---
@@ -61,19 +61,19 @@ Rules:
 - Serialize once, hash while streaming: feed the serialized bytes through an
   `io.TeeReader` into the hasher *before* `raw.Put` — never read the content
   twice.
-- `RawStore.Put(ctx, h, r)` MUST stream `r` without buffering (the hash in
+- `Backend.Put(ctx, h, r)` MUST stream `r` without buffering (the hash in
   `h` is trusted as the address; `Verify` is the integrity check).
 
 ---
 
 ## 4. Allocation & Streaming Rules
 
-1. Hot paths (`Store.Put`/`Get` on small objects, `FSRawStore.Put`/`Get`)
+1. Hot paths (`Store.Put`/`Get` on small objects, `FSBackend.Put`/`Get`)
    SHOULD keep allocations flat and bounded; prove it with
    `b.ReportAllocs()`.
 2. Reuse buffers: `sync.Pool` for scratch buffers in the HTTP layer and the
    verify/hexdump paths.
-3. Never `io.ReadAll` a large object in a byte-layer read (`RawStore.Get`)
+3. Never `io.ReadAll` a large object in a byte-layer read (`Backend.Get`)
    or in `Store.GetRaw` — stream, or use a bounded read. Typed `Store.Get`
    may buffer only because `Codec.Decode` needs bytes; document that.
 4. No `fmt` in hot paths where avoidable — use `encoding/hex` directly, not
@@ -91,7 +91,7 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 | -------------------------- | -------------------------------------------- |
 | `BenchmarkStorePut`        | 64 B, 1 KiB, 1 MiB                           |
 | `BenchmarkStoreGet`        | same                                         |
-| `BenchmarkFSRawStorePut/Get` | same, flat vs. fan-out layout               |
+| `BenchmarkFSBackendPut/Get` | same, flat vs. fan-out layout               |
 | `BenchmarkRoundTrip`       | Put + Get combined                           |
 | `BenchmarkVerify`          | intact object                                |
 | `BenchmarkParseHash`       | valid + invalid inputs                       |
@@ -100,8 +100,8 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
 - Benchmarks that isolate store logic from disk noise run against
-  `MemoryRawStore` (deterministic, no I/O variance); disk behavior is
-  covered separately by the `BenchmarkFSRawStore*` cases.
+  `MemoryBackend` (deterministic, no I/O variance); disk behavior is
+  covered separately by the `BenchmarkFSBackend*` cases.
 - Benchmarks are run on demand (`go test -bench=. -benchmem -count=5
   ./cas/...`); there is **no committed baseline and no CI gate** — shared
   CI runners are too noisy for wall-clock gating, and allocation
@@ -195,7 +195,7 @@ limit is usually **inodes and directory-entry performance**, not disk space.
 
 Packfiles are the planned answer to "too many small loose objects". Deferred
 until the loose-store design is proven — then implemented behind the same
-`RawStore` contract.
+`Backend` contract.
 
 ### 9.1 Motivation
 
@@ -213,7 +213,7 @@ group many small objects into a few large files.
 - **Write policy**: objects ≤ threshold (e.g. 8 KiB) go into the current
   pack; the pack is flushed when it reaches a target size (e.g. 64 MiB) or a
   time budget; flushed packs are **immutable**.
-- **Read path**: `RawStore.Get` stays streaming — locate the offset via the
+- **Read path**: `Backend.Get` stays streaming — locate the offset via the
   index, read the range (`io.SectionReader` / `ReadAt`); never load a pack
   into memory. Objects above the threshold stay loose.
 - **List/Stats**: derived from the index files — O(packs) + O(index
@@ -230,8 +230,8 @@ group many small objects into a few large files.
 - Random-access reads cost an index lookup + seek (vs. direct open for
   loose).
 - Write latency becomes batched (small objects wait for a flush).
-- Complexity: keep it behind the `RawStore` contract (a `PackedRawStore`
-  wrapper or an `FSRawStore` mode), so `Store[T]`, caches, and the HTTP layer
+- Complexity: keep it behind the `Backend` contract (a `PackedBackend`
+  wrapper or an `FSBackend` mode), so `Store[T]`, caches, and the HTTP layer
   are untouched.
 
 ### 9.4 Acceptance criteria
@@ -250,7 +250,7 @@ group many small objects into a few large files.
 
 Rolling-hash chunking for very large blobs (dedup at chunk granularity).
 Acceptance: a design decision first, then implementation behind the same
-`RawStore` contract. Not started.
+`Backend` contract. Not started.
 
 ---
 
@@ -264,8 +264,8 @@ every material core change (CI smoke: subset) and fully in nightly.
 
 | # | Scenario                          | Setup                                                    |
 | - | --------------------------------- | -------------------------------------------------------- |
-| T-01 | Small-object storm            | 100k × 1 KiB, `MemoryRawStore` + `FSRawStore`            |
-| T-02 | Large-object streaming        | 10 × 1 GiB, `FSRawStore`; watch RSS during Put/Get      |
+| T-01 | Small-object storm            | 100k × 1 KiB, `MemoryBackend` + `FSBackend`            |
+| T-02 | Large-object streaming        | 10 × 1 GiB, `FSBackend`; watch RSS during Put/Get      |
 | T-03 | Mixed workload                | 90% small reads + 10% small writes, warm store           |
 | T-04 | Concurrent readers            | 32 goroutines reading the same 100k objects              |
 | T-05 | Concurrent writers            | 8 goroutines writing distinct small objects              |

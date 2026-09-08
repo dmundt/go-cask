@@ -4,7 +4,7 @@
 //
 // Reachability is marked from HEAD (the store's only root): objects the
 // commit graph cannot reach are orphaned (GC candidates). Integrity is
-// checked per object with FSRawStore.Verify unless -no-verify is given,
+// checked per object with FSBackend.Verify unless -no-verify is given,
 // in which case reachable objects are simply "unverified".
 package main
 

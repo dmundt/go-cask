@@ -8,7 +8,7 @@
 // tag@1) and stored in the self-describing envelope
 // {"type": "<type>@<major>", "data": "<base64 payload>"} defined by the core.
 //
-// The package also provides Repository (per-type stores over one RawStore),
+// The package also provides Repository (per-type stores over one Backend),
 // Resolver/ResolvedObject (cross-type resolution without any), WalkGraph
 // (whole-graph traversal), CachedRepository (per-type LRU caches) and
 // Preloader (background commit preloading).

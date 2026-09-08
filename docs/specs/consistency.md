@@ -116,8 +116,8 @@ retention policy, in the spirit of restic's retention rules and S3 lifecycle
 expiration.
 
 - **Age source**: the object's **creation time ≈ first-`Put` time**, taken
-  from the file mtime (`FSRawStore` — zero schema change) or a per-object
-  timestamp map (`MemoryRawStore`). No metadata sidecar, no schema migration.
+  from the file mtime (`FSBackend` — zero schema change) or a per-object
+  timestamp map (`MemoryBackend`). No metadata sidecar, no schema migration.
 - **Operation**: `Prune(ctx, roots []Hash, minAge time.Duration,
   dryRun bool)`:
   1. mark reachable from roots (§4);
@@ -189,14 +189,14 @@ Stats()                 # what is stored, per algorithm
 - Content addressing + atomic writes remove most consistency problems by
   construction; the rest is detection + explicit reclamation.
 - If a future problem genuinely needs more (pack rewriting, chunked GC), it
-  is added behind the same `RawStore`/maintenance contracts — never as a new
+  is added behind the same `Backend`/maintenance contracts — never as a new
   parallel model.
 
 ---
 
 ## 9. Where These Live
 
-- **Core (cas-core §4.11)**: `FSRawStore.Verify`, `GC`, `Stats`; `Prune` is
+- **Core (cas-core §4.11)**: `FSBackend.Verify`, `GC`, `Stats`; `Prune` is
   the age-based maintenance operation defined here.
 - **CLI (cli §2)**: `verify`, `gc`, `prune`, `clean` operate in-process
   over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan

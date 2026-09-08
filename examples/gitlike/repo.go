@@ -11,10 +11,10 @@ import (
 )
 
 // Repository bundles the per-type stores (blob, tree, commit, tag) over one
-// RawStore and one hash algorithm — cross-type access without any: each
+// Backend and one hash algorithm — cross-type access without any: each
 // store is typed, so calling the wrong store is a compile-time error.
 type Repository struct {
-	raw     cas.RawStore
+	raw     cas.Backend
 	Blobs   *cas.Store[*Blob]
 	Trees   *cas.Store[*Tree]
 	Commits *cas.Store[*Commit]
@@ -23,7 +23,7 @@ type Repository struct {
 
 // NewRepository builds a Repository over raw with the given hash algorithm.
 // It returns ErrUnknownAlgorithm if algo is not registered.
-func NewRepository(raw cas.RawStore, algo string) (*Repository, error) {
+func NewRepository(raw cas.Backend, algo string) (*Repository, error) {
 	blobs, err := cas.NewStore(raw, codec.JSONCodec[*Blob]{}, algo)
 	if err != nil {
 		return nil, err

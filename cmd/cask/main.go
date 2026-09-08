@@ -15,7 +15,7 @@ import (
 const usage = `usage: cask [-store <path>] <command> [args]
 
 flags:
-  -store <path>   the store directory (the library in-process, FSRawStore)
+  -store <path>   the store directory (the library in-process, FSBackend)
 
 commands:
   put <file|- >      store bytes (or stdin); prints the hash

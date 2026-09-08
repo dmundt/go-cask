@@ -12,8 +12,8 @@ import (
 )
 
 // Benchmarks per performance §5: every case reports allocations and bytes.
-// Store-level benchmarks run against MemoryRawStore (deterministic, no disk
-// noise); the FSRawStore cases cover disk behavior separately.
+// Store-level benchmarks run against MemoryBackend (deterministic, no disk
+// noise); the FSBackend cases cover disk behavior separately.
 
 func benchNote(size int) testNote {
 	return testNote{Title: strings.Repeat("a", size/2), Body: strings.Repeat("b", size/2)}
@@ -32,7 +32,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+			s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -53,7 +53,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+			s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -73,7 +73,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	}
 }
 
-func BenchmarkFSRawStorePut(b *testing.B) {
+func BenchmarkFSBackendPut(b *testing.B) {
 	for _, layout := range []struct {
 		name string
 		opts []FSOption
@@ -90,7 +90,7 @@ func BenchmarkFSRawStorePut(b *testing.B) {
 		} {
 			b.Run(layout.name+"/"+sz.name, func(b *testing.B) {
 				ctx := context.Background()
-				s, err := NewFSRawStore(b.TempDir(), layout.opts...)
+				s, err := NewFSBackend(b.TempDir(), layout.opts...)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -114,7 +114,7 @@ func BenchmarkFSRawStorePut(b *testing.B) {
 	}
 }
 
-func BenchmarkFSRawStoreGet(b *testing.B) {
+func BenchmarkFSBackendGet(b *testing.B) {
 	for _, layout := range []struct {
 		name string
 		opts []FSOption
@@ -131,7 +131,7 @@ func BenchmarkFSRawStoreGet(b *testing.B) {
 		} {
 			b.Run(layout.name+"/"+sz.name, func(b *testing.B) {
 				ctx := context.Background()
-				s, err := NewFSRawStore(b.TempDir(), layout.opts...)
+				s, err := NewFSBackend(b.TempDir(), layout.opts...)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -160,7 +160,7 @@ func BenchmarkFSRawStoreGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func BenchmarkRoundTrip(b *testing.B) {
 
 func BenchmarkVerify(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewFSRawStore(b.TempDir())
+	s, err := NewFSBackend(b.TempDir())
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}

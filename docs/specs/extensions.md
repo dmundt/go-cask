@@ -37,7 +37,7 @@ version: v5
 
 | # | Requirement                                                              |
 | - | ------------------------------------------------------------------------ |
-| 1 | Use the documented recipes (cas-core §7.2): implement `RawStore`, `Object[T]`, `Codec[T]`, `HashFunc`, or wrap `CachedStore[T]` — nothing else. |
+| 1 | Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]`, `HashFunc`, or wrap `CachedStore[T]` — nothing else. |
 | 2 | Never add `any`/`interface{}` or reflection to a public API (coding-guidelines §8). |
 | 3 | Errors: wrap the core's sentinel errors with `%w` (`ErrNotFound`, `ErrHashMismatch`, …) and use `errors.Is`; map them to your layer's errors (api-design §6 for HTTP). |
 | 4 | Compatibility: additive changes only; never break the core's stable surface (library-design §5). |
@@ -60,7 +60,7 @@ spec instead of restating the design (AGENT.md §4: no duplicated drift).
 | Extension | What it is | Design lives in |
 | --------- | ---------- | --------------- |
 | **Packfiles** | Git-style packing: group small loose objects into immutable `pack-<ts>.pack` files plus a `.idx` index — O(packs) `List`/`Stats`, pack-level GC, streaming reads via `io.SectionReader`. | cas-core §8 (follow-up 4); performance §9 (format, write policy, acceptance criteria) |
-| **Compression layer** | `CompressedStore` wrapping `RawStore` with gzip via `io.Pipe`, transparent to everything above the byte layer. | cas-core §8 (follow-up 5) |
+| **Compression layer** | `CompressedStore` wrapping `Backend` with gzip via `io.Pipe`, transparent to everything above the byte layer. | cas-core §8 (follow-up 5) |
 | **Encryption layer** | `EncryptedCodec[T]` wrapping `Codec[T]` with authenticated encryption (AES-256-GCM); the application supplies the key — the core never generates or stores keys. | cas-core §8 (follow-up 8); cas-core §4.6/§7.2 (codec recipe) |
 | **Content-defined chunking** | Rolling-hash chunking of very large blobs for chunk-granular dedup. | performance §10 |
 

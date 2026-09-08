@@ -25,7 +25,7 @@ type testClient struct {
 
 func newTestServer(t *testing.T, rlCfg RateLimitConfig) (*testClient, *httptest.Server) {
 	t.Helper()
-	raw, err := cas.NewFSRawStore(t.TempDir())
+	raw, err := cas.NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestLargePayload(t *testing.T) {
 
 func TestRoleMatrix(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := cas.NewFSRawStore(t.TempDir())
+	raw, _ := cas.NewFSBackend(t.TempDir())
 	srv := New(raw, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -254,7 +254,7 @@ func TestMetaVerifyListStats(t *testing.T) {
 
 func TestGCAndOpenAPI(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := cas.NewFSRawStore(t.TempDir())
+	raw, _ := cas.NewFSBackend(t.TempDir())
 	srv := New(raw, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

@@ -131,7 +131,7 @@ Related specs that also constrain work in this repo:
 The chat history moved through these stages; the **final state** is the fully
 type-safe, registry-free design:
 
-1. Generic store + `Codec[T]` wrapper over a byte `RawStore`.
+1. Generic store + `Codec[T]` wrapper over a byte `Backend`.
 2. Git-like object store: objects are `[]byte` addressed by `Hash`, with typed
    objects (`blob`, `tree`, `commit`) on top.
 3. Objects can reference each other by hash with types **not known in advance**;
@@ -140,7 +140,7 @@ type-safe, registry-free design:
 5. **Pluggable hash functions; the hash type carries the algorithm**:
    `Hash` is `algo:digest` (e.g. `sha256:a1b2...`), so references are
    self-describing and algorithms can be mixed/migrated.
-6. **`RawStore` for the filesystem** (`FSRawStore`): Git-like fan-out
+6. **`Backend` for the filesystem** (`FSBackend`): Git-like fan-out
    directories (configurable n-way/n-level), atomic temp-file writes,
    lock-free reads, stats, verify, GC.
 7. **Remove `any`**: fully generic `Object[T]`, `Store[T]`, `JSONCodec[T]`,
@@ -175,8 +175,8 @@ below is consolidated from the last converged state of the conversation.
 │   CachedStore[T] / CachedObject[T] / LRUCache[T]            │
 ├─────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic)                                    │
-│   Hash (algo:digest) · RawStore interface                   │
-│   Backends: FSRawStore (reference), MemoryRawStore (tests) │
+│   Hash (algo:digest) · Backend interface                   │
+│   Backends: FSBackend (reference), MemoryBackend (tests) │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -189,7 +189,7 @@ flowchart TB
     subgraph CORE["Generic core (package cas)"]
         TYPED["Typed layer: Object[T] · Codec[T] · Store[T] · Walker[T]"]
         CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
-        BYTE["Byte layer: Hash · RawStore · FSRawStore"]
+        BYTE["Byte layer: Hash · Backend · FSBackend"]
     end
     APP1 --> TYPED
     APP2 --> TYPED
@@ -202,9 +202,9 @@ flowchart TB
 | ---------------- | ----------------------------------------------------------- |
 | `Hash`           | Content address; carries algorithm + digest (`sha256:ab..`) |
 | `HashFunc`       | Computes a `Hash` from bytes; runtime-registerable          |
-| `RawStore`       | Raw byte storage interface (non-generic)                    |
-| `FSRawStore`     | Filesystem backend: n-way fan-out paths (Git-like default), atomic writes, locking |
-| `MemoryRawStore` | In-memory backend for tests/benchmarks (no disk I/O, not persistent) |
+| `Backend`       | Raw byte storage interface (non-generic)                    |
+| `FSBackend`     | Filesystem backend: n-way fan-out paths (Git-like default), atomic writes, locking |
+| `MemoryBackend` | In-memory backend for tests/benchmarks (no disk I/O, not persistent) |
 | `Codec[T]`       | Serialization contract for a type `T`                       |
 | `Object[T]`      | Self-describing, typed object with `References()`           |
 | `Store[T]`       | Generic store: Put/PutDedup/Get/GetRaw/Exists/Delete          |
@@ -229,7 +229,7 @@ build their own equivalents for their own types.
 2. **Hash carries its algorithm.** `Hash` is `"algo:hexdigest"`. References are
    self-describing, algorithms can be mixed in one object graph, and stores can
    read objects hashed with any registered algorithm.
-3. **Core storage is non-generic.** `RawStore` deals in `Hash` + `io.Reader`
+3. **Core storage is non-generic.** `Backend` deals in `Hash` + `io.Reader`
    only. All generics live in the typed layer on top.
 4. **Fully type-safe — no `any` in the public API.** No `interface{}` in
    exported signatures, no reflection-based dispatch. Each object type gets its
@@ -237,7 +237,7 @@ build their own equivalents for their own types.
 5. **Objects are self-describing and pluggable.** Every `Object[T]` declares
    `Type()` and `References()`; apps register/define new types without touching
    the storage core.
-6. **Streaming I/O.** `RawStore` moves `io.Reader`/`io.ReadCloser` so large
+6. **Streaming I/O.** `Backend` moves `io.Reader`/`io.ReadCloser` so large
    objects never need to be fully buffered by the byte layer.
 7. **Thread-safe by default.** Backend reads are lock-free (atomic rename);
    one `sync.Mutex` coordinates `Put`/`Delete`; caches use `sync.Map`/
@@ -257,7 +257,7 @@ build their own equivalents for their own types.
 > not duplicate it: keep implementations and docs in sync with cas-core.
 
 > Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Hash`,
-> `RawStore`); `fsstore.go`/`memstore.go` → cas-core §4.4–4.5;
+> `Backend`); `fsstore.go`/`memstore.go` → cas-core §4.4–4.5;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
 > `cache.go` → §4.10; `maintenance.go` → §4.11; `examples/gitlike/*` → §4.12.
 
@@ -279,7 +279,7 @@ func main() {
     ctx := context.Background()
 
     // 1. Backend from the generic core + git-like example repository on top.
-    raw, _ := cas.NewFSRawStore("./repo")
+    raw, _ := cas.NewFSBackend("./repo")
     repo, _ := gitlike.NewRepository(raw, "sha256")
     resolver := gitlike.NewResolver(repo)
 
@@ -319,7 +319,7 @@ For tests and ephemeral use, swap the backend — everything above works
 unchanged:
 
 ```go
-raw := cas.NewMemoryRawStore() // in-memory: fast, deterministic, not persistent
+raw := cas.NewMemoryBackend() // in-memory: fast, deterministic, not persistent
 ```
 
 ---
@@ -327,11 +327,11 @@ raw := cas.NewMemoryRawStore() // in-memory: fast, deterministic, not persistent
 ## Extension Guide (how an agent should extend this library)
 
 **Add a new storage backend** (S3, BadgerDB, PostgreSQL, ...):
-1. Implement `RawStore` exactly (`Put/Get/Exists/Delete/List`), honoring
+1. Implement `Backend` exactly (`Put/Get/Exists/Delete/List`), honoring
    context propagation, error wrapping, and atomic/durable writes.
 2. Keep the byte layer non-generic; everything above it works unchanged.
-3. Mirror `FSRawStore`'s guarantees: idempotent `Put`, `Delete` no-op on
-   missing objects, `List(algo)` filtering. `MemoryRawStore` (section 3b) is
+3. Mirror `FSBackend`'s guarantees: idempotent `Put`, `Delete` no-op on
+   missing objects, `List(algo)` filtering. `MemoryBackend` (section 3b) is
    the minimal reference implementation.
 
 **Add a new object type** (e.g. `Document`):
@@ -353,7 +353,7 @@ algorithms remain readable (the algorithm lives in the address).
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
 Implement `Codec[T]` (e.g. wrap `JSONCodec[T]` with compression/encryption)
-and pass it to `NewStore`. Do not change `RawStore`.
+and pass it to `NewStore`. Do not change `Backend`.
 
 **Add cache policy**: extend `CachedStore[T]` or add a new wrapper; keep the
 `CachedObject[T]` lazy-load contract and metrics counters.

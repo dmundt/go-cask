@@ -15,7 +15,7 @@ domains.
   types; each app layers its own `Object[T]` model on top (the `gitlike`
   package is the reference example).
 - **Pluggable** — hash algorithms, codecs, and storage backends (filesystem
-  and memory ship; more plug in behind one `RawStore` contract).
+  and memory ship; more plug in behind one `Backend` contract).
 - **Simple, fast, powerful** — lock-free reads, streaming I/O,
   multi-process-safe writers, semver-versioned object models, GC from roots
   with a Git-style grace period — no over-engineering.
@@ -37,7 +37,7 @@ decisions that shape the repo (each named spec is the normative contract):
   except the `gitlike` shared reference library (examples §2 rule 11).
 - **Lean generic core with reference implementations.** `cas` stays
   app-agnostic; each pluggable seam ships one reference (`sha1`/`sha256`,
-  `MemoryRawStore`, `JSONCodec`), and only the cas-core §7.1 surface is
+  `MemoryBackend`, `JSONCodec`), and only the cas-core §7.1 surface is
   stable — speculative surface is cut, not kept.
 - **The byte layer is policy-free.** GC/prune take app-supplied roots;
   roots are pins (there is no per-object pinned property); the store never
@@ -66,7 +66,7 @@ AGENTS.md  the agent aggregator at the repo root
 
 ## Core interfaces at a glance
 
-`cas` is layered: a non-generic **byte layer** (`Hash`, `RawStore` + backends)
+`cas` is layered: a non-generic **byte layer** (`Hash`, `Backend` + backends)
 below a generic, constrained **typed layer** (`Object[T]`, `Codec[T]`,
 `Store[T]`, `Walker[T]`), with caching wrappers on top. The typed layer
 depends only on the byte layer; apps build their own `Object[T]` models on
@@ -78,7 +78,7 @@ Architecture layers:
 flowchart TB
     APP["Application layer<br/>(per app — gitlike, notes, files, …)"]
     TYPED["Typed layer<br/>(generic cas core — Store[T], caches)"]
-    BYTE["Byte layer<br/>(Hash · RawStore · backends)"]
+    BYTE["Byte layer<br/>(Hash · Backend · backends)"]
     APP -->|"depends on"| TYPED
     TYPED -->|"depends on"| BYTE
 ```
@@ -95,7 +95,7 @@ classDiagram
         +String() string
         +Equal(other Hash) bool
     }
-    class RawStore {
+    class Backend {
         <<interface>>
         +Put(ctx, h, r) error
         +Get(ctx, h) io.ReadCloser
@@ -103,14 +103,14 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) []Hash
     }
-    class FSRawStore {
+    class FSBackend {
         <<backend>>
     }
-    class MemoryRawStore {
+    class MemoryBackend {
         <<backend>>
     }
-    RawStore <|.. FSRawStore : implements
-    RawStore <|.. MemoryRawStore : implements
+    Backend <|.. FSBackend : implements
+    Backend <|.. MemoryBackend : implements
 
     class Object~T~ {
         <<interface>>
@@ -130,7 +130,7 @@ classDiagram
     class Walker~T~ {
         +Walk(ctx, h) error
     }
-    Store~T~ o-- RawStore : raw
+    Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
@@ -149,7 +149,7 @@ import (
     "github.com/dmundt/go-cask/examples/gitlike"
 )
 
-raw, _ := cas.NewFSRawStore("./objects")          // backend
+raw, _ := cas.NewFSBackend("./objects")          // backend
 repo, _ := gitlike.NewRepository(raw, "sha256")   // typed layer on top
 h, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
 blob, _ := repo.Blobs.Get(ctx, h)                // *gitlike.Blob
@@ -158,7 +158,7 @@ blob, _ := repo.Blobs.Get(ctx, h)                // *gitlike.Blob
 For tests and ephemeral use, swap the backend:
 
 ```go
-raw := cas.NewMemoryRawStore() // fast, deterministic, not persistent
+raw := cas.NewMemoryBackend() // fast, deterministic, not persistent
 ```
 
 ## The specification set

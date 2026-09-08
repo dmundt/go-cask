@@ -73,18 +73,18 @@ func (n *testNode) UnmarshalJSON(data []byte) error {
 
 // --- Shared backend contract: the CAS laws over both backends ---
 
-// backendFactory builds a fresh RawStore for a contract test.
-type backendFactory func(t *testing.T) RawStore
+// backendFactory builds a fresh Backend for a contract test.
+type backendFactory func(t *testing.T) Backend
 
-func fsFactory(t *testing.T) RawStore {
-	s, err := NewFSRawStore(t.TempDir())
+func fsFactory(t *testing.T) Backend {
+	s, err := NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func memFactory(t *testing.T) RawStore { return NewMemoryRawStore() }
+func memFactory(t *testing.T) Backend { return NewMemoryBackend() }
 
 func TestBackendContract(t *testing.T) {
 	for _, bf := range []struct {
@@ -96,14 +96,14 @@ func TestBackendContract(t *testing.T) {
 	} {
 		t.Run(bf.name, func(t *testing.T) {
 			raw := bf.fn(t)
-			testRawStoreContract(t, raw)
+			testBackendContract(t, raw)
 		})
 	}
 }
 
-// testRawStoreContract runs the RawStore-level CAS laws plus the corner/error
+// testBackendContract runs the Backend-level CAS laws plus the corner/error
 // inventory shared by both backends (testing-strategy §1, §3).
-func testRawStoreContract(t *testing.T, raw RawStore) {
+func testBackendContract(t *testing.T, raw Backend) {
 	ctx := context.Background()
 	// Round-trip + determinism: same bytes → same hash → identical bytes.
 	h1, err := hashData("sha256", []byte("hello"))
@@ -211,7 +211,7 @@ func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 
 // --- Store[T] typed-layer tests ---
 
-func newTestStore(t *testing.T, raw RawStore) *Store[testNote] {
+func newTestStore(t *testing.T, raw Backend) *Store[testNote] {
 	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func newTestStore(t *testing.T, raw RawStore) *Store[testNote] {
 }
 
 func TestStoreRoundTrip(t *testing.T) {
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
@@ -280,7 +280,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 // CAS law: dedup — Put twice → one object; PutDedup reports the duplicate.
 func TestStoreDedup(t *testing.T) {
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
@@ -324,7 +324,7 @@ func TestStoreDedup(t *testing.T) {
 }
 
 func TestStoreEmptyStore(t *testing.T) {
-	s := newTestStore(t, NewMemoryRawStore())
+	s := newTestStore(t, NewMemoryBackend())
 	ctx := context.Background()
 	missing, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 
@@ -342,7 +342,7 @@ func TestStoreEmptyStore(t *testing.T) {
 func TestStoreTypeSafety(t *testing.T) {
 	// A node store must NOT decode a note object as a node: wrong-type
 	// payloads fail loudly rather than producing garbage.
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	ctx := context.Background()
 	notes := newTestStore(t, raw)
 	h, err := notes.Put(ctx, testNote{Title: "t"})
@@ -359,7 +359,7 @@ func TestStoreTypeSafety(t *testing.T) {
 }
 
 func TestNewStoreUnknownAlgorithm(t *testing.T) {
-	_, err := NewStore[testNote](NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "nope")
+	_, err := NewStore[testNote](NewMemoryBackend(), codec.JSONCodec[testNote]{}, "nope")
 	if !errors.Is(err, ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
 	}
@@ -371,7 +371,7 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	RegisterHash("testblob", func([]byte) Hash {
 		return hash{algo: "testblob", bytes: []byte{0xde, 0xad}}
 	})
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	ctx := context.Background()
 	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "testblob")
 	if err != nil {
@@ -397,7 +397,7 @@ func TestStoreWithCustomHasher(t *testing.T) {
 }
 
 func TestStoreCancelledContext(t *testing.T) {
-	s := newTestStore(t, NewMemoryRawStore())
+	s := newTestStore(t, NewMemoryBackend())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := s.Put(ctx, testNote{Title: "t"}); err == nil {
@@ -413,7 +413,7 @@ func TestEnvelopeFormat(t *testing.T) {
 	// Store.Put from the codec payload (the codec is the serialization
 	// authority — objects no longer serialize themselves).
 	ctx := context.Background()
-	s := newTestStore(t, NewMemoryRawStore())
+	s := newTestStore(t, NewMemoryBackend())
 	h, err := s.Put(ctx, testNote{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -444,7 +444,7 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

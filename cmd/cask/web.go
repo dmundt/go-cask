@@ -42,7 +42,7 @@ func runWeb(ctx context.Context, args []string) {
 		os.Exit(1)
 	}
 
-	raw, err := cas.NewFSRawStore(*store)
+	raw, err := cas.NewFSBackend(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)

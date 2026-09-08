@@ -17,7 +17,7 @@ const testStartupToken = "AAAA-BBBB-CCCC"
 
 func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	t.Helper()
-	raw, err := cas.NewFSRawStore(t.TempDir())
+	raw, err := cas.NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestCSRFEnforced(t *testing.T) {
 
 func TestVerifyAndDelete(t *testing.T) {
 	ctx := context.Background()
-	raw, err := cas.NewFSRawStore(t.TempDir())
+	raw, err := cas.NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

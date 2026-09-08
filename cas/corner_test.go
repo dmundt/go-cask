@@ -55,10 +55,10 @@ func TestUnmarshalEnvelopeCases(t *testing.T) {
 	}
 }
 
-// TestContextCancellationFS verifies every FSRawStore operation honors a
+// TestContextCancellationFS verifies every FSBackend operation honors a
 // canceled context (no filesystem side effects happen).
 func TestContextCancellationFS(t *testing.T) {
-	s, err := NewFSRawStore(t.TempDir())
+	s, err := NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,10 +92,10 @@ func TestContextCancellationFS(t *testing.T) {
 	}
 }
 
-// TestMemoryRawStoreSuite covers the in-memory backend contract directly:
+// TestMemoryBackendSuite covers the in-memory backend contract directly:
 // round-trip, idempotence, filtering, error paths, and canceled contexts.
-func TestMemoryRawStoreSuite(t *testing.T) {
-	m := NewMemoryRawStore()
+func TestMemoryBackendSuite(t *testing.T) {
+	m := NewMemoryBackend()
 	ctx := context.Background()
 	h1, _ := hashData("sha256", []byte("alpha"))
 	h2, _ := hashData("sha256", []byte("beta"))
@@ -187,21 +187,21 @@ type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
-// TestFSRawStoreErrorPaths covers portable FSRawStore failures: constructor
+// TestFSBackendErrorPaths covers portable FSBackend failures: constructor
 // over a file, Put with a failing reader (temp cleaned up), and Prune at
 // minAge 0.
-func TestFSRawStoreErrorPaths(t *testing.T) {
-	// NewFSRawStore over an existing file must fail (MkdirAll error).
+func TestFSBackendErrorPaths(t *testing.T) {
+	// NewFSBackend over an existing file must fail (MkdirAll error).
 	file := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFSRawStore(file); err == nil {
-		t.Fatal("NewFSRawStore over an existing file must error")
+	if _, err := NewFSBackend(file); err == nil {
+		t.Fatal("NewFSBackend over an existing file must error")
 	}
 
 	ctx := context.Background()
-	s, err := NewFSRawStore(t.TempDir())
+	s, err := NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestVerifyCustomOneShot(t *testing.T) {
 		return hash{algo: "obvfy", bytes: sum[:]}
 	})
 	ctx := context.Background()
-	s, err := NewFSRawStore(t.TempDir())
+	s, err := NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestHashOneShotRegistration(t *testing.T) {
 // type name decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestStoreCanceledOps(t *testing.T) {
 // child propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNode]{}, "sha256")
+	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

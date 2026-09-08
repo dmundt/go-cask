@@ -13,18 +13,18 @@ import (
 	"github.com/dmundt/go-cask/internal/index"
 )
 
-// target is the store the ops speak to: cas.FSRawStore directly (in-process;
+// target is the store the ops speak to: cas.FSBackend directly (in-process;
 // there is no storage service layer — the library is the single source of
 // behavior, backend-architecture §2).
 type target struct {
-	raw *cas.FSRawStore
+	raw *cas.FSBackend
 }
 
 func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
 	if mf.store == "" {
 		return nil, fmt.Errorf("-store <path> is required")
 	}
-	raw, err := cas.NewFSRawStore(mf.store)
+	raw, err := cas.NewFSBackend(mf.store)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprin
 // pruneCount runs raw.Prune (delete unreachable-from-roots objects older
 // than minAge; dryRun reports without deleting) and returns how many objects
 // it deleted / would delete.
-func pruneCount(ctx context.Context, raw *cas.FSRawStore, roots []cas.Hash, minAge time.Duration, dryRun bool) (int, error) {
+func pruneCount(ctx context.Context, raw *cas.FSBackend, roots []cas.Hash, minAge time.Duration, dryRun bool) (int, error) {
 	doomed, err := raw.Prune(ctx, roots, minAge, dryRun)
 	if err != nil {
 		return 0, err
@@ -95,7 +95,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 
 // localPut stores bytes under the hash of their content with algo,
 // streaming through a temp spool (hash-on-write).
-func localPut(ctx context.Context, raw *cas.FSRawStore, r io.Reader, algo string) (cas.Hash, bool, error) {
+func localPut(ctx context.Context, raw *cas.FSBackend, r io.Reader, algo string) (cas.Hash, bool, error) {
 	hasher, err := cas.NewHasher(algo)
 	if err != nil {
 		return nil, false, err

@@ -11,10 +11,10 @@ import (
 )
 
 // Store[T] is the generic, type-safe content-addressable store for objects of
-// type T, over a RawStore backend, a Codec[T] and a hash algorithm. Type
+// type T, over a Backend backend, a Codec[T] and a hash algorithm. Type
 // safety comes from one store per type: Store[Blob] and Store[Commit] are
 // distinct, so passing a commit hash to a blob store is a compile-time
-// error. Store[T] is safe for concurrent use if its RawStore is.
+// error. Store[T] is safe for concurrent use if its Backend is.
 //
 // Stored objects use the self-describing envelope (cas-core §8, decision 1):
 // the serialized bytes are {"type": "<type>@<major>", "data": "<base64
@@ -28,7 +28,7 @@ import (
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
 // type assertions exist anywhere in the typed layer.
 type Store[T Object[T]] struct {
-	raw    RawStore
+	raw    Backend
 	codec  Codec[T]
 	hasher HashFunc
 }
@@ -37,7 +37,7 @@ type Store[T Object[T]] struct {
 // the registry at construction (no global dependence in the hot path). It
 // returns ErrUnknownAlgorithm if algo is not registered. Custom algorithms
 // are registered with RegisterHash before calling NewStore (cas-core §4.2).
-func NewStore[T Object[T]](raw RawStore, codec Codec[T], algo string) (*Store[T], error) {
+func NewStore[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error) {
 	fn, ok := lookupHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)

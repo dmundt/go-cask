@@ -17,7 +17,7 @@ import (
 // server is the CAS API server: routes over a RawStore with bearer-token
 // role auth and IP-based rate limiting.
 type server struct {
-	raw            *cas.FSRawStore
+	raw            *cas.FSBackend
 	tokens         map[string]string // token → role
 	rl             *rateLimiter
 	sizes          map[string]int64 // hash string → size (maintained at Put)
@@ -25,9 +25,9 @@ type server struct {
 }
 
 // New creates a server over raw with per-role tokens ("token" → role) and
-// the given rate-limit config. The raw store MUST be an FSRawStore (the
+// the given rate-limit config. The raw store MUST be an FSBackend (the
 // example serves a filesystem store; GC/Verify/Stats are FS operations).
-func New(raw *cas.FSRawStore, tokens map[string]string, rlCfg RateLimitConfig) *server {
+func New(raw *cas.FSBackend, tokens map[string]string, rlCfg RateLimitConfig) *server {
 	return &server{
 		raw:            raw,
 		tokens:         tokens,

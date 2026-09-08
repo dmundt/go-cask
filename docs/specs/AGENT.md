@@ -135,7 +135,7 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 | the viewer         | The embedded technical browser UI (`internal/web/`). **Not** "debug UI".     |
 | viewer API         | The hypermedia surface under `/viewer/` (HTML).                        |
 | CAS API            | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface.                                |
-| `RawStore`         | The non-generic byte-storage interface; backends: `FSRawStore`, `MemoryRawStore`, … |
+| `Backend`         | The non-generic byte-storage interface; backends: `FSBackend`, `MemoryBackend`, … |
 | `Store[T]`         | The generic typed store.                                               |
 | `Hash`             | Content address `algo:hexdigest`; validated with `ParseHash`.          |
 | fan-out            | The configurable directory layout (`FanOut`/`FanLevels`), Git-like default. |

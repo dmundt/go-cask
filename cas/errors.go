@@ -1,7 +1,7 @@
 // Package cas implements the core of a content-addressable store: binary
 // objects are stored once under the hash of their content, as immutable,
 // self-describing values that reference each other by hash. The package is
-// layered — a non-generic byte layer (Hash, RawStore, backends) below a
+// layered — a non-generic byte layer (Hash, Backend, backends) below a
 // generic typed layer (Object[T], Codec[T], Store[T], Walker[T], caches) —
 // and knows nothing about application object models; each app layers its own
 // typed objects on top (the gitlike example in examples/gitlike demonstrates

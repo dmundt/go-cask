@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// RawStore is the non-generic byte-storage contract. Every backend (FS,
+// Backend is the non-generic byte-storage contract. Every backend (FS,
 // memory, S3, …) implements these five methods; the typed layer above
 // (Store[T]) and every application works unchanged over any backend.
 //
@@ -21,7 +21,7 @@ import (
 //   - Exists: boolean presence check.
 //   - Delete: a missing object is a no-op (no error).
 //   - List: returns all stored hashes; algo != "" filters by algorithm.
-type RawStore interface {
+type Backend interface {
 	Put(ctx context.Context, h Hash, r io.Reader) error
 	Get(ctx context.Context, h Hash) (io.ReadCloser, error)
 	Exists(ctx context.Context, h Hash) (bool, error)

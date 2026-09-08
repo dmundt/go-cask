@@ -24,7 +24,7 @@ version: v7
 > - `docs/specs/coding-guidelines.md` — §4 (no
 >   CSS/JS), §5 (html/template + htmx), §6 (raw HTML), §10 (viewer boundary).
 > - `docs/specs/cas-core.md` — the data model
->   the viewer displays (`Hash`, `Object[T]`, `RawStore.Stats`, `Verify`,
+>   the viewer displays (`Hash`, `Object[T]`, `Backend.Stats`, `Verify`,
 >   `GC`).
 > - Design reference: <https://hypermedia.systems/book/contents/> — the
 >   hypermedia-driven application philosophy this viewer implements.
@@ -278,10 +278,10 @@ All routes live under `/viewer` (configurable via the `viewer:` config block).
 - **Stat cards** (`stat-card`): total objects, total size, algorithms in use —
   the three numbers that answer *"what's in this store?"* at a glance.
 - **Algorithm breakdown** (`stats-panel`): per-algorithm object counts and
-  sizes (from `RawStore.Stats`); the dashboard is the stats view, with the
+  sizes (from `Backend.Stats`); the dashboard is the stats view, with the
   panel refreshed out-of-band.
 - **Sample objects** (`sample-table`): the first N objects from
-  `RawStore.List` (all algorithms), so the dashboard shows real content, not
+  `Backend.List` (all algorithms), so the dashboard shows real content, not
   just numbers. Rows show `<shorthash> (<type>)`; every row links to its
   detail page via the full hash.
 - **Search** (prominent, top-right): active search that swaps the object

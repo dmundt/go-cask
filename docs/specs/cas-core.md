@@ -108,8 +108,8 @@ flowchart TB
     subgraph BYTE["Byte layer (non-generic, package cas)"]
         direction TB
         HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
-        RAW["RawStore interface"]
-        BACKENDS["Backends: FSRawStore (reference), MemoryRawStore (tests),<br/>S3, BadgerDB, PostgreSQL"]
+        RAW["Backend interface"]
+        BACKENDS["Backends: FSBackend (reference), MemoryBackend (tests),<br/>S3, BadgerDB, PostgreSQL"]
     end
 
     APP -->|"depends on"| TYPED
@@ -132,7 +132,7 @@ Read this first; it explains the whole design in one pass.
 
 **Storing an object.** An application defines a type `Note` implementing
 `Object[Note]` (it knows its versioned type name and which hashes it
-references). It creates a `Store[Note]` over a `RawStore` backend with a
+references). It creates a `Store[Note]` over a `Backend` backend with a
 `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`:
 
 1. **Serializes** the note via `Codec.Encode` and wraps the payload in the
@@ -141,7 +141,7 @@ references). It creates a `Store[Note]` over a `RawStore` backend with a
    (objects never serialize themselves);
 2. **Hashes** the bytes with the store's `HashFunc` — producing the content
    address `sha256:…`;
-3. **Streams** the bytes into the byte layer via `RawStore.Put(ctx, h, r)` —
+3. **Streams** the bytes into the byte layer via `Backend.Put(ctx, h, r)` —
    the backend decides where they live (filesystem with fan-out, memory,
    S3, …);
 4. Returns the `Hash` — the caller stores it inside other objects to build a
@@ -149,7 +149,7 @@ references). It creates a `Store[Note]` over a `RawStore` backend with a
    content is stored once (dedup).
 
 **Reading an object.** `Store.Get(ctx, h)` reverses the path:
-`RawStore.Get` streams the bytes, `Codec.Decode` reconstructs the value, and
+`Backend.Get` streams the bytes, `Codec.Decode` reconstructs the value, and
 the decoded object's `Type()` must match the envelope's type name
 (`ErrUnknownType` on mismatch). The result is the concrete `T` — no casts,
 no `Object[T]` intermediate.
@@ -182,7 +182,7 @@ classDiagram
         +String() string
         +Equal(other Hash) bool
     }
-    class RawStore {
+    class Backend {
         <<interface>>
         +Put(ctx, h, r) error
         +Get(ctx, h) io.ReadCloser
@@ -190,14 +190,14 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) []Hash
     }
-    class FSRawStore {
+    class FSBackend {
         <<backend>>
     }
-    class MemoryRawStore {
+    class MemoryBackend {
         <<backend>>
     }
-    RawStore <|.. FSRawStore : implements
-    RawStore <|.. MemoryRawStore : implements
+    Backend <|.. FSBackend : implements
+    Backend <|.. MemoryBackend : implements
 
     class Object~T~ {
         <<interface>>
@@ -217,7 +217,7 @@ classDiagram
     class Walker~T~ {
         +Walk(ctx, h) error
     }
-    Store~T~ o-- RawStore : raw
+    Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
@@ -239,7 +239,7 @@ classDiagram
         +String() string
         +Equal(other Hash) bool
     }
-    class RawStore {
+    class Backend {
         <<interface>>
         +Put(ctx, h, r) error
         +Get(ctx, h) io.ReadCloser
@@ -247,18 +247,18 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) ([]Hash, error)
     }
-    class FSRawStore {
+    class FSBackend {
         +fanOut int
         +fanLevels int
         +Stats() *StoreStats
         +Verify(ctx, h) error
         +GC(ctx, reachable) error
     }
-    class MemoryRawStore {
+    class MemoryBackend {
         +objects map[string][]byte
     }
-    RawStore <|.. FSRawStore : implements
-    RawStore <|.. MemoryRawStore : implements
+    Backend <|.. FSBackend : implements
+    Backend <|.. MemoryBackend : implements
 ```
 
 **Typed layer — the generic store:**
@@ -277,7 +277,7 @@ classDiagram
         +Decode([]byte) (T, error)
     }
     class Store~T~ {
-        +raw RawStore
+        +raw Backend
         +codec Codec~T~
         +hasher HashFunc
         +Put(ctx, obj) Hash
@@ -286,7 +286,7 @@ classDiagram
         +Exists(ctx, h) (bool, error)
         +Delete(ctx, h) error
     }
-    Store~T~ o-- RawStore : raw
+    Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
 ```
@@ -395,9 +395,9 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
   objects per algorithm (`<base>/<algo>/...`, §4.4), so one store holds many
   algorithms concurrently; `List(algo)` filters and `Stats` reports
   per-algorithm counts. Different `Store[T]` instances over the same
-  `RawStore` may write with different algorithms.
+  `Backend` may write with different algorithms.
 - **Changing the hash type:** a store's algorithm is a write-default, not a
-  constraint on reads. `Store[T].Get`/`GetRaw`, `RawStore.Get`, and
+  constraint on reads. `Store[T].Get`/`GetRaw`, `Backend.Get`, and
   `ParseHash` resolve ANY registered algorithm; objects written with an
   earlier algorithm remain readable forever — re-hashing is never required
   to read.
@@ -430,10 +430,10 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 > one-shot registration entirely (which would break the `artifacts`
 > demo's custom-hash seam).
 
-### 4.3 `RawStore` — the byte storage contract (non-generic)
+### 4.3 `Backend` — the byte storage contract (non-generic)
 
 ```go
-type RawStore interface {
+type Backend interface {
     Put(ctx context.Context, h Hash, r io.Reader) error
     Get(ctx context.Context, h Hash) (io.ReadCloser, error)
     Exists(ctx context.Context, h Hash) (bool, error)
@@ -456,7 +456,7 @@ This interface is the **backend extension point**: any storage system (S3,
 BadgerDB, PostgreSQL, IPFS blockstore, …) can be plugged in by implementing
 these five methods (recipe in §7.2).
 
-### 4.4 `FSRawStore` — filesystem backend
+### 4.4 `FSBackend` — filesystem backend
 
 **On-disk layout (fan-out, Git-like by default):**
 
@@ -486,7 +486,7 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
   remainder (Git stores `objects/aa/<remaining-38-hex>`); here the full
   digest is the file name at every fan-out level.
 - Any n-way / n-level fan-out layout is allowed:
-  `NewFSRawStore(basePath, opts ...FSOption)` accepts `WithFanOut(n)` and
+  `NewFSBackend(basePath, opts ...FSOption)` accepts `WithFanOut(n)` and
   `WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length
   (64 for SHA-256); over-deep configurations are rejected at
   construction.
@@ -552,15 +552,15 @@ backend-architecture §1).
 crashed writes leave behind) older than the threshold — always safe, `.tmp`
 files are never valid objects (operations §2).
 
-### 4.5 `MemoryRawStore` — in-memory backend
+### 4.5 `MemoryBackend` — in-memory backend
 
-A `RawStore` implementation that keeps objects in a `map[string][]byte`
+A `Backend` implementation that keeps objects in a `map[string][]byte`
 (keyed by `h.String()`), guarded by a `sync.RWMutex`:
 
 - **Purpose.** Fast, dependency-free, deterministic storage for unit,
   property, and fuzz tests (testing-strategy §4.8) and for benchmarks that
   isolate store logic from disk noise (performance §5). **Not persistent.**
-- **Contracts.** Same `RawStore` semantics as `FSRawStore`: idempotent
+- **Contracts.** Same `Backend` semantics as `FSBackend`: idempotent
   `Put`, `Get` returns a reader the caller MUST close (missing →
   `ErrNotFound`), `Delete` is a no-op on missing objects, `List(algo)`
   filters by algorithm.
@@ -568,10 +568,10 @@ A `RawStore` implementation that keeps objects in a `map[string][]byte`
   for tests and small objects; `Get` returns `io.NopCloser(bytes.NewReader)`
   over the stored slice, which is never mutated after `Put`.
 - **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
-  trick of `FSRawStore` does not apply, but it is still orders of magnitude
+  trick of `FSBackend` does not apply, but it is still orders of magnitude
   faster than disk, which is the point.
-- **Construction:** `NewMemoryRawStore()`; swap-in compatible with any
-  `Store[T]`, `gitlike` repository, or HTTP handler that takes a `RawStore`.
+- **Construction:** `NewMemoryBackend()`; swap-in compatible with any
+  `Store[T]`, `gitlike` repository, or HTTP handler that takes a `Backend`.
 
 ### 4.6 `Codec[T]` — serialization contract
 
@@ -610,12 +610,12 @@ type Object[T any] interface {
 
 ```go
 type Store[T Object[T]] struct {
-    raw    RawStore
+    raw    Backend
     codec  Codec[T]
     hasher HashFunc
 }
 
-func NewStore[T Object[T]](raw RawStore, codec Codec[T], algo string) (*Store[T], error)
+func NewStore[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error)
 ```
 
 | Method        | Behavior                                                          |
@@ -636,7 +636,7 @@ Design notes:
   `Object[T]` interface the caller would have to cast; `GetRaw` returns the
   bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of
   `any` and type assertions (coding-guidelines §8).
-- `Store[T]` is safe for concurrent use if its `RawStore` is.
+- `Store[T]` is safe for concurrent use if its `Backend` is.
 
 ### 4.9 `Walker[T]` — generic graph traversal
 
@@ -690,15 +690,15 @@ demonstrates a cache monitor emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
 
-- **`FSRawStore.Stats(ctx)`** → `StoreStats{AlgorithmCounts, TotalSize,
+- **`FSBackend.Stats(ctx)`** → `StoreStats{AlgorithmCounts, TotalSize,
   ObjectCount}` with a `String()` summary; walks the tree, ignores `.tmp`.
-- **`FSRawStore.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
+- **`FSBackend.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
   the hash with the algorithm from the address, and reports mismatch
   (`ErrHashMismatch`).
-- **`FSRawStore.GC(ctx, reachable map[string]bool)`** — mark-and-sweep:
+- **`FSBackend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep:
   deletes every object whose `h.String()` is not in `reachable`. The caller
   computes the reachable set (e.g. by walking from all roots).
-- **`FSRawStore.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`**
+- **`FSBackend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`**
   — age-based retention: deletes objects that are unreachable from `roots`
   AND older than `minAge` (age = file mtime ≈ first-`Put` time); `dryRun`
   returns the would-be-deleted set. Detection of broken/dangling objects and
@@ -740,7 +740,7 @@ type Repository struct {
 type Resolver struct{ repo *Repository }
 ```
 
-- `Repository` bundles per-type stores over one `RawStore` and one algorithm;
+- `Repository` bundles per-type stores over one `Backend` and one algorithm;
   `NewRepository(raw, algo)`.
 - `Resolver` exposes dedicated methods — `ResolveCommit`, `ResolveTree`,
   `ResolveBlob`, `ResolveTag` — each calling the matching store's `Get`.
@@ -787,7 +787,7 @@ codec.Encode(obj) → envelope{"type","data"}   # built by Store.Put
 hash := hasher(data)              # algorithm from store config
         │
         ▼
-raw.Put(ctx, hash, reader)        # atomic in FSRawStore; idempotent
+raw.Put(ctx, hash, reader)        # atomic in FSBackend; idempotent
         │
         ▼
 return hash                       # callers store it inside other objects
@@ -871,7 +871,7 @@ flowchart LR
 
 Rules:
 
-- `Store[T]` is safe for concurrent use if its `RawStore` is. **Concurrency
+- `Store[T]` is safe for concurrent use if its `Backend` is. **Concurrency
   safety is per-process**: all of the above (mutexes, `sync.Map`,
   double-checked locking) coordinates threads of ONE process; the core has no
   inter-process locking. Serve many clients from one process (the CLI, the
@@ -891,7 +891,7 @@ Rules:
   embedding the library MUST provide equivalent coordination themselves if
   they run maintenance sweeps in more than one process per store directory.
 - Callers must close every `io.ReadCloser` from the byte layer's
-  `RawStore.Get` (the typed layer returns bytes or concrete values, never a
+  `Backend.Get` (the typed layer returns bytes or concrete values, never a
   stream the caller must close).
 - Prefetchers must never block the hot path (queue full → skip; prefetch in a
   goroutine with a timeout).
@@ -910,7 +910,7 @@ The stable API the core promises (library-design §1):
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`, `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats` |
+| Storage       | `Backend`, `FSBackend` (+ `FSOption`, `WithFanOut`, `WithFanLevels`, `WithDirSync`), `MemoryBackend`, `StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
 | Caching       | `cache.CachedObject[T]`, `cache.CachedStore[T]`, `cache.LRUCache[T]`, `CacheMetrics`, `CacheStats` |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
@@ -921,11 +921,11 @@ additive-compatible (library-design §5).
 ### 7.2 Extension recipes
 
 **Add a storage backend** (S3, BadgerDB, PostgreSQL, …):
-1. Implement the five `RawStore` methods (`Put`/`Get`/`Exists`/`Delete`/
+1. Implement the five `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/
    `List`) — idempotent `Put`, `Delete` no-op on missing, `List(algo)`
    filter, `Get` → `ErrNotFound` on missing (library-design §2).
 2. Keep the byte layer non-generic; everything above works unchanged.
-3. `MemoryRawStore` (§4.5) is the minimal reference implementation.
+3. `MemoryBackend` (§4.5) is the minimal reference implementation.
 4. Add durability/atomicity per `operations.md` §1 where the
    backend is persistent.
 
@@ -952,7 +952,7 @@ and pass it to `NewStore`. Do not change the byte layer.
 **Add a cache policy**: wrap or extend `cache.CachedStore[T]`; keep the
 `cache.CachedObject[T]` lazy-load contract and the metrics counters.
 
-**Add maintenance ops**: add methods on `FSRawStore` (or a backend-specific
+**Add maintenance ops**: add methods on `FSBackend` (or a backend-specific
 type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
 
 ### 7.3 Compatibility & contracts
@@ -997,7 +997,7 @@ Open follow-ups (future extensions, not blocking):
 4. **Packfiles** — Git-style packing (group small objects into
    `pack-<ts>.pack` files); design and acceptance criteria in
    `performance.md` §9.
-5. **Compression layer** — `CompressedStore` wrapping `RawStore` with gzip via
+5. **Compression layer** — `CompressedStore` wrapping `Backend` with gzip via
    `io.Pipe`; deferred until a real need appears.
 8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with
    authenticated encryption (AES-256-GCM, std-lib `crypto/aes` +

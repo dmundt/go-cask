@@ -12,7 +12,7 @@ import (
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 	t.Helper()
-	repo, err := newRepository(cas.NewMemoryRawStore())
+	repo, err := newRepository(cas.NewMemoryBackend())
 	if err != nil {
 		t.Fatal(err)
 	}

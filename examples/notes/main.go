@@ -15,7 +15,7 @@ import (
 // and the generic Walker[T] over a same-type related chain.
 func demo() error {
 	ctx := context.Background()
-	raw, err := cas.NewFSRawStore("./objects")
+	raw, err := cas.NewFSBackend("./objects")
 	if err != nil {
 		return err
 	}

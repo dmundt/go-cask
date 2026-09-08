@@ -19,7 +19,7 @@ version: v10
 ## 1. Basic Design & Architecture (summary)
 
 - **Three layers** (cas-core §3): byte layer (non-generic: `Hash`,
-  `RawStore`, backends) → typed layer (generic: `Object[T]`, `Codec[T]`,
+  `Backend`, backends) → typed layer (generic: `Object[T]`, `Codec[T]`,
   `Store[T]`, `Walker[T]`, caches) → application layer (per-app types;
   `gitlike` is the reference example).
 - **One HTTP surface** (api-design §2): the viewer (`/viewer/*`, HTML). The

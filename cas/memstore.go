@@ -9,31 +9,31 @@ import (
 	"sync"
 )
 
-// MemoryRawStore is an in-memory RawStore backend keeping objects in a
+// MemoryBackend is an in-memory Backend backend keeping objects in a
 // map[string][]byte keyed by h.String(), guarded by an RWMutex. It is fast,
 // dependency-free and deterministic — intended for unit, property and fuzz
 // tests and for benchmarks that isolate store logic from disk noise. It is
 // NOT persistent.
 //
-// Contracts match FSRawStore: idempotent Put (same hash ⇒ identical bytes),
+// Contracts match FSBackend: idempotent Put (same hash ⇒ identical bytes),
 // Get returns a reader the caller MUST close (missing → ErrNotFound),
 // Delete is a no-op on missing objects, List(algo) filters by algorithm.
 // Put buffers the whole stream (io.ReadAll); Get returns a NopCloser over
 // the stored slice, which is never mutated after Put.
-type MemoryRawStore struct {
+type MemoryBackend struct {
 	mu      sync.RWMutex
 	objects map[string][]byte
 }
 
-// NewMemoryRawStore creates an empty in-memory backend. Swap-in compatible
-// with any Store[T], gitlike repository, or handler that takes a RawStore.
-func NewMemoryRawStore() *MemoryRawStore {
-	return &MemoryRawStore{objects: make(map[string][]byte)}
+// NewMemoryBackend creates an empty in-memory backend. Swap-in compatible
+// with any Store[T], gitlike repository, or handler that takes a Backend.
+func NewMemoryBackend() *MemoryBackend {
+	return &MemoryBackend{objects: make(map[string][]byte)}
 }
 
 // Put buffers r and stores it under h. Idempotent: a repeated Put of the
 // same hash replaces the entry with identical bytes.
-func (m *MemoryRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
+func (m *MemoryBackend) Put(ctx context.Context, h Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (m *MemoryRawStore) Put(ctx context.Context, h Hash, r io.Reader) error {
 // Get returns a reader over the stored bytes; the caller MUST close it. A
 // missing object returns ErrNotFound. The returned slice is never mutated
 // after Put, so no copy is made on read.
-func (m *MemoryRawStore) Get(ctx context.Context, h Hash) (io.ReadCloser, error) {
+func (m *MemoryBackend) Get(ctx context.Context, h Hash) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (m *MemoryRawStore) Get(ctx context.Context, h Hash) (io.ReadCloser, error)
 }
 
 // Exists reports whether the object is stored.
-func (m *MemoryRawStore) Exists(ctx context.Context, h Hash) (bool, error) {
+func (m *MemoryBackend) Exists(ctx context.Context, h Hash) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -77,7 +77,7 @@ func (m *MemoryRawStore) Exists(ctx context.Context, h Hash) (bool, error) {
 }
 
 // Delete removes the object. A missing object is a no-op (no error).
-func (m *MemoryRawStore) Delete(ctx context.Context, h Hash) error {
+func (m *MemoryBackend) Delete(ctx context.Context, h Hash) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (m *MemoryRawStore) Delete(ctx context.Context, h Hash) error {
 }
 
 // List returns every stored hash, filtered by algorithm when algo != "".
-func (m *MemoryRawStore) List(ctx context.Context, algo string) ([]Hash, error) {
+func (m *MemoryBackend) List(ctx context.Context, algo string) ([]Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

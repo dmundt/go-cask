@@ -14,7 +14,7 @@ import (
 )
 
 // failingReader fails after reading some bytes — exercises the write-path
-// error/cleanup branches of FSRawStore.Put.
+// error/cleanup branches of FSBackend.Put.
 type failingReader struct {
 	data []byte
 	off  int
@@ -32,7 +32,7 @@ func (r *failingReader) Read(p []byte) (int, error) {
 // tmpFilesIn returns the leftover `*.tmp` file names in the fan-out
 // directory that would hold h. Put writes uniquely named temps there, so a
 // failed write must leave none behind.
-func tmpFilesIn(s *FSRawStore, h Hash) []string {
+func tmpFilesIn(s *FSBackend, h Hash) []string {
 	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(s.hashPath(h)), "*.tmp"))
 	return matches
 }
@@ -172,7 +172,7 @@ func (failingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
 
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), failingCodec[errorObject]{}, "sha256")
+	s, err := NewStore(NewMemoryBackend(), failingCodec[errorObject]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestStoreEncodeError(t *testing.T) {
 }
 
 func TestStorePutDedupCancelled(t *testing.T) {
-	s := newTestStore(t, NewMemoryRawStore())
+	s := newTestStore(t, NewMemoryBackend())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, _, err := s.PutDedup(ctx, testNote{Title: "t"}); err == nil {
@@ -203,7 +203,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 // codec cannot decode surfaces as ErrCorrupt from Get.
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	store, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestGetCorruptPayload(t *testing.T) {
 
 func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := NewMemoryRawStore()
+	raw := NewMemoryBackend()
 	s := newTestStore(t, raw)
 	for _, garbage := range []string{
 		"not json at all",
@@ -255,7 +255,7 @@ func TestVerifyCancelled(t *testing.T) {
 }
 
 func TestStoreGetRawMissing(t *testing.T) {
-	s := newTestStore(t, NewMemoryRawStore())
+	s := newTestStore(t, NewMemoryBackend())
 	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetRaw = %v, want ErrNotFound", err)

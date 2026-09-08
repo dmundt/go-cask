@@ -5,7 +5,7 @@
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
 // Resolver/ResolvedObject, WalkGraph, Store[T] with JSONCodec[T],
-// FSRawStore fan-out, Verify, Stats, derived object-state audit
+// FSBackend fan-out, Verify, Stats, derived object-state audit
 // (verified/orphaned/corrupt), and a std-flag CLI.
 //
 // Usage:
@@ -43,7 +43,7 @@ commands:
 
 // app bundles the store, repository and the small ref files (HEAD/INDEX).
 type app struct {
-	raw   *cas.FSRawStore
+	raw   *cas.FSBackend
 	repo  *gitlike.Repository
 	dir   string
 	index string // path of the INDEX file (current tree)
@@ -51,7 +51,7 @@ type app struct {
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := cas.NewFSRawStore(dir)
+	raw, err := cas.NewFSBackend(dir)
 	if err != nil {
 		return nil, err
 	}

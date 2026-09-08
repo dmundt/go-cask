@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-func mustFS(t *testing.T, opts ...FSOption) *FSRawStore {
-	s, err := NewFSRawStore(t.TempDir(), opts...)
+func mustFS(t *testing.T, opts ...FSOption) *FSBackend {
+	s, err := NewFSBackend(t.TempDir(), opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestFanOutBounds(t *testing.T) {
 		{[]FSOption{WithFanOut(-1)}, false},
 		{[]FSOption{WithFanLevels(-1)}, false},
 	} {
-		_, err := NewFSRawStore(t.TempDir(), tc.opts...)
+		_, err := NewFSBackend(t.TempDir(), tc.opts...)
 		if tc.ok && err != nil {
 			t.Errorf("opts %v: unexpected error %v", tc.opts, err)
 		}
@@ -367,7 +367,7 @@ func TestConcurrentSameHashPut(t *testing.T) {
 }
 
 // TestUniqueTempAcrossInstances simulates two OS processes writing the SAME
-// hash concurrently: two FSRawStore instances over one directory each have
+// hash concurrently: two FSBackend instances over one directory each have
 // their own mutex (the in-process lock does not coordinate them), so safety
 // relies on the unique per-writer temp names (cas-core §4.4). The object
 // must never be corrupted and no `*.tmp` may survive. Transient Put errors
@@ -377,11 +377,11 @@ func TestConcurrentSameHashPut(t *testing.T) {
 func TestUniqueTempAcrossInstances(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	s1, err := NewFSRawStore(dir)
+	s1, err := NewFSBackend(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s2, err := NewFSRawStore(dir)
+	s2, err := NewFSBackend(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +491,7 @@ func FuzzPathRoundTrip(f *testing.F) {
 		if int(fanOut)*int(fanLevels) > MaxFanDepth {
 			t.Skip() // layout would be rejected by the constructor
 		}
-		s, err := NewFSRawStore(t.TempDir(), WithFanOut(int(fanOut)), WithFanLevels(int(fanLevels)))
+		s, err := NewFSBackend(t.TempDir(), WithFanOut(int(fanOut)), WithFanLevels(int(fanLevels)))
 		if err != nil {
 			t.Skip()
 		}
@@ -545,9 +545,9 @@ func FuzzVerify(f *testing.F) {
 	})
 }
 
-// ExampleNewFSRawStore demonstrates the default Git-like fan-out store.
-func ExampleNewFSRawStore() {
-	s, err := NewFSRawStore("./objects")
+// ExampleNewFSBackend demonstrates the default Git-like fan-out store.
+func ExampleNewFSBackend() {
+	s, err := NewFSBackend("./objects")
 	if err != nil {
 		panic(err)
 	}
@@ -555,10 +555,10 @@ func ExampleNewFSRawStore() {
 	_ = s
 }
 
-// TestSizeAndClean exercises FSRawStore.Size and the *.tmp sweep.
+// TestSizeAndClean exercises FSBackend.Size and the *.tmp sweep.
 func TestSizeAndClean(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewFSRawStore(t.TempDir())
+	s, err := NewFSBackend(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestSizeAndClean(t *testing.T) {
 // TestWithDirSyncPut verifies the optional parent-directory fsync is a no-op
 // on platforms that cannot sync directories, and otherwise succeeds.
 func TestWithDirSyncPut(t *testing.T) {
-	s, err := NewFSRawStore(t.TempDir(), WithDirSync())
+	s, err := NewFSBackend(t.TempDir(), WithDirSync())
 	if err != nil {
 		t.Fatal(err)
 	}

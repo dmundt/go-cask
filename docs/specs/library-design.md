@@ -26,11 +26,11 @@ version: v10
   ceiling for additions, not a shrinking target.
 - **Stable core surface** (the API the docs promise — cas-core §7.1):
   `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`,
-  `HashBytes`, `RawStore`, `FSRawStore` (+ `FSOption`, `WithFanOut`,
-  `WithFanLevels`, `WithDirSync`), `MemoryRawStore`, `StoreStats`, `Codec`,
+  `HashBytes`, `Backend`, `FSBackend` (+ `FSOption`, `WithFanOut`,
+  `WithFanLevels`, `WithDirSync`), `MemoryBackend`, `StoreStats`, `Codec`,
   `JSONCodec`, `Object`, `Store`, `NewStore`, `Walker`, `NewWalker`,
   `cache.CachedObject`, `cache.CachedStore`, `Newcache.CachedStore`, `cache.LRUCache`, `Newcache.LRUCache`,
-  `NewMemoryRawStore`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`,
+  `NewMemoryBackend`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`,
   the six sentinel `Err*` values.
 - **Optional machinery stays out of the core.** Prefetch-on-access and
   cache-monitor recipes are demonstrated by `examples/notes` and

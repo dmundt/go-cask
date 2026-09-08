@@ -89,7 +89,7 @@ When creating or extending an example, follow these rules:
    - **What it demonstrates** — the primary aspect (§4) and acceptance
      criteria, in one short paragraph;
    - **`cas` core parts used** — the exact components/APIs exercised (e.g.
-     `Store[T]`, `JSONCodec[T]`, `FSRawStore` fan-out, `Verify`, `GC`,
+     `Store[T]`, `JSONCodec[T]`, `FSBackend` fan-out, `Verify`, `GC`,
      `LRUCache[T]`, `CachedObject[T]`), as a list or table;
    - **What it extends** — everything the example adds on top of the core
      (custom `Codec[T]`, `RegisterHash` algorithms, own `Object[T]` types,
@@ -143,7 +143,7 @@ those states are scan results, never stored metadata.
 
 **Aspects covered.** `gitlike` object model (`Blob`/`Tree`/`Commit`/`Tag`),
 `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]` with
-`JSONCodec[T]`, `FSRawStore` fan-out layout, `Verify`, `Stats`, derived
+`JSONCodec[T]`, `FSBackend` fan-out layout, `Verify`, `Stats`, derived
 object-state audit (`List` + reachability mark + per-object `Verify`), CLI
 with std `flag`.
 
@@ -167,7 +167,7 @@ examples/files/
 - `log` walks parents via `WalkGraph`/`References()`; `cat <hash>` resolves
   and prints blob bytes; `graph` prints the reachable graph with types.
 - `audit [-no-verify]` lists every stored object, marks the reachable set
-  from `HEAD` (`References()` walk), verifies each with `FSRawStore.Verify`,
+  from `HEAD` (`References()` walk), verifies each with `FSBackend.Verify`,
   and prints per-object state: `verified` (intact + reachable), `orphaned`
   (intact, unreachable — GC candidate), `corrupt` (Verify failed), or
   `unverified` (reachable, integrity skipped under `-no-verify`). States are
@@ -309,7 +309,7 @@ the pattern needs no `internal/` and no SDK.
 | Aspect                                            | files | artifacts | notes | api | viewer |
 | ------------------------------------------------- | :-------------: | :------------: | :---: | :-----: | :--------: |
 | `Hash` / pluggable algorithms                     | ✓ (sha256)      | ✓ (custom)     | ✓     | ✓ (algo) | product    |
-| `FSRawStore` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | product    |
+| `FSBackend` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | product    |
 | `Codec[T]` (custom)                               | ✓ (JSON)        | ✓ (gzip)       | ✓     | ✓ (JSON) | product    |
 | `Object[T]` / `Store[T]`                          | ✓               | ✓              | ✓     | ✓       | product    |
 | Dedup (`PutDedup`)                                | ✓               | ✓              |       | ✓       |            |

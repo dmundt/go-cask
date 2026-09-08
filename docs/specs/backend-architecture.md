@@ -123,7 +123,7 @@ flowchart TB
         MID["middleware: sessions → role → CSRF (mutations)"]
         VH["viewer handlers (/viewer/*, HTML)"]
         CASLIB["cas library: Store[T], codecs, caches, backends"]
-        STORE["RawStore backend (fs | memory)"]
+        STORE["Backend backend (fs | memory)"]
         VH --> MID
         MID --> CASLIB
         CASLIB --> STORE
@@ -139,7 +139,7 @@ Rules:
   handler, with the login endpoint behind its own failure throttle
   (viewer-security, api-design §8).
 - The viewer NEVER talks to storage directly from handlers — it goes through
-  the `RawStore`/`Store[T]` layer, so backend selection is a configuration
+  the `Backend`/`Store[T]` layer, so backend selection is a configuration
   decision, not a code change.
 - The handler set lives in `internal/web` (the viewer), over the `cas`
   library and `internal/index` (listing helpers). `cmd/cask web` only wires
@@ -163,8 +163,8 @@ Rules:
 
 ## 5. Storage Backend Selection
 
-- Config selects the backend: filesystem (`FSRawStore`, fan-out layout) or
-  memory (`MemoryRawStore`, tests/ephemeral) — see cas-core §4.4–4.5.
+- Config selects the backend: filesystem (`FSBackend`, fan-out layout) or
+  memory (`MemoryBackend`, tests/ephemeral) — see cas-core §4.4–4.5.
 - The viewer and CLI talk to the library **in-process** only — there is no
   remote backend and no client SDK. A process that must serve a store to
   other machines is an app concern: copy the `examples/api` pattern (public
