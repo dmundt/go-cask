@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/cache"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,
@@ -15,7 +16,7 @@ import (
 // and the generic Walker[T] over a same-type related chain.
 func demo() error {
 	ctx := context.Background()
-	raw, err := cas.NewFSBackend("./objects")
+	raw, err := fs.New("./objects")
 	if err != nil {
 		return err
 	}
@@ -27,9 +28,9 @@ func demo() error {
 
 	// Lazy attachment cache (large blobs load on demand) and the prefetch
 	// cache for notes.
-	attachments := cache.NewCachedStore(repo.Attachments)
-	noteCache := cache.NewCachedStore(repo.Notes)
-	smart := cache.NewSmartCache(noteCache, 2)
+	attachments := cachemem.New(repo.Attachments)
+	noteCache := cachemem.New(repo.Notes)
+	smart := cachemem.NewSmartCache(noteCache, 2)
 
 	// Tags.
 	workTag, err := repo.Tags.Put(ctx, &Tag{Name: "work"})

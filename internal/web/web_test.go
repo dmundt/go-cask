@@ -11,13 +11,14 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 )
 
 const testStartupToken = "AAAA-BBBB-CCCC"
 
 func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	t.Helper()
-	raw, err := cas.NewFSBackend(t.TempDir())
+	raw, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestCSRFEnforced(t *testing.T) {
 
 func TestVerifyAndDelete(t *testing.T) {
 	ctx := context.Background()
-	raw, err := cas.NewFSBackend(t.TempDir())
+	raw, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

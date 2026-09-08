@@ -11,7 +11,7 @@ import (
 // Test helper only — production code uses the public HashBytes; see cas-core
 // §4.2 for the registry contract.
 func hashData(algo string, data []byte) (Hash, error) {
-	fn, ok := lookupHash(algo)
+	fn, ok := LookupHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}

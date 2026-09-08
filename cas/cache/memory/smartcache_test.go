@@ -1,4 +1,4 @@
-package cache_test
+package memory_test
 
 import (
 	"context"
@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/cache"
+	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
 )
 
 func TestSmartCache(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	cs := cache.NewCachedStore(s)
-	sc := cache.NewSmartCache(cs, 2)
+	cs := cachemem.New(s)
+	sc := cachemem.NewSmartCache(cs, 2)
 	h := put(t, s, "root")
 	obj, err := sc.GetWithPrefetch(ctx, h)
 	if err != nil {
@@ -27,8 +27,8 @@ func TestSmartCache(t *testing.T) {
 func TestSmartCacheZeroDepth(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	cs := cache.NewCachedStore(s)
-	sc := cache.NewSmartCache(cs, 0)
+	cs := cachemem.New(s)
+	sc := cachemem.NewSmartCache(cs, 0)
 	h := put(t, s, "only")
 	obj, err := sc.GetWithPrefetch(ctx, h)
 	if err != nil {
@@ -41,8 +41,8 @@ func TestSmartCacheZeroDepth(t *testing.T) {
 
 func TestSmartCacheMissing(t *testing.T) {
 	ctx := context.Background()
-	cs := cache.NewCachedStore(newStore(t))
-	sc := cache.NewSmartCache(cs, 2)
+	cs := cachemem.New(newStore(t))
+	sc := cachemem.NewSmartCache(cs, 2)
 	m, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := sc.GetWithPrefetch(ctx, m); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) = %v", err)
@@ -52,8 +52,8 @@ func TestSmartCacheMissing(t *testing.T) {
 func TestSmartCachePrefetchGoroutine(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	cs := cache.NewCachedStore(s)
-	sc := cache.NewSmartCache(cs, 1)
+	cs := cachemem.New(s)
+	sc := cachemem.NewSmartCache(cs, 1)
 	h := put(t, s, "root")
 	obj, err := sc.GetWithPrefetch(ctx, h)
 	if err != nil {

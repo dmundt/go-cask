@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -121,17 +122,16 @@ func parseHashes(strs []string) ([]cas.Hash, error) {
 	return out, nil
 }
 
-// parseType extracts the unversioned type name ("note", "tag", ...).
+// parseType extracts the unversioned type name ("note", "tag", ...) from the
+// stored "<type>\n<payload>" form.
 func parseType(data []byte) (string, error) {
-	var env struct {
-		Type string `json:"type"`
+	idx := bytes.IndexByte(data, '\n')
+	if idx < 0 {
+		return "", fmt.Errorf("%w: not a valid typed object", cas.ErrUnknownType)
 	}
-	if err := json.Unmarshal(data, &env); err != nil {
-		return "", fmt.Errorf("%w: not a valid object envelope", cas.ErrUnknownType)
-	}
-	base, _, _ := strings.Cut(env.Type, "@")
+	base, _, _ := strings.Cut(string(data[:idx]), "@")
 	if base == "" {
-		return "", fmt.Errorf("%w: envelope missing type", cas.ErrUnknownType)
+		return "", fmt.Errorf("%w: object missing type", cas.ErrUnknownType)
 	}
 	return base, nil
 }

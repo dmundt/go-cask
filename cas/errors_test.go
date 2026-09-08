@@ -1,44 +1,23 @@
-package cas
+package cas_test
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas/codec"
+	"github.com/dmundt/go-cask/cas"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
-// failingReader fails after reading some bytes — exercises the write-path
-// error/cleanup branches of FSBackend.Put.
-type failingReader struct {
-	data []byte
-	off  int
-}
-
-func (r *failingReader) Read(p []byte) (int, error) {
-	if r.off >= len(r.data) {
-		return 0, errors.New("simulated read failure")
-	}
-	n := copy(p, r.data[r.off:])
-	r.off += n
-	return n, nil
-}
-
-// tmpFilesIn returns the leftover `*.tmp` file names in the fan-out
-// directory that would hold h. Put writes uniquely named temps there, so a
-// failed write must leave none behind.
-func tmpFilesIn(s *FSBackend, h Hash) []string {
-	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(s.hashPath(h)), "*.tmp"))
-	return matches
-}
+// errorObject / failingCodec are defined in external_test.go. The FS-internal
+// error-path tests (TestFSPutMkdirError, TestFSPutReaderError,
+// TestFSListIgnoresRootStray, TestFSHashPathDigestClamp) moved into
+// cas/backend/fs/fs_test.go where they can reach the unexported layout.
 
 func TestHashDataUnknownAlgorithm(t *testing.T) {
-	if _, err := hashData("nope", []byte("x")); !errors.Is(err, ErrUnknownAlgorithm) {
+	if _, err := hashData("nope", []byte("x")); !errors.Is(err, cas.ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
 	}
 }
@@ -76,103 +55,9 @@ func TestBackendCancelledContext(t *testing.T) {
 	}
 }
 
-func TestFSPutMkdirError(t *testing.T) {
-	// Make the algorithm directory unusable: create a FILE where the
-	// algorithm dir would go, so MkdirAll fails.
-	s := mustFS(t)
-	h, _ := hashData("sha256", []byte("x"))
-	blocker := filepath.Join(s.base, "sha256")
-	if err := os.WriteFile(blocker, []byte("i am a file"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Put(context.Background(), h, strings.NewReader("x")); err == nil {
-		t.Fatal("Put must fail when the object dir cannot be created")
-	}
-}
-
-func TestFSPutReaderError(t *testing.T) {
-	s := mustFS(t)
-	h, _ := hashData("sha256", []byte("x"))
-	err := s.Put(context.Background(), h, &failingReader{data: []byte("partial")})
-	if err == nil {
-		t.Fatal("Put with failing reader must error")
-	}
-	// The temp file must be cleaned up and the object must not exist.
-	list, err := s.List(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 0 {
-		t.Fatalf("failed Put left objects behind: %v", list)
-	}
-	if leftovers := tmpFilesIn(s, h); len(leftovers) != 0 {
-		t.Fatalf("failed Put left temp files behind: %v", leftovers)
-	}
-}
-
-func TestFSListIgnoresRootStray(t *testing.T) {
-	s := mustFS(t)
-	// A stray file directly in the base directory is not an object.
-	if err := os.WriteFile(filepath.Join(s.base, "README"), []byte("hi"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	list, err := s.List(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 0 {
-		t.Fatalf("stray root file listed as object: %v", list)
-	}
-}
-
-func TestFSHashPathDigestClamp(t *testing.T) {
-	// Layouts that exceed the digest length must clamp (end > len) or
-	// stop (start >= len) rather than overrun. SHA-256 (64 hex) with
-	// deep fan-out exercises this.
-	h, _ := hashData("sha256", []byte("clamp"))
-	cases := []struct {
-		opts []FSOption
-	}{
-		{[]FSOption{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk clamps: 32..64
-		{[]FSOption{WithFanOut(16), WithFanLevels(4)}}, // 4th level breaks: 48 >= 64
-		{[]FSOption{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
-	}
-	for _, tc := range cases {
-		s := mustFS(t, tc.opts...)
-		p := s.hashPath(h)
-		// The file name must still be the full hex digest.
-		base := filepath.Base(p)
-		if base != h.String()[strings.IndexByte(h.String(), ':')+1:] {
-			t.Errorf("opts %v: basename = %q, want full digest", tc.opts, base)
-		}
-		// And the path must round-trip.
-		rel, err := filepath.Rel(s.base, p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		back, err := pathToHash(rel)
-		if err != nil || !back.Equal(h) {
-			t.Errorf("opts %v: pathToHash(%q) = %v, %v", tc.opts, rel, back, err)
-		}
-	}
-}
-
-// errorObject is a minimal Object[T] used with a failing codec.
-type errorObject struct{}
-
-func (errorObject) Type() string       { return "err@1" }
-func (errorObject) References() []Hash { return nil }
-
-// failingCodec always fails to encode — the serialization authority is the
-// codec now, so an encode failure must surface from Store.Put/PutDedup.
-type failingCodec[T any] struct{}
-
-func (failingCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode exploded") }
-func (failingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
-
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), failingCodec[errorObject]{}, "sha256")
+	s, err := cas.New(backmem.New(), failingCodec[errorObject]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +70,7 @@ func TestStoreEncodeError(t *testing.T) {
 }
 
 func TestStorePutDedupCancelled(t *testing.T) {
-	s := newTestStore(t, NewMemoryBackend())
+	s := newTestStore(t, backmem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, _, err := s.PutDedup(ctx, testNote{Title: "t"}); err == nil {
@@ -193,43 +78,39 @@ func TestStorePutDedupCancelled(t *testing.T) {
 	}
 }
 
-// The typed layer is compile-time constrained to Object[T]: a type that does
-// not implement Object[T] cannot even be passed to NewStore. (Runtime proof:
-// the package would not compile otherwise; the pre-constraint "decoded value
-// is not an Object" branch is gone — Get returns the concrete T by
-// construction.)
-
 // TestGetCorruptPayload pins ErrCorrupt: a stored payload the store
 // codec cannot decode surfaces as ErrCorrupt from Get.
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
-	raw := NewMemoryBackend()
-	store, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
+	raw := backmem.New()
+	store, err := cas.New(raw, jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := base64.StdEncoding.EncodeToString([]byte("not json at all"))
-	data, err := json.Marshal(envelope{Type: "note@1", Data: payload})
-	if err != nil {
+	// Stored form: "<type>\n<codec payload>". A payload that is not valid
+	// JSON for testNote will cause the codec Decode to fail, surfacing as
+	// ErrCorrupt.
+	stored := "note@1\nthis is not json"
+	h, _ := hashData("sha256", []byte(stored))
+	if err := raw.Put(ctx, h, strings.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
-	h, _ := hashData("sha256", data)
-	if err := raw.Put(ctx, h, strings.NewReader(string(data))); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Get(ctx, h); !errors.Is(err, ErrCorrupt) {
+	if _, err := store.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
 		t.Fatalf("Get(corrupt payload) = %v, want ErrCorrupt", err)
 	}
 }
 
 func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := NewMemoryBackend()
+	raw := backmem.New()
 	s := newTestStore(t, raw)
+	// Every case must fail Get with ErrUnknownType: no newline separator
+	// (not the typed form), or an empty type name.
 	for _, garbage := range []string{
-		"not json at all",
-		`{"data":"AAAA"}`, // missing type
-		`{"type":"note@1","data":"%%%"}` + `"` + `}`, // bad base64
+		"not json at all", // no newline separator
+		"",                // empty
+		"\npayload",       // empty type name
+		"note@1",          // no newline separator
 	} {
 		h, err := hashData("sha256", []byte(garbage))
 		if err != nil {
@@ -238,7 +119,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 		if err := raw.Put(ctx, h, strings.NewReader(garbage)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Get(ctx, h); !errors.Is(err, ErrUnknownType) {
+		if _, err := s.Get(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
 			t.Errorf("Get(%q) = %v, want ErrUnknownType", garbage, err)
 		}
 	}
@@ -255,9 +136,9 @@ func TestVerifyCancelled(t *testing.T) {
 }
 
 func TestStoreGetRawMissing(t *testing.T) {
-	s := newTestStore(t, NewMemoryBackend())
-	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, ErrNotFound) {
+	s := newTestStore(t, backmem.New())
+	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetRaw = %v, want ErrNotFound", err)
 	}
 }

@@ -1,16 +1,18 @@
-package cas
+package cas_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas/codec"
+	"github.com/dmundt/go-cask/cas"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 func TestWalkerTraversal(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNode]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,17 +22,17 @@ func TestWalkerTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hb, err := s.Put(ctx, testNode{Name: "b", Refs: []Hash{hc}})
+	hb, err := s.Put(ctx, testNode{Name: "b", Refs: []cas.Hash{hc}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ha, err := s.Put(ctx, testNode{Name: "a", Refs: []Hash{hb}})
+	ha, err := s.Put(ctx, testNode{Name: "a", Refs: []cas.Hash{hb}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var visited []string
-	w := NewWalker(s, func(n testNode) error {
+	w := cas.NewWalker(s, func(n testNode) error {
 		visited = append(visited, n.Name)
 		return nil
 	})
@@ -52,20 +54,20 @@ func TestWalkerTraversal(t *testing.T) {
 }
 
 func TestWalkerNotFound(t *testing.T) {
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNode]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	missing, _ := ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	w := NewWalker(s, func(testNode) error { return nil })
-	if err := w.Walk(context.Background(), missing); !errors.Is(err, ErrNotFound) {
+	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	w := cas.NewWalker(s, func(testNode) error { return nil })
+	if err := w.Walk(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Walk(missing) = %v, want ErrNotFound", err)
 	}
 }
 
 func TestWalkerVisitError(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNode]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func TestWalkerVisitError(t *testing.T) {
 		t.Fatal(err)
 	}
 	sentinel := errors.New("stop")
-	w := NewWalker(s, func(testNode) error { return sentinel })
+	w := cas.NewWalker(s, func(testNode) error { return sentinel })
 	if err := w.Walk(ctx, h); !errors.Is(err, sentinel) {
 		t.Fatalf("Walk = %v, want sentinel", err)
 	}

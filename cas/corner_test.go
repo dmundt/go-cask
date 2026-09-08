@@ -1,15 +1,18 @@
-package cas
+package cas_test
 
 // Corner-case and explicitness tests for the cas core (testing-strategy
 // §1.1): envelope parsing branches, context cancellation across every
 // backend/store operation, memory-store semantics, custom one-shot hash
 // paths, and filesystem error paths that are portable to test.
+//
+// Envelope-parsing internals are pinned in cas/envelope_test.go (internal,
+// package cas). The filesystem-only layout/error paths that need unexported
+// fields live in cas/backend/fs/fs_test.go.
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -18,47 +21,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas/codec"
+	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
-
-// TestUnmarshalEnvelopeCases pins every unmarshalEnvelope branch, including
-// the legacy unversioned type name (reads as "@1", object-versioning §2).
-func TestUnmarshalEnvelopeCases(t *testing.T) {
-	cases := []struct {
-		name    string
-		in      string
-		wantTyp string
-		wantPld string
-		wantErr error
-	}{
-		{"versioned type + payload", `{"type":"note@2","data":"aGVsbG8="}`, "note@2", "hello", nil},
-		{"legacy unversioned type reads as @1", `{"type":"note","data":"aGVsbG8="}`, "note@1", "hello", nil},
-		{"empty payload decodes to empty", `{"type":"note@1","data":""}`, "note@1", "", nil},
-		{"missing type", `{"data":"aGVsbG8="}`, "", "", ErrUnknownType},
-		{"empty type", `{"type":"","data":"aGVsbG8="}`, "", "", ErrUnknownType},
-		{"data not base64", `{"type":"note@1","data":"%%%"}`, "", "", ErrUnknownType},
-		{"not json", `garbage`, "", "", ErrUnknownType},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			typ, pld, err := unmarshalEnvelope([]byte(tc.in))
-			if tc.wantErr != nil {
-				if !errors.Is(err, tc.wantErr) {
-					t.Fatalf("err = %v, want %v", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil || typ != tc.wantTyp || string(pld) != tc.wantPld {
-				t.Fatalf("got (%q, %q, %v), want (%q, %q, nil)", typ, pld, err, tc.wantTyp, tc.wantPld)
-			}
-		})
-	}
-}
 
 // TestContextCancellationFS verifies every FSBackend operation honors a
 // canceled context (no filesystem side effects happen).
 func TestContextCancellationFS(t *testing.T) {
-	s, err := NewFSBackend(t.TempDir())
+	s, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +52,7 @@ func TestContextCancellationFS(t *testing.T) {
 		{"Stats", func() error { _, err := s.Stats(ctx); return err }},
 		{"Verify", func() error { return s.Verify(ctx, h) }},
 		{"GC", func() error { return s.GC(ctx, map[string]bool{}) }},
-		{"Prune", func() error { _, err := s.Prune(ctx, []Hash{h}, 0, true); return err }},
+		{"Prune", func() error { _, err := s.Prune(ctx, []cas.Hash{h}, 0, true); return err }},
 		{"Clean", func() error { _, err := s.Clean(ctx, 0); return err }},
 	}
 	for _, tc := range ops {
@@ -95,7 +67,7 @@ func TestContextCancellationFS(t *testing.T) {
 // TestMemoryBackendSuite covers the in-memory backend contract directly:
 // round-trip, idempotence, filtering, error paths, and canceled contexts.
 func TestMemoryBackendSuite(t *testing.T) {
-	m := NewMemoryBackend()
+	m := backmem.New()
 	ctx := context.Background()
 	h1, _ := hashData("sha256", []byte("alpha"))
 	h2, _ := hashData("sha256", []byte("beta"))
@@ -120,7 +92,7 @@ func TestMemoryBackendSuite(t *testing.T) {
 		t.Fatalf("Get = %q, %v", data, err)
 	}
 	missing, _ := hashData("sha256", []byte("missing"))
-	if _, err := m.Get(ctx, missing); !errors.Is(err, ErrNotFound) {
+	if _, err := m.Get(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) err = %v, want ErrNotFound", err)
 	}
 	if ok, _ := m.Exists(ctx, missing); ok {
@@ -145,12 +117,6 @@ func TestMemoryBackendSuite(t *testing.T) {
 	}
 	if got, _ := m.List(ctx, "sha1"); len(got) != 0 {
 		t.Fatalf("List(sha1) = %v, want empty", got)
-	}
-	// A stored key that is not a parseable hash string is skipped by List
-	// (can only happen via direct map access; Put keys are always valid).
-	m.objects["not-a-hash"] = []byte("stray")
-	if got, err := m.List(ctx, ""); err != nil || len(got) != 1 {
-		t.Fatalf("List with stray key = %v, %v; want 1", got, err)
 	}
 
 	// Canceled context: every op errors without touching state.
@@ -196,12 +162,12 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFSBackend(file); err == nil {
+	if _, err := fs.New(file); err == nil {
 		t.Fatal("NewFSBackend over an existing file must error")
 	}
 
 	ctx := context.Background()
-	s, err := NewFSBackend(t.TempDir())
+	s, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,18 +187,18 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	a, _ := hashData("sha256", []byte("keep"))
 	b, _ := hashData("sha256", []byte("drop"))
 	for _, x := range []struct {
-		h Hash
+		h cas.Hash
 		d string
 	}{{a, "keep"}, {b, "drop"}} {
 		if err := s.Put(ctx, x.h, strings.NewReader(x.d)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	doomed, err := s.Prune(ctx, []Hash{a}, 0, true)
+	doomed, err := s.Prune(ctx, []cas.Hash{a}, 0, true)
 	if err != nil || len(doomed) != 1 || !doomed[0].Equal(b) {
 		t.Fatalf("prune dry-run = %v, %v; want [b]", doomed, err)
 	}
-	if _, err := s.Prune(ctx, []Hash{a}, 0, false); err != nil {
+	if _, err := s.Prune(ctx, []cas.Hash{a}, 0, false); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := s.Exists(ctx, b); ok {
@@ -243,87 +209,52 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	}
 }
 
-// TestVerifyCustomOneShot exercises Verify's buffered fallback for hash
-// algorithms registered only as one-shot HashFunc, plus the unknown-algo
-// error path.
-func TestVerifyCustomOneShot(t *testing.T) {
-	RegisterHash("obvfy", func(data []byte) Hash {
-		sum := sha256.Sum256(data)
-		return hash{algo: "obvfy", bytes: sum[:]}
-	})
-	ctx := context.Background()
-	s, err := NewFSBackend(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := []byte("verify me with a one-shot algorithm")
-	sum := sha256.Sum256(data)
-	h := hash{algo: "obvfy", bytes: sum[:]}
-	if err := s.Put(ctx, h, bytes.NewReader(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(ctx, h); err != nil {
-		t.Fatalf("Verify (buffered fallback) = %v", err)
-	}
-	// Corrupt the stored bytes: mismatch via the fallback path.
-	if err := os.WriteFile(s.hashPath(h), []byte("corrupt"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(ctx, h); !errors.Is(err, ErrHashMismatch) {
-		t.Fatalf("Verify corrupt = %v, want ErrHashMismatch", err)
-	}
-	// An algorithm that is not registered at all → ErrUnknownAlgorithm.
-	unknown := hash{algo: "noreg1", bytes: sum[:]}
-	if err := s.Put(ctx, unknown, bytes.NewReader(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(ctx, unknown); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("Verify unknown algo = %v, want ErrUnknownAlgorithm", err)
-	}
-}
-
 // TestHashOneShotRegistration pins the one-shot-only hash paths: HashBytes
 // works through the registry, NewHasher rejects non-streamable algorithms.
 func TestHashOneShotRegistration(t *testing.T) {
-	RegisterHash("obone", func(data []byte) Hash {
+	cas.RegisterHash("obone", func(data []byte) cas.Hash {
 		sum := sha256.Sum256(data)
-		return hash{algo: "obone", bytes: sum[:]}
+		h, _ := cas.NewHash("obone", sum[:])
+		return h
 	})
 	want := sha256.Sum256([]byte("abc"))
-	h, err := HashBytes("obone", []byte("abc"))
+	h, err := cas.HashBytes("obone", []byte("abc"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if h.String() != "obone:"+hex.EncodeToString(want[:]) {
 		t.Fatalf("HashBytes = %q", h.String())
 	}
-	if _, err := NewHasher("obone"); !errors.Is(err, ErrUnknownAlgorithm) {
+	if _, err := cas.NewHasher("obone"); !errors.Is(err, cas.ErrUnknownAlgorithm) {
 		t.Fatalf("NewHasher(one-shot) err = %v, want ErrUnknownAlgorithm", err)
 	}
 	// And the streaming built-in still works.
-	if hs, err := NewHasher("sha256"); err != nil || hs == nil {
+	if hs, err := cas.NewHasher("sha256"); err != nil || hs == nil {
 		t.Fatalf("NewHasher(sha256) = %v, %v", hs, err)
 	}
 }
 
-// TestStoreGetLegacyEnvelope verifies a legacy unversioned envelope
-// type name decodes (reads as @1) and round-trips through Get.
+// TestStoreGetLegacyEnvelope verifies a legacy unversioned type name
+// (without @major) decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+	raw := backmem.New()
+	st, err := cas.New(raw, jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := (codec.JSONCodec[testNote]{}).Encode(testNote{Title: "legacy"})
+	payload, err := (jsoncodec.New[testNote]()).Encode(testNote{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := []byte(`{"type":"note","data":"` + base64.StdEncoding.EncodeToString(payload) + `"}`)
+	// Legacy form: "type\n<payload>" where type=note (no @major).
+	// splitHead appends @1, so "note" → "note@1".
+	env := append([]byte("note\n"), payload...)
 	h, err := hashData("sha256", env)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.Get(ctx, h)
@@ -335,13 +266,10 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	}
 }
 
-// TestCachedStoreCanceled verifies CachedStore.Get propagates a canceled
-// context from the underlying store.
-
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+	st, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +300,7 @@ func TestStoreCanceledOps(t *testing.T) {
 // child propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNode]{}, "sha256")
+	st, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,25 +308,25 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, testNode{Name: "root", Refs: []Hash{leafH}})
+	rootH, err := st.Put(ctx, testNode{Name: "root", Refs: []cas.Hash{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	missingH, _ := hashData("sha256", []byte("missing"))
-	brokenH, err := st.Put(ctx, testNode{Name: "broken", Refs: []Hash{missingH}})
+	brokenH, err := st.Put(ctx, testNode{Name: "broken", Refs: []cas.Hash{missingH}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// A missing reference during recursion → ErrNotFound.
-	w := NewWalker(st, func(testNode) error { return nil })
-	if err := w.Walk(ctx, brokenH); !errors.Is(err, ErrNotFound) {
+	w := cas.NewWalker(st, func(testNode) error { return nil })
+	if err := w.Walk(ctx, brokenH); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Walk over broken ref = %v, want ErrNotFound", err)
 	}
 
 	// A visit error from a child propagates (not just from the root).
 	seen := 0
-	w2 := NewWalker(st, func(o testNode) error {
+	w2 := cas.NewWalker(st, func(o testNode) error {
 		seen++
 		if o.References() == nil { // the leaf
 			return errors.New("stop at leaf")

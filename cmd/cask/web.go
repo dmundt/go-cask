@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/go-cask/cas"
+	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
@@ -42,7 +42,7 @@ func runWeb(ctx context.Context, args []string) {
 		os.Exit(1)
 	}
 
-	raw, err := cas.NewFSBackend(*store)
+	raw, err := fsbackend.New(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)

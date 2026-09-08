@@ -54,12 +54,12 @@ func (h hash) Equal(other Hash) bool {
 // a one-shot registered HashFunc otherwise. It returns ErrUnknownAlgorithm
 // for an unregistered algorithm.
 func HashBytes(algo string, data []byte) (Hash, error) {
-	if newFn, ok := lookupStreamHash(algo); ok {
+	if newFn, ok := LookupStreamHash(algo); ok {
 		h := newFn()
 		h.Write(data)
 		return NewHash(algo, h.Sum(nil))
 	}
-	if fn, ok := lookupHash(algo); ok {
+	if fn, ok := LookupHash(algo); ok {
 		return fn(data), nil
 	}
 	return nil, fmt.Errorf("cas: %w: %q", ErrUnknownAlgorithm, algo)
@@ -71,7 +71,7 @@ func HashBytes(algo string, data []byte) (Hash, error) {
 // registered only as one-shot HashFunc, which cannot stream — use HashBytes
 // for those.
 func NewHasher(algo string) (hashtype.Hash, error) {
-	newFn, ok := lookupStreamHash(algo)
+	newFn, ok := LookupStreamHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("cas: %w: %q does not support streaming", ErrUnknownAlgorithm, algo)
 	}
@@ -87,7 +87,7 @@ type HashFunc func(data []byte) Hash
 // ErrInvalidHash if digest is empty. RegisterHash must be called before
 // NewHash for a custom algorithm.
 func NewHash(algo string, digest []byte) (Hash, error) {
-	if _, ok := lookupHash(algo); !ok {
+	if _, ok := LookupHash(algo); !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}
 	if len(digest) == 0 {
@@ -111,7 +111,7 @@ func ParseHash(s string) (Hash, error) {
 	if !algoRe.MatchString(algo) {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
-	if _, known := lookupHash(algo); !known {
+	if _, known := LookupHash(algo); !known {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, s)
 	}
 	if len(hexPart) == 0 || len(hexPart)%2 != 0 || !hexRe.MatchString(hexPart) {
@@ -158,7 +158,9 @@ func registerStreamHash(algo string, newFn func() hashtype.Hash) {
 	hashStreams[algo] = newFn
 }
 
-func lookupStreamHash(algo string) (func() hashtype.Hash, bool) {
+// LookupStreamHash returns the registered streaming hash constructor for the
+// given algorithm, or nil if none is registered.
+func LookupStreamHash(algo string) (func() hashtype.Hash, bool) {
 	hashRegistryMu.RLock()
 	defer hashRegistryMu.RUnlock()
 	fn, ok := hashStreams[algo]
@@ -174,7 +176,9 @@ func RegisterHash(algo string, fn HashFunc) {
 	hashRegistry[algo] = fn
 }
 
-func lookupHash(algo string) (HashFunc, bool) {
+// LookupHash returns the registered one-shot hash function for the given
+// algorithm, or nil if none is registered.
+func LookupHash(algo string) (HashFunc, bool) {
 	hashRegistryMu.RLock()
 	defer hashRegistryMu.RUnlock()
 	fn, ok := hashRegistry[algo]

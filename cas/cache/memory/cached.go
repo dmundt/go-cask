@@ -1,4 +1,7 @@
-package cache
+// Package memory provides a lazy-loading, in-memory cache for the cas core.
+// CachedStore wraps a Store[T] with a sync.Map; CachedObject is a lazy proxy.
+// LRU eviction lives in the sibling lru package.
+package memory
 
 import (
 	"context"
@@ -9,8 +12,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 )
 
-// CacheMetrics are atomic counters tracking cache behavior: hits, misses,
-// loads (objects fetched from the underlying store) and evictions.
+// CacheMetrics are atomic counters tracking cache behavior.
 type CacheMetrics struct {
 	Hits   atomic.Uint64
 	Misses atomic.Uint64
@@ -18,22 +20,19 @@ type CacheMetrics struct {
 	Evicts atomic.Uint64
 }
 
-// CacheStats is a point-in-time snapshot of cache behavior, as returned by
-// CachedStore.CacheStats (consumed by cache-observability tooling such as the
-// artifacts example monitor).
+// CacheStats is a point-in-time snapshot of cache behavior.
 type CacheStats struct {
 	Hits    uint64
 	Misses  uint64
 	Loads   uint64
 	Evicts  uint64
-	HitRate float64 // Hits / (Hits + Misses); 0 when no lookups happened
-	Size    int     // number of cached objects
+	HitRate float64
+	Size    int
 }
 
 // CachedObject[T] is a lazy proxy for one hash: it loads the object from the
 // underlying Store[T] exactly once (double-checked locking) and memoizes the
-// result — object AND error — for every later Load. IsLoaded reports state
-// without loading.
+// result.
 type CachedObject[T cas.Object[T]] struct {
 	store  *cas.Store[T]
 	hash   cas.Hash
@@ -44,7 +43,7 @@ type CachedObject[T cas.Object[T]] struct {
 }
 
 // Load returns the object, loading it from the underlying store on first
-// access and memoizing the result (including errors) for later calls.
+// access and memoizing the result.
 func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	c.mu.RLock()
 	if c.loaded {
@@ -63,27 +62,49 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	return obj, err
 }
 
-// IsLoaded reports whether the object has been loaded (successfully or not)
-// without triggering a load.
+// Hash returns the hash this object is memoized for.
+func (c *CachedObject[T]) Hash() cas.Hash { return c.hash }
+
+// IsLoaded reports whether the object has been loaded without triggering a load.
 func (c *CachedObject[T]) IsLoaded() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.loaded
 }
 
-// CachedStore[T] wraps a Store[T] with a sync.Map of CachedObject[T] keyed by
-// h.String(). Proxy returns a not-yet-loaded reference (verifying existence
-// first); Get loads it. Preload loads many objects in parallel.
+// CachedStore[T] wraps a Store[T] with a sync.Map of CachedObject[T].
 type CachedStore[T cas.Object[T]] struct {
 	store   *cas.Store[T]
 	cache   sync.Map
 	metrics CacheMetrics
-	onNew   func(key string) // policy hook: called once per newly cached key
+	onNew   func(key string)
 }
 
-// NewCachedStore wraps store in a lazy-loading cache.
-func NewCachedStore[T cas.Object[T]](store *cas.Store[T]) *CachedStore[T] {
+// New wraps store in a lazy-loading cache.
+func New[T cas.Object[T]](store *cas.Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
+}
+
+// OnNew sets the callback called when a new key is added to the cache.
+func (c *CachedStore[T]) OnNew(fn func(key string)) { c.onNew = fn }
+
+// Lookup returns the cached object for key, or nil if absent.
+func (c *CachedStore[T]) Lookup(key string) *CachedObject[T] {
+	v, ok := c.cache.Load(key)
+	if !ok {
+		return nil
+	}
+	return v.(*CachedObject[T])
+}
+
+// EvictKey removes the entry for key from the map without counting metrics.
+func (c *CachedStore[T]) EvictKey(key string) {
+	c.cache.Delete(key)
+}
+
+// IncrEvicts adds 1 to the eviction counter.
+func (c *CachedStore[T]) IncrEvicts() {
+	c.metrics.Evicts.Add(1)
 }
 
 // Proxy returns the (possibly not-yet-loaded) CachedObject for h.
@@ -119,7 +140,7 @@ func (c *CachedStore[T]) Get(ctx context.Context, h cas.Hash) (T, error) {
 	return co.Load(ctx)
 }
 
-// Preload loads every hash in parallel (bounded worker goroutines).
+// Preload loads every hash in parallel.
 func (c *CachedStore[T]) Preload(ctx context.Context, hashes []cas.Hash) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
@@ -148,7 +169,7 @@ func (c *CachedStore[T]) Preload(ctx context.Context, hashes []cas.Hash) error {
 }
 
 // PreloadRecursive loads the object at h and, to the given depth, every
-// object it references. depth <= 0 loads only h.
+// object it references.
 func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h cas.Hash, depth int) error {
 	obj, err := c.Get(ctx, h)
 	if err != nil {
@@ -221,10 +242,4 @@ func (c *CachedStore[T]) Clear() {
 		c.cache.Delete(k)
 		return true
 	})
-}
-
-// evictKey removes the entry for key from the map without metrics (internal;
-// used by LRUCache to keep the map and the LRU index consistent).
-func (c *CachedStore[T]) evictKey(key string) {
-	c.cache.Delete(key)
 }

@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/codec"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Repository bundles the per-type stores over one Backend — the app's own
@@ -19,15 +19,15 @@ type Repository struct {
 }
 
 func newRepository(raw cas.Backend) (*Repository, error) {
-	notes, err := cas.NewStore(raw, codec.JSONCodec[*Note]{}, "sha256")
+	notes, err := cas.New(raw, jsoncodec.New[*Note](), "sha256")
 	if err != nil {
 		return nil, err
 	}
-	tags, err := cas.NewStore(raw, codec.JSONCodec[*Tag]{}, "sha256")
+	tags, err := cas.New(raw, jsoncodec.New[*Tag](), "sha256")
 	if err != nil {
 		return nil, err
 	}
-	attachments, err := cas.NewStore(raw, codec.JSONCodec[*Attachment]{}, "sha256")
+	attachments, err := cas.New(raw, jsoncodec.New[*Attachment](), "sha256")
 	if err != nil {
 		return nil, err
 	}

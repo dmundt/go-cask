@@ -1,90 +1,22 @@
-package cas
+package cas_test
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas/codec"
+	"github.com/dmundt/go-cask/cas"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
-// --- Test object types ---
-
-// testNote is a leaf Object[T] used across the suite.
-type testNote struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-}
-
-func (n testNote) Type() string { return "note@1" }
-func (n testNote) References() []Hash {
-	return nil
-}
-
-// testNode references other nodes by hash — exercises References-driven
-// traversal and cross-object storage. It carries custom JSON methods so the
-// Hash references round-trip as "algo:hex" strings.
-type testNode struct {
-	Name string `json:"name"`
-	Refs []Hash `json:"refs,omitempty"`
-}
-
-func (n testNode) Type() string { return "node@1" }
-func (n testNode) References() []Hash {
-	return n.Refs
-}
-
-// MarshalJSON renders Refs as strings (a Hash interface cannot be
-// unmarshaled by encoding/json directly).
-func (n testNode) MarshalJSON() ([]byte, error) {
-	refs := make([]string, 0, len(n.Refs))
-	for _, r := range n.Refs {
-		refs = append(refs, r.String())
-	}
-	return json.Marshal(struct {
-		Name string   `json:"name"`
-		Refs []string `json:"refs,omitempty"`
-	}{n.Name, refs})
-}
-
-// UnmarshalJSON parses the string refs back into Hash values.
-func (n *testNode) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Name string   `json:"name"`
-		Refs []string `json:"refs"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	n.Name = raw.Name
-	for _, r := range raw.Refs {
-		h, err := ParseHash(r)
-		if err != nil {
-			return err
-		}
-		n.Refs = append(n.Refs, h)
-	}
-	return nil
-}
-
-// --- Shared backend contract: the CAS laws over both backends ---
-
-// backendFactory builds a fresh Backend for a contract test.
-type backendFactory func(t *testing.T) Backend
-
-func fsFactory(t *testing.T) Backend {
-	s, err := NewFSBackend(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
-func memFactory(t *testing.T) Backend { return NewMemoryBackend() }
+// Shared test object types (testNote, testNode), backend factories
+// (backendFactory, fsFactory, memFactory), the backend contract
+// (testBackendContract), readAllAndClose and newTestStore are defined in
+// external_test.go.
 
 func TestBackendContract(t *testing.T) {
 	for _, bf := range []struct {
@@ -101,126 +33,8 @@ func TestBackendContract(t *testing.T) {
 	}
 }
 
-// testBackendContract runs the Backend-level CAS laws plus the corner/error
-// inventory shared by both backends (testing-strategy §1, §3).
-func testBackendContract(t *testing.T, raw Backend) {
-	ctx := context.Background()
-	// Round-trip + determinism: same bytes → same hash → identical bytes.
-	h1, err := hashData("sha256", []byte("hello"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Put(ctx, h1, strings.NewReader("hello")); err != nil {
-		t.Fatal(err)
-	}
-	h1b, err := hashData("sha256", []byte("hello"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h1.String() != h1b.String() {
-		t.Fatal("determinism broken at the byte layer")
-	}
-	if err := raw.Put(ctx, h1b, strings.NewReader("hello")); err != nil {
-		t.Fatal(err) // idempotent Put
-	}
-	rc, err := raw.Get(ctx, h1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := readAllAndClose(rc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "hello" {
-		t.Fatalf("round-trip: got %q", got)
-	}
-
-	// Exists.
-	if ok, err := raw.Exists(ctx, h1); err != nil || !ok {
-		t.Fatalf("Exists = %v, %v", ok, err)
-	}
-	missing, _ := hashData("sha256", []byte("nope"))
-	if ok, err := raw.Exists(ctx, missing); err != nil || ok {
-		t.Fatalf("Exists(missing) = %v, %v", ok, err)
-	}
-
-	// Get missing → ErrNotFound.
-	if _, err := raw.Get(ctx, missing); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Get(missing) error = %v, want ErrNotFound", err)
-	}
-
-	// List + algorithm filter.
-	h2, _ := hashData("sha256", []byte("world"))
-	if err := raw.Put(ctx, h2, strings.NewReader("hello")); err != nil {
-		t.Fatal(err)
-	}
-	all, err := raw.List(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 2 {
-		t.Fatalf("List() = %d objects, want 2", len(all))
-	}
-	s256, err := raw.List(ctx, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(s256) != 2 {
-		t.Fatalf("List(sha256) = %v", s256)
-	}
-
-	// Delete: no-op on missing, removes present.
-	if err := raw.Delete(ctx, missing); err != nil {
-		t.Fatalf("Delete(missing) must be a no-op: %v", err)
-	}
-	if err := raw.Delete(ctx, h2); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := raw.Exists(ctx, h2); ok {
-		t.Fatal("object still exists after Delete")
-	}
-
-	// Immutability: stored bytes never change after Put.
-	if err := raw.Put(ctx, h1, strings.NewReader("hello")); err != nil {
-		t.Fatal(err)
-	}
-	rc2, err := raw.Get(ctx, h1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := readAllAndClose(rc2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(again) != "hello" {
-		t.Fatal("stored bytes changed")
-	}
-
-	// Cancelled context surfaces the cancellation.
-	cctx, cancel := context.WithCancel(ctx)
-	cancel()
-	if err := raw.Put(cctx, h1, strings.NewReader("x")); err == nil {
-		t.Log("Put on cancelled ctx returned nil (backend may not check); acceptable")
-	}
-}
-
-func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
-	defer rc.Close()
-	return io.ReadAll(rc)
-}
-
-// --- Store[T] typed-layer tests ---
-
-func newTestStore(t *testing.T, raw Backend) *Store[testNote] {
-	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
 func TestStoreRoundTrip(t *testing.T) {
-	raw := NewMemoryBackend()
+	raw := backmem.New()
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
@@ -250,17 +64,22 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("Type() = %q", note2.Type())
 	}
 
-	// GetRaw returns the stored envelope bytes.
+	// GetRaw returns the stored bytes in the self-describing
+	// "<type>\n<codec payload>" form.
 	rawBytes, err := s.GetRaw(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var env envelope
-	if err := json.Unmarshal(rawBytes, &env); err != nil {
-		t.Fatalf("stored bytes are not an envelope: %v", err)
+	idx := bytes.IndexByte(rawBytes, '\n')
+	if idx < 0 {
+		t.Fatalf("stored bytes are not the typed form: %q", rawBytes)
 	}
-	if env.Type != "note@1" {
-		t.Fatalf("envelope type = %q", env.Type)
+	if typ := string(rawBytes[:idx]); typ != "note@1" {
+		t.Fatalf("stored type prefix = %q, want note@1", typ)
+	}
+	var payloadNote testNote
+	if err := json.Unmarshal(rawBytes[idx+1:], &payloadNote); err != nil {
+		t.Fatalf("stored payload is not JSON: %v", err)
 	}
 
 	// Exists / Delete.
@@ -273,14 +92,14 @@ func TestStoreRoundTrip(t *testing.T) {
 	if ok, _ := s.Exists(ctx, h); ok {
 		t.Fatal("Exists after Delete")
 	}
-	if _, err := s.Get(ctx, h); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(ctx, h); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(after delete) = %v", err)
 	}
 }
 
 // CAS law: dedup — Put twice → one object; PutDedup reports the duplicate.
 func TestStoreDedup(t *testing.T) {
-	raw := NewMemoryBackend()
+	raw := backmem.New()
 	s := newTestStore(t, raw)
 	ctx := context.Background()
 
@@ -324,11 +143,11 @@ func TestStoreDedup(t *testing.T) {
 }
 
 func TestStoreEmptyStore(t *testing.T) {
-	s := newTestStore(t, NewMemoryBackend())
+	s := newTestStore(t, backmem.New())
 	ctx := context.Background()
-	missing, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
+	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("ab", 32))
 
-	if _, err := s.Get(ctx, missing); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get = %v", err)
 	}
 	if ok, err := s.Exists(ctx, missing); err != nil || ok {
@@ -342,14 +161,14 @@ func TestStoreEmptyStore(t *testing.T) {
 func TestStoreTypeSafety(t *testing.T) {
 	// A node store must NOT decode a note object as a node: wrong-type
 	// payloads fail loudly rather than producing garbage.
-	raw := NewMemoryBackend()
+	raw := backmem.New()
 	ctx := context.Background()
 	notes := newTestStore(t, raw)
 	h, err := notes.Put(ctx, testNote{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, err := NewStore(raw, codec.JSONCodec[testNode]{}, "sha256")
+	nodes, err := cas.New(raw, jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,8 +178,8 @@ func TestStoreTypeSafety(t *testing.T) {
 }
 
 func TestNewStoreUnknownAlgorithm(t *testing.T) {
-	_, err := NewStore[testNote](NewMemoryBackend(), codec.JSONCodec[testNote]{}, "nope")
-	if !errors.Is(err, ErrUnknownAlgorithm) {
+	_, err := cas.New[testNote](backmem.New(), jsoncodec.New[testNote](), "nope")
+	if !errors.Is(err, cas.ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
 	}
 }
@@ -368,12 +187,13 @@ func TestNewStoreUnknownAlgorithm(t *testing.T) {
 func TestStoreWithCustomHasher(t *testing.T) {
 	// Custom algorithm via the documented recipe: RegisterHash then NewStore
 	// (cas-core §4.2). The address must round-trip through ParseHash.
-	RegisterHash("testblob", func([]byte) Hash {
-		return hash{algo: "testblob", bytes: []byte{0xde, 0xad}}
+	cas.RegisterHash("testblob", func([]byte) cas.Hash {
+		h, _ := cas.NewHash("testblob", []byte{0xde, 0xad})
+		return h
 	})
-	raw := NewMemoryBackend()
+	raw := backmem.New()
 	ctx := context.Background()
-	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "testblob")
+	s, err := cas.New(raw, jsoncodec.New[testNote](), "testblob")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +204,7 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	if h.String() != "testblob:dead" {
 		t.Fatalf("custom hasher address = %q", h.String())
 	}
-	if _, err := ParseHash(h.String()); err != nil {
+	if _, err := cas.ParseHash(h.String()); err != nil {
 		t.Fatalf("custom address must round-trip through ParseHash: %v", err)
 	}
 	note, err := s.Get(ctx, h)
@@ -397,7 +217,7 @@ func TestStoreWithCustomHasher(t *testing.T) {
 }
 
 func TestStoreCancelledContext(t *testing.T) {
-	s := newTestStore(t, NewMemoryBackend())
+	s := newTestStore(t, backmem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := s.Put(ctx, testNote{Title: "t"}); err == nil {
@@ -409,11 +229,11 @@ func TestStoreCancelledContext(t *testing.T) {
 }
 
 func TestEnvelopeFormat(t *testing.T) {
-	// The stored form must be exactly the self-describing envelope, built by
-	// Store.Put from the codec payload (the codec is the serialization
-	// authority — objects no longer serialize themselves).
+	// The stored form must be exactly the self-describing "<type>\n<payload>"
+	// form, built by Store.Put from the codec payload (the codec is the
+	// serialization authority — objects no longer serialize themselves).
 	ctx := context.Background()
-	s := newTestStore(t, NewMemoryBackend())
+	s := newTestStore(t, backmem.New())
 	h, err := s.Put(ctx, testNote{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -422,19 +242,15 @@ func TestEnvelopeFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var env envelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		t.Fatalf("not JSON: %v", err)
+	idx := bytes.IndexByte(data, '\n')
+	if idx < 0 {
+		t.Fatalf("stored bytes are not the typed form: %q", data)
 	}
-	if env.Type != "note@1" {
-		t.Fatalf("type = %q", env.Type)
-	}
-	payload, err := base64.StdEncoding.DecodeString(env.Data)
-	if err != nil {
-		t.Fatalf("data not base64: %v", err)
+	if typ := string(data[:idx]); typ != "note@1" {
+		t.Fatalf("type = %q, want note@1", typ)
 	}
 	var note testNote
-	if err := json.Unmarshal(payload, &note); err != nil {
+	if err := json.Unmarshal(data[idx+1:], &note); err != nil {
 		t.Fatalf("payload not JSON: %v", err)
 	}
 	if note.Title != "t" {
@@ -444,7 +260,7 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package cas
+package cas_test
 
 import (
 	"bytes"
@@ -8,7 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas/codec"
+	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Benchmarks per performance §5: every case reports allocations and bytes.
@@ -32,7 +35,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+			s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -53,7 +56,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+			s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -76,9 +79,9 @@ func BenchmarkStoreGet(b *testing.B) {
 func BenchmarkFSBackendPut(b *testing.B) {
 	for _, layout := range []struct {
 		name string
-		opts []FSOption
+		opts []fs.Option
 	}{
-		{"flat", []FSOption{WithFanOut(0), WithFanLevels(0)}},
+		{"flat", []fs.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
@@ -90,7 +93,7 @@ func BenchmarkFSBackendPut(b *testing.B) {
 		} {
 			b.Run(layout.name+"/"+sz.name, func(b *testing.B) {
 				ctx := context.Background()
-				s, err := NewFSBackend(b.TempDir(), layout.opts...)
+				s, err := fs.New(b.TempDir(), layout.opts...)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -117,9 +120,9 @@ func BenchmarkFSBackendPut(b *testing.B) {
 func BenchmarkFSBackendGet(b *testing.B) {
 	for _, layout := range []struct {
 		name string
-		opts []FSOption
+		opts []fs.Option
 	}{
-		{"flat", []FSOption{WithFanOut(0), WithFanLevels(0)}},
+		{"flat", []fs.Option{fs.WithFanOut(0), fs.WithFanLevels(0)}},
 		{"fanout-2-1", nil},
 	} {
 		for _, sz := range []struct {
@@ -131,7 +134,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 		} {
 			b.Run(layout.name+"/"+sz.name, func(b *testing.B) {
 				ctx := context.Background()
-				s, err := NewFSBackend(b.TempDir(), layout.opts...)
+				s, err := fs.New(b.TempDir(), layout.opts...)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -160,7 +163,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -181,7 +184,7 @@ func BenchmarkRoundTrip(b *testing.B) {
 
 func BenchmarkVerify(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewFSBackend(b.TempDir())
+	s, err := fs.New(b.TempDir())
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -206,7 +209,7 @@ func BenchmarkParseHash(b *testing.B) {
 	b.Run("valid", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if _, err := ParseHash(valid); err != nil {
+			if _, err := cas.ParseHash(valid); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -214,7 +217,7 @@ func BenchmarkParseHash(b *testing.B) {
 	b.Run("invalid", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			ParseHash(invalid)
+			cas.ParseHash(invalid)
 		}
 	})
 }
@@ -223,12 +226,12 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryBackend(), codec.JSONCodec[testNote]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}
 	const objects = 64
-	var hashes []Hash
+	var hashes []cas.Hash
 	for i := 0; i < objects; i++ {
 		h, err := s.Put(ctx, testNote{Title: fmt.Sprintf("obj-%d", i)})
 		if err != nil {

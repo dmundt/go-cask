@@ -1,4 +1,4 @@
-package cache_test
+package memory_test
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/cache"
-	"github.com/dmundt/go-cask/cas/codec"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 type testObject struct {
@@ -30,7 +31,7 @@ func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) 
 
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	s, err := cas.NewStore(cas.NewMemoryBackend(), codec.JSONCodec[testObject]{}, "sha256")
+	s, err := cas.New(backmem.New(), jsoncodec.New[testObject](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func newStore(t *testing.T) *cas.Store[testObject] {
 func TestCachedObjectLazyLoad(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "lazy")
 	co, err := c.Proxy(ctx, h)
 	if err != nil {
@@ -66,7 +67,7 @@ func TestCachedObjectLazyLoad(t *testing.T) {
 func TestCachedObjectConcurrentLoad(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "concurrent")
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -90,7 +91,7 @@ func TestCachedObjectConcurrentLoad(t *testing.T) {
 func TestCachedStoreGet(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "alpha")
 	obj, err := c.Get(ctx, h)
 	if err != nil || obj.Name != "alpha" {
@@ -107,7 +108,7 @@ func TestCachedStoreGet(t *testing.T) {
 
 func TestCachedStoreMissingObject(t *testing.T) {
 	ctx := context.Background()
-	c := cache.NewCachedStore(newStore(t))
+	c := cachemem.New(newStore(t))
 	m, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := c.Get(ctx, m); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) = %v", err)
@@ -117,7 +118,7 @@ func TestCachedStoreMissingObject(t *testing.T) {
 func TestCachedStorePreload(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	var hs []cas.Hash
 	for i := 0; i < 20; i++ {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
@@ -133,7 +134,7 @@ func TestCachedStorePreload(t *testing.T) {
 func TestCachedStorePreloadRecursiveDepth0(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "only")
 	if err := c.PreloadRecursive(ctx, h, 0); err != nil {
 		t.Fatal(err)
@@ -146,7 +147,7 @@ func TestCachedStorePreloadRecursiveDepth0(t *testing.T) {
 func TestCachedStorePreloadRecursiveDepth1(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "root")
 	if err := c.PreloadRecursive(ctx, h, 1); err != nil {
 		t.Fatal(err)
@@ -157,7 +158,7 @@ func TestCachedStorePreloadRecursiveDepth1(t *testing.T) {
 }
 
 func TestCachedStorePreloadEmpty(t *testing.T) {
-	c := cache.NewCachedStore(newStore(t))
+	c := cachemem.New(newStore(t))
 	if err := c.Preload(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +166,7 @@ func TestCachedStorePreloadEmpty(t *testing.T) {
 
 func TestCachedStorePreloadMissError(t *testing.T) {
 	ctx := context.Background()
-	c := cache.NewCachedStore(newStore(t))
+	c := cachemem.New(newStore(t))
 	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if err := c.Preload(ctx, []cas.Hash{h}); err == nil {
 		t.Fatal("Preload of missing must return error")
@@ -175,7 +176,7 @@ func TestCachedStorePreloadMissError(t *testing.T) {
 func TestCachedStoreEvictClearWarmup(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h1 := put(t, s, "one")
 	h2 := put(t, s, "two")
 	if err := c.Warmup(ctx, []cas.Hash{h1, h2}); err != nil {
@@ -199,7 +200,7 @@ func TestCachedStoreEvictClearWarmup(t *testing.T) {
 }
 
 func TestCachedStoreEvictMissing(t *testing.T) {
-	c := cache.NewCachedStore(newStore(t))
+	c := cachemem.New(newStore(t))
 	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	c.Evict(h)
 	if st := c.CacheStats(); st.Evicts != 0 {
@@ -210,7 +211,7 @@ func TestCachedStoreEvictMissing(t *testing.T) {
 func TestCachedStoreWarmupMissing(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	h := put(t, s, "exists")
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if err := c.Warmup(ctx, []cas.Hash{h, missing}); err != nil {
@@ -224,7 +225,7 @@ func TestCachedStoreWarmupMissing(t *testing.T) {
 func TestCachedStoreConcurrent(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	c := cache.NewCachedStore(s)
+	c := cachemem.New(s)
 	var hs []cas.Hash
 	for i := 0; i < 10; i++ {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
@@ -245,7 +246,7 @@ func TestCachedStoreConcurrent(t *testing.T) {
 }
 
 func TestCachedStoreStatsZero(t *testing.T) {
-	c := cache.NewCachedStore(newStore(t))
+	c := cachemem.New(newStore(t))
 	st := c.CacheStats()
 	if st.Hits != 0 || st.Misses != 0 || st.Size != 0 {
 		t.Fatalf("fresh cache stats = %+v", st)

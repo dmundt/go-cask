@@ -6,8 +6,7 @@ package cas
 // of truth for traversal, preloading, and GC reachability.
 //
 // Serialization is NOT an object concern: the Store[T] is configured with a
-// Codec[T], and Store.Put builds the self-describing envelope
-// {"type": "<type>@<major>", "data": "<base64 codec payload>"} itself — the
+// Codec[T], and Store.Put writes the type + codec payload to the byte layer itself — the
 // codec is the single serialization authority on write and read (cas-core
 // §8 decision 1). Type() must return a versioned type name "<type>@<major>"
 // (e.g. "commit@1") so several object-model majors can coexist in one store

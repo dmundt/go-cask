@@ -3,12 +3,13 @@ package cas
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 )
+
+// SHA256 is the default hash algorithm identifier for the cas core.
+const SHA256 = "sha256"
 
 // Store[T] is the generic, type-safe content-addressable store for objects of
 // type T, over a Backend backend, a Codec[T] and a hash algorithm. Type
@@ -16,13 +17,10 @@ import (
 // distinct, so passing a commit hash to a blob store is a compile-time
 // error. Store[T] is safe for concurrent use if its Backend is.
 //
-// Stored objects use the self-describing envelope (cas-core §8, decision 1):
-// the serialized bytes are {"type": "<type>@<major>", "data": "<base64
-// payload>"}, where the payload is the codec output. Store.Put builds the
-// envelope from codec.Encode(obj) and obj.Type(); Get strips the
-// envelope and decodes the payload with the store's codec. The base64
-// payload encoding keeps the envelope valid JSON for any codec output (JSON,
-// gzip, binary).
+// Stored objects are self-describing: the raw codec payload is prefixed with
+// the type string (e.g. "commit@1") and a newline separator, so the type
+// version travels with the bytes without a JSON envelope or base64. The
+// On-disk form is: <type>\n<codec payload>.
 // The typed layer is constrained: T MUST implement Object[T]. The type
 // system therefore proves that every value a Store handles is an object —
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
@@ -33,23 +31,23 @@ type Store[T Object[T]] struct {
 	hasher HashFunc
 }
 
-// NewStore creates a Store[T] over raw, resolving the hash algorithm from
+// New creates a Store[T] over raw, resolving the hash algorithm from
 // the registry at construction (no global dependence in the hot path). It
 // returns ErrUnknownAlgorithm if algo is not registered. Custom algorithms
-// are registered with RegisterHash before calling NewStore (cas-core §4.2).
-func NewStore[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error) {
-	fn, ok := lookupHash(algo)
+// are registered with RegisterHash before calling New (cas-core §4.2).
+func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error) {
+	fn, ok := LookupHash(algo)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}
 	return &Store[T]{raw: raw, codec: codec, hasher: fn}, nil
 }
 
-// Put encodes obj with the store codec, wraps it in the self-describing
-// envelope and stores it. The hash covers the type name AND the payload, so
-// identical content always produces the identical address (dedup) and a type
-// change produces a new address. The envelope bytes are hashed in a single
-// pass and streamed to the backend without buffering (performance §3).
+// Put encodes obj with the store codec, prepends the type string, and
+// stores it. The hash covers the type AND the payload, so identical content
+// always produces the identical address (dedup) and a type change produces
+// a new address. The bytes are hashed in a single pass and streamed to the
+// backend without buffering (performance §3).
 func (s *Store[T]) Put(ctx context.Context, obj T) (Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -90,36 +88,29 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 	return h, false, nil
 }
 
-// marshal builds the stored form of obj: payload := codec.Encode(obj),
-// wrapped in the self-describing envelope {"type","data"}. The codec is the
-// single serialization authority — the same codec decodes on read (Get). obj is the concrete T (the Store constraint), so no type
-// assertion is involved.
+// marshal builds the stored form of obj: <type>\n<codec payload>. The codec
+// is the single serialization authority — the same codec decodes on read
+// (Get). obj is the concrete T (the Store constraint), so no type assertion
+// is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	payload, err := s.codec.Encode(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
-	env := envelope{Type: obj.Type(), Data: base64.StdEncoding.EncodeToString(payload)}
-	data, err := json.Marshal(env)
-	if err != nil {
-		return nil, fmt.Errorf("cas: envelope: %w", err)
-	}
-	return data, nil
+	return []byte(obj.Type() + "\n" + string(payload)), nil
 }
 
 // Get reads the object at h and returns the concrete T directly — no casts.
-// It strips the envelope and decodes the payload with the store's codec; it
-// may buffer the object because Codec.Decode needs the full payload bytes.
-// When the decoded value implements Object[T], its Type() must match the
-// envelope's type name, otherwise ErrUnknownType is returned (a
-// self-describing store refuses to hand back a value of the wrong type).
+// It strips the type prefix, decodes the payload with the store's codec, and
+// checks the decoded type matches the stored type (a self-describing store
+// refuses to hand back a value of the wrong type).
 func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	var zero T
 	data, err := s.GetRaw(ctx, h)
 	if err != nil {
 		return zero, err
 	}
-	envType, payload, err := unmarshalEnvelope(data)
+	typeName, payload, err := splitHead(data)
 	if err != nil {
 		return zero, err
 	}
@@ -127,14 +118,14 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	if err != nil {
 		return zero, fmt.Errorf("cas: %w: payload decode failed", ErrCorrupt)
 	}
-	if v.Type() != envType {
-		return zero, fmt.Errorf("%w: envelope type %q != decoded type %q", ErrUnknownType, envType, v.Type())
+	if v.Type() != typeName {
+		return zero, fmt.Errorf("%w: stored type %q != decoded type %q", ErrUnknownType, typeName, v.Type())
 	}
 	return v, nil
 }
 
-// GetRaw returns the raw stored bytes — the self-describing envelope — for
-// inspection and tooling. It buffers the whole object.
+// GetRaw returns the raw stored bytes — the self-describing <type>\n<payload>
+// form — for inspection and tooling. It buffers the whole object.
 func (s *Store[T]) GetRaw(ctx context.Context, h Hash) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -162,31 +153,25 @@ func (s *Store[T]) Delete(ctx context.Context, h Hash) error {
 	return s.raw.Delete(ctx, h)
 }
 
-// envelope is the self-describing storage form (cas-core §8 decision 1):
-// {"type": "<type>@<major>", "data": "<base64 codec payload>"}.
-type envelope struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
-}
+// typeSep separates the versioned type name from the codec payload in the
+// stored form. Type names never contain a newline, so the first newline is
+// always the separator.
+const typeSep = "\n"
 
-// unmarshalEnvelope parses the envelope, returning the versioned type name
-// (an absent major version reads as "@1", object-versioning §2) and the
-// base64-decoded payload.
-func unmarshalEnvelope(data []byte) (string, []byte, error) {
-	var env envelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		return "", nil, fmt.Errorf("%w: not a valid object envelope", ErrUnknownType)
+// splitHead parses the stored form "type@major\n<payload>", returning the
+// versioned type name (an absent major version reads as "@1",
+// object-versioning §2) and the codec payload.
+func splitHead(data []byte) (string, []byte, error) {
+	idx := bytes.IndexByte(data, typeSep[0])
+	if idx < 0 {
+		return "", nil, fmt.Errorf("%w: not a typed object", ErrUnknownType)
 	}
-	if env.Type == "" {
-		return "", nil, fmt.Errorf("%w: envelope missing type", ErrUnknownType)
+	typeName := string(data[:idx])
+	if typeName == "" {
+		return "", nil, fmt.Errorf("%w: object missing type", ErrUnknownType)
 	}
-	payload, err := base64.StdEncoding.DecodeString(env.Data)
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: envelope data is not base64", ErrUnknownType)
-	}
-	typeName := env.Type
 	if !strings.Contains(typeName, "@") {
 		typeName += "@1" // legacy unversioned type name
 	}
-	return typeName, payload, nil
+	return typeName, data[idx+1:], nil
 }

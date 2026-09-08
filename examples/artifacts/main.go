@@ -21,7 +21,8 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/cache"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	lru "github.com/dmundt/go-cask/cas/cache/lru"
 )
 
 const usage = `usage: artifacts [-store <dir>] <command> [args]
@@ -126,27 +127,27 @@ func gunzipJSON[T any](data []byte) (*T, error) {
 
 // app bundles the store, typed stores, and the LRU cache.
 type app struct {
-	raw       *cas.FSBackend
+	raw       *fs.Backend
 	artifacts *cas.Store[*Artifact]
 	manifests *cas.Store[*Manifest]
-	cache     *cache.LRUCache[*Artifact]
+	cache     *lru.Cache[*Artifact]
 	monitor   *CacheMonitor[*Artifact]
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := cas.NewFSBackend(dir)
+	raw, err := fs.New(dir)
 	if err != nil {
 		return nil, err
 	}
-	artifacts, err := cas.NewStore(raw, newGzipCodec[*Artifact](), "sha256double")
+	artifacts, err := cas.New(raw, newGzipCodec[*Artifact](), "sha256double")
 	if err != nil {
 		return nil, err
 	}
-	manifests, err := cas.NewStore(raw, newGzipCodec[*Manifest](), "sha256double")
+	manifests, err := cas.New(raw, newGzipCodec[*Manifest](), "sha256double")
 	if err != nil {
 		return nil, err
 	}
-	cache, err := cache.NewLRUCache(artifacts, 100)
+	cache, err := lru.New(artifacts, 100)
 	if err != nil {
 		return nil, err
 	}

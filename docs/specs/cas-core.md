@@ -136,7 +136,7 @@ references). It creates a `Store[Note]` over a `Backend` backend with a
 `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`:
 
 1. **Serializes** the note via `Codec.Encode` and wraps the payload in the
-   self-describing envelope `{"type": "<type>@<major>", "data": …}` built by
+   self-describing form `"<type>@<major>\\n<codec payload>"` built by
    `Store.Put` itself — the codec is the single serialization authority
    (objects never serialize themselves);
 2. **Hashes** the bytes with the store's `HashFunc` — producing the content
@@ -620,9 +620,9 @@ func NewStore[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T],
 
 | Method        | Behavior                                                          |
 | ------------- | ----------------------------------------------------------------- |
-| `Put`         | `Put(ctx, obj T)` → `codec.Encode(obj)` → envelope`{"type","data"}` → `hasher(data)` → `raw.Put` → h |
+| `Put`         | `Put(ctx, obj T)` → `codec.Encode(obj)` → `"type\\n"+payload` → `hasher(data)` → `raw.Put` → h |
 | `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
-| `Get`         | `raw.Get` → `codec.Decode` → the concrete `T`; the decoded `Type()` must match the envelope type name (else `ErrUnknownType`) |
+| `Get`         | `raw.Get` → `codec.Decode` → the concrete `T`; the decoded `Type()` must match the stored type name (else `ErrUnknownType`) |
 | `GetRaw`      | returns the serialized bytes for inspection/tooling               |
 | `Exists`      | delegates to `raw`                                                |
 | `Delete`      | delegates to `raw`                                                |
@@ -781,7 +781,7 @@ type ResolvedObject struct {
 ### 5.1 Write path
 
 ```text
-codec.Encode(obj) → envelope{"type","data"}   # built by Store.Put
+codec.Encode(obj) → "type\\n"+payload   # built by Store.Put
         │
         ▼
 hash := hasher(data)              # algorithm from store config
@@ -800,7 +800,7 @@ Optional `PutDedup`: check `raw.Exists(hash)` first and skip the write.
 ```text
 raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (Get)
                                        │
-                                       └─► Type() matches envelope type
+                                       └─► Type() matches stored type
 ```
 
 ### 5.3 Lazy/cached read path

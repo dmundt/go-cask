@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 	)
 	flag.Parse()
 
-	raw, err := cas.NewFSBackend(*store)
+	raw, err := fs.New(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)

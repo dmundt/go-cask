@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/codec"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Repository bundles the per-type stores (blob, tree, commit, tag) over one
@@ -24,19 +24,19 @@ type Repository struct {
 // NewRepository builds a Repository over raw with the given hash algorithm.
 // It returns ErrUnknownAlgorithm if algo is not registered.
 func NewRepository(raw cas.Backend, algo string) (*Repository, error) {
-	blobs, err := cas.NewStore(raw, codec.JSONCodec[*Blob]{}, algo)
+	blobs, err := cas.New(raw, jsoncodec.New[*Blob](), algo)
 	if err != nil {
 		return nil, err
 	}
-	trees, err := cas.NewStore(raw, codec.JSONCodec[*Tree]{}, algo)
+	trees, err := cas.New(raw, jsoncodec.New[*Tree](), algo)
 	if err != nil {
 		return nil, err
 	}
-	commits, err := cas.NewStore(raw, codec.JSONCodec[*Commit]{}, algo)
+	commits, err := cas.New(raw, jsoncodec.New[*Commit](), algo)
 	if err != nil {
 		return nil, err
 	}
-	tags, err := cas.NewStore(raw, codec.JSONCodec[*Tag]{}, algo)
+	tags, err := cas.New(raw, jsoncodec.New[*Tag](), algo)
 	if err != nil {
 		return nil, err
 	}

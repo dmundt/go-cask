@@ -1,4 +1,4 @@
-package cas
+package cas_test
 
 // On-demand scale probes (performance §5): how per-operation cost and
 // resource use grow with the number of objects already in the store. They
@@ -31,6 +31,10 @@ import (
 	"os"
 	"strconv"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	backmem "github.com/dmundt/go-cask/cas/backend/memory"
 )
 
 // scaleTarget is the object count these probes extrapolate to:
@@ -59,14 +63,14 @@ func scaleObjectCount(b *testing.B) int {
 // scaleBackend pairs a name with a Backend constructor.
 type scaleBackend struct {
 	name string
-	new  func(tb testing.TB) Backend
+	new  func(tb testing.TB) cas.Backend
 }
 
 func scaleBackends() []scaleBackend {
 	return []scaleBackend{
-		{"Memory", func(tb testing.TB) Backend { return NewMemoryBackend() }},
-		{"FS", func(tb testing.TB) Backend {
-			s, err := NewFSBackend(tb.TempDir())
+		{"Memory", func(tb testing.TB) cas.Backend { return backmem.New() }},
+		{"FS", func(tb testing.TB) cas.Backend {
+			s, err := fs.New(tb.TempDir())
 			if err != nil {
 				tb.Fatal(err)
 			}
@@ -86,13 +90,13 @@ func scalePayload(p []byte, i int) {
 }
 
 // scaleFill prefills raw with n unique objects and returns their hashes.
-func scaleFill(b *testing.B, ctx context.Context, raw Backend, n int) []Hash {
+func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int) []cas.Hash {
 	b.Helper()
-	hs := make([]Hash, n)
+	hs := make([]cas.Hash, n)
 	p := make([]byte, scaleObjSize)
 	for i := 0; i < n; i++ {
 		scalePayload(p, i)
-		h, err := HashBytes("sha256", p)
+		h, err := cas.HashBytes("sha256", p)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -108,13 +112,13 @@ func scaleFill(b *testing.B, ctx context.Context, raw Backend, n int) []Hash {
 // extrapolation to scaleTarget objects. For the FS backend it also reports
 // file bytes per object (Stats counts object-file bytes only — directory
 // entries, fan-out dirs and inode overhead are on top of that).
-func scaleReport(b *testing.B, op string, n int, raw Backend) {
+func scaleReport(b *testing.B, op string, n int, raw cas.Backend) {
 	rate := float64(b.N) / b.Elapsed().Seconds()
 	hours := float64(scaleTarget) / rate / 3600
 	line := fmt.Sprintf("[scale] %s @ %d objects: %.0f obj/s -> 10^10 objects ~ %.1f h",
 		op, n, rate, hours)
-	if fs, ok := raw.(*FSBackend); ok {
-		if st, err := fs.Stats(context.Background()); err == nil && st.ObjectCount > 0 {
+	if fsBackend, ok := raw.(*fs.Backend); ok {
+		if st, err := fsBackend.Stats(context.Background()); err == nil && st.ObjectCount > 0 {
 			per := float64(st.TotalSize) / float64(st.ObjectCount)
 			line += fmt.Sprintf(" | %.2f B/obj file bytes -> %.1f GiB for 10^10", per,
 				per*float64(scaleTarget)/(1024*1024*1024))
@@ -141,7 +145,7 @@ func BenchmarkScalePut(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				scalePayload(p, n+i)
-				h, err := HashBytes("sha256", p)
+				h, err := cas.HashBytes("sha256", p)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -276,7 +280,7 @@ func BenchmarkScaleStats(b *testing.B) {
 			n := scaleObjectCount(b)
 			ctx := context.Background()
 			raw := be.new(b)
-			fs, ok := raw.(*FSBackend)
+			fsBackend, ok := raw.(*fs.Backend)
 			if !ok {
 				b.Skip("backend has no Stats")
 			}
@@ -287,7 +291,7 @@ func BenchmarkScaleStats(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := fs.Stats(ctx); err != nil {
+				if _, err := fsBackend.Stats(ctx); err != nil {
 					b.Fatal(err)
 				}
 			}

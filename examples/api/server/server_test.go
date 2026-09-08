@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 )
 
 // A tiny plain-HTTP test client: the example ships no SDK, so the tests
@@ -25,7 +26,7 @@ type testClient struct {
 
 func newTestServer(t *testing.T, rlCfg RateLimitConfig) (*testClient, *httptest.Server) {
 	t.Helper()
-	raw, err := cas.NewFSBackend(t.TempDir())
+	raw, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestLargePayload(t *testing.T) {
 
 func TestRoleMatrix(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := cas.NewFSBackend(t.TempDir())
+	raw, _ := fs.New(t.TempDir())
 	srv := New(raw, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -254,7 +255,7 @@ func TestMetaVerifyListStats(t *testing.T) {
 
 func TestGCAndOpenAPI(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := cas.NewFSBackend(t.TempDir())
+	raw, _ := fs.New(t.TempDir())
 	srv := New(raw, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

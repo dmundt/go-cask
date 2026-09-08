@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/codec"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // gzipCodec[T] wraps a Codec[T] (the default JSONCodec[T]) with gzip
@@ -20,7 +20,7 @@ import (
 type gzipCodec[T any] struct{ inner cas.Codec[T] }
 
 // newGzipCodec wraps the default JSONCodec[T].
-func newGzipCodec[T any]() gzipCodec[T] { return gzipCodec[T]{inner: codec.JSONCodec[T]{}} }
+func newGzipCodec[T any]() gzipCodec[T] { return gzipCodec[T]{inner: jsoncodec.New[T]()} }
 
 // Encode gzip-compresses the inner codec's output.
 func (c gzipCodec[T]) Encode(v T) ([]byte, error) {

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	"github.com/dmundt/go-cask/examples/gitlike"
 )
 
@@ -43,7 +44,7 @@ commands:
 
 // app bundles the store, repository and the small ref files (HEAD/INDEX).
 type app struct {
-	raw   *cas.FSBackend
+	raw   *fs.Backend
 	repo  *gitlike.Repository
 	dir   string
 	index string // path of the INDEX file (current tree)
@@ -51,7 +52,7 @@ type app struct {
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := cas.NewFSBackend(dir)
+	raw, err := fs.New(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +143,7 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// cat resolves h to any object and writes its raw bytes to out.
+// cat resolves h to any object and writes its bytes to out.
 func (a *app) cat(ctx context.Context, h cas.Hash, out io.Writer) error {
 	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, h)
 	if err != nil {
