@@ -11,7 +11,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
@@ -36,7 +36,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
+			s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -57,7 +57,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
+			s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -164,7 +164,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}

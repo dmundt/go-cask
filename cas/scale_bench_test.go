@@ -34,7 +34,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 )
 
 // scaleTarget is the object count these probes extrapolate to:
@@ -68,7 +68,7 @@ type scaleBackend struct {
 
 func scaleBackends() []scaleBackend {
 	return []scaleBackend{
-		{"Memory", func(tb testing.TB) cas.Backend { return backmem.New() }},
+		{"Memory", func(tb testing.TB) cas.Backend { return mem.New() }},
 		{"FS", func(tb testing.TB) cas.Backend {
 			s, err := fs.New(tb.TempDir())
 			if err != nil {

@@ -24,7 +24,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
@@ -68,7 +68,7 @@ func TestContextCancellationFS(t *testing.T) {
 // TestMemoryBackendSuite covers the in-memory backend contract directly:
 // round-trip, idempotence, filtering, error paths, and canceled contexts.
 func TestMemoryBackendSuite(t *testing.T) {
-	m := backmem.New()
+	m := mem.New()
 	ctx := context.Background()
 	h1, _ := hashData("sha256", []byte("alpha"))
 	h2, _ := hashData("sha256", []byte("beta"))
@@ -239,7 +239,7 @@ func TestHashOneShotRegistration(t *testing.T) {
 // (without @major) decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
+	raw := mem.New()
 	st, err := cas.New(raw, jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +278,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := cas.New(backmem.New(), jsoncodec.New[testNote](), "sha256")
+	st, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestStoreCanceledOps(t *testing.T) {
 // child propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
+	st, err := cas.New(mem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

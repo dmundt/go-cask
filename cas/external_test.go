@@ -18,7 +18,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
@@ -96,7 +96,7 @@ func fsFactory(t *testing.T) cas.Backend {
 	return s
 }
 
-func memFactory(t *testing.T) cas.Backend { return backmem.New() }
+func memFactory(t *testing.T) cas.Backend { return mem.New() }
 
 // testBackendContract runs the Backend-level CAS laws plus the corner/error
 // inventory shared by both backends (testing-strategy §1, §3).

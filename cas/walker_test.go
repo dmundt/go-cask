@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 func TestWalkerTraversal(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestWalkerTraversal(t *testing.T) {
 }
 
 func TestWalkerNotFound(t *testing.T) {
-	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestWalkerNotFound(t *testing.T) {
 
 func TestWalkerVisitError(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testNode](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testNode](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

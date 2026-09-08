@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
@@ -31,7 +31,7 @@ func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) 
 
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testObject](), "sha256")
+	s, err := cas.New(mem.New(), jsoncodec.New[testObject](), "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

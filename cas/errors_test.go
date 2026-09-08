@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	backmem "github.com/dmundt/go-cask/cas/backend/memory"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
@@ -59,7 +59,7 @@ func TestBackendCancelledContext(t *testing.T) {
 
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), failingCodec[errorObject]{}, "sha256")
+	s, err := cas.New(mem.New(), failingCodec[errorObject]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestStoreEncodeError(t *testing.T) {
 }
 
 func TestStorePutDedupCancelled(t *testing.T) {
-	s := newTestStore(t, backmem.New())
+	s := newTestStore(t, mem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, _, err := s.PutDedup(ctx, testNote{Title: "t"}); err == nil {
@@ -84,7 +84,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 // codec cannot decode surfaces as ErrCorrupt from Get.
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
+	raw := mem.New()
 	store, err := cas.New(raw, jsoncodec.New[testNote](), "sha256")
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestGetCorruptPayload(t *testing.T) {
 
 func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
+	raw := mem.New()
 	s := newTestStore(t, raw)
 	// Every case must fail Get with ErrUnknownType: version byte is not 1,
 	// empty bytes, or truncated.
@@ -145,7 +145,7 @@ func TestVerifyCancelled(t *testing.T) {
 }
 
 func TestStoreGetRawMissing(t *testing.T) {
-	s := newTestStore(t, backmem.New())
+	s := newTestStore(t, mem.New())
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetRaw = %v, want ErrNotFound", err)
