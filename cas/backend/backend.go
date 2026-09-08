@@ -7,8 +7,11 @@ package backend
 // never positional bool/int soup.
 type Option func(*Config)
 
-// Config holds backend configuration applied via Option. Fields are shared
-// across backend implementations; a specific backend reads the ones it uses.
+// Config holds backend configuration applied via Option. Config fields
+// SHOULD NOT be shared across backend implementations — each backend
+// subpackage defines its own Config type. The fields here are common to
+// the filesystem backend; other backends (memory, s3, ...) may define
+// their own Option types and Config structs with backend-specific fields.
 type Config struct {
 	FanOut    int
 	FanLevels int
