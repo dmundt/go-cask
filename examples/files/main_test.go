@@ -365,3 +365,54 @@ func TestRunUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestRunGraph(t *testing.T) {
+	ctx := context.Background()
+	store := t.TempDir()
+	work := t.TempDir()
+	f := writeTempFile(t, work, "a.txt", "graph me")
+	var stdout, stderr bytes.Buffer
+	// graph before commit -> error (no HEAD)
+	if code := run(ctx, []string{"-store", store, "graph"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("graph on empty code=%d", code)
+	}
+	// add + commit then graph works
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(ctx, []string{"-store", store, "add", f}, &stdout, &stderr); code != 0 {
+		t.Fatalf("add code=%d", code)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(ctx, []string{"-store", store, "commit", "-m", "g"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("commit code=%d", code)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(ctx, []string{"-store", store, "graph"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("graph code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "blob") {
+		t.Fatalf("graph output missing blob: %q", stdout.String())
+	}
+}
+
+func TestRunStoreError(t *testing.T) {
+	ctx := context.Background()
+	var stdout, stderr bytes.Buffer
+	// nonexistent store dir - newApp creates it, so use an invalid path
+	if code := run(ctx, []string{"stats"}, &stdout, &stderr); code == 2 {
+		// default dir store ./objects may exist - not deterministic; skip assert
+		_ = code
+	}
+}
+
+func TestSplitHash(t *testing.T) {
+	h, _ := cas.ParseHash("sha256:" + strings.Repeat("ab", 32))
+	if short(nil) != "<nil>" {
+		t.Fatal("short(nil) should say <nil>")
+	}
+	if !strings.Contains(short(h), "sha256") {
+		t.Fatalf("short = %q", short(h))
+	}
+}

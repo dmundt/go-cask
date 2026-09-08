@@ -142,16 +142,13 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// cat resolves h to a blob and writes its bytes to out.
+// cat resolves h to any object type and writes its bytes to out.
 func (a *app) cat(ctx context.Context, h cas.Hash, out io.Writer) error {
 	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, h)
 	if err != nil {
 		return err
 	}
-	if ro.Blob == nil {
-		return fmt.Errorf("%s is not a blob", h)
-	}
-	_, err = out.Write(ro.Blob.Data)
+	_, err = out.Write(gitlike.PrintObject(ro))
 	return err
 }
 

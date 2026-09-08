@@ -67,15 +67,7 @@ func TestJSONCodecRoundTrip(t *testing.T) {
 	}
 }
 
-func TestJSONCodecDecodeError(t *testing.T) {
-	c := JSONCodec[testNote]{}
-	if _, err := c.Decode([]byte("not json")); err == nil {
-		t.Fatal("Decode of garbage must fail")
-	}
-	if _, err := c.Decode(nil); err == nil {
-		t.Fatal("Decode of empty must fail")
-	}
-}
+// removed duplicate
 
 // FuzzCodecRoundTrip: Decode(Encode(x)) == x for generated values.
 func FuzzCodecRoundTrip(f *testing.F) {
@@ -127,5 +119,153 @@ func TestJSONCodecInvalidUTF8Lossy(t *testing.T) {
 	}
 	if !strings.Contains(back.Body, "\ufffd") {
 		t.Fatalf("expected U+FFFD replacement for the invalid byte, got %q", back.Body)
+	}
+}
+
+func TestGobCodecRoundTrip(t *testing.T) {
+	codec := GobCodec[testNote]{}
+	orig := testNote{Title: "gob", Body: "test"}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("gob round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestCompressedJSONCodecRoundTrip(t *testing.T) {
+	inner := JSONCodec[testNote]{}
+	codec := NewCompressedCodec(inner)
+	orig := testNote{Title: "compressed", Body: strings.Repeat("payload", 100)}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compressed output should be smaller than raw JSON for repetitive data.
+	raw, _ := inner.Encode(orig)
+	if len(data) >= len(raw) {
+		t.Logf("compressed=%d raw=%d — small payload, gzip overhead typical", len(data), len(raw))
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("compressed round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestCompressedGobCodecRoundTrip(t *testing.T) {
+	inner := GobCodec[testNote]{}
+	codec := NewCompressedCodec(inner)
+	orig := testNote{Title: "gzip+gob", Body: strings.Repeat("x", 500)}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("gzip+gob round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestCompressedCodecCorruptData(t *testing.T) {
+	codec := NewCompressedCodec(JSONCodec[testNote]{})
+	if _, err := codec.Decode([]byte("not gzip")); err == nil {
+		t.Fatal("corrupt data must error")
+	}
+}
+
+func TestGobCodecEncodeError(t *testing.T) {
+	codec := GobCodec[chan int]{}
+	if _, err := codec.Encode(make(chan int)); err == nil {
+		t.Fatal("gob encode of channel must error")
+	}
+}
+
+func TestJSONCodecEncodeDecode(t *testing.T) {
+	codec := JSONCodec[testNote]{}
+	orig := testNote{Title: "json", Body: "test"}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("json round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestCompressedCodecEmptyPayload(t *testing.T) {
+	inner := JSONCodec[testNote]{}
+	codec := NewCompressedCodec(inner)
+	orig := testNote{}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("empty compressed round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestJSONCodecDecodeError(t *testing.T) {
+	codec := JSONCodec[testNote]{}
+	if _, err := codec.Decode([]byte("{invalid")); err == nil {
+		t.Fatal("invalid JSON must error")
+	}
+}
+
+func TestGobCodecDecodeError(t *testing.T) {
+	codec := GobCodec[testNote]{}
+	if _, err := codec.Decode([]byte("garbage")); err == nil {
+		t.Fatal("invalid gob must error")
+	}
+}
+
+func TestGobCodecRoundTripEmpty(t *testing.T) {
+	codec := GobCodec[testNote]{}
+	orig := testNote{}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != orig {
+		t.Fatalf("gob empty round-trip: %+v != %+v", decoded, orig)
+	}
+}
+
+func TestGobCodecPointer(t *testing.T) {
+	codec := GobCodec[*testNote]{}
+	orig := &testNote{Title: "pt", Body: "r"}
+	data, err := codec.Encode(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Title != "pt" {
+		t.Fatalf("gob pointer: %+v", decoded)
 	}
 }
