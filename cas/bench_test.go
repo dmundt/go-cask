@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 // Benchmarks per performance §5: every case reports allocations and bytes.
@@ -30,7 +32,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+			s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -51,7 +53,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+			s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -158,7 +160,7 @@ func BenchmarkFSRawStoreGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -221,7 +223,7 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		b.Fatal(err)
 	}

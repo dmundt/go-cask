@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 // --- Test object types ---
@@ -210,7 +212,7 @@ func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 // --- Store[T] typed-layer tests ---
 
 func newTestStore(t *testing.T, raw RawStore) *Store[testNote] {
-	s, err := NewStore(raw, JSONCodec[testNote]{}, "sha256")
+	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +349,7 @@ func TestStoreTypeSafety(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, err := NewStore(raw, JSONCodec[testNode]{}, "sha256")
+	nodes, err := NewStore(raw, codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +359,7 @@ func TestStoreTypeSafety(t *testing.T) {
 }
 
 func TestNewStoreUnknownAlgorithm(t *testing.T) {
-	_, err := NewStore[testNote](NewMemoryRawStore(), JSONCodec[testNote]{}, "nope")
+	_, err := NewStore[testNote](NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "nope")
 	if !errors.Is(err, ErrUnknownAlgorithm) {
 		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
 	}
@@ -371,7 +373,7 @@ func TestStoreWithCustomHasher(t *testing.T) {
 	})
 	raw := NewMemoryRawStore()
 	ctx := context.Background()
-	s, err := NewStore(raw, JSONCodec[testNote]{}, "testblob")
+	s, err := NewStore(raw, codec.JSONCodec[testNote]{}, "testblob")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,4 +440,27 @@ func TestEnvelopeFormat(t *testing.T) {
 	if note.Title != "t" {
 		t.Fatalf("payload = %+v", note)
 	}
+}
+
+func TestStorePutDedup(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, dedup, err := s.PutDedup(ctx, testNote{Title: "dedup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dedup {
+		t.Fatal("first put must not be dedup")
+	}
+	_, dedup, err = s.PutDedup(ctx, testNote{Title: "dedup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dedup {
+		t.Fatal("second put must be dedup")
+	}
+	_ = h
 }

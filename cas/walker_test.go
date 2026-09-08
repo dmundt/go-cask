@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 func TestWalkerTraversal(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNode]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +52,7 @@ func TestWalkerTraversal(t *testing.T) {
 }
 
 func TestWalkerNotFound(t *testing.T) {
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNode]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +65,7 @@ func TestWalkerNotFound(t *testing.T) {
 
 func TestWalkerVisitError(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(NewMemoryRawStore(), JSONCodec[testNode]{}, "sha256")
+	s, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

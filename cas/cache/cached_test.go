@@ -8,6 +8,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/cache"
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 type testObject struct {
@@ -29,7 +30,7 @@ func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) 
 
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	s, err := cas.NewStore(cas.NewMemoryRawStore(), cas.JSONCodec[testObject]{}, "sha256")
+	s, err := cas.NewStore(cas.NewMemoryRawStore(), codec.JSONCodec[testObject]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

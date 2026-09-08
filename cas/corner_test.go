@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 // TestUnmarshalEnvelopeCases pins every unmarshalEnvelope branch, including
@@ -308,11 +310,11 @@ func TestHashOneShotRegistration(t *testing.T) {
 // type name decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := (JSONCodec[testNote]{}).Encode(testNote{Title: "legacy"})
+	payload, err := (codec.JSONCodec[testNote]{}).Encode(testNote{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +341,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNote]{}, "sha256")
+	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +372,7 @@ func TestStoreCanceledOps(t *testing.T) {
 // child propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st, err := NewStore(NewMemoryRawStore(), JSONCodec[testNode]{}, "sha256")
+	st, err := NewStore(NewMemoryRawStore(), codec.JSONCodec[testNode]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

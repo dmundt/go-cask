@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/codec"
 )
 
 // failingReader fails after reading some bytes — exercises the write-path
@@ -202,7 +204,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
 	raw := NewMemoryRawStore()
-	store, err := NewStore(raw, JSONCodec[testNote]{}, "sha256")
+	store, err := NewStore(raw, codec.JSONCodec[testNote]{}, "sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
