@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -247,9 +248,17 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Legacy form: "type\n<payload>" where type=note (no @major).
-	// splitHead appends @1, so "note" → "note@1".
-	env := append([]byte("note\n"), payload...)
+	// Legacy form: TLV envelope with type "note" (no @major).
+	// unmarshalEnvelope appends @1 when the type has no '@', so
+	// "note" → "note@1".
+	var buf bytes.Buffer
+	buf.WriteByte(1) // version
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len("note")))
+	buf.Write(lenBuf[:n])
+	buf.WriteString("note")
+	buf.Write(payload)
+	env := buf.Bytes()
 	h, err := hashData("sha256", env)
 	if err != nil {
 		t.Fatal(err)

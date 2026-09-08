@@ -15,7 +15,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -123,13 +122,13 @@ func parseHashes(strs []string) ([]cas.Hash, error) {
 }
 
 // parseType extracts the unversioned type name ("note", "tag", ...) from the
-// stored "<type>\n<payload>" form.
+// stored TLV envelope bytes (see cas.EnvelopeFromBytes).
 func parseType(data []byte) (string, error) {
-	idx := bytes.IndexByte(data, '\n')
-	if idx < 0 {
-		return "", fmt.Errorf("%w: not a valid typed object", cas.ErrUnknownType)
+	env, err := cas.EnvelopeFromBytes(data)
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
 	}
-	base, _, _ := strings.Cut(string(data[:idx]), "@")
+	base, _, _ := strings.Cut(env.Type, "@")
 	if base == "" {
 		return "", fmt.Errorf("%w: object missing type", cas.ErrUnknownType)
 	}

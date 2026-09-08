@@ -1,7 +1,9 @@
 package cas_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"strings"
 	"testing"
@@ -87,12 +89,19 @@ func TestGetCorruptPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stored form: "<type>\n<codec payload>". A payload that is not valid
-	// JSON for testNote will cause the codec Decode to fail, surfacing as
-	// ErrCorrupt.
-	stored := "note@1\nthis is not json"
-	h, _ := hashData("sha256", []byte(stored))
-	if err := raw.Put(ctx, h, strings.NewReader(stored)); err != nil {
+	// TLV envelope: [version][uvarint typeLen][type][payload]. A payload
+	// that is not valid JSON for testNote will cause the codec Decode to
+	// fail, surfacing as ErrCorrupt.
+	var buf bytes.Buffer
+	buf.WriteByte(1) // version
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
+	buf.Write(lenBuf[:n])
+	buf.WriteString("note@1")
+	buf.WriteString("this is not json")
+	stored := buf.Bytes()
+	h, _ := hashData("sha256", stored)
+	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
@@ -104,13 +113,13 @@ func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
 	raw := backmem.New()
 	s := newTestStore(t, raw)
-	// Every case must fail Get with ErrUnknownType: no newline separator
-	// (not the typed form), or an empty type name.
+	// Every case must fail Get with ErrUnknownType: version byte is not 1,
+	// empty bytes, or truncated.
 	for _, garbage := range []string{
-		"not json at all", // no newline separator
+		"not json at all", // version byte is 'n' (0x6E) ≠ 1
 		"",                // empty
-		"\npayload",       // empty type name
-		"note@1",          // no newline separator
+		"\npayload",       // version byte is '\n' (0x0A) ≠ 1
+		"note@1",          // version byte is 'n' (0x6E) ≠ 1
 	} {
 		h, err := hashData("sha256", []byte(garbage))
 		if err != nil {

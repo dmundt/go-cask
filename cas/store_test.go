@@ -1,7 +1,6 @@
 package cas_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -64,21 +63,21 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("Type() = %q", note2.Type())
 	}
 
-	// GetRaw returns the stored bytes in the self-describing
-	// "<type>\n<codec payload>" form.
+	// GetRaw returns the stored bytes in the self-describing TLV envelope
+	// form: [version][uvarint typeLen][type][codec payload].
 	rawBytes, err := s.GetRaw(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idx := bytes.IndexByte(rawBytes, '\n')
-	if idx < 0 {
-		t.Fatalf("stored bytes are not the typed form: %q", rawBytes)
+	env, err := cas.EnvelopeFromBytes(rawBytes)
+	if err != nil {
+		t.Fatalf("EnvelopeFromBytes(stored) = %v", err)
 	}
-	if typ := string(rawBytes[:idx]); typ != "note@1" {
-		t.Fatalf("stored type prefix = %q, want note@1", typ)
+	if env.Type != "note@1" {
+		t.Fatalf("stored type = %q, want note@1", env.Type)
 	}
 	var payloadNote testNote
-	if err := json.Unmarshal(rawBytes[idx+1:], &payloadNote); err != nil {
+	if err := json.Unmarshal(env.Data, &payloadNote); err != nil {
 		t.Fatalf("stored payload is not JSON: %v", err)
 	}
 
@@ -229,9 +228,10 @@ func TestStoreCancelledContext(t *testing.T) {
 }
 
 func TestEnvelopeFormat(t *testing.T) {
-	// The stored form must be exactly the self-describing "<type>\n<payload>"
-	// form, built by Store.Put from the codec payload (the codec is the
-	// serialization authority — objects no longer serialize themselves).
+	// The stored form must be exactly the self-describing TLV envelope
+	// [version][uvarint typeLen][type][codec payload], built by Store.Put
+	// from the codec payload (the codec is the serialization authority —
+	// objects no longer serialize themselves).
 	ctx := context.Background()
 	s := newTestStore(t, backmem.New())
 	h, err := s.Put(ctx, testNote{Title: "t"})
@@ -242,15 +242,15 @@ func TestEnvelopeFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	idx := bytes.IndexByte(data, '\n')
-	if idx < 0 {
-		t.Fatalf("stored bytes are not the typed form: %q", data)
+	env, err := cas.EnvelopeFromBytes(data)
+	if err != nil {
+		t.Fatalf("EnvelopeFromBytes = %v", err)
 	}
-	if typ := string(data[:idx]); typ != "note@1" {
-		t.Fatalf("type = %q, want note@1", typ)
+	if env.Type != "note@1" {
+		t.Fatalf("type = %q, want note@1", env.Type)
 	}
 	var note testNote
-	if err := json.Unmarshal(data[idx+1:], &note); err != nil {
+	if err := json.Unmarshal(env.Data, &note); err != nil {
 		t.Fatalf("payload not JSON: %v", err)
 	}
 	if note.Title != "t" {

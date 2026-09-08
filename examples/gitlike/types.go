@@ -15,7 +15,6 @@
 package gitlike
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -252,14 +251,14 @@ type envelope struct {
 }
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a
-// stored object's bytes. The format is "<type>@<major>\n<payload>". It returns
+// stored object's TLV envelope bytes (see cas.EnvelopeFromBytes). It returns
 // ErrUnknownType for a malformed object.
 func parseType(data []byte) (string, error) {
-	idx := bytes.IndexByte(data, '\n')
-	if idx < 0 {
-		return "", fmt.Errorf("gitlike: %w: not a valid typed object", cas.ErrUnknownType)
+	env, err := cas.EnvelopeFromBytes(data)
+	if err != nil {
+		return "", fmt.Errorf("gitlike: %w", err)
 	}
-	base, _, _ := strings.Cut(string(data[:idx]), "@")
+	base, _, _ := strings.Cut(env.Type, "@")
 	if base == "" {
 		return "", fmt.Errorf("gitlike: %w: object missing type", cas.ErrUnknownType)
 	}

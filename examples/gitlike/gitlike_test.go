@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -117,13 +116,13 @@ func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stored form is "<type>\n<payload>".
-	typ, _, ok := bytes.Cut(raw, []byte("\n"))
-	if !ok {
-		t.Fatalf("stored bytes = %q, want type-prefixed", raw)
+	// TLV envelope: [version][uvarint typeLen][type][payload].
+	env, err := cas.EnvelopeFromBytes(raw)
+	if err != nil {
+		t.Fatalf("EnvelopeFromBytes = %v", err)
 	}
-	if string(typ) != "blob@1" {
-		t.Fatalf("stored type = %q, want blob@1", typ)
+	if env.Type != "blob@1" {
+		t.Fatalf("stored type = %q, want blob@1", env.Type)
 	}
 }
 
@@ -244,10 +243,12 @@ func TestResolveAnyLegacyUnversioned(t *testing.T) {
 	res := NewResolver(repo)
 
 	// Store a blob object at the byte layer using the legacy unversioned
-	// form "blob\n<payload>" — parseType reads the base type without a @version.
-	envelopeBytes := append([]byte("blob\n"), []byte(`{"data":"bGVnYWN5"}`)...)
+	// form (type "blob" without @major) as a TLV envelope — parseType reads
+	// the base type, and unmarshalEnvelope appends @1 automatically.
+	payload := []byte(`{"data":"bGVnYWN5"}`)
+	envelopeBytes := marshalEnvelope("blob", payload)
 	h, _ := cas.ParseHash("sha256:" + sha256Hex(envelopeBytes))
-	if err := repo.raw.Put(ctx, h, strings.NewReader(string(envelopeBytes))); err != nil {
+	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
 	ro, err := res.ResolveAny(ctx, h)
@@ -263,10 +264,10 @@ func TestResolveAnyUnknownType(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
-	// Store an object with an unknown type name.
-	envelopeBytes := append([]byte("mystery@9\n"), []byte(`{}`)...)
+	// Store an object with an unknown type name as a TLV envelope.
+	envelopeBytes := marshalEnvelope("mystery@9", []byte(`{}`))
 	h, _ := cas.ParseHash("sha256:" + sha256Hex(envelopeBytes))
-	if err := repo.raw.Put(ctx, h, strings.NewReader(string(envelopeBytes))); err != nil {
+	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
@@ -280,9 +281,9 @@ func TestParseType(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, backmem.New())
 	// Stored type+payload bytes directly (no Store.Put) so we can test parseType.
-	env := []byte("blob@1\n")
+	env := marshalEnvelope("blob@1", []byte{})
 	h, _ := cas.ParseHash("sha256:" + sha256Hex(env))
-	if err := repo.raw.Put(ctx, h, strings.NewReader(string(env))); err != nil {
+	if err := repo.raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := repo.raw.Get(ctx, h)
@@ -535,14 +536,17 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// marshalEnvelope builds a self-describing envelope over payload bytes
+// marshalEnvelope builds a TLV envelope over payload bytes
 // (test helper: production serialization is the cas Store codec).
-func marshalEnvelope(typeName string, payload []byte) ([]byte, error) {
-	env := map[string]string{
-		"type": typeName,
-		"data": base64.StdEncoding.EncodeToString(payload),
-	}
-	return json.Marshal(env)
+func marshalEnvelope(typeName string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(1) // version
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
+	buf.Write(lenBuf[:n])
+	buf.WriteString(typeName)
+	buf.Write(payload)
+	return buf.Bytes()
 }
 
 // --- Codec-authority decode paths (replaces the old object-level
@@ -551,10 +555,7 @@ func marshalEnvelope(typeName string, payload []byte) ([]byte, error) {
 
 func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) cas.Hash {
 	t.Helper()
-	env, err := marshalEnvelope(typeName, []byte(payloadJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	env := marshalEnvelope(typeName, []byte(payloadJSON))
 	h, err := cas.ParseHash("sha256:" + sha256Hex(env))
 	if err != nil {
 		t.Fatal(err)

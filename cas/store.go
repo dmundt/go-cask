@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 )
 
 // SHA256 is the default hash algorithm identifier for the cas core.
@@ -88,20 +87,20 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 	return h, false, nil
 }
 
-// marshal builds the stored form of obj: <type>\n<codec payload>. The codec
-// is the single serialization authority — the same codec decodes on read
-// (Get). obj is the concrete T (the Store constraint), so no type assertion
-// is involved.
+// marshal builds the stored form of obj: the TLV envelope
+// [version][typeLen][type][codec payload] (see envelope.go). The codec is the
+// single serialization authority — the same codec decodes on read (Get). obj
+// is the concrete T (the Store constraint), so no type assertion is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	payload, err := s.codec.Encode(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
-	return []byte(obj.Type() + "\n" + string(payload)), nil
+	return marshalEnvelope(obj.Type(), payload), nil
 }
 
 // Get reads the object at h and returns the concrete T directly — no casts.
-// It strips the type prefix, decodes the payload with the store's codec, and
+// It decodes the TLV envelope, decodes the payload with the store's codec, and
 // checks the decoded type matches the stored type (a self-describing store
 // refuses to hand back a value of the wrong type).
 func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
@@ -110,7 +109,7 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	typeName, payload, err := splitHead(data)
+	typeName, payload, err := unmarshalEnvelope(data)
 	if err != nil {
 		return zero, err
 	}
@@ -124,8 +123,8 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	return v, nil
 }
 
-// GetRaw returns the raw stored bytes — the self-describing <type>\n<payload>
-// form — for inspection and tooling. It buffers the whole object.
+// GetRaw returns the raw stored bytes — the self-describing TLV envelope —
+// for inspection and tooling. It buffers the whole object.
 func (s *Store[T]) GetRaw(ctx context.Context, h Hash) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -151,27 +150,4 @@ func (s *Store[T]) Exists(ctx context.Context, h Hash) (bool, error) {
 // backend.
 func (s *Store[T]) Delete(ctx context.Context, h Hash) error {
 	return s.raw.Delete(ctx, h)
-}
-
-// typeSep separates the versioned type name from the codec payload in the
-// stored form. Type names never contain a newline, so the first newline is
-// always the separator.
-const typeSep = "\n"
-
-// splitHead parses the stored form "type@major\n<payload>", returning the
-// versioned type name (an absent major version reads as "@1",
-// object-versioning §2) and the codec payload.
-func splitHead(data []byte) (string, []byte, error) {
-	idx := bytes.IndexByte(data, typeSep[0])
-	if idx < 0 {
-		return "", nil, fmt.Errorf("%w: not a typed object", ErrUnknownType)
-	}
-	typeName := string(data[:idx])
-	if typeName == "" {
-		return "", nil, fmt.Errorf("%w: object missing type", ErrUnknownType)
-	}
-	if !strings.Contains(typeName, "@") {
-		typeName += "@1" // legacy unversioned type name
-	}
-	return typeName, data[idx+1:], nil
 }
