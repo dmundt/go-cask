@@ -10,6 +10,25 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-09-09
+
+Layout, documentation, and stale-code release. No change to the generic `cas`
+core API or the on-disk format.
+
+### Changed
+
+- `gitlike` moved out of `examples/` to the module root: imported as
+  `github.com/dmundt/go-cask/gitlike`, and declared a **reference / copy-source**
+  shared library — importable for convenience but NOT part of the stable `cas`
+  surface (cas-core §7.1); apps with their own object model copy the pattern and
+  never extend gitlike. Its "example" framing was removed across the docs and
+  comments.
+- `benchmark/` renamed to `benchmarks/` (test package path
+  `github.com/dmundt/go-cask/benchmarks`); referring docs/comments aligned.
+- Docs/code stale claims fixed: `sha1` no longer described as a built-in hash
+  (only `sha256` ships; others via `RegisterHash`); removed nonexistent
+  `repo.go`/`manifest.go` and old JSON-envelope references from the examples.
+
 ### Fixed
 
 - Type sniffing from stored bytes now reads the **TLV** envelope instead of
