@@ -10,6 +10,31 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-09-09
+
+Minor release: an **additive viewer feature** plus docs/tests/CI work. No change
+to the public `cas` core API, its semantics, or the on-disk format.
+
+### Added
+
+- **Viewer direct-token login.** `GET /viewer/?token=<startup-or-role-token>`
+  establishes the same session cookie as `POST /viewer/login` (the `cask web`
+  "open viewer" deep link). It is throttled and audit-logged like a form login,
+  is never logged/echoed, and its response sends `Referrer-Policy:
+  no-referrer` so the token cannot leak via `Referer`. When unauthenticated,
+  `/viewer/` now redirects (303) to `/viewer/login`; data endpoints still
+  return 401/403 empty. Specs (`viewer-security.md` v5→v7, `viewer-design.md`
+  v9→v10) updated to authorize and document this behavior.
+- **Scale economics probe** `BenchmarkScaleStoreEconomics`
+  (`benchmarks/scale_bench_test.go`): reports the FS on-disk layout cost at N
+  (object files, dirs, leaf-dir spread, bytes) at `(2,1)` vs `(4,1)`.
+
+### Changed
+
+- `docs/specs/performance.md` (v12→v13): the on-demand and `CASK_SCALE_OBJECTS`
+  run commands now point at `./benchmarks/` (the suite moved there), fixing
+  commands that previously targeted `./cas/`.
+
 ## [v1.0.2] - 2026-09-09
 
 Patch release: documentation and CI additions on top of the frozen `v1.0.0`
