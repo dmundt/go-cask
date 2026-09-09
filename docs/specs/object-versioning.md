@@ -1,4 +1,4 @@
-﻿---
+---
 type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
@@ -7,127 +7,56 @@ version: v3
 
 # Object Versioning — go-cask
 
-> Objects (`Object[T]` implementations — `gitlike`'s blob/tree/commit/tag and
-> every app's own types) evolve. This document gives object models a
-> **semantic versioning** contract: a versioned type name, coexistence of
-> several model versions in one store, and clear compatibility rules — so
-> changing an object model never makes old data unreadable.
->
-> Related: `docs/specs/cas-core.md` §4.7 (the
-> `Object[T]` contract), §4.12 (gitlike example), `docs/specs/
-> library-design.md` §2 (sentinel errors),
-> `docs/specs/versioning.md` §6 (the other version
-> spaces), `docs/specs/consistency.md` (migration
-> safety).
+Object models evolve; this is their **semantic versioning** contract: a versioned type name, coexistence of model versions in one store, compatibility rules — so a model change never makes old data unreadable. Related: `cas-core.md` §4.7 (`Object[T]`), §4.12 (gitlike); `library-design.md` §2 (errors); `versioning.md` §6 (other version spaces); `consistency.md` (migration safety).
 
----
+## 1. The version space
 
-## 1. The Version Space
+Object-model versions are a **fourth, independent version space** — separate from library Git tags, HTTP API majors, and doc revisions (versioning §6): scheme `type@major` in `Type()`, independent of library semver/HTTP API/docs. An app MAY bump its object model without a library release; a library release MAY add object types without an object-model bump.
 
-Object-model versions are a **fourth, independent version space** — separate
-from library Git tags, HTTP API majors, and doc revisions (versioning §6):
+## 2. Versioned type names
 
-| Versioned thing    | Scheme                     | Independent of            |
-| ------------------ | -------------------------- | ------------------------- |
-| Object model       | `type@major` in `Type()`   | library semver, HTTP API, docs |
+`Object[T].Type()` returns `<type>@<major>` (gitlike: `blob@1`, `tree@1`, `commit@1`, `tag@1`).
 
-An app can bump its object model without a library release, and a library
-release can add object types without an object-model bump.
+- The major is part of the type identity: the versioned name is written into the TLV envelope's Type field (`cas/envelope.go`; cas-core §8 decision 1), required regardless of codec.
+- The address's digest-part (`algo:hexdigest`) is unaffected — the model version lives in the bytes, not the address.
+- **Legacy default:** a name without `@major` is read as `@1`, so pre-versioning objects stay decodable.
+- `parseType`/`ResolveAny` split on `@`: `<type>` + `<major>`.
 
----
+## 3. Semver for object models
 
-## 2. Versioned Type Names
+| Bump | Change | Type name | Old data |
+|---|---|---|---|
+| MAJOR | incompatible serialization (removed/renamed fields, changed meaning) | `type@2` (new) | readable via the registered `type@1` deserializer |
+| MINOR | additive fields with defaults | same `type@1` | still decodable by the new reader |
+| PATCH | behavior fix, no format change | same `type@1` | unchanged |
 
-`Object[T].Type()` returns a **versioned type name**: `<type>@<major>`.
-
-```go
-func (b *Blob) Type() string   { return "blob@1" }
-func (t *Tree) Type() string   { return "tree@1" }
-func (c *Commit) Type() string { return "commit@1" }
-func (g *Tag) Type() string    { return "tag@1" }
-```
-
-- The **major version is part of the type identity**: it travels with every
-  serialized object — the versioned name is written into the TLV envelope's
-  Type field (`cas/envelope.go`; cas-core §8 decision 1), so it is required
-  regardless of codec.
-- The digest-part of the address (`algo:hexdigest`) is unaffected — the
-  object model version lives in the bytes, not in the address.
-- **Legacy default**: a type name without `@major` is read as `@1`, so
-  pre-versioning objects remain decodable.
-- `parseType` / `ResolveAny` split on `@`: `<type>` + `<major>`.
-
----
-
-## 3. Semver for Object Models
-
-| Bump   | Change                                                        | Type name        | Old data                       |
-| ------ | ------------------------------------------------------------- | ---------------- | ------------------------------ |
-| MAJOR  | incompatible serialization: removed/renamed fields, changed meaning | `type@2` (new) | readable via the registered `type@1` deserializer |
-| MINOR  | additive fields with defaults (old readers ignore unknown fields, new readers fill defaults) | same `type@1` | still decodable by the new reader |
-| PATCH  | behavior fix, no format change                                | same `type@1`    | unchanged                      |
-
-Rules:
-
-- **Within one MAJOR, old data MUST stay decodable by the new reader** —
-  MINOR/PATCH compatibility is part of the model contract (mirrors
-  library-design §5). New fields are optional with sane zero-value defaults.
-- **Across a MAJOR**, the app either registers the old-major deserializer
-  alongside the new one, or migrates data (§5). The store keeps both versions
-  coexisting — it never rewrites or drops old objects on its own.
+- Within one MAJOR, old data MUST stay decodable by the new reader (MINOR/PATCH compatibility mirrors library-design §5). New fields are optional with sane zero-value defaults.
+- Across a MAJOR, the app either registers the old-major deserializer alongside the new one, or migrates data (§5). The store keeps both versions coexisting — it never rewrites or drops old objects on its own.
 - Unknown type/major on read → `ErrUnknownType` (graceful, detectable).
 
----
+## 4. Registry & resolution
 
-## 4. Registry & Resolution (multiple versions coexist)
+Registry is keyed by the **full versioned name**, so majors coexist: `RegisterType("blob@1", …)` and `RegisterType("blob@2", …)` in one store.
 
-The type registry is keyed by the **full versioned name**:
+- `ResolveAny(ctx, h)` reads the versioned name from the bytes and dispatches to the matching deserializer; a graph MAY mix object versions (`commit@2` → `tree@1`).
+- The generic core only carries the name through — it never interprets versions (cas-core §4.7).
 
-```go
-RegisterType("blob@1", deserializeBlobV1)
-RegisterType("blob@2", deserializeBlobV2) // both coexist in one store
-```
+## 5. Migration (model upgrade)
 
-- `ResolveAny(ctx, h)` reads the versioned name from the bytes and dispatches
-  to the matching deserializer; a graph may freely mix object versions
-  (`commit@2` pointing at a `tree@1`).
-- The generic core only carries the name through — it never interprets
-  versions (same as it never interprets types; cas-core §4.7).
+- **Read v1 → write v2:** the app reads old-major objects (registered `@1` deserializer), transforms them, `Put`s the new-major objects; the new graph replaces the old roots.
+- Safety mirrors `operations.md` §5: keep both versions until the new data is verified; old objects are reclaimed only by the app's reachability (consistency §4) — never by the store.
+- Versioned names make migration **observable**: `Stats`/viewer can report per-`type@major` counts.
 
----
+## 6. gitlike reference
 
-## 5. Migration (object-model upgrade)
-
-- **Read v1 → write v2**: an app-side migration reads old-major objects
-  (registered `@1` deserializer), transforms them, and `Put`s the new-major
-  objects — the new graph replaces the old roots.
-- Safety mirrors `operations.md` §5: keep both versions until
-  the new data is verified; old objects are only reclaimed by the app's
-  reachability (consistency §4) — never by the store.
-- The versioned type name makes migrations **observable**: `Stats`/viewer can
-  report how many objects per `type@major` exist.
-
----
-
-## 6. gitlike Reference
-
-The `gitlike` example versions its four types from the start: `blob@1`,
-`tree@1`, `commit@1`, `tag@1` (cas-core §4.12). A future incompatible change
-(e.g. `TreeEntry` semantics) becomes `tree@2` with a registered `tree@1`
-deserializer — demonstrating the pattern for app models.
-
----
+`gitlike` versions its four types from the start (`blob@1`, `tree@1`, `commit@1`, `tag@1`; cas-core §4.12). A future incompatible change (e.g. `TreeEntry` semantics) becomes `tree@2` with a registered `tree@1` deserializer — the pattern for app models.
 
 ## 7. Checklist
 
 - [x] Every `Object[T].Type()` returns `<type>@<major>`
-- [x] The versioned name travels with the serialized bytes (envelope)
-- [x] Deserializers are registered per full versioned name; multiple majors
-      coexist in one store
-- [x] Within a MAJOR: old data decodes with the new reader (additive fields
-      with defaults)
-- [x] Across a MAJOR: old deserializer registered or data migrated; old
-      objects never dropped by the store
-- [x] Unknown type/major → `ErrUnknownType` (graceful)
+- [x] Versioned name travels with the serialized bytes (envelope)
+- [x] Deserializers registered per full versioned name; multiple majors coexist in one store
+- [x] Within a MAJOR: old data decodes with the new reader (additive fields with defaults)
+- [x] Across a MAJOR: old deserializer registered or data migrated; old objects never dropped by the store
+- [x] Unknown type/major → `ErrUnknownType`
 - [x] Object-model versions never conflated with library/HTTP/doc versions
-
