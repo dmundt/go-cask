@@ -259,7 +259,8 @@ build their own equivalents for their own types.
 > Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Hash`,
 > `Backend`); `backend/fs`/`backend/mem` → cas-core §4.4–4.5;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
-> `cache.go` → §4.10; `maintenance.go` → §4.11; `examples/gitlike/*` → §4.12.
+> `cas/cache/{mem,lru,prefetch}` → §4.10; backend `Stats`/`Verify`/`GC`/
+> `Prune` → §4.11; `examples/gitlike/*` → §4.12.
 
 ## Usage Example
 
@@ -383,7 +384,7 @@ gofmt -l .
 - **Constructors:** use plain `New()` when a package exposes one primary type
   (`fs.New`, `mem.New`, `json.New[T]`); use `NewType()` when it exposes
   several important types or the type isn't the package's primary one
-  (`cas.NewHash`, `cas.NewWalker`, `memory.NewSmartCache`) — coding-guidelines
+  (`cas.NewHash`, `cas.NewWalker`, `prefetch.NewSmartCache`) — coding-guidelines
   §1 "Constructors".
 - Defaults: hash algorithm `sha256`, codec the JSON codec (`cas/codec/json`), Git-like fan-out
   (`FanOut=2`, `FanLevels=1` → `<algo>/aa/<full-hex>`; any n-way/n-level

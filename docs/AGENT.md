@@ -9,7 +9,7 @@ version: v5
 
 > This file governs all non-instruction docs in `docs/`. The instruction
 > specs under `docs/specs/` have their own
-> [`AGENT.md`](instructions/AGENT.md). This file fills the gap for documents
+> [`AGENT.md`](specs/AGENT.md). This file fills the gap for documents
 > outside that folder.
 >
 > **Before any change**, read [`docs/index.md`](index.md) first — it maps
