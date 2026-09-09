@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (benchmarks/bench_test.go) and the on-demand state-scaling probes (benchmarks/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v6
+version: v7
 ---
 
 # Benchmarks — go-cask
@@ -94,6 +94,7 @@ Each runs as `Memory` and `FS` sub-benchmarks (`fs.New` writes to an auto-cleane
 | `BenchmarkScaleDelete` | Deleting objects (store shrinks) |
 | `BenchmarkScaleList` | Full `List` scan — materializes every hash; **O(N) memory/op, keep N modest** |
 | `BenchmarkScaleStats` | `Stats` summary (counts, bytes) on both backends |
+| `BenchmarkScaleStoreEconomics` | FS on-disk layout cost at N: object-file count, dirs, leaf-dir spread (min/avg/max), object bytes — for `(2,1)` vs `(4,1)` (needs `-v`) |
 
 The N-object prefill happens before the timed loop (can take minutes at large N) and is **not** part of the per-op numbers.
 

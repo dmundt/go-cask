@@ -28,7 +28,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -293,6 +295,101 @@ func BenchmarkScaleStats(b *testing.B) {
 			}
 			b.StopTimer()
 			scaleReport(b, "Stats", n, raw)
+		})
+	}
+}
+
+// fsEconomics summarizes the on-disk cost of a loose fs store: how many
+// object files, how they are spread across directories, and total bytes.
+// This is the data that decides fan-out sizing (performance §8.1).
+type fsEconomics struct {
+	files      int
+	dirs       int
+	leafDirs   int
+	minEntries int
+	maxEntries int
+	totalBytes int64
+}
+
+// measureFSEconomics walks base and counts object files and their directory
+// spread. .tmp files are not present in a clean run.
+func measureFSEconomics(base string) (fsEconomics, error) {
+	e := fsEconomics{minEntries: -1}
+	dirFiles := map[string]int{}
+	err := filepath.WalkDir(base, func(p string, d iofs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			e.dirs++
+			return nil
+		}
+		e.files++
+		if info, err := d.Info(); err == nil {
+			e.totalBytes += info.Size()
+		}
+		dirFiles[filepath.Dir(p)]++
+		return nil
+	})
+	if err != nil {
+		return e, err
+	}
+	e.leafDirs = len(dirFiles)
+	for _, c := range dirFiles {
+		if e.minEntries == -1 || c < e.minEntries {
+			e.minEntries = c
+		}
+		if c > e.maxEntries {
+			e.maxEntries = c
+		}
+	}
+	if e.leafDirs == 0 {
+		e.minEntries, e.maxEntries = 0, 0
+	}
+	return e, nil
+}
+
+// BenchmarkScaleStoreEconomics reports the on-disk layout cost of a loose fs
+// store holding CASK_SCALE_OBJECTS objects, at the default Git-like (2,1)
+// layout and a wide (4,1) layout. It answers the fan-out sizing question:
+// how many leaf directories exist and how evenly objects spread across them
+// at this N. -v shows the [scale-econ] lines; the other scale probes give
+// the per-op cost at the same N.
+func BenchmarkScaleStoreEconomics(b *testing.B) {
+	n := scaleObjectCount(b)
+	if b.N == 1 {
+		return
+	}
+	ctx := context.Background()
+	layouts := []struct {
+		name string
+		new  func(base string) (*fs.Backend, error)
+	}{
+		{"loose-2-1", func(base string) (*fs.Backend, error) { return fs.New(base) }},
+		{"loose-4-1", func(base string) (*fs.Backend, error) {
+			return fs.New(base, fs.WithFanOut(4), fs.WithFanLevels(1))
+		}},
+	}
+	for _, lay := range layouts {
+		b.Run(lay.name, func(b *testing.B) {
+			base := b.TempDir()
+			s, err := lay.new(base)
+			if err != nil {
+				b.Fatal(err)
+			}
+			scaleFill(b, ctx, s, n)
+			e, err := measureFSEconomics(base)
+			if err != nil {
+				b.Fatal(err)
+			}
+			avg := 0.0
+			if e.leafDirs > 0 {
+				avg = float64(e.files) / float64(e.leafDirs)
+			}
+			b.Logf("[scale-econ] %s @ %d objects: files=%d dirs=%d leaf_dirs=%d leaf_entries(min=%.0f avg=%.1f max=%.0f) obj_bytes=%d bytes/obj=%.1f",
+				lay.name, n, e.files, e.dirs, e.leafDirs,
+				float64(e.minEntries), avg, float64(e.maxEntries),
+				e.totalBytes, float64(e.totalBytes)/float64(e.files))
 		})
 	}
 }
