@@ -1,263 +1,426 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.4",
+  "regeneratedFrom": "go-cask-viewer.html",
   "artifact": {
     "name": "go-cask object browser",
-    "type": "desktop-first responsive application interface",
-    "purpose": "Browse a content-addressed object store, inspect one selected object, and filter or page the object index.",
-    "principles": [
-      "Use a compact operational interface, not a dashboard or marketing page.",
-      "Prioritize hashes, types, sizes, reference counts, and written time.",
-      "Keep the object table and detail inspector visible together on desktop.",
-      "Use a flat visual system with hairline dividers rather than card-heavy surfaces.",
-      "Do not show object property values when there is no selected object."
+    "type": "responsive desktop-first master-detail application",
+    "purpose": "Browse, filter, sort, page, and inspect content-addressed objects.",
+    "constraints": [
+      "One flat operational workspace, not a dashboard.",
+      "No cards around inspector sections.",
+      "Use live derived state from one normalized object collection.",
+      "When no object is selected, show no inspector values.",
+      "Use real button controls for tabs and actions.",
+      "Status is a real table column rendered as a compact semantic pill, not an absent value."
     ]
   },
   "tokens": {
-    "color": {
-      "background": "oklch(98% 0.005 250)",
+    "colors": {
+      "bg": "oklch(98% 0.005 250)",
       "surface": "oklch(100% 0 0)",
-      "foreground": "oklch(22% 0.02 240)",
+      "fg": "oklch(22% 0.02 240)",
       "muted": "oklch(50% 0.018 240)",
       "border": "oklch(90% 0.008 240)",
       "accent": "oklch(48% 0.14 145)",
       "reference": "oklch(50% 0.13 250)",
       "referenceSoft": "oklch(96% 0.035 250)",
-      "tableHover": "color-mix(in oklch, foreground 3%, surface)",
-      "tableSelected": "color-mix(in oklch, foreground 10%, surface)"
+      "statusVerifiedBg": "oklch(97% 0.03 145)",
+      "statusVerifiedFg": "oklch(40% 0.12 145)",
+      "statusUnverifiedBg": "oklch(96% 0.006 240)",
+      "statusUnverifiedFg": "oklch(45% 0.012 240)",
+      "statusOrphanedBg": "oklch(97% 0.03 78)",
+      "statusOrphanedFg": "oklch(50% 0.115 70)",
+      "statusCorruptBg": "oklch(97% 0.028 25)",
+      "statusCorruptFg": "oklch(49% 0.15 25)",
+      "rowHover": "color-mix(in oklch, fg 3%, surface)",
+      "rowSelected": "color-mix(in oklch, fg 10%, surface)"
     },
-    "typography": {
-      "body": ["Segoe UI", "Helvetica", "system-ui", "sans-serif"],
-      "mono": ["JetBrains Mono", "IBM Plex Mono", "Consolas", "ui-monospace", "monospace"],
-      "bodyBase": { "size": "14px", "lineHeight": 1.45 },
-      "table": { "family": "mono", "size": "12px" },
-      "control": { "size": "12px" },
-      "microLabel": { "family": "mono", "size": "10.5px", "weight": 700, "letterSpacing": "0.06em", "transform": "uppercase" },
-      "hash": { "family": "mono", "size": "11.5px", "lineHeight": 1.5 },
-      "hex": { "family": "mono", "size": "11px", "lineHeight": 1.7 }
+    "fonts": {
+      "body": [
+        "Segoe UI",
+        "Helvetica",
+        "system-ui",
+        "sans-serif"
+      ],
+      "mono": [
+        "JetBrains Mono",
+        "IBM Plex Mono",
+        "Consolas",
+        "ui-monospace",
+        "monospace"
+      ]
     },
-    "spacing": {
+    "typeScale": {
+      "body": "15.4px/1.45 body",
+      "brand": "17.6px body, 700, -0.02em",
+      "mark": "9.9px mono, 700, centered",
+      "verifyButton": "12.1px body, 650",
+      "table": "13.2px mono",
+      "searchInput": "13.2px mono",
+      "searchIcon": "19.8px body glyph, muted, centered",
+      "control": "13.2px body",
+      "tableHeader": "12.65px/1.2 mono, 0.07em uppercase",
+      "sortButton": "9.9px/1 mono",
+      "tab": "13.2px/1.25 body, 510 (active 650)",
+      "reset": "12.1px body accent",
+      "statusTag": "700 10px/1.2 body, letter-spacing 0",
+      "pager": "12.65px mono",
+      "pagerControl": "12.1px mono",
+      "inspectorHeading": "12.65px/1.2 mono, 700, 0.08em uppercase",
+      "historyBack": "11px/1 mono",
+      "hash": "13.2px/1.45 mono",
+      "copyIcon": "15.4px/1 mono glyph",
+      "section": "12.1px/1.2 mono, 700, 0.08em uppercase",
+      "propertyLabel": "12.1px/1.45 body, 450",
+      "propertyValue": "13.2px/1.45 mono",
+      "reference": "13.2px/1.4 mono",
+      "referenceKind": "9.9px mono, 700, 0.06em uppercase",
+      "hex": "12.1px/1.65 mono"
+    },
+    "geometry": {
+      "topBarHeight": "46px",
+      "filterBarHeight": "47px",
+      "controlHeight": "30px",
       "pageInset": "14px",
-      "controlGap": "8px",
-      "tableCellX": "13px",
-      "tableCellY": "8px",
-      "inspectorInset": "14px",
-      "sectionGap": "20px",
-      "propertyColumn": "96px"
-    },
-    "shape": {
-      "controlRadius": "5px",
-      "smallRadius": "4px",
-      "markRadius": "5px",
-      "hairline": "1px"
+      "rowPadding": "8px horizontal and vertical; header row 7px vertical",
+      "tableMinWidth": "700px",
+      "hashColumnWidth": "30%",
+      "otherColumnWidth": "14%",
+      "inspectorWidthDefault": "440px",
+      "inspectorWidthRange": [
+        "280px",
+        "560px"
+      ],
+      "inspectorWidthKeyboardStep": "20px",
+      "splitterVisibleWidth": "4px",
+      "splitterHitExtend": "5px on both sides",
+      "radius": "5px controls, 4px buttons, 3px pills"
     }
   },
   "layout": {
     "desktop": {
-      "minimumPreferredWidth": "901px",
-      "pageHeight": "100vh",
-      "verticalRegions": [
-        { "id": "top-bar", "height": "46px" },
-        { "id": "filter-bar", "height": "47px" },
-        { "id": "workspace", "height": "calc(100vh - 93px)" }
-      ],
-      "workspaceColumns": [
-        { "id": "object-list", "width": "minmax(0, 1fr)" },
-        { "id": "object-inspector", "width": "360px" }
+      "viewport": "100vh",
+      "regions": [
+        {
+          "id": "top-bar",
+          "height": "46px",
+          "background": "surface",
+          "content": [
+            "20x20 rounded fg square brand mark CA",
+            "go-cask brand 17.6px 700",
+            "Verify solid accent button aligned right"
+          ]
+        },
+        {
+          "id": "filter-bar",
+          "height": "47px",
+          "background": "surface",
+          "content": [
+            "search",
+            "type filter",
+            "size filter",
+            "state filter",
+            "reset"
+          ]
+        },
+        {
+          "id": "workspace",
+          "height": "calc(100vh - 93px)",
+          "grid": "minmax(0, 1fr) 4px var(--inspector-width)",
+          "columns": [
+            "object list flexible",
+            "4px draggable splitter",
+            "inspector resizable"
+          ]
+        }
       ],
       "overflow": {
         "document": "hidden",
-        "objectTable": "scroll vertically and horizontally as needed",
-        "inspector": "scroll vertically"
+        "tableWrap": "both axes; sticky header; bg token shows on unused scroll surface",
+        "inspector": "vertical"
       }
     },
     "mobile": {
       "breakpoint": "900px",
-      "documentOverflow": "auto",
-      "workspaceColumns": "one column",
-      "objectListMinimumHeight": "440px",
-      "inspector": "below object list with top hairline divider",
-      "filterBar": "horizontal scroll permitted"
+      "workspace": "one column; list first then inspector; workspace height auto with min-height calc(100vh - 93px)",
+      "listMinHeight": "440px",
+      "splitter": "hidden",
+      "document": "scrollable",
+      "inspector": "top border 1px",
+      "filters": "horizontal scrollable"
     }
   },
-  "regions": [
-    {
-      "id": "top-bar",
-      "role": "application identity",
-      "background": "surface",
-      "border": "bottom hairline border",
-      "content": [
-        {
-          "id": "brand",
-          "type": "brand lockup",
-          "mark": { "text": "CA", "width": "20px", "height": "20px", "background": "foreground", "foreground": "surface", "font": "mono 700 9px" },
-          "name": "go-cask",
-          "nameStyle": "body 700 16px, -0.02em tracking"
-        }
-      ]
-    },
-    {
-      "id": "filter-bar",
-      "role": "object index query controls",
-      "background": "surface",
-      "border": "bottom hairline border",
-      "controls": [
-        { "id": "search", "type": "text", "width": "260px", "height": "30px", "font": "mono 12px", "placeholder": "Search digest prefix or type", "filters": ["hash prefix", "type"] },
-        { "id": "type-filter", "type": "select", "width": "130px", "height": "30px", "options": ["All types", "bytes@1", "json@1", "text@1"] },
-        { "id": "size-filter", "type": "select", "width": "130px", "height": "30px", "options": ["Any size", "Under 1 KiB", "1 KiB to 1 MiB", "Over 1 MiB"] },
-        { "id": "reset-filters", "type": "text button", "label": "Reset", "style": "accent colored text without border" }
-      ]
-    },
-    {
-      "id": "object-list",
-      "role": "master list",
-      "children": ["object-table", "object-pager"]
-    },
-    {
-      "id": "object-table",
-      "type": "dense sortable data table",
-      "header": { "position": "sticky within table scroll region", "background": "background", "font": "microLabel", "height": "natural" },
-      "columns": [
-        { "id": "hash", "label": "Hash", "alignment": "left", "font": "mono", "display": "algorithm prefix plus shortened digest" },
-        { "id": "type", "label": "Type", "alignment": "left", "font": "mono", "color": "muted" },
-        { "id": "size", "label": "Size", "alignment": "right", "font": "mono" },
-        { "id": "refs", "label": "Refs", "alignment": "right", "font": "mono" },
-        { "id": "written", "label": "Written", "alignment": "right", "font": "mono" }
-      ],
-      "row": {
-        "height": "natural from 8px vertical padding",
-        "interaction": "select object",
-        "hover": { "background": "tableHover" },
-        "selected": { "background": "tableSelected", "leadingInset": "2px muted dark inset line", "text": "foreground" }
+  "components": {
+    "search": {
+      "width": "260px",
+      "leftIcon": "⌕ glyph, muted, 19.8px, absolutely positioned left 9px, vertically centered, pointer-events none",
+      "rightAction": "× clear button appears only when query is non-empty; clears only query, refocuses search, retains other filters",
+      "padding": {
+        "left": "28px",
+        "right": "28px"
       },
-      "emptyState": { "message": "No objects match the current filters.", "textAlign": "center", "padding": "42px 13px", "color": "muted" }
+      "matches": "substring against hash or type (case-insensitive)"
     },
-    {
-      "id": "object-pager",
-      "role": "list page controls",
-      "background": "surface",
-      "border": "top hairline border",
-      "left": "range and total, e.g. 1-25 of 512 objects",
+    "filters": {
+      "type": {
+        "options": [
+          "All types",
+          "bytes@1",
+          "json@1",
+          "text@1"
+        ]
+      },
+      "size": {
+        "width": "130px",
+        "options": [
+          "Any size",
+          "< 1 KiB",
+          "1 KiB - 1 MiB",
+          "> 1 MiB"
+        ]
+      },
+      "state": {
+        "width": "130px",
+        "options": [
+          "Any state",
+          "Verified",
+          "Unverified",
+          "Orphaned",
+          "Corrupt"
+        ],
+        "source": "point-in-time verification result"
+      },
+      "reset": {
+        "default": "accent text on transparent",
+        "hover": "12% accent mixed into surface with 4px radius"
+      }
+    },
+    "objectTable": {
+      "style": "fixed-layout table-layout, dense, min-width 700px, mono data; unused scroll surface uses bg token; cells nowrap with ellipsis overflow",
+      "columns": [
+        {
+          "id": "hash",
+          "label": "Hash",
+          "width": "30%",
+          "alignment": "left",
+          "sort": "alphabetical",
+          "display": "full sha256: prefix + first 8 hex chars, then ellipsis"
+        },
+        {
+          "id": "type",
+          "label": "Type",
+          "width": "14%",
+          "alignment": "left",
+          "sort": "alphabetical",
+          "display": "lowercase, muted"
+        },
+        {
+          "id": "size",
+          "label": "Size",
+          "width": "14%",
+          "alignment": "right",
+          "sort": "numeric byte count"
+        },
+        {
+          "id": "refsBy",
+          "label": "Refs",
+          "width": "14%",
+          "alignment": "right",
+          "sort": "numeric integer"
+        },
+        {
+          "id": "status",
+          "label": "Status",
+          "width": "14%",
+          "alignment": "left",
+          "sort": "alphabetical status value",
+          "display": "semantic pill, capitalized via text-transform, inserted as a real cell between Refs and Written"
+        },
+        {
+          "id": "written",
+          "label": "Written",
+          "width": "14%",
+          "alignment": "right",
+          "sort": "timestamp"
+        }
+      ],
+      "header": {
+        "sticky": true,
+        "top": "0",
+        "background": "bg",
+        "labels": "micro uppercase mono",
+        "sortControl": "one arrow button immediately right of label; active column shows ▲ ascending or ▼ descending; click toggles direction; selecting a different column starts ascending; aria-sort on the th and aria-pressed on the button"
+      },
+      "rows": {
+        "hover": "rowHover",
+        "selected": "rowSelected with 2px dark leading inset (55% fg)",
+        "focus": "accent inset outline",
+        "click": "select object and update inspector; Enter or Space selects the focused row",
+        "hashDisplay": "first 15 characters of full hash followed by ellipsis (keeps full sha256: prefix)",
+        "typeDisplay": "lowercase"
+      },
+      "empty": "One centered row spanning all six columns: No objects match the current filters."
+    },
+    "statusLabels": {
+      "shape": "compact borderless 3px-radius pill, min-height 19px, 700 10px text, text-transform capitalize",
+      "verified": "light green fill",
+      "unverified": "neutral gray fill",
+      "orphaned": "light amber fill",
+      "corrupt": "light red fill"
+    },
+    "pagination": {
+      "placement": "bottom of object list, pinned below table scroll area, bg surface, 7px 14px",
+      "leftSummary": {
+        "all": "{from}-{to} of {matched} · {matchedBytes}",
+        "filtered": "{from}-{to} of {matched} · {matchedBytes} (filtered from {total})",
+        "empty": "0 of {total} · 0 B (filtered from {total})"
+      },
       "rightControls": [
-        { "id": "page-size", "label": "Rows", "type": "select", "width": "68px", "options": [25, 50, 100, 250] },
-        { "id": "first-page", "label": "First page", "glyph": "«" },
-        { "id": "previous-page", "label": "Previous page", "glyph": "‹" },
-        { "id": "page-status", "type": "status text", "format": "Page {page} of {pages}" },
-        { "id": "next-page", "label": "Next page", "glyph": "›" },
-        { "id": "last-page", "label": "Last page", "glyph": "»" }
+        "Rows label",
+        "page size select: 25, 50, 100, 250",
+        "« first",
+        "‹ previous",
+        "Page {page} of {pages}",
+        "next ›",
+        "last »"
       ],
-      "buttonState": { "disabled": "opacity 0.4 and no pointer cursor", "hover": "background becomes page background and border becomes foreground" }
+      "control": "27px bordered square, mono 12.1px; disabled unavailable controls at 0.4 opacity and not-allowed cursor"
     },
-    {
-      "id": "object-inspector",
-      "role": "detail panel",
+    "verifyButton": {
+      "default": "solid accent fill, surface text, height 28px, radius 4px, 12.1px 650",
+      "hover": "accent darkened toward fg (86% accent mix) for fill and border",
+      "working": "disabled at 0.6 opacity with wait cursor, label Verifying…",
+      "done": "brief Verified state, restores to Verify after 1.2s"
+    },
+    "splitter": {
+      "role": "vertical drag separator, role=separator, aria-orientation vertical, min 280 max 560",
+      "drag": "pointer events change inspector width within 280px to 560px; width stored as CSS var --inspector-width and aria-valuenow",
+      "keyboard": "Left/Right steps 20px; Home sets min; End sets max",
+      "visible": "4px border tone; accent on hover or drag",
+      "hitTarget": "extends 5px on both sides via ::after"
+    },
+    "inspector": {
       "background": "surface",
-      "border": "left hairline divider on desktop; top hairline divider on mobile",
-      "children": ["inspector-header", "inspector-tabs", "metadata-tab", "references-tab", "bytes-tab"]
-    },
-    {
-      "id": "inspector-header",
-      "content": ["micro label Object", "full selected hash"],
-      "background": "background",
-      "padding": "13px 14px 11px",
-      "emptyState": "Keep the label but show no hash when no object is selected."
-    },
-    {
-      "id": "inspector-tabs",
-      "type": "button tablist",
-      "tabs": ["Metadata", "References", "Bytes"],
-      "layout": "horizontal row with 2px gap and 6px 8px 0 padding",
-      "inactive": { "foreground": "muted", "background": "transparent" },
-      "hover": { "foreground": "foreground", "background": "foreground mixed 4% into surface" },
-      "active": { "foreground": "foreground", "fontWeight": 650, "bottomBorder": "2px accent" },
-      "interaction": "Exactly one tab panel is visible. Tab controls are buttons, not navigation links."
-    },
-    {
-      "id": "metadata-tab",
-      "type": "detail panel",
-      "sections": [
-        { "name": "Identity", "properties": ["Algorithm", "Type"] },
-        { "name": "Storage", "properties": ["Size", "References", "Written"] }
-      ],
-      "propertyLayout": "two columns: 96px label column and flexible value column",
-      "labels": { "font": "body 12px", "color": "muted", "case": "normal" },
-      "values": { "font": "mono 12px", "alignment": "left", "wrap": "anywhere" },
-      "sectionTitle": { "font": "mono 700 10.5px", "letterSpacing": "0.06em", "case": "uppercase", "color": "muted" },
-      "emptyState": "Render section labels and property labels only. All property values must be blank."
-    },
-    {
-      "id": "references-tab",
-      "sections": ["Referenced by", "References out"],
-      "row": { "layout": "direction arrow, type badge, shortened hash", "font": "mono 11.5px", "gap": "7px" },
-      "badge": { "background": "referenceSoft", "foreground": "reference", "font": "body 700 9px", "letterSpacing": "0.06em", "case": "uppercase", "padding": "2px 5px", "radius": "3px" },
-      "emptyState": "Both reference lists are empty when there is no selected object."
-    },
-    {
-      "id": "bytes-tab",
-      "type": "hex preview",
-      "content": "First 128 bytes of the selected object, formatted as 8 rows of offset, 16 hex bytes, and ASCII.",
-      "font": "mono 11px / 1.7",
-      "overflow": "horizontal scroll",
-      "emptyState": "Empty when there is no selected object."
+      "header": {
+        "label": "Object, micro uppercase mono heading",
+        "hash": "full selected hash in mono, wraps anywhere",
+        "copy": "25px bordered icon button visible only when hash exists; ⧉ default, ✓ for 1.2s on success; aria-label Copy full object hash then Hash copied",
+        "back": "compact button, disabled until an object was opened from a reference; restores the preceding inspector selection"
+      },
+      "tabs": {
+        "controls": [
+          "Metadata",
+          "References",
+          "Bytes"
+        ],
+        "implementation": "button tablist with arrow-key navigation (Left/Right/Home/End), aria-selected and tabindex roving, exactly one active panel",
+        "active": "foreground text, 650 weight, 2px accent bottom border",
+        "hover": "foreground text, 4% foreground-tinted background"
+      },
+      "metadata": {
+        "sections": [
+          {
+            "name": "Identity",
+            "properties": [
+              "Algorithm",
+              "Type"
+            ]
+          },
+          {
+            "name": "Storage",
+            "properties": [
+              "Size",
+              "References",
+              "Written",
+              "Timestamp"
+            ]
+          },
+          {
+            "name": "Integrity",
+            "properties": [
+              "Status"
+            ]
+          }
+        ],
+        "layout": "two-column definition list, label column 96px, value flexible left aligned; section margin 20px",
+        "sectionTitle": "micro uppercase mono",
+        "propertyLabel": "body 12.1px muted, normal case, weight 450",
+        "propertyValue": "mono 13.2px, wraps anywhere",
+        "timestamp": "RFC 3339 UTC timestamp with milliseconds: YYYY-MM-DDTHH:mm:ss.SSSZ",
+        "status": "current point-in-time verification result rendered as a semantic status pill",
+        "empty": "Keep headings and property labels, clear all values"
+      },
+      "references": {
+        "sections": [
+          "By",
+          "Out"
+        ],
+        "row": "direction arrow, uppercase reference-kind pill, shortened hash; mono",
+        "by": "incoming references, arrow ←, kind manifest",
+        "out": "outgoing references, arrow →, kind blob",
+        "byEmpty": "No objects reference this object.",
+        "outEmpty": "This object references no other objects.",
+        "empty": "Show no reference items when no object is selected"
+      },
+      "bytes": {
+        "content": "first 128 object bytes as eight rows of offset, 16 hex bytes, and ASCII; rendered from a deterministic hex preview",
+        "scroll": "horizontal",
+        "empty": "No content when no object is selected"
+      }
     }
-  ],
+  },
   "dataModel": {
     "object": {
-      "hash": "string; full content address including algorithm prefix, e.g. sha256:<64 hex characters>",
-      "type": "string; envelope type such as bytes@1, json@1, or text@1",
-      "size": "integer byte count or formatted display value",
-      "refs": "integer number of references",
-      "written": "timestamp or age display string"
-    },
-    "derived": {
-      "shortHash": "algorithm prefix plus a shortened digest ending in an ellipsis",
-      "bytePreview": "derived from object bytes; show no more than 128 bytes",
-      "referencesIn": "zero or more object references pointing to the selected object",
-      "referencesOut": "zero or more object references made by the selected object"
+      "hash": "full content address string with sha256: prefix",
+      "type": "envelope type string, lowercase",
+      "size": "human byte string (B/KiB/MiB); derive byte count for comparison separately",
+      "refsBy": "integer incoming reference count",
+      "refsOut": "integer outgoing reference count",
+      "writtenAt": "epoch timestamp used for sort and RFC 3339 derivation",
+      "written": "human readable timestamp or age (h ago / d ago)",
+      "verificationResult": "ephemeral result in a session map, initially unverified; Verify marks refsBy above zero verified and refsBy zero orphaned"
     }
   },
-  "state": {
-    "query": { "search": "string", "type": "optional type", "sizeBucket": "all | small | medium | large", "page": "positive integer", "pageSize": "25 | 50 | 100 | 250" },
-    "selection": { "selectedHash": "string or null" },
-    "inspector": { "activeTab": "metadata | references | bytes" },
-    "rules": [
-      "Filter changes reset page to 1.",
-      "Changing page size resets page to 1.",
-      "Selecting a row updates the inspector and selected-row state.",
-      "A filter with zero results clears selection and all inspector values.",
-      "Pager boundaries disable unavailable page controls.",
-      "Rows are paged; do not render an unbounded result set into the DOM."
-    ]
-  },
-  "interactions": [
-    { "trigger": "search input", "result": "Filter by hash prefix or type text and reset pagination." },
-    { "trigger": "type filter", "result": "Filter objects by selected envelope type and reset pagination." },
-    { "trigger": "size filter", "result": "Filter by configured size bucket and reset pagination." },
-    { "trigger": "reset", "result": "Clear all filters, restore default page size, and return to page 1." },
-    { "trigger": "row click", "result": "Select the object and refresh all three inspector panels from that object." },
-    { "trigger": "Metadata, References, or Bytes tab button", "result": "Set that tab active and show only its associated content panel." },
-    { "trigger": "row-size selector", "result": "Update page size, recompute total pages, and return to page 1." },
-    { "trigger": "first/previous/next/last pager control", "result": "Move to the appropriate valid page and update disabled states." }
-  ],
-  "accessibility": {
-    "focus": "All interactive elements have a visible 2px accent focus outline with 2px offset.",
-    "table": "Expose column headers and selection state. Rows must be keyboard-selectable in production.",
-    "tabs": "Use button controls with tab semantics, selected state, and corresponding tab panels.",
-    "controls": "Each select and input has an accessible label.",
-    "color": "Do not use color as the only selected-state indicator; retain the leading inset line and active tab border."
-  },
-  "implementationNotes": {
-    "frameworkAgnostic": [
-      "Keep one normalized object collection and derive filtered, sorted, paged rows from it.",
-      "Keep selection separate from the visible page so a selected object can remain addressable.",
-      "Render only the current page of rows for performance.",
-      "Treat the inspector as a projection of the selected object, not duplicated state.",
-      "Use actual object bytes for the hex view in production rather than deriving bytes from a hash."
+  "stateAndBehavior": {
+    "state": [
+      "query",
+      "type filter",
+      "size filter",
+      "state filter",
+      "sort column",
+      "sort direction",
+      "page",
+      "page size",
+      "selected object",
+      "active inspector tab",
+      "inspector width",
+      "verification results",
+      "reference navigation history"
     ],
-    "serverRendered": [
-      "Persist search, filters, page, page size, selected hash, and active tab in URL query parameters.",
-      "Swap the table and pager together as one result unit.",
-      "Return the full page for direct navigation and a fragment for partial-request navigation.",
-      "Use a separate inspector fragment keyed by selected hash."
+    "rules": [
+      "Filtering or changing page size resets to page 1.",
+      "Filter the normalized object collection, sort it, then take the current page slice.",
+      "Size comparisons use integer bytes parsed from the display string; Written comparisons use writtenAt timestamps; Refs comparisons use integers; Hash, Type, and Status use locale-aware text comparison.",
+      "Verify updates the current session verification result for all objects: refsBy above zero becomes verified, refsBy zero becomes orphaned.",
+      "Unverified and Corrupt filters are available; no objects match until corresponding verification results exist.",
+      "Total size in pagination equals the sum of all currently matched object byte sizes, not just the current page.",
+      "No matches clears selection and every inspector value, reference list, byte row, and copy action.",
+      "When matches exist and the selected object is not in the filtered result set, select the first matching object and update inspector data.",
+      "Any selected row visually reflects selection with a leading inset and updates inspector data.",
+      "Status cells are inserted between the Refs and Written columns after initial row build.",
+      "Do not render an unbounded result list; paginate before DOM/server response rendering."
     ]
+  },
+  "accessibility": {
+    "focus": "2px accent ring on all focusable controls; inputs/selects use 2px offset, compact row controls use 1px offset",
+    "table": "Expose column headers, aria-sort state, semantic status-label text, and selected row state; rows are keyboard focusable with Enter/Space selection",
+    "tabs": "Use button controls with tab role, aria-selected state, associated panels, and arrow-key roving navigation",
+    "splitter": "Expose separator role and vertical orientation with aria-valuenow and keyboard resizing (arrows, Home, End)",
+    "copy": "Accessible name must state Copy full object hash and change to Hash copied for confirmation"
+  },
+  "implementationGuidance": {
+    "client": "Use one deterministic 512-object store and derive view state. Avoid duplicate fallback DOM or stale handlers. Treat verification results as session state, not intrinsic object data.",
+    "server": "Represent query, filters, sort, page, page size, selected hash, and active tab in the URL. Return the table and pager as one fragment and inspector as a selected-object fragment.",
+    "portability": "This document specifies behavior and styling independently of framework. It can be implemented with SSR templates, htmx, React, native desktop, or another UI technology."
   }
 }

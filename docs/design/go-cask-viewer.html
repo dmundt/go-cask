@@ -1,89 +1,131 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>go-cask object browser</title>
   <style>
     :root { --bg: oklch(98% .005 250); --surface: oklch(100% 0 0); --fg: oklch(22% .02 240); --muted: oklch(50% .018 240); --border: oklch(90% .008 240); --accent: oklch(48% .14 145); --blue: oklch(50% .13 250); --blue-soft: oklch(96% .035 250); --font: 'Segoe UI', Helvetica, system-ui, sans-serif; --mono: 'JetBrains Mono', 'IBM Plex Mono', Consolas, ui-monospace, monospace; }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); overflow: hidden; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15.4px/1.45 var(--font); overflow: hidden; }
     button, input, select { font: inherit; }
     button { cursor: pointer; }
     button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .mono, code { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .topbar { height: 46px; display: flex; align-items: center; padding: 0 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
-    .brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
-    .mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--fg); color: var(--surface); font: 700 9px var(--mono); }
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 17.6px; font-weight: 700; letter-spacing: -.02em; }
+    .mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--fg); color: var(--surface); font: 700 9.9px var(--mono); }
+    .verify-all { height: 28px; margin-left: auto; padding: 0 10px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent); color: var(--surface); font-size: 12.1px; font-weight: 650; }
+    .verify-all:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 86%, var(--fg)); border-color: color-mix(in oklch, var(--accent) 86%, var(--fg)); }
+    .verify-all:disabled { opacity: .6; cursor: wait; }
     .filters { height: 47px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
-    .input, select { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font-size: 12px; }
-    .input { width: 260px; font-family: var(--mono); }
+    .input, select { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font-size: 13.2px; }
+    .search-wrap { position: relative; display: inline-flex; align-items: center; height: 30px; }
+    .search-wrap::before { content: '⌕'; position: absolute; left: 9px; top: 0; bottom: 0; z-index: 1; display: grid; place-items: center; color: var(--muted); font: 19.8px/1 var(--font); pointer-events: none; }
+    .input { width: 260px; padding-left: 28px; padding-right: 28px; font-family: var(--mono); }
+    .clear-search { position: absolute; right: 5px; top: 50%; display: none; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font: 17.6px/1 var(--font); transform: translateY(-50%); }
+    .clear-search.visible { display: grid; }
+    .clear-search:hover { background: color-mix(in oklch, var(--fg) 6%, var(--surface)); color: var(--fg); }
     select { width: 130px; }
-    .reset { border: 0; background: transparent; color: var(--accent); font-size: 11px; }
-    .workspace { height: calc(100vh - 93px); display: grid; grid-template-columns: minmax(0, 1fr) 360px; background: var(--surface); }
+    .reset { border: 0; background: transparent; color: var(--accent); font-size: 12.1px; }
+    .reset:hover { background: color-mix(in oklch, var(--accent) 12%, var(--surface)); border-radius: 4px; }
+    .workspace { --inspector-width: 440px; height: calc(100vh - 93px); display: grid; grid-template-columns: minmax(0, 1fr) 4px var(--inspector-width); background: var(--surface); }
     .list { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-    .table-wrap { flex: 1; min-height: 0; overflow: auto; }
-    table { width: 100%; min-width: 700px; border-collapse: collapse; font: 12px var(--mono); }
-    th, td { padding: 8px 13px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-    th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--muted); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; }
+    .table-wrap { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
+    .table-wrap table { background: var(--surface); }
+    table { width: 100%; min-width: 700px; table-layout: fixed; border-collapse: collapse; font: 13.2px var(--mono); }
+    th, td { padding: 8px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+    th, td { width: 14%; overflow: hidden; text-overflow: ellipsis; }
+    th:first-child, td:first-child { width: 30%; }
+    th { position: sticky; top: 0; z-index: 1; padding-block: 7px; background: var(--bg); color: var(--muted); font-size: 12.65px; line-height: 1.2; letter-spacing: .07em; text-transform: uppercase; }
+    .sort-head { display: inline-flex; align-items: center; gap: 4px; }
+    th.right .sort-head { justify-content: end; }
+    .sort-button { width: 14px; height: 14px; padding: 0; border: 0; background: transparent; color: var(--muted); font: 9.9px/1 var(--mono); }
+    .sort-button:hover, .sort-button.active { color: var(--fg); }
     td.right, th.right { text-align: right; }
-    tbody tr { cursor: pointer; }
+    tbody tr { cursor: pointer; outline: none; }
     tbody tr:hover td { background: color-mix(in oklch, var(--fg) 3%, var(--surface)); }
     tbody tr.selected td { background: color-mix(in oklch, var(--fg) 10%, var(--surface)); color: var(--fg); }
     tbody tr.selected .type { color: var(--muted); }
     tbody tr.selected td:first-child { box-shadow: inset 2px 0 color-mix(in oklch, var(--fg) 55%, transparent); }
+    tbody tr:focus-visible td { outline: 2px solid var(--accent); outline-offset: -2px; }
     .type { color: var(--muted); }
-    .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 14px; border-top: 1px solid var(--border); color: var(--muted); font: 11.5px var(--mono); }
+    .status-tag { display: inline-flex; align-items: center; min-height: 19px; padding: 1px 6px; border: 0; border-radius: 3px; font: 700 10px/1.2 var(--font); letter-spacing: 0; text-transform: capitalize; }
+    .status-tag.verified { background: oklch(97% .03 145); color: oklch(40% .12 145); }
+    .status-tag.unverified { background: oklch(96% .006 240); color: oklch(45% .012 240); }
+    .status-tag.orphaned { background: oklch(97% .03 78); color: oklch(50% .115 70); }
+    .status-tag.corrupt { background: oklch(97% .028 25); color: oklch(49% .15 25); }
+    .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 14px; border-top: 1px solid var(--border); color: var(--muted); font: 12.65px var(--mono); }
     .pager-controls { display: flex; align-items: center; gap: 5px; }
-    .pager select { width: 68px; height: 27px; font: 11px var(--mono); }
-    .page-button { min-width: 27px; height: 27px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--fg); font: 11px var(--mono); }
+    .pager select { width: 68px; height: 27px; font: 12.1px var(--mono); }
+    .page-button { min-width: 27px; height: 27px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--fg); font: 12.1px var(--mono); }
     .page-button:hover:not(:disabled) { background: var(--bg); border-color: var(--fg); }
     .page-button:disabled { opacity: .4; cursor: not-allowed; }
     .empty-row td { padding: 42px 13px; text-align: center; color: var(--muted); font-family: var(--font); }
-    .inspector { border-left: 1px solid var(--border); overflow: auto; min-width: 0; }
+    .splitter { position: relative; cursor: col-resize; background: var(--border); touch-action: none; }
+    .splitter::after { content: ''; position: absolute; inset: 0 -5px; }
+    .splitter:hover, .splitter.dragging { background: var(--accent); }
+    .splitter:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent); }
+    .inspector { overflow: auto; min-width: 0; }
     .inspector-head { padding: 13px 14px 11px; border-bottom: 1px solid var(--border); background: var(--bg); }
-    .inspector-head h1 { margin: 0 0 5px; color: var(--muted); font: 700 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-    .hash { overflow-wrap: anywhere; font: 11.5px/1.5 var(--mono); }
+    /* Inspector hierarchy: context labels 11.5px, controls/data 12px, hashes 12px mono. */
+    .inspector-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 7px; }
+    .inspector-head h1 { margin: 0; color: var(--muted); font: 700 12.65px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .history-back { height: 22px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--fg); font: 11px/1 var(--mono); }
+    .history-back:hover:not(:disabled) { background: var(--bg); border-color: var(--fg); }
+    .history-back:disabled { opacity: .4; cursor: not-allowed; }
+    .hash { overflow-wrap: anywhere; font: 13.2px/1.45 var(--mono); }
+    .hash-row { display: flex; align-items: flex-start; gap: 7px; }
+    .hash-row .hash { flex: 1; min-width: 0; }
+    .copy-hash { display: none; flex: 0 0 auto; width: 25px; height: 25px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); font: 15.4px/1 var(--mono); }
+    .copy-hash.visible { display: grid; place-items: center; }
+    .copy-hash:hover { color: var(--fg); border-color: var(--fg); }
+    .copy-hash:focus-visible, .page-button:focus-visible, .sort-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
-    .tab { padding: 8px 10px 7px; border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; background: transparent; color: var(--muted); font-size: 12px; }
+    .tab { padding: 8px 10px 7px; border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; background: transparent; color: var(--muted); font-size: 13.2px; font-weight: 510; line-height: 1.25; }
     .tab:hover { color: var(--fg); background: color-mix(in oklch, var(--fg) 4%, var(--surface)); }
     .tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 650; }
     .pane { display: none; padding: 15px 14px; }
     .pane.active { display: block; }
+    .pane-empty { margin: 2px 0 0; color: var(--muted); font-size: 13.2px; }
     .section { margin-bottom: 20px; }
     .section:last-child { margin-bottom: 0; }
-    .section h2 { margin: 0 0 9px; color: var(--muted); font: 700 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .section h2 { margin: 0 0 8px; color: var(--muted); font: 700 12.1px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
     dl { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 5px 10px; margin: 0; }
-    dt { color: var(--muted); font-size: 12px; }
-    dd { margin: 0; overflow-wrap: anywhere; font: 12px var(--mono); }
+    dt { color: var(--muted); font-size: 12.1px; font-weight: 450; line-height: 1.45; }
+    dd { margin: 0; overflow-wrap: anywhere; font: 13.2px/1.45 var(--mono); }
     .ref-list { display: grid; gap: 6px; }
-    .ref { display: flex; gap: 7px; align-items: center; font: 11.5px var(--mono); }
-    .ref-kind { padding: 2px 5px; border-radius: 3px; background: var(--blue-soft); color: var(--blue); font: 700 9px var(--font); letter-spacing: .06em; text-transform: uppercase; }
-    pre { margin: 0; overflow: auto; font: 11px/1.7 var(--mono); color: color-mix(in oklch, var(--fg) 85%, var(--muted)); }
-    .empty-detail { color: var(--muted); font-size: 12px; }
-    @media (max-width: 900px) { body { overflow: auto; } .filters { overflow-x: auto; } .workspace { height: auto; min-height: calc(100vh - 93px); grid-template-columns: 1fr; } .list { min-height: 440px; } .inspector { border-left: 0; border-top: 1px solid var(--border); } }
+    .ref-list.empty { display: block; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .ref { display: flex; width: fit-content; max-width: 100%; gap: 7px; align-items: center; padding: 2px 3px; border: 0; border-radius: 3px; background: transparent; color: var(--fg); font: 13.2px/1.4 var(--mono); text-align: left; }
+    .ref:hover { background: color-mix(in oklch, var(--fg) 4%, var(--surface)); }
+    .ref:focus-visible, .history-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .ref-kind { padding: 2px 5px; border-radius: 3px; background: var(--blue-soft); color: var(--blue); font: 700 9.9px var(--font); letter-spacing: .06em; text-transform: uppercase; }
+    pre { margin: 0; overflow: auto; font: 12.1px/1.65 var(--mono); color: color-mix(in oklch, var(--fg) 85%, var(--muted)); }
+    .empty-detail { color: var(--muted); font-size: 13.2px; }
+    @media (max-width: 900px) { body { overflow: auto; } .filters { overflow-x: auto; } .workspace { height: auto; min-height: calc(100vh - 93px); grid-template-columns: 1fr; } .list { min-height: 440px; } .splitter { display: none; } .inspector { border-top: 1px solid var(--border); } }
   </style>
 </head>
 <body>
-  <header class="topbar" data-od-id="top-bar"><div class="brand" data-od-id="brand"><span class="mark">CA</span>go-cask</div></header>
+  <header class="topbar" data-od-id="top-bar"><div class="brand" data-od-id="brand"><span class="mark">CA</span>go-cask</div><button class="verify-all" id="verify-all" type="button" data-od-id="verify-all">Verify</button></header>
   <form class="filters" data-od-id="filter-bar">
-    <input class="input" id="search" aria-label="Search objects" placeholder="Search digest prefix or type" />
+    <span class="search-wrap" style="width: 262px;"><input class="input" id="search" aria-label="Search objects" placeholder="Search digest prefix or type"><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" style="height: 30px; width: 30px; padding-top: 0px; padding-right: 0px; font-weight: 400;">×</button></span>
     <select id="type-filter" aria-label="Object type"><option value="">All types</option><option value="bytes@1">bytes@1</option><option value="json@1">json@1</option><option value="text@1">text@1</option></select>
-    <select id="size-filter" aria-label="Size"><option value="">Any size</option><option value="small">Under 1 KiB</option><option value="medium">1 KiB to 1 MiB</option><option value="large">Over 1 MiB</option></select>
+    <select id="size-filter" aria-label="Size"><option value="">Any size</option><option value="small">&lt; 1 KiB</option><option value="medium">1 KiB - 1 MiB</option><option value="large">&gt; 1 MiB</option></select>
+    <select id="state-filter" aria-label="Object state" data-od-id="state-filter"><option value="">Any state</option><option value="verified">Verified</option><option value="unverified">Unverified</option><option value="orphaned">Orphaned</option><option value="corrupt">Corrupt</option></select>
     <button class="reset" type="reset" data-od-id="reset-filters">Reset</button>
   </form>
   <main class="workspace" data-od-id="object-browser">
     <section class="list">
-      <div class="table-wrap"><table data-od-id="object-table"><thead><tr><th>Hash</th><th>Type</th><th class="right">Size</th><th class="right">Refs</th><th class="right">Written</th></tr></thead><tbody id="object-rows"></tbody></table></div>
+      <div class="table-wrap"><table data-od-id="object-table"><thead><tr><th aria-sort="ascending"><span class="sort-head">Hash<button class="sort-button active" type="button" data-sort="hash" aria-label="Sort hash ascending" aria-pressed="true">▲</button></span></th><th aria-sort="none"><span class="sort-head">Type<button class="sort-button" type="button" data-sort="type" aria-label="Sort type ascending" aria-pressed="false">▲</button></span></th><th class="right" aria-sort="none"><span class="sort-head">Size<button class="sort-button" type="button" data-sort="size" aria-label="Sort size ascending" aria-pressed="false">▲</button></span></th><th class="right" aria-sort="none"><span class="sort-head">Refs<button class="sort-button" type="button" data-sort="refsBy" aria-label="Sort references ascending" aria-pressed="false">▲</button></span></th><th aria-sort="none"><span class="sort-head">Status<button class="sort-button" type="button" data-sort="status" aria-label="Sort status ascending" aria-pressed="false">▲</button></span></th><th class="right" aria-sort="none"><span class="sort-head">Written<button class="sort-button" type="button" data-sort="written" aria-label="Sort written ascending" aria-pressed="false">▲</button></span></th></tr></thead><tbody id="object-rows"></tbody></table></div>
       <footer class="pager" data-od-id="object-pager"><span id="result-count">0 objects</span><div class="pager-controls"><label for="page-size">Rows</label><select id="page-size" aria-label="Rows per page"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="250">250</option></select><button class="page-button" type="button" id="first-page" aria-label="First page">«</button><button class="page-button" type="button" id="previous-page" aria-label="Previous page">‹</button><span id="page-status">Page 1 of 1</span><button class="page-button" type="button" id="next-page" aria-label="Next page">›</button><button class="page-button" type="button" id="last-page" aria-label="Last page">»</button></div></footer>
     </section>
+    <div class="splitter" id="pane-splitter" role="separator" aria-label="Resize object inspector" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="560" aria-valuenow="440" tabindex="0" data-od-id="pane-splitter"></div>
     <aside class="inspector" data-od-id="inspector">
-      <header class="inspector-head"><h1>Object</h1><div class="hash" id="detail-hash"></div></header>
-      <nav class="tabs" aria-label="Object detail tabs"><button class="tab active" type="button" role="tab" aria-selected="true" data-tab="metadata">Metadata</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="references">References</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="bytes">Bytes</button></nav>
-      <section class="pane active" id="metadata"><div class="section"><h2>Identity</h2><dl><dt>Algorithm</dt><dd id="detail-algorithm"></dd><dt>Type</dt><dd id="detail-type"></dd></dl></div><div class="section"><h2>Storage</h2><dl><dt>Size</dt><dd id="detail-size"></dd><dt>References</dt><dd id="detail-refs"></dd><dt>Written</dt><dd id="detail-written"></dd></dl></div></section>
-      <section class="pane" id="references"><div class="section"><h2>Referenced by</h2><div class="ref-list" id="referenced-by"></div></div><div class="section"><h2>References out</h2><div class="ref-list" id="references-out"></div></div></section>
-      <section class="pane" id="bytes"><pre id="hexdump"></pre></section>
+      <header class="inspector-head"><div class="inspector-title"><h1>Object</h1><button class="history-back" id="history-back" type="button" aria-label="Go back to the previous object" disabled>Back</button></div><div class="hash-row"><div class="hash" id="detail-hash"></div><button class="copy-hash" id="copy-hash" type="button" aria-label="Copy full object hash" title="Copy hash">⧉</button></div></header>
+      <nav class="tabs" role="tablist" aria-label="Object detail tabs"><button class="tab active" type="button" role="tab" aria-selected="true" aria-controls="metadata" id="metadata-tab" data-tab="metadata">Metadata</button><button class="tab" type="button" role="tab" aria-selected="false" aria-controls="references" id="references-tab" data-tab="references">References</button><button class="tab" type="button" role="tab" aria-selected="false" aria-controls="bytes" id="bytes-tab" data-tab="bytes">Bytes</button></nav>
+      <section class="pane active" id="metadata" role="tabpanel" aria-labelledby="metadata-tab"><div class="section"><h2>Identity</h2><dl><dt>Algorithm</dt><dd id="detail-algorithm"></dd><dt>Type</dt><dd id="detail-type"></dd></dl></div><div class="section"><h2>Storage</h2><dl><dt>Size</dt><dd id="detail-size"></dd><dt>References</dt><dd id="detail-refs"></dd><dt>Written</dt><dd id="detail-written"></dd><dt>Timestamp</dt><dd id="detail-timestamp"></dd></dl></div><div class="section"><h2>Integrity</h2><dl><dt>Status</dt><dd id="detail-status"></dd></dl></div></section>
+      <section class="pane" id="references" role="tabpanel" aria-labelledby="references-tab"><div class="section"><h2>By</h2><div class="ref-list" id="referenced-by"></div></div><div class="section"><h2>Out</h2><div class="ref-list" id="references-out"></div></div></section>
+      <section class="pane" id="bytes" role="tabpanel" aria-labelledby="bytes-tab"><pre id="hexdump"></pre></section>
     </aside>
   </main>
   <script>
@@ -92,24 +134,58 @@
     const sizes = ['128 B', '986 B', '2.1 KiB', '48 KiB', '384 KiB', '1.2 MiB'];
     for (let index = 0; index < 512; index++) {
       const digest = (index.toString(16).padStart(8, '0') + 'cask' + (index * 2654435761 >>> 0).toString(16).padStart(8, '0')).repeat(4).slice(0, 64);
-      store.push({ hash: 'sha256:' + digest, type: types[index % types.length], size: sizes[index % sizes.length], refs: index % 21, written: index < 24 ? `${index + 1}h ago` : `${Math.floor(index / 24)}d ago` });
+      const ageHours = index + 1;
+      store.push({ hash: 'sha256:' + digest, type: types[index % types.length], size: sizes[index % sizes.length], refsBy: index % 4 === 2 ? 0 : index % 20 + 1, refsOut: (index * 3) % 14, written: ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`, writtenAt: Date.now() - ageHours * 3600000 });
     }
-    let selected = -1; let page = 1;
+    let selected = -1; let page = 1; let sort = { column: 'hash', direction: 'asc' }; const objectHistory = []; const verificationResults = new Map();
     const rows = document.getElementById('object-rows');
-    const search = document.getElementById('search');
+    const search = document.getElementById('search'); const clearSearch = document.getElementById('clear-search');
     const typeFilter = document.getElementById('type-filter');
-    const sizeFilter = document.getElementById('size-filter'); const pageSize = document.getElementById('page-size');
-    const shortHash = hash => hash.slice(0, 19) + '...';
+    const sizeFilter = document.getElementById('size-filter'); const stateFilter = document.getElementById('state-filter'); const pageSize = document.getElementById('page-size');
+    const shortHash = hash => hash.slice(0, 15) + '…';
+    const objectState = object => verificationResults.get(object.hash) || 'unverified';
     const byteSize = value => { const [n, unit] = value.split(' '); return Number(n) * ({ B: 1, KiB: 1024, MiB: 1048576 }[unit] || 0); };
+    const formatTotal = value => value >= 1048576 ? `${Math.round(value / 1048576)} MB` : value >= 1024 ? `${Math.round(value / 1024)} KB` : `${value} B`;
     const hexPreview = hash => { const seed = hash.slice(hash.indexOf(':') + 1); return Array.from({ length: 8 }, (_, row) => { const chunk = Array.from({ length: 16 }, (_, index) => parseInt(seed.slice(((row * 16 + index) * 2) % seed.length, ((row * 16 + index) * 2) % seed.length + 2), 16)); return `${(row * 16).toString(16).padStart(8, '0')}  ${chunk.map(byte => byte.toString(16).padStart(2, '0')).join(' ')}  |${chunk.map(byte => byte > 31 && byte < 127 ? String.fromCharCode(byte) : '.').join('')}|`; }).join('\n'); };
-    function ref(direction, kind, hash) { const item = document.createElement('div'); item.className = 'ref'; item.innerHTML = `<span>${direction}</span><span class="ref-kind">${kind}</span><code>${hash}</code>`; return item; }
-    function clearDetail() { ['detail-hash', 'detail-algorithm', 'detail-type', 'detail-size', 'detail-refs', 'detail-written', 'hexdump'].forEach(id => document.getElementById(id).textContent = ''); document.getElementById('referenced-by').replaceChildren(); document.getElementById('references-out').replaceChildren(); }
-    function showDetail(object) { if (!object) return clearDetail(); document.getElementById('detail-hash').textContent = object.hash; document.getElementById('detail-algorithm').textContent = 'sha256'; document.getElementById('detail-type').textContent = object.type; document.getElementById('detail-size').textContent = object.size; document.getElementById('detail-refs').textContent = object.refs; document.getElementById('detail-written').textContent = object.written; document.getElementById('hexdump').textContent = hexPreview(object.hash); const inbound = document.getElementById('referenced-by'); inbound.replaceChildren(...Array.from({ length: Math.min(object.refs, 5) }, (_, i) => ref('<-','manifest',`b3:cc576cd1f637b${10 + i}...`))); if (!inbound.childElementCount) inbound.textContent = 'No objects reference this object.'; document.getElementById('references-out').replaceChildren(ref('->','blob',`b3:${object.hash.slice(7, 23)}...`)); }
-    function matches() { const query = search.value.trim().toLowerCase(); const type = typeFilter.value; const bucket = sizeFilter.value; return store.filter(object => (!query || object.hash.includes(query) || object.type.includes(query)) && (!type || object.type === type) && (!bucket || bucket === 'small' && byteSize(object.size) < 1024 || bucket === 'medium' && byteSize(object.size) >= 1024 && byteSize(object.size) <= 1048576 || bucket === 'large' && byteSize(object.size) > 1048576)); }
-    function render() { const visible = matches(); const size = Number(pageSize.value); const pages = Math.max(1, Math.ceil(visible.length / size)); page = Math.min(page, pages); const start = (page - 1) * size; const shown = visible.slice(start, start + size); rows.replaceChildren(); if (!visible.length) { selected = -1; showDetail(null); const row = document.createElement('tr'); row.className = 'empty-row'; row.innerHTML = '<td colspan="5">No objects match the current filters.</td>'; rows.append(row); } else { shown.forEach(object => { const row = document.createElement('tr'); row.className = store.indexOf(object) === selected ? 'selected' : ''; row.innerHTML = `<td>${shortHash(object.hash)}</td><td class="type">${object.type}</td><td class="right">${object.size}</td><td class="right">${object.refs}</td><td class="right">${object.written}</td>`; row.addEventListener('click', () => { selected = store.indexOf(object); showDetail(object); render(); }); rows.append(row); }); } document.getElementById('result-count').textContent = visible.length ? `${start + 1}-${Math.min(start + size, visible.length)} of ${visible.length.toLocaleString()} objects` : '0 objects'; document.getElementById('page-status').textContent = `Page ${page} of ${pages}`; document.getElementById('first-page').disabled = page === 1; document.getElementById('previous-page').disabled = page === 1; document.getElementById('next-page').disabled = page === pages; document.getElementById('last-page').disabled = page === pages; }
-    document.querySelector('.tabs').addEventListener('click', event => { const tab = event.target.closest('button[data-tab]'); if (!tab) return; document.querySelectorAll('.tab').forEach(item => { const active = item === tab; item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active)); }); document.querySelectorAll('.pane').forEach(pane => pane.classList.toggle('active', pane.id === tab.dataset.tab)); });
-    const resetPage = () => { page = 1; render(); }; search.addEventListener('input', resetPage); typeFilter.addEventListener('change', resetPage); sizeFilter.addEventListener('change', resetPage); pageSize.addEventListener('change', resetPage); document.querySelector('.filters').addEventListener('reset', () => setTimeout(resetPage)); document.getElementById('first-page').addEventListener('click', () => { page = 1; render(); }); document.getElementById('previous-page').addEventListener('click', () => { page--; render(); }); document.getElementById('next-page').addEventListener('click', () => { page++; render(); }); document.getElementById('last-page').addEventListener('click', () => { page = Math.ceil(matches().length / Number(pageSize.value)); render(); });
-    clearDetail(); render();
+    function ref(direction, kind, targetIndex) { const target = store[targetIndex]; const item = document.createElement('button'); item.type = 'button'; item.className = 'ref'; item.setAttribute('aria-label', `Open ${target.hash}`); item.append(Object.assign(document.createElement('span'), { textContent: direction }), Object.assign(document.createElement('span'), { className: 'ref-kind', textContent: kind }), Object.assign(document.createElement('code'), { textContent: shortHash(target.hash) })); item.addEventListener('click', () => selectObject(targetIndex, true)); return item; }
+    function updateHistoryControl() { document.getElementById('history-back').disabled = objectHistory.length === 0; }
+    function clearDetail() { ['detail-hash', 'detail-algorithm', 'detail-type', 'detail-size', 'detail-refs', 'detail-written', 'detail-timestamp', 'detail-status', 'hexdump'].forEach(id => document.getElementById(id).textContent = ''); document.getElementById('copy-hash').classList.remove('visible'); document.getElementById('referenced-by').replaceChildren(); document.getElementById('references-out').replaceChildren(); updateHistoryControl(); }
+    function statusTag(status) { const tag = document.createElement('span'); tag.className = `status-tag ${status}`; tag.textContent = status; return tag; }
+    function showDetail(object) { if (!object) return clearDetail(); document.getElementById('detail-hash').textContent = object.hash; document.getElementById('copy-hash').classList.add('visible'); document.getElementById('detail-algorithm').textContent = 'sha256'; document.getElementById('detail-type').textContent = object.type; document.getElementById('detail-size').textContent = object.size; document.getElementById('detail-refs').textContent = object.refsBy; document.getElementById('detail-written').textContent = object.written; document.getElementById('detail-timestamp').textContent = new Date(object.writtenAt).toISOString(); document.getElementById('detail-status').replaceChildren(statusTag(objectState(object))); document.getElementById('hexdump').textContent = hexPreview(object.hash); const inbound = document.getElementById('referenced-by'); const outbound = document.getElementById('references-out'); inbound.classList.toggle('empty', object.refsBy === 0); outbound.classList.toggle('empty', object.refsOut === 0); inbound.replaceChildren(...Array.from({ length: object.refsBy }, (_, i) => ref('←', 'manifest', (selected + i + 1) % store.length))); outbound.replaceChildren(...Array.from({ length: object.refsOut }, (_, i) => ref('→', 'blob', (selected + i + 97) % store.length))); if (!inbound.childElementCount) inbound.textContent = 'No objects reference this object.'; if (!outbound.childElementCount) outbound.textContent = 'This object references no other objects.'; updateHistoryControl(); }
+    function selectObject(index, addToHistory) { if (index < 0 || index >= store.length) return; if (addToHistory && selected >= 0 && selected !== index) objectHistory.push(selected); selected = index; showDetail(store[selected]); render(); }
+    function matches() { const query = search.value.trim().toLowerCase(); const type = typeFilter.value; const bucket = sizeFilter.value; const state = stateFilter.value; const matched = store.filter(object => (!query || object.hash.includes(query) || object.type.includes(query)) && (!type || object.type === type) && (!bucket || bucket === 'small' && byteSize(object.size) < 1024 || bucket === 'medium' && byteSize(object.size) >= 1024 && byteSize(object.size) <= 1048576 || bucket === 'large' && byteSize(object.size) > 1048576) && (!state || objectState(object) === state)); return matched.sort((a, b) => { const av = sort.column === 'size' ? byteSize(a.size) : sort.column === 'written' ? a.writtenAt : sort.column === 'status' ? objectState(a) : sort.column === 'refsBy' || sort.column === 'refsOut' ? a[sort.column] : String(a[sort.column]); const bv = sort.column === 'size' ? byteSize(b.size) : sort.column === 'written' ? b.writtenAt : sort.column === 'status' ? objectState(b) : sort.column === 'refsBy' || sort.column === 'refsOut' ? b[sort.column] : String(b[sort.column]); const result = typeof av === 'number' ? av - bv : av.localeCompare(bv); return sort.direction === 'asc' ? result : -result; }); }
+    function render() { const visible = matches(); const size = Number(pageSize.value); const pages = Math.max(1, Math.ceil(visible.length / size)); page = Math.min(page, pages); const start = (page - 1) * size; const shown = visible.slice(start, start + size); if (visible.length && !visible.includes(store[selected])) { selected = store.indexOf(visible[0]); showDetail(visible[0]); } rows.replaceChildren(); if (!visible.length) { selected = -1; showDetail(null); const row = document.createElement('tr'); row.className = 'empty-row'; row.innerHTML = '<td colspan="5">No objects match the current filters.</td>'; rows.append(row); } else { shown.forEach(object => { const row = document.createElement('tr'); row.tabIndex = 0; row.className = store.indexOf(object) === selected ? 'selected' : ''; row.innerHTML = `<td>${shortHash(object.hash)}</td><td class="type">${object.type}</td><td class="right">${object.size}</td><td class="right">${object.refsBy}</td><td class="right">${object.written}</td>`; const choose = () => { selected = store.indexOf(object); showDetail(object); render(); }; row.addEventListener('click', choose); row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } }); rows.append(row); }); } const filtered = search.value.trim() !== '' || typeFilter.value !== '' || sizeFilter.value !== ''; const totalSize = visible.reduce((sum, object) => sum + byteSize(object.size), 0); document.getElementById('result-count').textContent = visible.length ? `${start + 1}–${Math.min(start + size, visible.length)} of ${visible.length.toLocaleString()} · ${formatTotal(totalSize)}${filtered ? ` (filtered from ${store.length.toLocaleString()})` : ''}` : `0 of ${store.length.toLocaleString()} · 0 B${filtered ? ` (filtered from ${store.length.toLocaleString()})` : ''}`; document.getElementById('page-status').textContent = `Page ${page} of ${pages}`; document.getElementById('first-page').disabled = page === 1; document.getElementById('previous-page').disabled = page === 1; document.getElementById('next-page').disabled = page === pages; document.getElementById('last-page').disabled = page === pages; }
+    function activateTab(tab) { document.querySelectorAll('.tab').forEach(item => { const active = item === tab; item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active)); item.tabIndex = active ? 0 : -1; }); document.querySelectorAll('.pane').forEach(pane => pane.classList.toggle('active', pane.id === tab.dataset.tab)); }
+    document.querySelector('.tabs').addEventListener('click', event => { const tab = event.target.closest('button[data-tab]'); if (tab) activateTab(tab); });
+    document.querySelector('.tabs').addEventListener('keydown', event => { const tabs = [...document.querySelectorAll('.tab')]; const index = tabs.indexOf(document.activeElement); if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length; tabs[next].focus(); activateTab(tabs[next]); });
+    const workspace = document.querySelector('.workspace'); const splitter = document.getElementById('pane-splitter');
+    function setInspectorWidth(width) { const next = Math.min(560, Math.max(280, width)); workspace.style.setProperty('--inspector-width', `${next}px`); splitter.setAttribute('aria-valuenow', String(next)); }
+    splitter.addEventListener('pointerdown', event => { const startX = event.clientX; const startWidth = document.querySelector('.inspector').getBoundingClientRect().width; splitter.setPointerCapture(event.pointerId); splitter.classList.add('dragging'); const move = moveEvent => setInspectorWidth(startWidth + startX - moveEvent.clientX); const stop = () => { splitter.classList.remove('dragging'); splitter.removeEventListener('pointermove', move); splitter.removeEventListener('pointerup', stop); splitter.removeEventListener('pointercancel', stop); }; splitter.addEventListener('pointermove', move); splitter.addEventListener('pointerup', stop); splitter.addEventListener('pointercancel', stop); });
+    splitter.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const current = Number(splitter.getAttribute('aria-valuenow')); setInspectorWidth(event.key === 'Home' ? 280 : event.key === 'End' ? 560 : current + (event.key === 'ArrowLeft' ? 20 : -20)); });
+    document.getElementById('history-back').addEventListener('click', () => { const previous = objectHistory.pop(); if (previous === undefined) return; selectObject(previous, false); });
+    document.getElementById('verify-all').addEventListener('click', () => { const button = document.getElementById('verify-all'); button.disabled = true; button.textContent = 'Verifying…'; store.forEach(object => verificationResults.set(object.hash, object.refsBy === 0 ? 'orphaned' : 'verified')); button.textContent = 'Verified'; render(); setTimeout(() => { button.disabled = false; button.textContent = 'Verify'; }, 1200); });
+    document.getElementById('copy-hash').addEventListener('click', async () => { const hash = document.getElementById('detail-hash').textContent; if (!hash) return; try { await navigator.clipboard.writeText(hash); } catch { const field = document.createElement('textarea'); field.value = hash; document.body.append(field); field.select(); document.execCommand('copy'); field.remove(); } const button = document.getElementById('copy-hash'); button.textContent = '✓'; button.setAttribute('aria-label', 'Hash copied'); setTimeout(() => { button.textContent = '⧉'; button.setAttribute('aria-label', 'Copy full object hash'); }, 1200); });
+    const resetPage = () => { page = 1; render(); }; search.addEventListener('input', () => { clearSearch.classList.toggle('visible', search.value.length > 0); resetPage(); }); clearSearch.addEventListener('click', () => { search.value = ''; clearSearch.classList.remove('visible'); resetPage(); search.focus(); }); typeFilter.addEventListener('change', resetPage); sizeFilter.addEventListener('change', resetPage); stateFilter.addEventListener('change', resetPage); pageSize.addEventListener('change', resetPage); document.querySelector('.filters').addEventListener('reset', () => setTimeout(() => { clearSearch.classList.remove('visible'); resetPage(); })); document.getElementById('first-page').addEventListener('click', () => { page = 1; render(); }); document.getElementById('previous-page').addEventListener('click', () => { page--; render(); }); document.getElementById('next-page').addEventListener('click', () => { page++; render(); }); document.getElementById('last-page').addEventListener('click', () => { page = Math.ceil(matches().length / Number(pageSize.value)); render(); });
+    document.querySelectorAll('.sort-button').forEach(button => button.addEventListener('click', () => { const column = button.dataset.sort; const direction = sort.column === column && sort.direction === 'asc' ? 'desc' : 'asc'; sort = { column, direction }; document.querySelectorAll('.sort-button').forEach(item => { const active = item === button; item.classList.toggle('active', active); item.setAttribute('aria-pressed', String(active)); item.textContent = active && direction === 'desc' ? '▼' : '▲'; item.setAttribute('aria-label', `Sort ${item.dataset.sort} ${active && direction === 'asc' ? 'descending' : 'ascending'}`); item.closest('th').setAttribute('aria-sort', active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'); }); page = 1; render(); }));
+    const renderTableWithStatus = render;
+    render = function () {
+      renderTableWithStatus();
+      [...rows.children].forEach(row => {
+        const hashCell = row.cells[0];
+        if (!hashCell) return;
+        if (row.classList.contains('empty-row')) {
+          hashCell.colSpan = 6;
+          return;
+        }
+        const object = store.find(item => shortHash(item.hash) === hashCell.textContent);
+        if (!object) return;
+        const cell = document.createElement('td');
+        cell.append(statusTag(objectState(object)));
+        row.insertBefore(cell, row.cells[4]);
+      });
+    };
+    render();
   </script>
-</body>
-</html>
+
+
+</body></html>
