@@ -7,177 +7,72 @@ version: v30
 
 # CAS Core — go-cask
 
-> This is the authoritative specification of the **`cas` core library** — the
-> foundation every adjacent extension, client, example, and the HTTP/API layer
-> builds on. If you are extending the core (new backend, object type, codec,
-> hash algorithm) or consuming it (client, service, app), read this document.
->
-> **Origin:** extracted from the DeepSeek design conversation at
-> <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r> (final converged
-> state). This document is the canonical core spec; the aggregator
-> (`AGENTS.md` at the repo root) points here.
->
-> Related: `docs/specs/library-design.md` (lean-core contract,
-> sentinel errors, compatibility), `docs/specs/performance.md`
-> (lock-free reads, allocations), `docs/specs/testing-strategy.md`
-> (the CAS laws), `docs/specs/examples.md` (runnable
-> demonstrations), `docs/specs/backend-architecture.md` (server
-> composition).
+The authoritative specification of the **`cas` core library** — the foundation every extension, client, example, and HTTP/API layer builds on. Origin: the DeepSeek design conversation (final converged state); the repo-root `AGENTS.md` points here. Related: `library-design.md` (lean-core, errors, compatibility), `performance.md`, `testing-strategy.md`, `examples.md`, `backend-architecture.md`.
 
----
+## 1. Purpose & scope
 
-## 1. Purpose & Scope
+CASK is a reusable Go **content-addressable store**: blobs stored once under the hash of their content, as immutable objects referencing each other by hash. Git-like (blob/tree/commit/tag) but **generic across apps and domains** — the storage core knows nothing about application object types; apps layer typed objects on top and may share one physical store. Scope: layered architecture, every component's contract, data flows, concurrency model, extension contract. The `cas` package is **generic only**; application models (e.g. `gitlike`) live outside it (§4.12).
 
-CASK is a reusable Go component for a **content-addressable store**: binary
-blobs are stored once, under the hash of their content, as immutable objects
-that reference each other by hash. It is Git-like (blob / tree / commit / tag
-model) but **generic across apps and domains**: the storage core knows nothing
-about application object types; each app layers its own typed objects on top
-and can share the same physical store.
+## 2. Core concepts & invariants
 
-Scope of this document:
-
-- the layered architecture (byte layer / typed layer / application layer)
-- every core component with its complete contract
-- data flows (write, read, lazy, cross-type resolution)
-- the concurrency model
-- the extension contract for adjacent extensions and clients
-
-The `cas` package is **generic only**. Application models (like the `gitlike`
-example) live outside it (§4.12).
-
----
-
-## 2. Core Concepts & Invariants
-
-1. **Hash-addressed.** The storage key is the hash of the content. There is no
-   mutable addressing; to "change" an object you store a new one (new hash).
+1. **Hash-addressed.** The storage key is the content hash; no mutable addressing — to "change" an object, store a new one (new hash).
 2. **Immutability.** Stored objects are never mutated in place.
 3. **Automatic deduplication.** Identical content ⇒ identical hash ⇒ stored once.
-4. **Self-describing hashes — the hash type is part of every reference.** A
-   `Hash` is `"algo:hexdigest"` (e.g. `sha256:a1b2...`). Every reference
-   (object field, `References()` result, root/pin) holds a FULL `Hash` —
-   algorithm AND digest — never a bare digest. Consequences:
-   - the algorithm travels with every reference, so one object graph may mix
-     algorithms freely (`sha1` tree, `sha256` blobs, `blake3` tags);
-   - a store can read any object whose algorithm is registered — the store's
-     configured algorithm is only the default for NEW writes;
-   - **changing the hash type never makes the system useless**: existing
-     objects stay addressable under their own algorithm, and migration is
-     optional (§4.2, `operations.md` §5).
-5. **Layering.** The byte layer is **non-generic** (`Hash` + `io.Reader` only).
-   All generics live in the typed layer above it.
-6. **No `any` in the public API.** Every object type has its own `Store[T]`;
-   mixing types is a compile-time error. The typed layer holds no type
-   assertions: `Store[T].Get` returns the concrete `T`, never an `Object[T]`
-   interface value (§4.8).
-7. **Streaming I/O.** The byte layer moves `io.Reader`/`io.ReadCloser`; large
-   objects are never fully buffered by the backend.
-8. **Thread safety by default.** Backends have lock-free reads (atomic
-   rename; see `performance.md` §2), one `sync.Mutex` for
-   `Put`/`Delete`; caches use `sync.Map`/`atomic`; writes are atomic (temp
-   file + `Sync()` + rename).
+4. **Self-describing hashes — the hash type is part of every reference.** A `Hash` is `"algo:hexdigest"`. Every reference (object field, `References()` result, root/pin) holds a FULL `Hash` (algorithm AND digest), never a bare digest. Consequences: the algorithm travels with every reference (one graph may mix algorithms); a store can read any registered algorithm — the store's configured algorithm is only the default for NEW writes; **changing the hash type never breaks the system** — old objects stay addressable under their own algorithm and migration is optional (§4.2, operations.md §5).
+5. **Layering.** The byte layer is **non-generic** (`Hash` + `io.Reader` only); all generics live in the typed layer.
+6. **No `any` in the public API.** Each object type gets its own `Store[T]`; mixing types is a compile-time error. `Store[T].Get` returns the concrete `T`, never an `Object[T]` interface (§4.8).
+7. **Streaming I/O.** The byte layer moves `io.Reader`/`io.ReadCloser`; large objects are never fully buffered by the backend.
+8. **Thread safety by default.** Backends have lock-free reads (atomic rename), one `sync.Mutex` for `Put`/`Delete`; caches use `sync.Map`/`atomic`; writes are atomic (temp file + `Sync()` + rename).
 
-These invariants are testable and tested — see the CAS laws in
-`testing-strategy.md` §1.
+Testable via the CAS laws (testing-strategy.md §1).
 
----
-
-## 3. Architecture Overview
+## 3. Architecture overview
 
 ### 3.1 Layers
 
 ```mermaid
 flowchart TB
-    subgraph APP["Application / domain layer (per app, NOT part of the core)"]
-        direction TB
+    subgraph APP["Application / domain layer (per app, NOT core)"]
         GITLIKE["examples/gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
         OTHER["Other apps: Note, Job, Document, ... (same pattern)"]
     end
-
     subgraph TYPED["Typed layer — GENERIC CORE (package cas, type-safe, no any)"]
-        direction TB
-        OBJECT["Object[T] — self-describing, reference-aware objects"]
-        CODEC["Codec[T] — serialization (the JSON codec is default: json.New[T]())"]
+        OBJECT["Object[T] — self-describing, reference-aware"]
+        CODEC["Codec[T] — serialization (default: json.New[T]())"]
         STORE["Store[T] — Put / Get / GetRaw / Exists / Delete"]
-        WALKER["Walker[T] — generic graph traversal over References()"]
-        CACHE["Caching / lazy loading layer (generic over T):<br/>memory.CachedObject[T] → memory.CachedStore[T] → lru.Cache"]
+        WALKER["Walker[T] — traversal over References()"]
+        CACHE["Caching / lazy layer (generic over T):<br/>CachedObject[T] → CachedStore[T] → lru.Cache"]
         CACHE -. "wraps" .-> STORE
     end
-
     subgraph BYTE["Byte layer (non-generic, package cas)"]
-        direction TB
         HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
         RAW["Backend interface"]
-        BACKENDS["Backends: fs.Backend (reference), memory.Backend (tests),<br/>S3, BadgerDB, PostgreSQL"]
+        BACKENDS["fs.Backend (reference), memory.Backend (tests),<br/>S3, BadgerDB, PostgreSQL"]
     end
-
-    APP -->|"depends on"| TYPED
-    TYPED -->|"depends on"| BYTE
+    APP --> TYPED
+    TYPED --> BYTE
 ```
 
-Dependency rule: the byte layer depends on nothing; the typed layer depends on
-the byte layer; the application layer depends on the typed layer. Caching
-wraps the typed layer without changing either.
+Dependency rule: byte depends on nothing; typed depends on byte; application depends on typed. Caching wraps the typed layer without changing either. `cas` contains only generic primitives; the git-like model is a specific example in `examples/gitlike/` (§4.12) — apps build their own types/repositories and MUST NOT add them to the core.
 
-**Generic core vs. example layer.** The `cas` package contains only generic
-primitives. The git-like model is a **specific example** in a separate package
-(`examples/gitlike/`); apps build their own object types and their own
-repository/resolver combinations from `Store[T]` — they MUST NOT be added to
-the generic core (§4.12).
+### 3.2 How the core fits together
 
-### 3.2 How the core fits together (walkthrough)
+**Storing an object.** An app defines `Note` implementing `Object[Note]` (knows its versioned type name and referenced hashes), then a `Store[Note]` over a `Backend` with a `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`: (1) serializes via `Codec.Marshal` and wraps in the TLV envelope built by `Store.Put` itself — the codec is the single serialization authority (objects never serialize themselves); (2) hashes with the store's `HashFunc` → content address; (3) streams via `Backend.Put(ctx, h, r)`; (4) returns the `Hash` (stored inside other objects to build a graph). Identical bytes ⇒ identical hash ⇒ dedup.
 
-Read this first; it explains the whole design in one pass.
+**Reading an object.** `Store.Get(ctx, h)`: `Backend.Get` streams bytes, `Codec.Unmarshal` reconstructs the value, and the decoded `Type()` MUST match the envelope's type name (`ErrUnknownType` otherwise). Result is the concrete `T` — no casts.
 
-**Storing an object.** An application defines a type `Note` implementing
-`Object[Note]` (it knows its versioned type name and which hashes it
-references). It creates a `Store[Note]` over a `Backend` backend with a
-`Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`:
+**Why three layers.** The non-generic byte layer lets any backend swap in without touching app code; the generic typed layer lets any app type work without touching the core; the application layer owns the domain model. Extensions/clients interact mostly with the typed layer and the stable surface (§7.1).
 
-1. **Serializes** the note via `Codec.Marshal` and wraps the payload in the
-   TLV envelope `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`
-   built by `Store.Put` itself (see `cas/envelope.go`) — the codec is the
-   single serialization authority (objects never serialize themselves);
-2. **Hashes** the bytes with the store's `HashFunc` — producing the content
-   address `sha256:…`;
-3. **Streams** the bytes into the byte layer via `Backend.Put(ctx, h, r)` —
-   the backend decides where they live (filesystem with fan-out, memory,
-   S3, …);
-4. Returns the `Hash` — the caller stores it inside other objects to build a
-   graph. Identical bytes always produce the identical hash, so the same
-   content is stored once (dedup).
-
-**Reading an object.** `Store.Get(ctx, h)` reverses the path:
-`Backend.Get` streams the bytes, `Codec.Unmarshal` reconstructs the value, and
-the decoded object's `Type()` must match the envelope's type name
-(`ErrUnknownType` on mismatch). The result is the concrete `T` — no casts,
-no `Object[T]` intermediate.
-
-**Why three layers.** The byte layer is non-generic so ANY backend can be
-swapped in without touching application code. The typed layer is generic so
-ANY application type works without touching the core. The application layer
-owns the domain model (which types exist, how they serialize, what they
-reference). Extensions and clients interact mostly with the typed layer
-(`Store[T]`) and the stable surface (§7.1).
-
-**References & graphs.** Objects reference each other by plain `Hash` values
-(`Commit.Tree`, `TreeEntry.Hash`, …). The core never interprets them — it
-only knows, via `Object[T].References()`, which hashes an object points to.
-That single method powers generic traversal (`Walker[T]`), cache preloading,
-and (in application code) reachability for GC.
+**References & graphs.** Objects reference each other by plain `Hash` (`Commit.Tree`, `TreeEntry.Hash`, …). The core never interprets them; `Object[T].References()` is the single source of which hashes an object points to — powering `Walker[T]`, cache preloading, and GC reachability.
 
 ### 3.3 Aspect diagrams
 
-The architecture as one overview plus four focused diagrams (one aspect
-each). **Core overview — the interfaces and how they depend on each other:**
+Core overview (interfaces and dependencies):
 
 ```mermaid
 classDiagram
     direction LR
-
     class Hash {
-        <<interface>>
         +Algorithm() string
         +String() string
         +Equal(other Hash) bool
@@ -194,7 +89,6 @@ classDiagram
     class memBackend["memory.Backend (in-memory)"]
     Backend <|.. fsBackend : implements
     Backend <|.. memBackend : implements
-
     class Object~T~ {
         <<interface>>
         +Type() string
@@ -210,31 +104,23 @@ classDiagram
         +Get(ctx, h) (T, error)
         +Delete(ctx, h) error
     }
-    class Walker~T~ {
-        +Walk(ctx, h) error
-    }
+    class Walker~T~ { +Walk(ctx, h) error }
     Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
-
     class CachedStore~T~
     class lruCache["lru.Cache~T~"]
     CachedStore~T~ o-- Store~T~ : wraps
     lruCache --|> CachedStore~T~ : extends
 ```
 
-**Byte layer — addressing and storage:**
+Byte layer — addressing and storage:
 
 ```mermaid
 classDiagram
     direction LR
-    class Hash {
-        +Algorithm() string
-        +Bytes() []byte
-        +String() string
-        +Equal(other Hash) bool
-    }
+    class Hash { +Algorithm() string +Bytes() []byte +String() string +Equal(other Hash) bool }
     class Backend {
         <<interface>>
         +Put(ctx, h, r) error
@@ -260,21 +146,13 @@ classDiagram
     Backend <|.. memBackend : implements
 ```
 
-**Typed layer — the generic store:**
+Typed layer — the generic store:
 
 ```mermaid
 classDiagram
     direction LR
-    class Object~T~ {
-        <<interface>>
-        +Type() string
-        +References() []Hash
-    }
-    class Codec~T~ {
-        <<interface>>
-        +Marshal(T) ([]byte, error)
-        +Unmarshal([]byte) (T, error)
-    }
+    class Object~T~ { +Type() string +References() []Hash }
+    class Codec~T~ { +Marshal(T) ([]byte, error) +Unmarshal([]byte) (T, error) }
     class Store~T~ {
         +raw Backend
         +codec Codec~T~
@@ -290,16 +168,13 @@ classDiagram
     Store~T~ ..> Object~T~ : stores
 ```
 
-**Cache layer — lazy loading wrappers:**
+Cache layer — lazy loading wrappers:
 
 ```mermaid
 classDiagram
     direction LR
     class Store~T~
-    class CachedObject~T~ {
-        +Load(ctx) T
-        +IsLoaded() bool
-    }
+    class CachedObject~T~ { +Load(ctx) T +IsLoaded() bool }
     class CachedStore~T~ {
         +cache sync.Map
         +metrics memory.CacheMetrics
@@ -314,7 +189,7 @@ classDiagram
     LRUCache --|> CachedStore~T~ : extends
 ```
 
-**Example layer — gitlike (application code, not core):**
+Example layer — gitlike (application code, not core):
 
 ```mermaid
 classDiagram
@@ -336,9 +211,7 @@ classDiagram
     ResolvedObject o-- Resolver : produced by
 ```
 
----
-
-## 4. Component Specifications
+## 4. Component specifications
 
 ### 4.1 `Hash` — content address
 
@@ -351,16 +224,10 @@ type Hash interface {
 }
 ```
 
-- Concrete implementation is the unexported `hash{algo string; bytes []byte}`;
-  equality is algorithm AND digest comparison.
-- `String()` format: `"<algo>:<lowercase-hex digest>"` (Git's `sha1:...`,
-  IPFS-style `sha256:...`).
-- `ParseHash("algo:hex")` reconstructs a `Hash`; it MUST reject unknown
-  algorithms (`ErrUnknownAlgorithm`) and malformed hex (`ErrInvalidHash`).
-- Hashes are immutable value carriers AND the **universal reference type**:
-  any field that points to another object holds a full `Hash`
-  (`algo:digest`), so the hash type (algorithm) is always part of the
-  reference — a bare digest is never a valid reference.
+- Concrete impl is the unexported `hash{algo string; bytes []byte}`; equality is algorithm AND digest.
+- `String()` = `"<algo>:<lowercase-hex digest>"`.
+- `ParseHash("algo:hex")` reconstructs a `Hash`; MUST reject unknown algorithms (`ErrUnknownAlgorithm`) and malformed hex (`ErrInvalidHash`).
+- Hashes are immutable value carriers AND the **universal reference type**: any field pointing to another object holds a full `Hash` (`algo:digest`); a bare digest is never a valid reference.
 
 ### 4.2 `HashFunc` and the algorithm registry
 
@@ -373,61 +240,18 @@ func NewHasher(algo string) (hash.Hash, error) // streaming, built-ins only
 func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 ```
 
-- Built-in algorithm: `sha256` (others registered at runtime, e.g.
-  `blake3`).
-- `cas.New(raw, codec, algo)` resolves the algorithm at construction;
-  `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot
-  path (library-design §3).
-- `NewHasher` returns a streaming hasher for a registered algorithm (the
-  built-ins, which register `hash.Hash` constructors); algorithms registered
-  only as one-shot `HashFunc` cannot stream — use `HashBytes` for those.
-  `HashBytes` uses the streaming hasher when available and falls back to the
-  one-shot `HashFunc` otherwise. These helpers serve the HTTP layer and CLI
-  (hash-on-write uploads, verify recomputation) without duplicating the
-  algorithm switch.
-- The registry is populated at init; guard with a mutex once registration can
-  occur after startup.
+- Built-in algorithm: `sha256` (others registered at runtime, e.g. `blake3`).
+- `cas.New(raw, codec, algo)` resolves the algorithm at construction; `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot path (library-design §3).
+- `NewHasher` returns a streaming hasher for a registered algorithm (built-ins register `hash.Hash` constructors); one-shot-only algorithms cannot stream — use `HashBytes`. `HashBytes` uses the streaming hasher when available, else the one-shot `HashFunc`. These helpers serve HTTP/CLI (hash-on-write, verify) without duplicating the algorithm switch.
+- Registry populated at init; guard with a mutex once registration can occur after startup.
 
 **Algorithm coexistence & migration:**
+- Several algorithms coexist (supported): the byte layer namespaces per algorithm (`<base>/<algo>/...`), so one store holds many algorithms; `List(algo)` filters; `Stats` reports per-algorithm counts. Different `Store[T]` over one `Backend` may write with different algorithms.
+- A store's algorithm is a write-default, not a read constraint: `Get`/`GetRaw`, `Backend.Get`, and `ParseHash` resolve ANY registered algorithm; earlier-written objects remain readable forever — re-hashing is never required to read.
+- Unknown algorithm on read → `ErrUnknownAlgorithm` (graceful, detectable).
+- Migration is optional: `MigrateStore` re-hashes under a target algorithm (list → read → re-hash → write → VERIFY each → delete source only after verification); both coexist during the transition (operations.md §5).
 
-- **Several algorithms at once (supported):** the byte layer namespaces
-  objects per algorithm (`<base>/<algo>/...`, §4.4), so one store holds many
-  algorithms concurrently; `List(algo)` filters and `Stats` reports
-  per-algorithm counts. Different `Store[T]` instances over the same
-  `Backend` may write with different algorithms.
-- **Changing the hash type:** a store's algorithm is a write-default, not a
-  constraint on reads. `Store[T].Get`/`GetRaw`, `Backend.Get`, and
-  `ParseHash` resolve ANY registered algorithm; objects written with an
-  earlier algorithm remain readable forever — re-hashing is never required
-  to read.
-- **Unknown algorithm on read** → `ErrUnknownAlgorithm` (graceful): the
-  object is detectable as unreadable rather than crashing the system.
-- **Migration is optional**: `MigrateStore` re-hashes content under a target
-  algorithm (list → read → re-hash → write → VERIFY each target → delete
-  source only after verification) — full procedure in
-  `operations.md` §5. Both algorithms coexist during the
-  transition.
-
-> **Decision (2026-09): keep pluggable algorithms.** The registry stays —
-> not because of current need, but because the *migration path* is the
-> rare feature in the content-addressable space that distinguishes this
-> store from fixed-algorithm systems (Git, restic). SHA-256 is sufficient
-> today, but three concrete triggers exist:
-> 1. **SHA-256 deprecation** (unlikely soon, but SHA-1→SHA-256 was
->    painful for Git — algo-prefixed addresses make migration additive
->    and coexistence transparent).
-> 2. **Regulatory requirements** (SHA-384 or SHA-512 mandated by
->    FIPS/contracts — pluggable without forking the library).
-> 3. **Performance** (Blake3 is ~6× faster on large inputs — zero-cost
->    register for apps that need it).
-> The cost of the registry today is ~100 LOC and one mutex — negligible
-> against the value of being the only content-addressable store that can
-> upgrade its hash algorithm without a format break. The dual
-> verification path (streaming Hasher vs one-shot HashFunc) is the only
-> real complexity; it exists because streaming + one-shot registration
-> are separate guarantees, and removing it would require removing
-> one-shot registration entirely (which would break the `artifacts`
-> demo's custom-hash seam).
+> **Decision (2026-09): keep pluggable algorithms** — not for current need, but because the *migration path* distinguishes this store from fixed-algorithm systems (Git, restic). Triggers: SHA-256 deprecation; regulatory FIPS SHA-384/512; performance (Blake3 ~6× faster). Cost ~100 LOC + one mutex. The dual verification path (streaming vs one-shot) exists because they are separate guarantees; removing one-shot registration would break the `artifacts` demo's custom-hash seam.
 
 ### 4.3 `Backend` — the byte storage contract (non-generic)
 
@@ -442,143 +266,57 @@ type Backend interface {
 }
 ```
 
-Per-method contracts (every backend MUST honor these):
+Per-method contracts (every backend MUST honor):
 
-| Method    | Contract                                                              |
-| --------- | --------------------------------------------------------------------- |
-| `Put`     | Idempotent: same hash ⇒ same bytes; may overwrite with identical bytes |
-| `Get`     | Returns a stream the caller MUST close; missing → `ErrNotFound`        |
-| `Exists`  | Boolean presence check                                                 |
-| `Delete`  | Missing object ⇒ no-op, no error                                       |
-| `List`    | All stored hashes; `algo != ""` filters by algorithm                   |
-| `Stats`   | Per-algorithm counts, total stored bytes, object count (§4.11)         |
+| Method | Contract |
+|---|---|
+| `Put` | Idempotent: same hash ⇒ same bytes; may overwrite with identical bytes |
+| `Get` | Returns a stream the caller MUST close; missing → `ErrNotFound` |
+| `Exists` | Boolean presence check |
+| `Delete` | Missing object ⇒ no-op, no error |
+| `List` | All stored hashes; `algo != ""` filters by algorithm |
+| `Stats` | Per-algorithm counts, total stored bytes, object count (§4.11) |
 
-This interface is the **backend extension point**: any storage system (S3,
-BadgerDB, PostgreSQL, IPFS blockstore, …) can be plugged in by implementing
-these six methods (recipe in §7.2).
+This interface is the **backend extension point** — any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2).
 
 ### 4.4 `fs.Backend` — the filesystem backend (`cas/backend/fs`)
 
-**On-disk layout (fan-out, Git-like by default):**
+**On-disk layout (fan-out, Git-like by default):** objects live at `<base>/<algorithm>/<fan-out directories>/<full-hex-digest>`; the file name is always the **full hex digest**; fan-out dirs are successive digest chunks, controlled by:
 
-Objects are stored under
-`<base>/<algorithm>/<fan-out directories>/<full-hex-digest>`. The file name
-is always the **full hex digest** (Git loose-object style); fan-out
-directories are successive chunks of the digest, controlled by two
-parameters:
+| Parameter | Meaning | Default |
+|---|---|---|
+| `FanOut` | hex chars per directory level | 2 |
+| `FanLevels` | number of directory levels | 1 |
 
-| Parameter   | Meaning                                    | Default |
-| ----------- | ------------------------------------------ | ------- |
-| `FanOut`    | hex characters per directory level         | 2       |
-| `FanLevels` | number of directory levels                 | 1       |
+Examples (sha256 digest `a1b2c3d4…`): flat `(0,0)` `<base>/sha256/a1b2c3d4...`; Git-like `(2,1)` `<base>/sha256/a1/a1b2c3d4...`; deep `(2,2)` `<base>/sha256/a1/b2/...`; wide `(4,1)` `<base>/sha256/a1b2/...`.
+- The default (2,1) is Git-like in directories only (`objects/<algo>/aa/<full-hex>`); the file name is always the **complete digest**, never the Git-style remainder.
+- Any n-way/n-level allowed: `fs.New(basePath, opts ...backend.Option)` with `fs.WithFanOut(n)`/`fs.WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length (64 for SHA-256); over-deep configs rejected at construction.
+- `hashPath(h)` builds the path from the configured layout; `pathToHash(path)` rebuilds the `Hash` from the relative path (first part = algorithm, last = full hex digest; middle fan-out dirs not needed); unrecognized files skipped.
 
-Examples (sha256 digest `a1b2c3d4…`):
-
-```text
-flat (0/0):              <base>/sha256/a1b2c3d4...e0
-Git-like default (2,1):  <base>/sha256/a1/a1b2c3d4...e0
-deep 2/2 (2,2):          <base>/sha256/a1/b2/a1b2c3d4...e0
-wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
-```
-
-- The default (2, 1) is Git-like in its *directories* only:
-  `objects/<algo>/aa/<full-hex>` — 256 dirs, as in Git loose objects. The
-  file name is always the **complete digest**, never the Git-style
-  remainder (Git stores `objects/aa/<remaining-38-hex>`); here the full
-  digest is the file name at every fan-out level.
-- Any n-way / n-level fan-out layout is allowed:
-  `fs.New(basePath, opts ...backend.Option)` accepts `fs.WithFanOut(n)` and
-  `fs.WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length
-  (64 for SHA-256); over-deep configurations are rejected at
-  construction.
-- `hashPath(h)` builds the path from the configured layout;
-  `pathToHash(path)` rebuilds the `Hash` from the relative path — first part
-  = algorithm, last part = full hex digest (fan-out directories in between
-  are not needed for reconstruction); unrecognized files are skipped.
-
-> Decision (2026-09): the file-name style is **not configurable** — full-hash
-> names are the only layout. A Git-style remainder option (name = digest
-> minus the fan-out prefix, like Git loose objects) was considered and
-> rejected: it offers no interop (this store is not Git-readable under
-> either style — raw payloads under `<algo>/`, no Git loose-object format),
-> costs a second mode in every layout-dependent method, and loses the
-> self-describing "file name = full hash" property that `List`/`Stats`/
-> `Verify` rely on. Revisit only if a real consumer requires
-> remainder-looking names.
+> Decision (2026-09): file-name style is **not configurable** — full-hash names are the only layout (a Git-remainder option was rejected: no interop, a second mode everywhere, loses the self-describing full-hash name `List`/`Stats`/`Verify` rely on). Revisit only if a real consumer requires remainder names.
 
 **Write path (atomic):**
-
 ```text
 MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync() → os.Rename(tmp, path)
 ```
+- Directory fsync is optional via `WithDirSync()` (fsync the parent after rename so the publish is crash-durable). Best-effort — platforms that can't sync dirs (Windows) make it a no-op (operations §1); default off.
+- Temp name is **unique per writer**: base `<path>.tmp`; if `O_EXCL` fails (only possible across processes, since the in-process mutex serializes Puts) append a numeric suffix `<path>.tmp.<n>`. No two writers share a temp inode, so concurrent same-hash writers across processes cannot corrupt each other's write or the stored object.
+- Rename is atomic: on POSIX the last writer wins with identical bytes; on Windows a concurrent rename-over-existing can transiently fail (no cross-process last-wins), so a racing `Put` MAY return an error — the object is never corrupted and the failed temp is removed.
+- On any failure the temp is removed; readers never observe partial files. `.tmp` files ignored by `List`/`Stats`.
 
-- **Directory fsync is optional** via `WithDirSync()`: it fsyncs the parent
-  directory after the rename so the publish itself is crash-durable.
-  Best-effort only — platforms that cannot sync directories (Windows) make
-  it a no-op (operations §1); default off.
+**Concurrency (lock-free reads):** writes are atomic, so `Get`/`Exists`/`List`/`Stats` take **no lock** — a reader sees the old or the new file, never partial (performance §2). `Put` is idempotent, so concurrent same-hash writers never corrupt — in-process via the mutex, across processes via unique temp names (with the POSIX/Windows rename caveat). At most one `sync.Mutex` coordinates `Put`/`Delete` in-process; reads are wait-free. **Cross-process guarantees stop at object writes**: no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/`Clean`) racing another process's writes is NOT safe. The **grace model** applies: sweeps that MAY race live writers MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h; forced `--min-age 0` is the dangerous variant).
 
-- The temp name is **unique per writer**: the base is `<path>.tmp`, and if
-  `O_EXCL` fails (another writer holds it — only possible across processes,
-  since the in-process mutex serializes Puts) a numeric suffix
-  (`<path>.tmp.<n>`) is appended. No two writers ever share a temp inode, so
-  concurrent writers of the SAME hash — even from different OS processes —
-  cannot corrupt each other's in-flight write or the stored object.
-- The rename is atomic: on POSIX the last writer wins with identical bytes;
-  on Windows a concurrent rename-over-existing can transiently fail (no
-  cross-process last-wins), so a racing `Put` MAY return an error — the
-  object is never corrupted and the failed writer's temp file is removed.
-- On any failure the temp file is removed; readers never observe partial files.
-- `.tmp` files are ignored by `List`/`Stats`.
+**Maintenance methods** (§4.11): `Stats`, `Verify`, `GC`, `Clean`; `Size(h)` returns an object's size (`ErrNotFound` when missing); `Clean(ctx, olderThan)` sweeps leftover `*.tmp` older than the threshold — always safe (`.tmp` never a valid object).
 
-**Concurrency (lock-free reads):** writes are atomic (unique temp file →
-`f.Sync()` → `os.Rename`), so `Get`/`Exists`/`List`/`Stats` take **no lock** —
-a reader observes either the old or the new file, never a partial one (see
-`performance.md` §2). `Put` is idempotent (same hash ⇒ same
-bytes), so concurrent writers of the same hash never corrupt the object —
-in-process via the mutex, and across processes via the unique temp names
-above (with the POSIX/Windows rename caveat in §4.4). At most a single
-`sync.Mutex` coordinates `Put`/`Delete` within a process; reads are
-wait-free. **The cross-process guarantees stop at object writes**: there is
-no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/
-`Clean`) racing another process's writes is NOT safe. The **grace model**
-applies: sweeps that may race live writers MUST reclaim only objects older
-than a grace `--min-age`, so a concurrent writer's fresh objects survive —
-this is what the `cask` CLI does (`gc`/`prune` default 1h; forced
-`--min-age 0` is the documented dangerous variant, consistency §5,
-backend-architecture §1).
+### 4.5 `memory.Backend` — in-memory backend (`cas/backend/mem`)
 
-**Maintenance methods** (see 4.11): `Stats`, `Verify`, `GC`, `Clean`;
-`Size(h)` returns an object's size in bytes (`ErrNotFound` when missing);
-`Clean(ctx, olderThan)` sweeps leftover `*.tmp` files (the unique temp names
-crashed writes leave behind) older than the threshold — always safe, `.tmp`
-files are never valid objects (operations §2).
-
-### 4.5 `memory.Backend` — the in-memory backend (`cas/backend/mem`)
-
-A `Backend` implementation that keeps objects in a `map[string][]byte`
-(keyed by `h.String()`), guarded by a `sync.RWMutex`:
-
-- **Purpose.** Fast, dependency-free, deterministic storage for unit,
-  property, and fuzz tests (testing-strategy §4.8) and for benchmarks that
-  isolate store logic from disk noise (performance §5). **Not persistent.**
-- **Contracts.** Same `Backend` semantics as the fs backend (`fs.Backend`): idempotent
-  `Put`, `Get` returns a reader the caller MUST close (missing →
-  `ErrNotFound`), `Delete` is a no-op on missing objects, `List(algo)`
-  filters by algorithm.
-- **Buffering.** `Put` buffers the whole stream (`io.ReadAll`) — appropriate
-  for tests and small objects; `Get` returns `io.NopCloser(bytes.NewReader)`
-  over the stored slice, which is never mutated after `Put`.
-- **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
-  trick of the fs backend does not apply, but it is still orders of magnitude
-  faster than disk, which is the point.
-- **Stats.** Implements the `Backend.Stats` contract (`*cas.Stats`),
-  recomputing per-algorithm counts, total bytes and object count from the map
-  on each call — there is no separate counter to desynchronize. It has no
-  `Verify`/`GC`/`Prune` (those are fs-only, §4.11).
-- **Construction:** `memory.New(...)` (package `memory` at
-  `cas/backend/mem`; optionally `memory.WithMaxSize(n)` to cap
-  total stored bytes; 0 = unbounded); swap-in compatible with any `Store[T]`,
-  `gitlike` repository, or HTTP handler that takes a `Backend`.
+Keeps objects in `map[string][]byte` (keyed by `h.String()`) under a `sync.RWMutex`.
+- **Purpose:** fast, dependency-free, deterministic storage for unit/property/fuzz tests and benchmarks; **not persistent**.
+- **Contracts:** same `Backend` semantics as fs — idempotent `Put`; `Get` returns a reader the caller MUST close (missing → `ErrNotFound`); `Delete` no-op on missing; `List(algo)` filters.
+- **Buffering:** `Put` buffers the whole stream (`io.ReadAll`); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`).
+- **Concurrency:** `RWMutex` (the lock-free rename trick doesn't apply; still far faster than disk).
+- **Stats:** implements `Backend.Stats` (`*cas.Stats`), recomputing per-algorithm counts/total bytes/object count from the map each call — no desynchronized counter. No `Verify`/`GC`/`Prune` (fs-only, §4.11).
+- **Construction:** `memory.New(...)` (`cas/backend/mem`; optional `memory.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.
 
 ### 4.6 `Codec[T]` — serialization contract
 
@@ -589,10 +327,8 @@ type Codec[T any] interface {
 }
 ```
 
-- Default: the JSON codec, `json.New[T]()` (`cas/codec/json`), which wraps the
-  std-lib `encoding/json` `Marshal`/`Unmarshal`.
-- Compression/encryption/protobuf are additional `Codec[T]` implementations;
-  they never change the byte layer.
+- Default: the JSON codec `json.New[T]()` (`cas/codec/json`), wrapping std-lib `encoding/json`.
+- Compression/encryption/protobuf are additional `Codec[T]` impls; they never change the byte layer.
 - Contract: `Unmarshal(Marshal(v)) == v` (round-trip) for all storable values.
 
 ### 4.7 `Object[T]` — self-describing typed object
@@ -604,15 +340,9 @@ type Object[T any] interface {
 }
 ```
 
-- `Type()` makes objects self-describing without an external schema. It
-  returns a **versioned type name** `<type>@<major>` (e.g. `commit@1`) — the
-  object model is semantically versioned and several majors coexist in one
-  store (`docs/specs/object-versioning.md`).
-- `References()` is the single source of truth for graph traversal, preloading,
-  and GC reachability.
-- Serialization is NOT an object concern: `Store.Put` encodes the value with
-  the store's `Codec[T]` and builds the envelope (§8 decision 1) — the codec
-  is the single serialization authority on write AND read (`Get`).
+- `Type()` returns a **versioned type name** `<type>@<major>` — the object model is semantically versioned; several majors coexist in one store (object-versioning.md).
+- `References()` is the single source of truth for traversal, preloading, and GC reachability.
+- Serialization is NOT an object concern: `Store.Put` encodes with the store's `Codec[T]` and builds the envelope (§8 d1) — the codec is the single serialization authority on write AND read.
 
 ### 4.8 `Store[T]` — the generic typed store
 
@@ -626,123 +356,61 @@ type Store[T Object[T]] struct {
 func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error)
 ```
 
-| Method        | Behavior                                                          |
-| ------------- | ----------------------------------------------------------------- |
-| `Put`         | `Put(ctx, obj T)` → `codec.Marshal(obj)` → TLV envelope → `hasher(data)` → `raw.Put` → h |
-| `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
-| `Get`         | `raw.Get` → `codec.Unmarshal` → the concrete `T`; the decoded `Type()` must match the stored type name (else `ErrUnknownType`) |
-| `GetRaw`      | returns the serialized bytes for inspection/tooling               |
-| `Exists`      | delegates to `raw`                                                |
-| `Delete`      | delegates to `raw`                                                |
+| Method | Behavior |
+|---|---|
+| `Put` | `codec.Marshal(obj)` → TLV envelope → `hasher(data)` → `raw.Put` → h |
+| `PutDedup` | `raw.Exists` first; returns `(h, alreadyStored, err)` |
+| `Get` | `raw.Get` → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`) |
+| `GetRaw` | returns the serialized bytes for inspection/tooling |
+| `Exists` | delegates to `raw` |
+| `Delete` | delegates to `raw` |
 
-Design notes:
-
-- Type safety comes from one store per type: `Store[Blob]` and
-  `Store[Commit]` are distinct, so passing a commit hash to a blob store is a
-  **compile-time error**.
-- `Get` returns the **concrete `T`** (type name verified) — never an
-  `Object[T]` interface the caller would have to cast; `GetRaw` returns the
-  bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of
-  `any` and type assertions (coding-guidelines §8).
+- Type safety from one store per type: `Store[Blob]` vs `Store[Commit]` distinct — passing a commit hash to a blob store is a **compile-time error**.
+- `Get` returns the **concrete `T`** (type name verified); `GetRaw` returns bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of `any`/type assertions.
 - `Store[T]` is safe for concurrent use if its `Backend` is.
 
 ### 4.9 `Walker[T]` — generic graph traversal
 
 ```go
-// Walker traverses any single-type object graph via References().
 func NewWalker[T Object[T]](store *Store[T], visit func(T) error) *Walker[T]
 func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 ```
 
-- `visit` receives every reached object as the concrete `T` (no casts); the
-  walker reads via `Store[T].Get`.
-- Recurses over `obj.References()`; works for any object type — no knowledge
-  of the domain model.
-- Content addressing makes cycles impossible, so no visited set is needed.
-- Application-level traversal of *mixed* types is the app's job (see the
-  `gitlike` resolver in §4.12).
+- `visit` receives every reached object as the concrete `T`; reads via `Store[T].Get`.
+- Recurses over `obj.References()`; works for any object type. Content addressing makes cycles impossible, so no visited set is needed.
+- Mixed-type traversal is the app's job (`gitlike` resolver, §4.12).
 
 ### 4.10 Caching & lazy loading
 
-**`memory.CachedObject[T]`** — lazy proxy for one hash (`cas/cache/mem`,
-`package memory`):
+**`memory.CachedObject[T]`** — lazy proxy for one hash (`cas/cache/mem`): fields `hash`, back-pointer to its `CachedStore[T]`, `sync.RWMutex`, `obj`, `loaded`, `err`. `Load(ctx)` uses **double-checked locking**, loads exactly once, memoizes object AND error. `IsLoaded()` reports state without loading.
 
-- Fields: `hash`, back-pointer to its `memory.CachedStore[T]`, `sync.RWMutex`,
-  `obj`, `loaded`, `err`.
-- `Load(ctx)` uses **double-checked locking**; loads from the underlying
-  `Store[T]` exactly once, then memoizes (object AND error).
-- `IsLoaded()` reports state without loading.
+**`memory.CachedStore[T]`** — wraps `Store[T]`, built with `memory.New(store)`. Cache: `sync.Map` keyed by `h.String()` → `*CachedObject[T]`. Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic). `Proxy(ctx, h)` returns a not-yet-loaded `*CachedObject[T]` (verifies existence first); `Get` = `Proxy` + `Load`. `Preload(ctx, hashes)` loads in parallel (worker goroutines + error channel); `PreloadRecursive(ctx, h, depth)` preloads the graph. `CacheStats()`/`Evict(h)`/`Clear()`/`Warmup(ctx, hashes)`.
 
-**`memory.CachedStore[T]`** — wraps `Store[T]`:
+**`lru.Cache[T]`** — size-bounded LRU (`cas/cache/lru`): wraps/embeds `CachedStore[T]`, adds LRU with `maxSize` (in-tree std-lib, §8 d3), overrides `Proxy`/`Get` to track/promote. `lru.New(store, maxSize)` returns `(*lru.Cache[T], error)`; rejects `maxSize <= 0`.
 
-- Built with `memory.New(store)`.
-- Cache: `sync.Map` keyed by `h.String()` → `*memory.CachedObject[T]`.
-- Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic counters).
-- `Proxy(ctx, h)` returns a **not-yet-loaded** `*memory.CachedObject[T]` reference
-  (verifies existence first); `Get` = `Proxy` + `Load`, returning the
-  concrete `T`.
-- `Preload(ctx, hashes)` loads many objects in parallel (worker goroutines +
-  error channel); `PreloadRecursive(ctx, h, depth)` preloads the object graph.
-- `CacheStats()` → `memory.CacheStats` (hit rate, size, loads, evicts),
-  `Evict(h)`, `Clear()`, `Warmup(ctx, hashes)`.
-
-**`lru.Cache[T]`** — size-bounded LRU cache (`cas/cache/lru`):
-
-- Wraps/embeds `memory.CachedStore[T]`; adds an LRU with `maxSize` (in-tree
-  std-lib implementation per coding-guidelines §3 — see §8, decision 3);
-  overrides `Proxy` and `Get` to track LRU and promote existing entries.
-- `lru.New(store, maxSize)` returns `(*lru.Cache[T], error)` and rejects
-  `maxSize <= 0`.
-
-Prefetch-on-access (`prefetch.SmartCache[T]`, built with
-`prefetch.NewSmartCache(store, depth)` in `cas/cache/prefetch`) and periodic
-cache observability (`CacheMonitor`) are **example recipes, not part of
-`cas`**: `examples/notes` demonstrates prefetch-on-access over
-`memory.CachedStore[T]`, and `examples/artifacts` demonstrates a cache monitor
-emitting snapshots — see their READMEs.
+Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, depth)`) and `CacheMonitor` are **example recipes, not part of `cas`** — demonstrated by `examples/notes` and `examples/artifacts`.
 
 ### 4.11 Maintenance
 
-- **`Backend.Stats(ctx)`** → `*cas.Stats` (`AlgorithmCounts`,
-  `TotalSize`, `ObjectCount`) with a `String()` summary. `Stats` is part of
-  the `Backend` interface, so **every backend** reports it: the fs backend
-  walks the tree and ignores `.tmp`; the memory backend recomputes from its
-  object map. `Verify`, `GC`, `Prune` and the tree walk are fs-specific
-  (the memory backend is a plain map).
-- **`fs.Backend.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
-  the hash with the algorithm from the address, and reports mismatch
-  (`ErrHashMismatch`).
-- **`fs.Backend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep:
-  deletes every object whose `h.String()` is not in `reachable`. The caller
-  computes the reachable set (e.g. by walking from all roots).
-- **`fs.Backend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`**
-  — age-based retention: deletes objects that are unreachable from `roots`
-  AND older than `minAge` (age = file mtime ≈ first-`Put` time); `dryRun`
-  returns the would-be-deleted set. Detection of broken/dangling objects and
-  the full consistency model are defined in
-  `docs/specs/consistency.md`.
+- **`Backend.Stats(ctx)`** → `*cas.Stats` (`AlgorithmCounts`, `TotalSize`, `ObjectCount`) with a `String()` summary; part of the `Backend` interface so **every backend** reports it (fs walks the tree ignoring `.tmp`; mem recomputes from its map). `Verify`, `GC`, `Prune`, and the tree walk are fs-specific.
+- **`fs.Backend.Verify(ctx, h)`** — re-reads, recomputes the hash with the address's algorithm; mismatch → `ErrHashMismatch`.
+- **`fs.Backend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep: deletes every object whose `h.String()` is not in `reachable`; the caller computes the reachable set.
+- **`fs.Backend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); `dryRun` returns the would-be-deleted set. Detection/consistency in `consistency.md`.
 
 ### 4.12 Example layer: `gitlike` (NOT generic core)
 
-The git-like model is a **specific example** in its own package (`examples/gitlike/`,
-`package gitlike`), demonstrating how apps layer typed objects on the generic
-core. It is not part of `cas`. Applications define their own `Object[T]`
-types; this set is the reference example:
+A **specific example** in `examples/gitlike/`, `package gitlike` — not part of `cas`. Apps define their own `Object[T]` types; this is the reference set:
 
-| Type      | Fields                                        | References()                    |
-| --------- | --------------------------------------------- | ------------------------------- |
-| `Blob`    | `Data []byte`                                 | nil (leaf)                      |
-| `Tree`    | `Entries []TreeEntry`                         | hashes of all entries           |
-| `TreeEntry` | `Name string`, `Hash Hash`, `Mode string`   | (entry, not an object)          |
-| `Commit`  | `Tree Hash`, `Parent Hash`, `Author`, `Message`, `Time` | tree + parent (if any) |
-| `Tag`     | `Name`, `Target Hash`, `Tagger`, `Message`    | target                         |
+| Type | Fields | References() |
+|---|---|---|
+| `Blob` | `Data []byte` | nil (leaf) |
+| `Tree` | `Entries []TreeEntry` | hashes of all entries |
+| `TreeEntry` | `Name string`, `Hash Hash`, `Mode string` | (entry, not an object) |
+| `Commit` | `Tree Hash`, `Parent Hash`, `Author`, `Message`, `Time` | tree + parent (if any) |
+| `Tag` | `Name`, `Target Hash`, `Tagger`, `Message` | target |
 
-- All four types are **versioned from the start**: `blob@1`, `tree@1`,
-  `commit@1`, `tag@1` (object-versioning.md §6) — a future
-  incompatible change becomes `type@2` with the old deserializer registered.
-- `Parent`/`Target` are `nil`-able (`Hash` interface) — nil marks root/leaf.
-- Cross-type references are plain `Hash` values; the type of the target is
-  discovered at resolution time, not baked into the reference.
+- All four versioned from the start (`blob@1`, `tree@1`, `commit@1`, `tag@1`); a future incompatible change becomes `type@2` with the old deserializer registered.
+- `Parent`/`Target` are `nil`-able (`Hash` interface) — nil marks root/leaf. Cross-type references are plain `Hash`; target type discovered at resolution, not baked in.
 
 **`Repository` and `Resolver` — cross-type access without `any`:**
 
@@ -757,13 +425,9 @@ type Repository struct {
 type Resolver struct{ repo *Repository }
 ```
 
-- `Repository` bundles per-type stores over one `Backend` and one algorithm;
-  `NewRepository(raw, algo)`.
-- `Resolver` exposes dedicated methods — `ResolveCommit`, `ResolveTree`,
-  `ResolveBlob`, `ResolveTag` — each calling the matching store's `Get`.
-  Calling the wrong one is a compile-time error.
-- **Resolve anything** (type not known in advance): `ResolveAny(ctx, h)`
-  returns a typed union instead of `any`:
+- `Repository` bundles per-type stores over one `Backend` + one algorithm; `NewRepository(raw, algo)`.
+- `Resolver` exposes dedicated `ResolveCommit`/`ResolveTree`/`ResolveBlob`/`ResolveTag` (each calls the matching `Get`); calling the wrong one is a compile-time error.
+- **Resolve anything** (unknown type): `ResolveAny(ctx, h)` returns a typed union, not `any`:
 
 ```go
 type ResolvedObject struct {
@@ -775,294 +439,94 @@ type ResolvedObject struct {
 }
 ```
 
-- `ResolveAny` determines the type from the serialized bytes via `parseType`
-  on the **TLV envelope** `[version][typeLen][type][payloadLen][payload]`
-  (decision 1 in §8); it then dispatches to the matching `Resolve*` method.
-- `PrintObject(*ResolvedObject) string` renders any resolved object with a type
-  switch — no reflection.
-- **`WalkGraph`** — whole-graph traversal with unknown types:
-  `WalkGraph(ctx, resolver, h, visit func(*ResolvedObject) error)`; its
-  type-switch dispatch makes it specific to the example's object set, not
-  generic (the generic alternative is `Walker[T]`, §4.9).
-- **`CachedRepository`** — per-type `lru.Cache` wrappers plus an internal
-  `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`.
-- **`Preloader`** — background worker pool consuming a `chan Hash`, running
-  `Commits.PreloadRecursive(ctx, h, 2)`; non-blocking `Preload`, `Stop()`
-  cancels and drains.
+- `ResolveAny` determines the type from the bytes via `parseType` on the TLV envelope (§8 d1), then dispatches to the matching `Resolve*`.
+- `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection.
+- **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, h, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic alternative: `Walker[T]`, §4.9).
+- **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`.
+- **`Preloader`** — background worker pool on a `chan Hash`, running `Commits.PreloadRecursive(ctx, h, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.
 
----
+## 5. Data flows
 
-## 5. Data Flows
+- **Write path:** `codec.Marshal(obj)` → TLV envelope (built by `Store.Put`) → `hash := hasher(data)` (algorithm from store config) → `raw.Put(ctx, hash, reader)` (atomic fs, idempotent) → return hash. Optional `PutDedup`: check `raw.Exists(hash)` first, skip the write.
+- **Typed read path:** `raw.Get(ctx, h)` → `io.ReadAll` → `codec.Unmarshal(data)` → `T`; decoded `Type()` matches stored type.
+- **Lazy/cached read path:** `CachedStore.Proxy(ctx, h)` → not-yet-loaded `*CachedObject[T]`; on first access `Load(ctx)` → `store.Get` → memoize `(obj, err)`; later access returns the memoized value (double-checked locking).
+- **Cross-type resolution path (gitlike):** `ResolveAny(ctx, h)` → raw bytes → `parseType(data)` → dispatch to `ResolveBlob`/`ResolveTree`/`ResolveCommit`/`ResolveTag` → `ResolvedObject{...}`. The generic core has no equivalent.
 
-### 5.1 Write path
+## 6. Concurrency model
 
-```text
-codec.Marshal(obj) → TLV envelope [version][typeLen][type][payloadLen][payload]   # built by Store.Put
-        │
-        ▼
-hash := hasher(data)              # algorithm from store config
-        │
-        ▼
-raw.Put(ctx, hash, reader)        # atomic in the fs backend; idempotent
-        │
-        ▼
-return hash                       # callers store it inside other objects
-```
+| Concern | Mechanism |
+|---|---|
+| Backend file access | lock-free reads (atomic rename); one `sync.Mutex` for `Put`/`Delete` |
+| Atomic visibility | temp file → `f.Sync()` → `os.Rename` |
+| Object lazy load | `sync.RWMutex` + double-checked locking in `CachedObject` |
+| Cache index | `sync.Map` keyed by `h.String()` |
+| Metrics | `atomic.Uint64` counters |
+| Parallel preload | worker goroutines + buffered error channel + `WaitGroup` |
+| Background preloader | worker pool with `context.WithCancel`; non-blocking enqueue |
+| Hash registry | map + mutex (registration once at startup) |
+| Smart prefetch | detached goroutine with 5 s `context.WithTimeout` |
 
-Optional `PutDedup`: check `raw.Exists(hash)` first and skip the write.
+- `Store[T]` is safe for concurrent use if its `Backend` is. **Concurrency safety is per-process** (mutexes/`sync.Map`/double-checked locking coordinate one process); the core has no inter-process locking. Serve many clients from one process.
+- **Cross-process model (grace, Git-style):** concurrent readers and concurrent same-hash `Put`s are safe by construction (atomic rename, unique temps) — writers and the viewer may run in several processes on one store. What needs coordination is a maintenance sweep racing another process's writes: the `cask` CLI takes the store's exclusive `.cask.lock` (one sweep at a time) and reclaims only objects older than a grace `--min-age` (default 1h); a forced `--min-age 0` sweep is the dangerous variant (prints a warning). Embedding apps MUST provide equivalent coordination if they sweep from >1 process per store dir.
+- Callers must close every `io.ReadCloser` from `Backend.Get`. Prefetchers must never block the hot path (queue full → skip; prefetch in a goroutine with a timeout).
 
-### 5.2 Typed read path
+## 7. Consuming & extending the core
 
-```text
-raw.Get(ctx, h) ──► io.ReadAll ──► codec.Unmarshal(data) ──► T (Get)
-                                       │
-                                       └─► Type() matches stored type
-```
-
-### 5.3 Lazy/cached read path
-
-```text
-CachedStore.Proxy(ctx, h) ──► *memory.CachedObject[T] (not loaded)
-        │
-        ▼ (first access)
-CachedObject.Load(ctx) ──► store.Get ──► memoize (obj, err)
-        │
-        ▼ (later access)
-return memoized value      # double-checked locking
-```
-
-### 5.4 Cross-type resolution path (example layer)
-
-This path belongs to the `gitlike` example's `Resolver`; the generic core
-does not know object types and has no equivalent — apps build their own
-resolver for their own object set.
-
-```text
-ResolveAny(ctx, h) ──► raw bytes ──► parseType(data) ──► switch type
-        │
-        ├─ "blob"   → ResolveBlob   → ResolvedObject{Blob: ...}
-        ├─ "tree"   → ResolveTree   → ResolvedObject{Tree: ...}
-        ├─ "commit" → ResolveCommit → ResolvedObject{Commit: ...}
-        └─ "tag"    → ResolveTag    → ResolvedObject{Tag: ...}
-```
-
-**Data flows (Mermaid):**
-
-```mermaid
-flowchart LR
-    subgraph WRITE["Write path"]
-        A1["codec.Marshal(obj) → TLV envelope (Store.Put)"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
-    end
-    subgraph READ["Typed read path"]
-        B1["raw.Get(ctx, h)"] --> B2["codec.Unmarshal(data)"] --> B3["T (Get)"]
-    end
-    subgraph LAZY["Lazy/cached path"]
-        C1["memory.CachedStore.Proxy(ctx, h)"] --> C2["*memory.CachedObject[T] (not loaded)"]
-        C2 --> C3["Load: store.Get → memoize (obj, err)"]
-    end
-    subgraph RESOLVE["Cross-type resolution (gitlike)"]
-        D1["ResolveAny(ctx, h)"] --> D2["parseType(data)"] --> D3{"type"}
-        D3 -->|"blob"| D4["ResolveBlob"]
-        D3 -->|"tree"| D5["ResolveTree"]
-        D3 -->|"commit"| D6["ResolveCommit"]
-        D3 -->|"tag"| D7["ResolveTag"]
-    end
-```
-
----
-
-## 6. Concurrency Model
-
-| Concern                     | Mechanism                                                       |
-| --------------------------- | --------------------------------------------------------------- |
-| Backend file access         | lock-free reads (atomic rename); one `sync.Mutex` for `Put`/`Delete` |
-| Atomic visibility           | temp file → `f.Sync()` → `os.Rename`                            |
-| Object-level lazy load      | `sync.RWMutex` + double-checked locking in `CachedObject`       |
-| Cache index                 | `sync.Map` keyed by `h.String()`                                |
-| Metrics                     | `atomic.Uint64` counters                                        |
-| Parallel preload            | worker goroutines + buffered error channel + `WaitGroup`        |
-| Background preloader        | worker pool with `context.WithCancel`; non-blocking enqueue     |
-| Hash registry               | map + mutex (registration expected once at startup)             |
-| Smart prefetch              | detached goroutine with 5 s `context.WithTimeout`               |
-
-Rules:
-
-- `Store[T]` is safe for concurrent use if its `Backend` is. **Concurrency
-  safety is per-process**: all of the above (mutexes, `sync.Map`,
-  double-checked locking) coordinates threads of ONE process; the core has no
-  inter-process locking. Serve many clients from one process (the CLI, the
-  viewer, or an app embedding the library; `examples/api` shows the HTTP
-  pattern).
-- **Cross-process model (grace, Git-style):** concurrent readers and
-  concurrent `Put`s of the SAME hash are safe by construction (atomic
-  rename, unique temps) — so writers and the viewer may run in several
-  processes on one store. What needs coordination is a maintenance sweep
-  (`Delete`/`GC`/`Prune`/`Clean`) racing another process's writes. The
-  `cask` CLI applies the grace model: maintenance sweeps (`gc`, `prune`,
-  `clean`) take the store's exclusive `.cask.lock` so two sweeps never
-  overlap, and reclaim only objects older than a grace `--min-age` (default
-  1h), so a concurrent writer's fresh objects survive. A forced sweep
-  (`--min-age 0`) is the dangerous variant — only safe when no other process
-  is writing; it prints a warning (cli spec §2, consistency §5). Applications
-  embedding the library MUST provide equivalent coordination themselves if
-  they run maintenance sweeps in more than one process per store directory.
-- Callers must close every `io.ReadCloser` from the byte layer's
-  `Backend.Get` (the typed layer returns bytes or concrete values, never a
-  stream the caller must close).
-- Prefetchers must never block the hot path (queue full → skip; prefetch in a
-  goroutine with a timeout).
-
----
-
-## 7. Consuming & Extending the Core
-
-This section is the contract for **adjacent extensions** (new backends,
-codecs, caches) and **clients** (apps, services, the HTTP layer).
+Contract for adjacent extensions (backends, codecs, caches) and clients.
 
 ### 7.1 Stable public surface
 
-The stable API the core promises (library-design §1):
+| Area | Exported identifiers |
+|---|---|
+| Addressing | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
+| Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
+| Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
+| Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
+| Errors | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` |
 
-| Area          | Exported identifiers                                              |
-| ------------- | ----------------------------------------------------------------- |
-| Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); the `memory` backend (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
-| Typed layer   | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`)  |
-| Caching       | `memory.CachedObject[T]`, `memory.CachedStore[T]`, `memory.CacheMetrics`, `memory.CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
-| Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
-
-Everything else is internal and MUST NOT be relied upon. The surface stays
-additive-compatible (library-design §5).
+Everything else is internal and MUST NOT be relied upon. The surface stays additive-compatible (library-design §5).
 
 ### 7.2 Extension recipes
 
-**Add a storage backend** (S3, BadgerDB, PostgreSQL, …):
-1. Implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/
-   `List`/`Stats`) — idempotent `Put`, `Delete` no-op on missing,
-   `List(algo)` filter, `Get` → `ErrNotFound` on missing, and a `Stats`
-   summary (§4.11) (library-design §2).
-2. Keep the byte layer non-generic; everything above works unchanged.
-3. The `memory` backend (§4.5) is the minimal reference implementation.
-4. Add durability/atomicity per `operations.md` §1 where the
-   backend is persistent.
+**Add a storage backend:** implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`) — idempotent `Put`, no-op `Delete` on missing, `List(algo)` filter, `Get`→`ErrNotFound` on missing, a `Stats` summary (§4.11). Keep the byte layer non-generic; the `memory` backend is the minimal reference; add durability per operations.md §1 where persistent.
 
-**Add an object type** (e.g. `Document`):
-1. Implement `Object[Document]` (`Type()`/`References()`) — `References()`
-   is the contract for traversal and GC.
-2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()` — the
-   generic core stays untouched (serialization is the codec's job, §4.6).
-3. If you need a repository/resolver for your types, copy the `gitlike`
-   pattern (§4.12) into your own package — do NOT extend `cas` or `gitlike`.
-4. Never add `any` or reflection — add explicit typed methods.
+**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
 
-**Add a hash algorithm** (e.g. `blake3`):
-```go
-cas.RegisterHash("blake3", func(data []byte) cas.Hash { ... })
-```
-Then `cas.New(raw, codec, "blake3")` works; existing objects under other
-algorithms remain readable (the algorithm lives in the address).
+**Add a hash algorithm:** `cas.RegisterHash("blake3", func(data []byte) cas.Hash {...})`; then `cas.New(raw, codec, "blake3")` works; existing objects under other algorithms remain readable.
 
-**Add a codec** (gzip, protobuf, msgpack, encrypted):
-Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
-compression/encryption) and pass it to `cas.New`. Do not change the byte layer.
+**Add a codec:** implement `Codec[T]` (e.g. wrap `json.New[T]` with compression/encryption) and pass it to `cas.New`; do not change the byte layer.
 
-**Add a cache policy**: wrap or extend `memory.CachedStore[T]`; keep the
-`memory.CachedObject[T]` lazy-load contract and the metrics counters.
+**Add a cache policy:** wrap or extend `memory.CachedStore[T]`; keep the `CachedObject[T]` lazy-load contract and metrics counters.
 
-**Add maintenance ops**: add methods on `fs.Backend` (or a backend-specific
-type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
+**Add maintenance ops:** add methods on `fs.Backend`; keep `Stats`/`Verify`/`GC` semantics from §4.11.
 
 ### 7.3 Compatibility & contracts
 
-- The core is the base: **never** break the stable surface within a major
-  version (library-design §5); the HTTP API versioning is independent
-  (api-design §12).
-- Sentinel errors are the wire between core and clients: map them to HTTP
-  statuses in the API layer (api-design §6), never string-compare.
-- Performance contracts (lock-free reads, one-pass hashing, bounded
-  allocations) are part of the design — see `performance.md`.
-- The CAS laws are the correctness contract — see
-  `testing-strategy.md` §1.
+- Never break the stable surface within a major (library-design §5); HTTP API versioning is independent.
+- Sentinel errors are the wire between core and clients: map to HTTP statuses in the API layer (api-design §6), never string-compare.
+- Performance contracts (lock-free reads, one-pass hashing, bounded allocations) per performance.md; the CAS laws are the correctness contract (testing-strategy §1).
 
----
+## 8. Decisions & follow-ups
 
-## 8. Decisions & Follow-ups
-
-Resolved decisions (recorded here so implementation never re-litigates them):
-
-1. **Serialization format — RESOLVED: TLV envelope.** Objects are stored as a
-   compact binary **TLV envelope** (see `cas/envelope.go`):
-
+Resolved decisions (so implementation never re-litigates them):
+1. **Serialization — RESOLVED: TLV envelope** (`cas/envelope.go`):
    ```text
    +--------+-----------+------------+-----------+---------+
    | Version| TypeLen   | Type       | PayloadLen| Payload |
-   +--------+-----------+------------+-----------+---------+
    | 1 byte | uvarint   | N bytes    | uvarint   | M bytes |
    +--------+-----------+------------+-----------+---------+
    ```
-
-   - `Version` is the envelope format version (currently `1`); a leading byte
-     makes the format versionable.
-   - `TypeLen` is the length of the versioned type name (e.g. `commit@1`) as a
-     `uvarint`.
-   - `Type` is the versioned type name bytes (`<type>@<major>`; an absent
-     major reads as `@1`).
-   - `PayloadLen` is the length of the payload as a `uvarint`.
-   - `Payload` is exactly `PayloadLen` bytes — the `Codec[T]` output,
-     arbitrary bytes.
-
-   The `PayloadLen` field makes the frame self-delimiting: a reader can
-   locate the exact payload extent without scanning to EOF (streaming /
-   range reads). This replaces the earlier JSON envelope (`{"type","data"}` +
-   base64): no JSON or base64 overhead, streamable, codec-agnostic, works for
-   arbitrary binary payloads, and versionable. Git's object header
-   (`<type> <size>\0<data>`) follows a similar philosophy. It makes
-   `parseType`/`ResolveAny` work without a side registry and carries the
-   object-model version with the bytes (object-versioning §2). Applies
-   everywhere: gitlike objects, app objects, `parseType` (§4.12), `ResolveAny`.
-2. **`hashRegistry` synchronization — RESOLVED**: populated at init only;
-   reads are lock-free after startup. If runtime registration is ever
-   required, guard the registry with a `sync.RWMutex`.
-3. **LRU dependency — RESOLVED: in-tree std-lib implementation**
-   (`container/list` + map, or an equivalent) per coding-guidelines §3 — no
-   vendored/golang-lru dependency.
-6. **GC reachability — RESOLVED**: mark-and-sweep from application roots,
-   with age-based pruning for retention — see `consistency.md`
-   §4–§5 (reference counting rejected).
-7. **Large-file streaming — RESOLVED**: hash computation streams via
-   `io.TeeReader` (performance contract for `Store.Put`).
+   Version = format version (currently `1`; leading byte makes it versionable). TypeLen = length of the versioned type name (`commit@1`) as `uvarint`. Type = the name bytes (absent major reads as `@1`). PayloadLen = payload length as `uvarint`. Payload = exactly PayloadLen bytes — the `Codec[T]` output. `PayloadLen` makes the frame self-delimiting (a reader locates the payload without scanning to EOF — streaming/range reads). Replaces the earlier JSON envelope: no JSON/base64 overhead, streamable, codec-agnostic, versionable. Makes `parseType`/`ResolveAny` work without a side registry and carries the object-model version with the bytes. Applies everywhere (gitlike, app objects, `parseType`, `ResolveAny`).
+2. **`hashRegistry` synchronization — RESOLVED:** populated at init only; reads lock-free after startup; if runtime registration is required, guard with a `sync.RWMutex`.
+3. **LRU dependency — RESOLVED: in-tree std-lib** (`container/list` + map or equivalent) — no vendored/golang-lru.
+6. **GC reachability — RESOLVED:** mark-and-sweep from application roots with age-based pruning (consistency §4–§5; refcounting rejected).
+7. **Large-file streaming — RESOLVED:** hash streams via `io.TeeReader` (performance contract for `Store.Put`).
 
 Open follow-ups (future extensions, not blocking):
+4. **Packfiles** — Git-style packing of small objects into `pack-<ts>.pack`; design/acceptance in performance §9.
+5. **Compression layer** — `CompressedStore` wrapping `Backend` with gzip via `io.Pipe`; deferred until a real need.
+8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with AES-256-GCM (std-lib); the app supplies the key (never generated/stored by the core); transparent to the byte layer (payload carries ciphertext unchanged); deferred until a real need.
 
-4. **Packfiles** — Git-style packing (group small objects into
-   `pack-<ts>.pack` files); design and acceptance criteria in
-   `performance.md` §9.
-5. **Compression layer** — `CompressedStore` wrapping `Backend` with gzip via
-   `io.Pipe`; deferred until a real need appears.
-8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with
-   authenticated encryption (AES-256-GCM, std-lib `crypto/aes` +
-   `crypto/cipher`); the key is supplied by the application and never
-   generated or stored by the core; transparent to the byte layer (the
-   envelope's payload carries ciphertext unchanged); deferred until a
-   real need appears.
+## 9. Related documents
 
----
-
-## 9. Related Documents
-
-- `AGENTS.md` (repo root) — aggregator: project context,
-  conversation history, principles, extension guide, constraints.
-- `docs/specs/library-design.md` — lean-core budget,
-  sentinel errors, API shape, compatibility policy.
-- `docs/specs/performance.md` — lock-free reads,
-  one-pass hashing, allocations, benchmarks.
-- `docs/specs/testing-strategy.md` — the CAS laws and
-  how the core is proven.
-- `docs/specs/backend-architecture.md` — how the core
-  is composed into the server.
-- `docs/specs/examples.md` — runnable demonstrations
-  of the core.
-- `docs/specs/consistency.md` — broken/dangling
-  detection, GC from roots, age-based pruning (the maintenance model of
-  §4.11).
-- `docs/specs/AGENT.md` — the folder's meta-guide.
+`AGENTS.md` (aggregator), `library-design.md`, `performance.md`, `testing-strategy.md`, `backend-architecture.md`, `examples.md`, `consistency.md` (maintenance model of §4.11), `docs/specs/AGENT.md` (meta-guide).
