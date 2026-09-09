@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v14
+version: v15
 ---
 
 # Examples — go-cask
@@ -34,8 +34,8 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 **Goal:** a small CLI storing file trees as content-addressable objects and committing them over the `gitlike` layer end-to-end (a miniature Git). Also demonstrates the derived object-state report: every object classified verified/orphaned/corrupt/unverified from existing ops (`Verify` + reachability from `HEAD`) — proving those states are scan results, never stored metadata.
 
-**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `Verify`, `Stats`, derived-state audit (`List` + reachability mark + per-object `Verify`), CLI via `flag`.
-**Structure:** `main.go` (CLI: add, commit, log, cat, graph, audit, verify, stats), `repo.go` (helpers over `gitlike.Repository`: head ref, index), `audit.go` (derived-state report), `main_test.go`, `README.md`.
+**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `Verify`, `Stats`, derived-state audit (`List` + reachability mark + per-object `Verify`), CLI (manual `-store` parsing).
+**Structure:** `main.go` (CLI: add, commit, log, cat, graph, audit, verify, stats), `audit.go` (derived-state report), `main_test.go`, `README.md`.
 **Behaviors:** `add` stores blobs + builds a tree (identical content dedups); `commit -m` creates a `Commit` pointing at the tree + parent head (head = plain `Hash` in a small ref file); `log` walks parents via `WalkGraph`/`References()`; `cat` resolves+prints blob bytes; `graph` prints reachable graph with types; `audit [-no-verify]` lists all objects, marks reachable from `HEAD`, `Verify`s each, prints per-object state — `verified` (intact+reachable), `orphaned` (intact, unreachable — GC candidate), `corrupt` (Verify failed), `unverified` (reachable, skipped under `-no-verify`); states derived at scan time, never persisted (consistency §8); `verify` recomputes every hash; `stats` prints per-algorithm counts + total size.
 **Acceptance:** add→commit→log→cat round-trips; identical content across commits doesn't duplicate blobs; `verify` passes after a clean commit and reports a mismatch after on-disk corruption; `audit` reports clean=all `verified`, an uncommitted add's objects=`orphaned`, corrupted=`corrupt`, and under `-no-verify` reachable=`unverified`.
 
@@ -43,7 +43,7 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 **Goal:** cache build outputs under their content hash with a custom codec (gzip), a custom registered hash, bounded caching, metrics, mark-and-sweep GC.
 **Aspects:** custom `Codec[T]` (gzip-wrapped JSON), `RegisterHash` std-lib-only custom algo (e.g. `sha256double`; the name MUST obey the hash-string validation pattern of defaults §2, so `sha256-double` is not used), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
-**Structure:** `main.go` (put, get, gc, stats, monitor), `manifest.go` (Manifest referencing artifact hashes), `codec.go` (gzipCodec[T]), `hasher.go` (`RegisterHash("sha256double",…)`), `main_test.go`, `README.md`.
+**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (gzipCodec[T]), `hasher.go` (`RegisterHash("sha256double",…)`), `main_test.go`, `README.md`.
 **Behaviors:** `put` computes the custom hash, stores via `PutDedup`, prints `deduplicated: true/false`; manifests reference artifact hashes. `get` serves from `lru.Cache`, `CacheMonitor` prints hit rate on exit. `gc` mark-and-sweeps (unreferenced-from-any-manifest objects deleted); `stats` before/after shows it.
 **Acceptance:** same bytes → same hash → `deduplicated: true`; second `get` hits cache (hit rate > 0); `gc` deletes only unreferenced artifacts, leaves manifest-referenced intact.
 

@@ -20,8 +20,7 @@ Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additio
 
 ## Code walkthrough
 
-- `repo.go` — the `app` struct: `newApp` wires `fs.Backend` + `gitlike.Repository`; `readRef`/`writeRef` persist hashes as text; `currentTree`/`headCommit` read `INDEX`/`HEAD`.
-- `main.go` — the std-`flag` CLI:
+- `main.go` — the `app` struct (`newApp` wires `fs.Backend` + `gitlike.Repository`; `readRef`/`writeRef` persist hashes; `currentTree`/`headCommit` read `INDEX`/`HEAD`) and the argument-parsing CLI:
   - `add <file...>` — `repo.Blobs.Put` (dedup by content hash), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
   - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old `HEAD`), `Commits.Put`, advances `HEAD`;
   - `log` — walks the `Commit.Parent` chain; `cat <hash>` — `ResolveAny` → `Blob.Data`; `graph` — `WalkGraph` from `HEAD`;

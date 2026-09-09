@@ -9,7 +9,7 @@ import (
 // Register the custom "sha256double" algorithm: hash the content twice.
 // This is a deliberately trivial std-lib-only custom algorithm demonstrating
 // cas.RegisterHash (cas-core §7.2) — the algorithm name travels with every
-// address, so a store using it can mix with sha1/sha256 objects freely.
+// address, so a store using it can mix objects written under several registered algorithms (e.g. the built-in sha256) freely.
 // The name obeys the hash-string validation pattern (lowercase alnum, per
 // defaults §2); the illustrative "sha256-double" of the examples spec is
 // not a valid algorithm name.

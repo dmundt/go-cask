@@ -1,12 +1,12 @@
-// Command files is a miniature Git built on the gitlike reference layer
-// layer: it stores file trees as content-addressable objects, commits them,
+// Command files is a miniature Git built on the gitlike reference object model:
+// it stores file trees as content-addressable objects, commits them,
 // and can log, cat, graph, verify and summarize the store — the closest
 // thing to a tiny Git on CASK (examples spec §3.1).
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
 // Resolver/ResolvedObject, WalkGraph, Store[T] with the JSON codec
 // (json.New[T]()), fs.Backend fan-out, Verify, Stats, derived object-state
-// audit (verified/orphaned/corrupt), and a std-flag CLI.
+// audit (verified/orphaned/corrupt), and a argument-parsing CLI.
 //
 // Usage:
 //
