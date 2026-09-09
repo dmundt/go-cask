@@ -10,6 +10,13 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-09-09
+
+The `cas.Backend` contract gained a `Stats` method returning the shared
+`cas.Stats` summary (renamed from the fs-local `StoreStats`); the memory
+backend implements it, and both backends carry a compile-time interface
+assertion. Public API and on-disk format are otherwise unchanged.
+
 ### Performance
 
 - Core hot-path allocation reduction (on-disk format and public API
@@ -33,6 +40,15 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
   carry a compile-time `var _ cas.Backend` assertion so a dropped method breaks
   their own package's build. Spec/docs updated to the six-method backend
   contract.
+
+### Changed
+
+- `cas.StoreStats` renamed to `cas.Stats` (`cas/storestats.go` →
+  `cas/stats.go`); it stays in `package cas` (it is the `Backend.Stats`
+  return type, so it cannot live in `cas/backend` without an import cycle).
+- Both backends carry a compile-time `var _ cas.Backend = (*Backend)(nil)`
+  assertion so a dropped method breaks the backend's own package build.
+- Added unit coverage for `cas.Stats.String()`.
 
 ## [v0.1.0] - 2026-09-08
 
