@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v2
+version: v3
 ---
 
 # Branch Naming — go-cask
@@ -99,7 +99,7 @@ Bad (and why):
 ```text
 master                  # forbidden name; use main
 develop                 # no long-lived integration branch
-feature/MemoryBackend   # wrong type (feat), wrong case
+feature/fsBackend   # wrong type (feat), wrong case
 fix/1234               # description missing — what does it fix?
 feat/my_new_backend     # underscores; use hyphens
 new-branch              # missing the type prefix

@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v10
+version: v11
 ---
 
 # CLI — go-cask
@@ -30,7 +30,7 @@ Store operations speak to the store in-process over the library:
 
 | Mode  | Flag            | What it talks to                              | Auth               |
 | ----- | --------------- | --------------------------------------------- | ------------------ |
-| local | `-store <path>` | the library in-process (`FSBackend`)         | none (filesystem trust) |
+| local | `-store <path>` | the library in-process over the filesystem backend (`fs`) | none (filesystem trust) |
 
 - `-store` is required for store operations. There is no remote mode — the
   product ships no network JSON API (backend-architecture §1).

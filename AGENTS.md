@@ -1,4 +1,4 @@
-﻿---
+---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
 version: v11
@@ -176,7 +176,7 @@ below is consolidated from the last converged state of the conversation.
 ├─────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic)                                    │
 │   Hash (algo:digest) · Backend interface                   │
-│   Backends: FSBackend (reference), MemoryBackend (tests) │
+│   Backends: fs (reference), mem (tests) subpackages       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -189,7 +189,7 @@ flowchart TB
     subgraph CORE["Generic core (package cas)"]
         TYPED["Typed layer: Object[T] · Codec[T] · Store[T] · Walker[T]"]
         CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
-        BYTE["Byte layer: Hash · Backend · FSBackend"]
+        BYTE["Byte layer: Hash · Backend · fs/mem backends"]
     end
     APP1 --> TYPED
     APP2 --> TYPED
@@ -203,8 +203,8 @@ flowchart TB
 | `Hash`           | Content address; carries algorithm + digest (`sha256:ab..`) |
 | `HashFunc`       | Computes a `Hash` from bytes; runtime-registerable          |
 | `Backend`       | Raw byte storage interface (non-generic)                    |
-| `FSBackend`     | Filesystem backend: n-way fan-out paths (Git-like default), atomic writes, locking |
-| `MemoryBackend` | In-memory backend for tests/benchmarks (no disk I/O, not persistent) |
+| `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
+| `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
 | `Codec[T]`       | Serialization contract for a type `T`                       |
 | `Object[T]`      | Self-describing, typed object with `References()`           |
 | `Store[T]`       | Generic store: Put/PutDedup/Get/GetRaw/Exists/Delete          |
@@ -257,7 +257,7 @@ build their own equivalents for their own types.
 > not duplicate it: keep implementations and docs in sync with cas-core.
 
 > Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Hash`,
-> `Backend`); `fsstore.go`/`memstore.go` → cas-core §4.4–4.5;
+> `Backend`); `backend/fs`/`backend/mem` → cas-core §4.4–4.5;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
 > `cache.go` → §4.10; `maintenance.go` → §4.11; `examples/gitlike/*` → §4.12.
 
@@ -271,15 +271,15 @@ import (
     "fmt"
     "time"
 
-    "github.com/dmundt/go-cask/cas"
+    "github.com/dmundt/go-cask/cas/backend/fs"
     "github.com/dmundt/go-cask/examples/gitlike"
 )
 
 func main() {
     ctx := context.Background()
 
-    // 1. Backend from the generic core + git-like example repository on top.
-    raw, _ := cas.NewFSBackend("./repo")
+    // 1. Filesystem backend + git-like example repository on top.
+    raw, _ := fs.New("./repo")
     repo, _ := gitlike.NewRepository(raw, "sha256")
     resolver := gitlike.NewResolver(repo)
 
@@ -300,12 +300,10 @@ func main() {
     blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash)
     fmt.Println(string(blob.Data)) // "Hello, World!"
 
-    // 4. Lazy + cached access (gitlike example caches).
-    cachedRepo, _ := gitlike.NewCachedRepository(raw, "sha256", 1000)
-    ref, _ := cachedRepo.GetCommit(ctx, commitHash)
-    fmt.Println("loaded:", ref.IsLoaded()) // false
-    obj, _ := ref.Load(ctx)
-    fmt.Println("message:", obj.(*gitlike.Commit).Message)
+    // 4. Cached access (gitlike per-type LRU caches over the repository).
+    cachedRepo, _ := gitlike.NewCachedRepository(repo, 1000)
+    cachedCommit, _ := cachedRepo.GetCommit(ctx, commitHash)
+    fmt.Println("message:", cachedCommit.Message)
 
     // 5. Traverse the whole graph.
     _ = gitlike.WalkGraph(ctx, resolver, tagHash, func(o *gitlike.ResolvedObject) error {
@@ -319,7 +317,9 @@ For tests and ephemeral use, swap the backend — everything above works
 unchanged:
 
 ```go
-raw := cas.NewMemoryBackend() // in-memory: fast, deterministic, not persistent
+import mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
+
+raw := mem.New() // in-memory: fast, deterministic, not persistent
 ```
 
 ---
@@ -330,14 +330,15 @@ raw := cas.NewMemoryBackend() // in-memory: fast, deterministic, not persistent
 1. Implement `Backend` exactly (`Put/Get/Exists/Delete/List`), honoring
    context propagation, error wrapping, and atomic/durable writes.
 2. Keep the byte layer non-generic; everything above it works unchanged.
-3. Mirror `FSBackend`'s guarantees: idempotent `Put`, `Delete` no-op on
-   missing objects, `List(algo)` filtering. `MemoryBackend` (section 3b) is
-   the minimal reference implementation.
+3. Mirror the `fs` backend's guarantees: idempotent `Put`, `Delete` no-op on
+   missing objects, `List(algo)` filtering. The `mem` backend (`cas/backend/mem`)
+   is the minimal reference implementation.
 
 **Add a new object type** (e.g. `Document`):
-1. Implement `Object[Document]` (`Type/References/Serialize/Deserialize`).
-2. Create your own `*Store[Document]` with `JSONCodec[Document]{}` — the
-   generic core stays untouched.
+1. Implement `Object[Document]` (`Type/References`) — serialization is the
+   codec's job, not the object's.
+2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()`
+   (package `cas/codec/json`) — the generic core stays untouched.
 3. If you need a repository/resolver for your types (per-type stores,
    `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
    `gitlike` example package into your own package; do NOT add your types to
@@ -348,12 +349,12 @@ raw := cas.NewMemoryBackend() // in-memory: fast, deterministic, not persistent
 ```go
 cas.RegisterHash("blake3", func(data []byte) cas.Hash { ... })
 ```
-Then `NewStore(raw, codec, "blake3")` works; existing objects under other
+Then `cas.New(raw, codec, "blake3")` works; existing objects under other
 algorithms remain readable (the algorithm lives in the address).
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
-Implement `Codec[T]` (e.g. wrap `JSONCodec[T]` with compression/encryption)
-and pass it to `NewStore`. Do not change `Backend`.
+Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
+compression/encryption) and pass it to `cas.New`. Do not change `Backend`.
 
 **Add cache policy**: extend `CachedStore[T]` or add a new wrapper; keep the
 `CachedObject[T]` lazy-load contract and metrics counters.
@@ -384,7 +385,7 @@ gofmt -l .
   several important types or the type isn't the package's primary one
   (`cas.NewHash`, `cas.NewWalker`, `memory.NewSmartCache`) — coding-guidelines
   §1 "Constructors".
-- Defaults: hash algorithm `sha256`, codec `JSONCodec[T]`, Git-like fan-out
+- Defaults: hash algorithm `sha256`, codec the JSON codec (`cas/codec/json`), Git-like fan-out
   (`FanOut=2`, `FanLevels=1` → `<algo>/aa/<full-hex>`; any n-way/n-level
   layout via `WithFanOut`/`WithFanLevels`), directory permissions `0o755`,
   files `0o644`.

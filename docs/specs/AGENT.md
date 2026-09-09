@@ -1,8 +1,8 @@
-﻿---
+---
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v8
+version: v9
 tags: [go-cask]
 status: stable
 ---
@@ -135,7 +135,7 @@ All files MUST use exactly these terms. **Forbidden synonyms are listed.**
 | the viewer         | The embedded technical browser UI (`internal/web/`). **Not** "debug UI".     |
 | viewer API         | The hypermedia surface under `/viewer/` (HTML).                        |
 | CAS API            | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface.                                |
-| `Backend`         | The non-generic byte-storage interface; backends: `FSBackend`, `MemoryBackend`, … |
+| `Backend`         | The non-generic byte-storage interface; backend implementations live in subpackages: `fs.Backend` (disk, `cas/backend/fs`), `memory.Backend` (in-memory, `cas/backend/mem`). |
 | `Store[T]`         | The generic typed store.                                               |
 | `Hash`             | Content address `algo:hexdigest`; validated with `ParseHash`.          |
 | fan-out            | The configurable directory layout (`FanOut`/`FanLevels`), Git-like default. |

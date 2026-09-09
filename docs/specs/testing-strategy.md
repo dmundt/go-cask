@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v9
+version: v10
 ---
 
 # Testing Strategy — go-cask
@@ -42,8 +42,8 @@ Tests exist to *prove* behavior, so each proof must be **explicit**:
   asserts — never anonymous branches under a generic name).
 - Fuzz, race, golden, and benchmark runs are **supplements, never the only
   guard**: a fuzz seed or committed corpus entry without an explicit test for
-  the behavior it exercises is a gap (e.g. invalid-UTF-8 lossiness is pinned
-  by `TestJSONCodecInvalidUTF8Lossy`, not by a corpus file).
+  the behavior it exercises is a gap (e.g. the JSON codec's invalid-UTF-8
+  lossiness is pinned by an explicit test, not by a corpus file).
 - Tests MUST NOT depend on execution order or shared mutable state: each test
   builds its own store/fixture (`t.TempDir`); mutating global registries
   (e.g. `RegisterHash` in tests) uses unique names.
@@ -87,7 +87,7 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 - `Equal`: same algo+bytes, same bytes different algo, nil vs non-nil
 
 **Codec & object model**
-- empty value, all-zero struct, nested/edge values; `Decode(Encode(v)) == v`
+- empty value, all-zero struct, nested/edge values; `Unmarshal(Marshal(v)) == v`
 - versioned type names (`type@1`, `type@2`), legacy unversioned (`@1`
   default), unknown type/major → `ErrUnknownType`
 
@@ -136,8 +136,8 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
    - `FuzzParseHash` — never panics; valid outputs round-trip
    - `FuzzPathRoundTrip` — arbitrary digest + layout → `hashPath` →
      `pathToHash` equality
-   - `FuzzCodecRoundTrip` — `JSONCodec.Decode(Encode(x)) == x` for generated
-     structs
+   - `FuzzCodecRoundTrip` — the JSON codec round-trips (`json.New[T]()`:
+     `Unmarshal(Marshal(x)) == x`) for generated structs
    - `FuzzVerify` — corrupted bytes must fail `Verify`
    Commit corpora for regressions; run each target for a few seconds in CI,
    longer in nightly.
@@ -152,12 +152,13 @@ Beyond the happy paths, every component MUST cover its edge and error cases:
 7. **HTTP** — `httptest` for CAS API handlers (role matrix → 401/403, rate
    limit → 429, streaming round-trip, OpenAPI served) and viewer routes
    (login, session, CSRF, fragments) — every route and every status per §2/§3.
-8. **Backends under test** — unit/property/fuzz tests run against
-   `MemoryBackend` by default (fast, deterministic, no disk I/O); the CAS
-   laws (§1) and the §3 inventory are table-driven over **both**
-   `MemoryBackend` and `FSBackend` (including every fan-out layout), so the
-   fs backend's integration behavior — atomic writes, fan-out paths, `.tmp`
-   handling — stays covered where it differs.
+8. **Backends under test** — unit/property/fuzz tests run against the
+   in-memory `memory` backend (`cas/backend/mem`) by default (fast,
+   deterministic, no disk I/O); the CAS laws (§1) and the §3 inventory are
+   table-driven over **both** the `memory` and the filesystem `fs` backends
+   (including every fan-out layout via `fs.WithFanOut`/`fs.WithFanLevels`),
+   so the fs backend's integration behavior — atomic writes, fan-out paths,
+   `.tmp` handling — stays covered where it differs.
 
 ---
 

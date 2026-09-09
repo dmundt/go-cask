@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v10
+version: v11
 ---
 
 # Performance — go-cask
@@ -30,7 +30,7 @@ version: v10
 
 ---
 
-## 2. Lock-Free Reads (`FSBackend`)
+## 2. Lock-Free Reads (`fs.Backend`)
 
 The single biggest "fast" win, and it makes the code *simpler*:
 
@@ -51,7 +51,7 @@ Rules:
 
 1. `Get`/`Exists`/`List`/`Stats` MUST NOT acquire a lock.
 2. `Put`/`Delete` MAY use one `sync.Mutex` (not `RWMutex`).
-3. Document the atomicity argument in the `FSBackend` type comment so the
+3. Document the atomicity argument in the `fs.Backend` type comment so the
    lock-free design survives refactors.
 
 ---
@@ -68,14 +68,14 @@ Rules:
 
 ## 4. Allocation & Streaming Rules
 
-1. Hot paths (`Store.Put`/`Get` on small objects, `FSBackend.Put`/`Get`)
+1. Hot paths (`Store.Put`/`Get` on small objects, `fs.Backend.Put`/`Get`)
    SHOULD keep allocations flat and bounded; prove it with
    `b.ReportAllocs()`.
 2. Reuse buffers: `sync.Pool` for scratch buffers in the HTTP layer and the
    verify/hexdump paths.
 3. Never `io.ReadAll` a large object in a byte-layer read (`Backend.Get`)
    or in `Store.GetRaw` — stream, or use a bounded read. Typed `Store.Get`
-   may buffer only because `Codec.Decode` needs bytes; document that.
+   may buffer only because `Codec.Unmarshal` needs bytes; document that.
 4. No `fmt` in hot paths where avoidable — use `encoding/hex` directly, not
    `%x` formatting loops.
 5. No external dependencies for speed: no `unsafe`, no cgo, no assembly, no
@@ -91,7 +91,7 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 | -------------------------- | -------------------------------------------- |
 | `BenchmarkStorePut`        | 64 B, 1 KiB, 1 MiB                           |
 | `BenchmarkStoreGet`        | same                                         |
-| `BenchmarkFSBackendPut/Get` | same, flat vs. fan-out layout               |
+| `fs`-backend Put/Get        | same, flat vs. fan-out layout               |
 | `BenchmarkRoundTrip`       | Put + Get combined                           |
 | `BenchmarkVerify`          | intact object                                |
 | `BenchmarkParseHash`       | valid + invalid inputs                       |
@@ -99,9 +99,9 @@ Benchmarks live next to the code (`cas/`, `examples/gitlike/` where meaningful):
 | `BenchmarkScale{...}`      | on-demand state-scaling probes (see below)   |
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
-- Benchmarks that isolate store logic from disk noise run against
-  `MemoryBackend` (deterministic, no I/O variance); disk behavior is
-  covered separately by the `BenchmarkFSBackend*` cases.
+- Benchmarks that isolate store logic from disk noise run against the
+  in-memory `memory` backend (deterministic, no I/O variance); disk
+  behavior is covered separately by the `fs`-backend cases.
 - Benchmarks are run on demand (`go test -bench=. -benchmem -count=5
   ./cas/...`); there is **no committed baseline and no CI gate** — shared
   CI runners are too noisy for wall-clock gating, and allocation
@@ -231,7 +231,7 @@ group many small objects into a few large files.
   loose).
 - Write latency becomes batched (small objects wait for a flush).
 - Complexity: keep it behind the `Backend` contract (a `PackedBackend`
-  wrapper or an `FSBackend` mode), so `Store[T]`, caches, and the HTTP layer
+  wrapper or an `fs`-backend mode), so `Store[T]`, caches, and the HTTP layer
   are untouched.
 
 ### 9.4 Acceptance criteria
@@ -264,8 +264,8 @@ every material core change (CI smoke: subset) and fully in nightly.
 
 | # | Scenario                          | Setup                                                    |
 | - | --------------------------------- | -------------------------------------------------------- |
-| T-01 | Small-object storm            | 100k × 1 KiB, `MemoryBackend` + `FSBackend`            |
-| T-02 | Large-object streaming        | 10 × 1 GiB, `FSBackend`; watch RSS during Put/Get      |
+| T-01 | Small-object storm            | 100k × 1 KiB, `memory` + `fs` backends                  |
+| T-02 | Large-object streaming        | 10 × 1 GiB, `fs`; watch RSS during Put/Get             |
 | T-03 | Mixed workload                | 90% small reads + 10% small writes, warm store           |
 | T-04 | Concurrent readers            | 32 goroutines reading the same 100k objects              |
 | T-05 | Concurrent writers            | 8 goroutines writing distinct small objects              |

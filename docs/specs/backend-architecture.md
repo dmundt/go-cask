@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v11
+version: v12
 ---
 
 # Backend Architecture — go-cask
@@ -163,8 +163,9 @@ Rules:
 
 ## 5. Storage Backend Selection
 
-- Config selects the backend: filesystem (`FSBackend`, fan-out layout) or
-  memory (`MemoryBackend`, tests/ephemeral) — see cas-core §4.4–4.5.
+- Config selects the backend: the filesystem backend (`fs`, Git-like fan-out
+  layout) or the in-memory backend (`memory`, tests/ephemeral) — see
+  cas-core §4.4–4.5.
 - The viewer and CLI talk to the library **in-process** only — there is no
   remote backend and no client SDK. A process that must serve a store to
   other machines is an app concern: copy the `examples/api` pattern (public

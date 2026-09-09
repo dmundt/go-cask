@@ -1,4 +1,4 @@
-﻿# CASK — Content Addressable Store Kit
+# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
@@ -36,9 +36,9 @@ decisions that shape the repo (each named spec is the normative contract):
   `examples/`; examples never import `internal/` and are self-contained
   except the `gitlike` shared reference library (examples §2 rule 11).
 - **Lean generic core with reference implementations.** `cas` stays
-  app-agnostic; each pluggable seam ships one reference (`sha1`/`sha256`,
-  `MemoryBackend`, `JSONCodec`), and only the cas-core §7.1 surface is
-  stable — speculative surface is cut, not kept.
+  app-agnostic; each pluggable seam ships reference implementations (`sha1`/
+  `sha256`, the `fs` and `mem` backends, the JSON codec), and only the
+  cas-core §7.1 surface is stable — speculative surface is cut, not kept.
 - **The byte layer is policy-free.** GC/prune take app-supplied roots;
   roots are pins (there is no per-object pinned property); the store never
   interprets typed references (consistency §4).
@@ -103,14 +103,14 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) []Hash
     }
-    class FSBackend {
+    class "fs.Backend" as fsBackend {
         <<backend>>
     }
-    class MemoryBackend {
+    class "mem.Backend" as memBackend {
         <<backend>>
     }
-    Backend <|.. FSBackend : implements
-    Backend <|.. MemoryBackend : implements
+    Backend <|.. fsBackend : implements
+    Backend <|.. memBackend : implements
 
     class Object~T~ {
         <<interface>>
@@ -119,8 +119,8 @@ classDiagram
     }
     class Codec~T~ {
         <<interface>>
-        +Encode(v T) ([]byte, error)
-        +Decode(data []byte) (T, error)
+        +Marshal(v T) ([]byte, error)
+        +Unmarshal(data []byte) (T, error)
     }
     class Store~T~ {
         +Put(ctx, obj T) (Hash, error)
@@ -145,20 +145,23 @@ classDiagram
 
 ```go
 import (
+    fs "github.com/dmundt/go-cask/cas/backend/fs" // or use the mem backend
     "github.com/dmundt/go-cask/cas"
     "github.com/dmundt/go-cask/examples/gitlike"
 )
 
-raw, _ := cas.NewFSBackend("./objects")          // backend
+raw, _ := fs.New("./objects")                     // backend
 repo, _ := gitlike.NewRepository(raw, "sha256")   // typed layer on top
 h, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
-blob, _ := repo.Blobs.Get(ctx, h)                // *gitlike.Blob
+blob, _ := repo.Blobs.Get(ctx, h)                 // *gitlike.Blob
 ```
 
 For tests and ephemeral use, swap the backend:
 
 ```go
-raw := cas.NewMemoryBackend() // fast, deterministic, not persistent
+mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
+
+raw := mem.New() // fast, deterministic, not persistent
 ```
 
 ## The specification set

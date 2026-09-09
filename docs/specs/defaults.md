@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v12
+version: v13
 ---
 
 # Defaults & Behavior — go-cask
@@ -46,7 +46,7 @@ version: v12
 | Fan-out bound                     | `FanLevels × FanOut ≤ 64`                              | cas-core §4.4       |
 | Directory permissions             | `0o755`                                            | cas-core §4.4       |
 | File permissions                  | `0o644`                                            | cas-core §4.4       |
-| Default codec                     | `JSONCodec[T]`                                     | cas-core §4.6       |
+| Default codec                     | the JSON codec (`json.New[T]()`)               | cas-core §4.6       |
 | Read concurrency                  | lock-free (`Get`/`Exists`/`List`/`Stats`)          | cas-core §4.4       |
 | Write concurrency                 | one `sync.Mutex` for `Put`/`Delete`                | cas-core §4.4       |
 | Hash-on-write                     | single pass via `io.TeeReader`                     | performance §3      |

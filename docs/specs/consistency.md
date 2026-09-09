@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v7
+version: v8
 ---
 
 # Consistency — go-cask
@@ -116,8 +116,8 @@ retention policy, in the spirit of restic's retention rules and S3 lifecycle
 expiration.
 
 - **Age source**: the object's **creation time ≈ first-`Put` time**, taken
-  from the file mtime (`FSBackend` — zero schema change) or a per-object
-  timestamp map (`MemoryBackend`). No metadata sidecar, no schema migration.
+  from the file mtime (the fs backend — zero schema change) or a per-object
+  timestamp map (the mem backend). No metadata sidecar, no schema migration.
 - **Operation**: `Prune(ctx, roots []Hash, minAge time.Duration,
   dryRun bool)`:
   1. mark reachable from roots (§4);
@@ -196,8 +196,8 @@ Stats()                 # what is stored, per algorithm
 
 ## 9. Where These Live
 
-- **Core (cas-core §4.11)**: `FSBackend.Verify`, `GC`, `Stats`; `Prune` is
-  the age-based maintenance operation defined here.
+- **Core (cas-core §4.11)**: the fs backend's `Verify`, `GC`, `Stats`, and
+  `Prune` — the age-based retention policy is defined in §5.
 - **CLI (cli §2)**: `verify`, `gc`, `prune`, `clean` operate in-process
   over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan
   `*.tmp` files older than a threshold (operations §2).

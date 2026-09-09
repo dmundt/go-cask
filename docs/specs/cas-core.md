@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v27
+version: v28
 ---
 
 # CAS Core — go-cask
@@ -98,10 +98,10 @@ flowchart TB
     subgraph TYPED["Typed layer — GENERIC CORE (package cas, type-safe, no any)"]
         direction TB
         OBJECT["Object[T] — self-describing, reference-aware objects"]
-        CODEC["Codec[T] — serialization (JSONCodec[T] default)"]
+        CODEC["Codec[T] — serialization (the JSON codec is default: json.New[T]())"]
         STORE["Store[T] — Put / Get / GetRaw / Exists / Delete"]
         WALKER["Walker[T] — generic graph traversal over References()"]
-        CACHE["Caching / lazy loading layer (generic over T):<br/>CachedObject[T] → CachedStore[T] → LRUCache[T]"]
+        CACHE["Caching / lazy loading layer (generic over T):<br/>memory.CachedObject[T] → memory.CachedStore[T] → lru.Cache"]
         CACHE -. "wraps" .-> STORE
     end
 
@@ -109,7 +109,7 @@ flowchart TB
         direction TB
         HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
         RAW["Backend interface"]
-        BACKENDS["Backends: FSBackend (reference), MemoryBackend (tests),<br/>S3, BadgerDB, PostgreSQL"]
+        BACKENDS["Backends: fs.Backend (reference), memory.Backend (tests),<br/>S3, BadgerDB, PostgreSQL"]
     end
 
     APP -->|"depends on"| TYPED
@@ -135,10 +135,10 @@ Read this first; it explains the whole design in one pass.
 references). It creates a `Store[Note]` over a `Backend` backend with a
 `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`:
 
-1. **Serializes** the note via `Codec.Encode` and wraps the payload in the
-   self-describing form `"<type>@<major>\\n<codec payload>"` built by
-   `Store.Put` itself — the codec is the single serialization authority
-   (objects never serialize themselves);
+1. **Serializes** the note via `Codec.Marshal` and wraps the payload in the
+   TLV envelope `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`
+   built by `Store.Put` itself (see `cas/envelope.go`) — the codec is the
+   single serialization authority (objects never serialize themselves);
 2. **Hashes** the bytes with the store's `HashFunc` — producing the content
    address `sha256:…`;
 3. **Streams** the bytes into the byte layer via `Backend.Put(ctx, h, r)` —
@@ -149,7 +149,7 @@ references). It creates a `Store[Note]` over a `Backend` backend with a
    content is stored once (dedup).
 
 **Reading an object.** `Store.Get(ctx, h)` reverses the path:
-`Backend.Get` streams the bytes, `Codec.Decode` reconstructs the value, and
+`Backend.Get` streams the bytes, `Codec.Unmarshal` reconstructs the value, and
 the decoded object's `Type()` must match the envelope's type name
 (`ErrUnknownType` on mismatch). The result is the concrete `T` — no casts,
 no `Object[T]` intermediate.
@@ -190,14 +190,10 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) []Hash
     }
-    class FSBackend {
-        <<backend>>
-    }
-    class MemoryBackend {
-        <<backend>>
-    }
-    Backend <|.. FSBackend : implements
-    Backend <|.. MemoryBackend : implements
+    class fsBackend["fs.Backend (filesystem)"]
+    class memBackend["memory.Backend (in-memory)"]
+    Backend <|.. fsBackend : implements
+    Backend <|.. memBackend : implements
 
     class Object~T~ {
         <<interface>>
@@ -206,8 +202,8 @@ classDiagram
     }
     class Codec~T~ {
         <<interface>>
-        +Encode(v T) ([]byte, error)
-        +Decode(data []byte) (T, error)
+        +Marshal(v T) ([]byte, error)
+        +Unmarshal(data []byte) (T, error)
     }
     class Store~T~ {
         +Put(ctx, obj T) (Hash, error)
@@ -223,9 +219,9 @@ classDiagram
     Walker~T~ ..> Store~T~ : reads via Get
 
     class CachedStore~T~
-    class LRUCache~T~
+    class lruCache["lru.Cache~T~"]
     CachedStore~T~ o-- Store~T~ : wraps
-    LRUCache~T~ --|> CachedStore~T~ : extends
+    lruCache --|> CachedStore~T~ : extends
 ```
 
 **Byte layer — addressing and storage:**
@@ -247,18 +243,19 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) ([]Hash, error)
     }
-    class FSBackend {
-        +fanOut int
-        +fanLevels int
-        +Stats() *StoreStats
-        +Verify(ctx, h) error
-        +GC(ctx, reachable) error
-    }
-    class MemoryBackend {
-        +objects map[string][]byte
-    }
-    Backend <|.. FSBackend : implements
-    Backend <|.. MemoryBackend : implements
+    class fsBackend["fs.Backend (cas/backend/fs)"]
+    fsBackend : +fanOut int
+    fsBackend : +fanLevels int
+    fsBackend : +Stats() *fs.StoreStats
+    fsBackend : +Verify(ctx, h) error
+    fsBackend : +GC(ctx, reachable) error
+    fsBackend : +Prune(ctx, roots, minAge, dryRun)
+    fsBackend : +Size(ctx, h)
+    fsBackend : +Clean(ctx, olderThan)
+    class memBackend["memory.Backend (cas/backend/mem)"]
+    memBackend : +objects map[string][]byte
+    Backend <|.. fsBackend : implements
+    Backend <|.. memBackend : implements
 ```
 
 **Typed layer — the generic store:**
@@ -273,8 +270,8 @@ classDiagram
     }
     class Codec~T~ {
         <<interface>>
-        +Encode(T) ([]byte, error)
-        +Decode([]byte) (T, error)
+        +Marshal(T) ([]byte, error)
+        +Unmarshal([]byte) (T, error)
     }
     class Store~T~ {
         +raw Backend
@@ -303,16 +300,16 @@ classDiagram
     }
     class CachedStore~T~ {
         +cache sync.Map
-        +metrics CacheMetrics
+        +metrics memory.CacheMetrics
         +Proxy(ctx, h) *CachedObject~T~
         +Get(ctx, h) T
         +Preload(ctx, hashes) error
-        +CacheStats() CacheStats
+        +CacheStats() memory.CacheStats
     }
-    class LRUCache~T~
+    class lruCache["lru.Cache~T~"]
     CachedStore~T~ o-- Store~T~ : wraps
     CachedObject~T~ o-- CachedStore~T~ : back-ref
-    LRUCache~T~ --|> CachedStore~T~ : extends
+    lruCache --|> CachedStore~T~ : extends
 ```
 
 **Example layer — gitlike (application code, not core):**
@@ -376,7 +373,7 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 
 - Built-in algorithm: `sha256` (others registered at runtime, e.g.
   `blake3`).
-- `NewStore(raw, codec, algo)` resolves the algorithm at construction;
+- `cas.New(raw, codec, algo)` resolves the algorithm at construction;
   `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot
   path (library-design §3).
 - `NewHasher` returns a streaming hasher for a registered algorithm (the
@@ -456,7 +453,7 @@ This interface is the **backend extension point**: any storage system (S3,
 BadgerDB, PostgreSQL, IPFS blockstore, …) can be plugged in by implementing
 these five methods (recipe in §7.2).
 
-### 4.4 `FSBackend` — filesystem backend
+### 4.4 `fs.Backend` — the filesystem backend (`cas/backend/fs`)
 
 **On-disk layout (fan-out, Git-like by default):**
 
@@ -486,8 +483,8 @@ wide (4,1):              <base>/sha256/a1b2/a1b2c3d4...e0
   remainder (Git stores `objects/aa/<remaining-38-hex>`); here the full
   digest is the file name at every fan-out level.
 - Any n-way / n-level fan-out layout is allowed:
-  `NewFSBackend(basePath, opts ...FSOption)` accepts `WithFanOut(n)` and
-  `WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length
+  `fs.New(basePath, opts ...backend.Option)` accepts `fs.WithFanOut(n)` and
+  `fs.WithFanLevels(n)`, as long as `FanLevels × FanOut` ≤ the hex digest length
   (64 for SHA-256); over-deep configurations are rejected at
   construction.
 - `hashPath(h)` builds the path from the configured layout;
@@ -552,7 +549,7 @@ backend-architecture §1).
 crashed writes leave behind) older than the threshold — always safe, `.tmp`
 files are never valid objects (operations §2).
 
-### 4.5 `MemoryBackend` — in-memory backend
+### 4.5 `memory.Backend` — the in-memory backend (`cas/backend/mem`)
 
 A `Backend` implementation that keeps objects in a `map[string][]byte`
 (keyed by `h.String()`), guarded by a `sync.RWMutex`:
@@ -560,7 +557,7 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
 - **Purpose.** Fast, dependency-free, deterministic storage for unit,
   property, and fuzz tests (testing-strategy §4.8) and for benchmarks that
   isolate store logic from disk noise (performance §5). **Not persistent.**
-- **Contracts.** Same `Backend` semantics as `FSBackend`: idempotent
+- **Contracts.** Same `Backend` semantics as the fs backend (`fs.Backend`): idempotent
   `Put`, `Get` returns a reader the caller MUST close (missing →
   `ErrNotFound`), `Delete` is a no-op on missing objects, `List(algo)`
   filters by algorithm.
@@ -568,9 +565,10 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
   for tests and small objects; `Get` returns `io.NopCloser(bytes.NewReader)`
   over the stored slice, which is never mutated after `Put`.
 - **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
-  trick of `FSBackend` does not apply, but it is still orders of magnitude
+  trick of the fs backend does not apply, but it is still orders of magnitude
   faster than disk, which is the point.
-- **Construction:** `mem.New(...)` (optionally `mem.WithMaxSize(n)` to cap
+- **Construction:** `memory.New(...)` (package `memory` at
+  `cas/backend/mem`; optionally `memory.WithMaxSize(n)` to cap
   total stored bytes; 0 = unbounded); swap-in compatible with any `Store[T]`,
   `gitlike` repository, or HTTP handler that takes a `Backend`.
 
@@ -578,15 +576,16 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
 
 ```go
 type Codec[T any] interface {
-    Encode(v T) ([]byte, error)
-    Decode(data []byte) (T, error)
+    Marshal(v T) ([]byte, error)
+    Unmarshal(data []byte) (T, error)
 }
 ```
 
-- Default: `JSONCodec[T]` (`json.Marshal` / `json.Unmarshal`).
+- Default: the JSON codec, `json.New[T]()` (`cas/codec/json`), which wraps the
+  std-lib `encoding/json` `Marshal`/`Unmarshal`.
 - Compression/encryption/protobuf are additional `Codec[T]` implementations;
   they never change the byte layer.
-- Contract: `Decode(Encode(v)) == v` (round-trip) for all storable values.
+- Contract: `Unmarshal(Marshal(v)) == v` (round-trip) for all storable values.
 
 ### 4.7 `Object[T]` — self-describing typed object
 
@@ -616,14 +615,14 @@ type Store[T Object[T]] struct {
     hasher HashFunc
 }
 
-func NewStore[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error)
+func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error)
 ```
 
 | Method        | Behavior                                                          |
 | ------------- | ----------------------------------------------------------------- |
-| `Put`         | `Put(ctx, obj T)` → `codec.Encode(obj)` → `"type\\n"+payload` → `hasher(data)` → `raw.Put` → h |
+| `Put`         | `Put(ctx, obj T)` → `codec.Marshal(obj)` → TLV envelope → `hasher(data)` → `raw.Put` → h |
 | `PutDedup`    | `raw.Exists` first; returns `(h, alreadyStored, err)`             |
-| `Get`         | `raw.Get` → `codec.Decode` → the concrete `T`; the decoded `Type()` must match the stored type name (else `ErrUnknownType`) |
+| `Get`         | `raw.Get` → `codec.Unmarshal` → the concrete `T`; the decoded `Type()` must match the stored type name (else `ErrUnknownType`) |
 | `GetRaw`      | returns the serialized bytes for inspection/tooling               |
 | `Exists`      | delegates to `raw`                                                |
 | `Delete`      | delegates to `raw`                                                |
@@ -657,49 +656,55 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 
 ### 4.10 Caching & lazy loading
 
-**`cache.CachedObject[T]`** — lazy proxy for one hash:
+**`memory.CachedObject[T]`** — lazy proxy for one hash (`cas/cache/mem`,
+`package memory`):
 
-- Fields: `hash`, back-pointer to its `cache.CachedStore[T]`, `sync.RWMutex`,
+- Fields: `hash`, back-pointer to its `memory.CachedStore[T]`, `sync.RWMutex`,
   `obj`, `loaded`, `err`.
 - `Load(ctx)` uses **double-checked locking**; loads from the underlying
   `Store[T]` exactly once, then memoizes (object AND error).
 - `IsLoaded()` reports state without loading.
 
-**`cache.CachedStore[T]`** — wraps `Store[T]`:
+**`memory.CachedStore[T]`** — wraps `Store[T]`:
 
-- Cache: `sync.Map` keyed by `h.String()` → `*cache.CachedObject[T]`.
-- Metrics: `CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic counters).
-- `Proxy(ctx, h)` returns a **not-yet-loaded** `*cache.CachedObject[T]` reference
+- Built with `memory.New(store)`.
+- Cache: `sync.Map` keyed by `h.String()` → `*memory.CachedObject[T]`.
+- Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic counters).
+- `Proxy(ctx, h)` returns a **not-yet-loaded** `*memory.CachedObject[T]` reference
   (verifies existence first); `Get` = `Proxy` + `Load`, returning the
   concrete `T`.
 - `Preload(ctx, hashes)` loads many objects in parallel (worker goroutines +
   error channel); `PreloadRecursive(ctx, h, depth)` preloads the object graph.
-- `CacheStats()` (hit rate, size, loads, evicts), `Evict(h)`, `Clear()`,
-  `Warmup(ctx, hashes)`.
+- `CacheStats()` → `memory.CacheStats` (hit rate, size, loads, evicts),
+  `Evict(h)`, `Clear()`, `Warmup(ctx, hashes)`.
 
-**`cache.LRUCache[T]`** — size-bounded cache:
+**`lru.Cache[T]`** — size-bounded LRU cache (`cas/cache/lru`):
 
-- Embeds `cache.CachedStore[T]`; adds an LRU with `maxSize` (in-tree std-lib
-  implementation per coding-guidelines §3 — see §8, decision 3);
+- Wraps/embeds `memory.CachedStore[T]`; adds an LRU with `maxSize` (in-tree
+  std-lib implementation per coding-guidelines §3 — see §8, decision 3);
   overrides `Proxy` and `Get` to track LRU and promote existing entries.
-- `Newcache.LRUCache(store, maxSize)` rejects `maxSize <= 0`.
+- `lru.New(store, maxSize)` returns `(*lru.Cache[T], error)` and rejects
+  `maxSize <= 0`.
 
-Prefetch-on-access (`SmartCache`) and periodic cache observability
-(`CacheMonitor`) are **example recipes, not part of `cas`**: `examples/notes`
-demonstrates prefetch-on-access over `cache.CachedStore[T]`, and `examples/artifacts`
-demonstrates a cache monitor emitting snapshots — see their READMEs.
+Prefetch-on-access (`prefetch.SmartCache[T]`, built with
+`prefetch.NewSmartCache(store, depth)` in `cas/cache/prefetch`) and periodic
+cache observability (`CacheMonitor`) are **example recipes, not part of
+`cas`**: `examples/notes` demonstrates prefetch-on-access over
+`memory.CachedStore[T]`, and `examples/artifacts` demonstrates a cache monitor
+emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
 
-- **`FSBackend.Stats(ctx)`** → `StoreStats{AlgorithmCounts, TotalSize,
-  ObjectCount}` with a `String()` summary; walks the tree, ignores `.tmp`.
-- **`FSBackend.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
+- **`fs.Backend.Stats(ctx)`** → `*fs.StoreStats` (`AlgorithmCounts`,
+  `TotalSize`, `ObjectCount`) with a `String()` summary; walks the tree,
+  ignores `.tmp`.
+- **`fs.Backend.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
   the hash with the algorithm from the address, and reports mismatch
   (`ErrHashMismatch`).
-- **`FSBackend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep:
+- **`fs.Backend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep:
   deletes every object whose `h.String()` is not in `reachable`. The caller
   computes the reachable set (e.g. by walking from all roots).
-- **`FSBackend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`**
+- **`fs.Backend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`**
   — age-based retention: deletes objects that are unreachable from `roots`
   AND older than `minAge` (age = file mtime ≈ first-`Put` time); `dryRun`
   returns the would-be-deleted set. Detection of broken/dangling objects and
@@ -760,15 +765,15 @@ type ResolvedObject struct {
 ```
 
 - `ResolveAny` determines the type from the serialized bytes via `parseType`
-  on the **TLV envelope** `[version][typeLen][type][payload]` (decision 1 in
-  §8); it then dispatches to the matching `Resolve*` method.
+  on the **TLV envelope** `[version][typeLen][type][payloadLen][payload]`
+  (decision 1 in §8); it then dispatches to the matching `Resolve*` method.
 - `PrintObject(*ResolvedObject) string` renders any resolved object with a type
   switch — no reflection.
 - **`WalkGraph`** — whole-graph traversal with unknown types:
   `WalkGraph(ctx, resolver, h, visit func(*ResolvedObject) error)`; its
   type-switch dispatch makes it specific to the example's object set, not
   generic (the generic alternative is `Walker[T]`, §4.9).
-- **`CachedRepository`** — per-type `cache.LRUCache` wrappers plus an internal
+- **`CachedRepository`** — per-type `lru.Cache` wrappers plus an internal
   `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`.
 - **`Preloader`** — background worker pool consuming a `chan Hash`, running
   `Commits.PreloadRecursive(ctx, h, 2)`; non-blocking `Preload`, `Stop()`
@@ -781,13 +786,13 @@ type ResolvedObject struct {
 ### 5.1 Write path
 
 ```text
-codec.Encode(obj) → "type\\n"+payload   # built by Store.Put
+codec.Marshal(obj) → TLV envelope [version][typeLen][type][payloadLen][payload]   # built by Store.Put
         │
         ▼
 hash := hasher(data)              # algorithm from store config
         │
         ▼
-raw.Put(ctx, hash, reader)        # atomic in FSBackend; idempotent
+raw.Put(ctx, hash, reader)        # atomic in the fs backend; idempotent
         │
         ▼
 return hash                       # callers store it inside other objects
@@ -798,7 +803,7 @@ Optional `PutDedup`: check `raw.Exists(hash)` first and skip the write.
 ### 5.2 Typed read path
 
 ```text
-raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (Get)
+raw.Get(ctx, h) ──► io.ReadAll ──► codec.Unmarshal(data) ──► T (Get)
                                        │
                                        └─► Type() matches stored type
 ```
@@ -806,7 +811,7 @@ raw.Get(ctx, h) ──► io.ReadAll ──► codec.Decode(data) ──► T (G
 ### 5.3 Lazy/cached read path
 
 ```text
-CachedStore.Proxy(ctx, h) ──► *cache.CachedObject[T] (not loaded)
+CachedStore.Proxy(ctx, h) ──► *memory.CachedObject[T] (not loaded)
         │
         ▼ (first access)
 CachedObject.Load(ctx) ──► store.Get ──► memoize (obj, err)
@@ -835,13 +840,13 @@ ResolveAny(ctx, h) ──► raw bytes ──► parseType(data) ──► switc
 ```mermaid
 flowchart LR
     subgraph WRITE["Write path"]
-        A1["codec.Encode(obj) → envelope (Store.Put)"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
+        A1["codec.Marshal(obj) → TLV envelope (Store.Put)"] --> A2["hash := hasher(data)"] --> A3["raw.Put(ctx, hash, reader)"]
     end
     subgraph READ["Typed read path"]
-        B1["raw.Get(ctx, h)"] --> B2["codec.Decode(data)"] --> B3["T (Get)"]
+        B1["raw.Get(ctx, h)"] --> B2["codec.Unmarshal(data)"] --> B3["T (Get)"]
     end
     subgraph LAZY["Lazy/cached path"]
-        C1["CachedStore.Proxy(ctx, h)"] --> C2["*CachedObject[T] (not loaded)"]
+        C1["memory.CachedStore.Proxy(ctx, h)"] --> C2["*memory.CachedObject[T] (not loaded)"]
         C2 --> C3["Load: store.Get → memoize (obj, err)"]
     end
     subgraph RESOLVE["Cross-type resolution (gitlike)"]
@@ -910,9 +915,9 @@ The stable API the core promises (library-design §1):
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `Backend`, `FSBackend` (+ `FSOption`, `WithFanOut`, `WithFanLevels`, `WithDirSync`), `MemoryBackend`, `StoreStats` |
-| Typed layer   | `Object[T]`, `Codec[T]`, `JSONCodec[T]`, `Store[T]`, `Walker[T]`  |
-| Caching       | `cache.CachedObject[T]`, `cache.CachedStore[T]`, `cache.LRUCache[T]`, `CacheMetrics`, `CacheStats` |
+| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, `fs.StoreStats`); the `memory` backend (`memory.New`, `memory.WithMaxSize`) |
+| Typed layer   | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`)  |
+| Caching       | `memory.CachedObject[T]`, `memory.CachedStore[T]`, `memory.CacheMetrics`, `memory.CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
 
 Everything else is internal and MUST NOT be relied upon. The surface stays
@@ -925,14 +930,14 @@ additive-compatible (library-design §5).
    `List`) — idempotent `Put`, `Delete` no-op on missing, `List(algo)`
    filter, `Get` → `ErrNotFound` on missing (library-design §2).
 2. Keep the byte layer non-generic; everything above works unchanged.
-3. `MemoryBackend` (§4.5) is the minimal reference implementation.
+3. The `memory` backend (§4.5) is the minimal reference implementation.
 4. Add durability/atomicity per `operations.md` §1 where the
    backend is persistent.
 
 **Add an object type** (e.g. `Document`):
 1. Implement `Object[Document]` (`Type()`/`References()`) — `References()`
    is the contract for traversal and GC.
-2. Create your own `*Store[Document]` with `JSONCodec[Document]{}` — the
+2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()` — the
    generic core stays untouched (serialization is the codec's job, §4.6).
 3. If you need a repository/resolver for your types, copy the `gitlike`
    pattern (§4.12) into your own package — do NOT extend `cas` or `gitlike`.
@@ -942,17 +947,17 @@ additive-compatible (library-design §5).
 ```go
 cas.RegisterHash("blake3", func(data []byte) cas.Hash { ... })
 ```
-Then `NewStore(raw, codec, "blake3")` works; existing objects under other
+Then `cas.New(raw, codec, "blake3")` works; existing objects under other
 algorithms remain readable (the algorithm lives in the address).
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
-Implement `Codec[T]` (e.g. wrap `JSONCodec[T]` with compression/encryption)
-and pass it to `NewStore`. Do not change the byte layer.
+Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
+compression/encryption) and pass it to `cas.New`. Do not change the byte layer.
 
-**Add a cache policy**: wrap or extend `cache.CachedStore[T]`; keep the
-`cache.CachedObject[T]` lazy-load contract and the metrics counters.
+**Add a cache policy**: wrap or extend `memory.CachedStore[T]`; keep the
+`memory.CachedObject[T]` lazy-load contract and the metrics counters.
 
-**Add maintenance ops**: add methods on `FSBackend` (or a backend-specific
+**Add maintenance ops**: add methods on `fs.Backend` (or a backend-specific
 type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
 
 ### 7.3 Compatibility & contracts

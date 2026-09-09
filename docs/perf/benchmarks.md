@@ -1,8 +1,8 @@
-﻿---
+---
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (cas/bench_test.go) and the on-demand state-scaling probes (cas/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v2
+version: v3
 ---
 
 # Benchmarks — go-cask
@@ -48,15 +48,15 @@ guard skips unit tests so the run is benchmarks-only.
 | ------------------------------- | -------------------------------------------------------------- | ---------------------------------------------- |
 | `BenchmarkStorePut`             | 64 B, 1 KiB, 1 MiB                                             | Typed `Store[T].Put`: codec + hashing + write   |
 | `BenchmarkStoreGet`             | 64 B, 1 KiB, 1 MiB                                             | Typed `Store[T].Get`: decode + read             |
-| `BenchmarkFSBackendPut/Get`    | `flat` vs. `fan-out` layout × 64 B/1 KiB/1 MiB                  | Real-disk behavior of the filesystem backend    |
+| `fs`-backend Put/Get     | `flat` vs. `fan-out` layout × 64 B/1 KiB/1 MiB                  | Real-disk behavior of the `fs` backend    |
 | `BenchmarkRoundTrip`            | Put + Get combined                                             | End-to-end store cycle                          |
 | `BenchmarkVerify`               | intact object                                                  | Integrity scan cost                             |
 | `BenchmarkParseHash`            | `valid` / `invalid` inputs                                     | Hash-string parsing                             |
 | `BenchmarkParallelPutGet`       | concurrent writers/readers                                     | Lock-free read path + mutex write coordination  |
 
-Store-level cases run against `MemoryBackend` (deterministic, no disk
-noise); the `BenchmarkFSBackend*` cases cover disk behavior separately and
-write into a temp dir that is cleaned up automatically.
+Store-level cases run against the in-memory `memory` backend
+(deterministic, no disk noise); the `fs`-backend cases cover disk behavior
+separately and write into a temp dir that is cleaned up automatically.
 
 ### 3.2 Run them
 
@@ -116,7 +116,7 @@ and CI never touch these benchmarks.
 
 ### 4.3 Benchmarks
 
-Each runs as `Memory` and `FS` sub-benchmarks (`FSBackend` writes to an
+Each runs as `Memory` and `FS` sub-benchmarks (`fs.New` writes to an
 auto-cleaned temp dir):
 
 | Benchmark               | Measures at store size N                                  |
@@ -126,7 +126,7 @@ auto-cleaned temp dir):
 | `BenchmarkScaleExists`  | Existence checks                                          |
 | `BenchmarkScaleDelete`  | Deleting objects (store shrinks during the loop)          |
 | `BenchmarkScaleList`    | Full `List` scan — materializes every hash; **O(N) memory per op, keep N modest** |
-| `BenchmarkScaleStats`   | `Stats` (FSBackend only; the Memory sub-benchmark skips) |
+| `BenchmarkScaleStats`   | `Stats` (only the `fs` sub-benchmark; the `memory` sub-benchmark skips) |
 
 The prefill of N objects happens before the timed loop — it can take minutes
 at large N and is **not** part of the per-operation numbers.

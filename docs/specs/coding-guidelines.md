@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.22+ baseline (generics, enhanced routing) and the latest generics (toolchain 1.27).
-version: v8
+version: v9
 ---
 
 # Go Coding Guidelines — go-cask
@@ -51,11 +51,13 @@ version: v8
 - **Constructors:** the constructor name mirrors how many primary types the
   package exposes.
   - Use plain `New()` when the package exposes **one** primary type
-    (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`).
+    (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`), and for a
+    package's primary `Store` constructor even when the package also exposes
+    others (`cas.New`).
   - Use `NewType()` / `NewXyz()` when the package exposes **multiple**
     important types, or the constructor's type isn't the package's primary
     type (`cas.NewHash`, `cas.NewHasher`, `cas.NewWalker`,
-    `memory.NewSmartCache`, `cas.NewStore`).
+    `prefetch.NewSmartCache`).
   - Keep `New*` for real constructors (non-trivial setup); prefer a useful
     zero value over an empty constructor otherwise.
 - **Errors:**
@@ -71,7 +73,7 @@ version: v8
 - **Interfaces:** prefer small interfaces defined at the consumer side;
   "accept interfaces, return concrete types".
 - **Zero values:** make zero values useful; use `NewX` constructors only when
-  setup is non-trivial (e.g. `NewFSBackend` must create directories).
+  setup is non-trivial (e.g. `fs.New` must create directories).
 - **Tests:** table-driven tests with the std `testing` package; `t.Run` for
   subtests; `t.Parallel()` where safe.
 

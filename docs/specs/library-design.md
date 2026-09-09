@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v10
+version: v11
 ---
 
 # Library Design — go-cask
@@ -26,12 +26,18 @@ version: v10
   ceiling for additions, not a shrinking target.
 - **Stable core surface** (the API the docs promise — cas-core §7.1):
   `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`,
-  `HashBytes`, `Backend`, `FSBackend` (+ `FSOption`, `WithFanOut`,
-  `WithFanLevels`, `WithDirSync`), `MemoryBackend`, `StoreStats`, `Codec`,
-  `JSONCodec`, `Object`, `Store`, `NewStore`, `Walker`, `NewWalker`,
-  `cache.CachedObject`, `cache.CachedStore`, `Newcache.CachedStore`, `cache.LRUCache`, `Newcache.LRUCache`,
-  `NewMemoryBackend`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`,
-  the six sentinel `Err*` values.
+  `HashBytes`, `Backend` (byte interface), `Codec[T]` (interface), `Object`,
+  `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and the six sentinel
+  `Err*` values — all in `package cas`. Byte backends, typed codecs and
+  caches live in subpackages, never in `package cas`:
+  filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`,
+  `fs.WithFanLevels`, `fs.WithDirSync`, `fs.StoreStats`; constants
+  `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory
+  `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); codecs
+  `json.New[T]()` and `gob.New[T]()` (there is no `JSONCodec`/`GobCodec`
+  type); caches `memory.CachedStore[T]` / `memory.CachedObject[T]`
+  (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and
+  `prefetch.NewSmartCache`.
 - **Optional machinery stays out of the core.** Prefetch-on-access and
   cache-monitor recipes are demonstrated by `examples/notes` and
   `examples/artifacts` — never part of package `cas`;
@@ -79,7 +85,7 @@ Rules:
   safe to read concurrently after startup; runtime mutation requires a lock
   and is discouraged.
 - Preferred: `Store[T]` takes its hasher explicitly —
-  `NewStore(raw, codec, algo)` resolves the algorithm at construction, and an
+  `New[T](raw, codec, algo)` resolves the algorithm at construction, and an
   explicit hasher variant exists for custom functions. No hidden global
   dependence in the hot path.
 - No other package-level mutable state in `cas`.
@@ -89,7 +95,7 @@ Rules:
 ## 4. API Shape Rules
 
 1. `context.Context` is the first parameter of any I/O-capable function.
-2. Functional options for optional configuration (the `FSOption` pattern) —
+2. Functional options for optional configuration (the `backend.Option` pattern) —
    never positional `bool`/`int` soup.
 3. Zero values are usable where meaningful (zero `Hash`, empty store).
 4. Accept interfaces, return concrete types.

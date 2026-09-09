@@ -1,8 +1,8 @@
-﻿---
+---
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v10
+version: v11
 ---
 
 # Examples — go-cask
@@ -89,8 +89,10 @@ When creating or extending an example, follow these rules:
    - **What it demonstrates** — the primary aspect (§4) and acceptance
      criteria, in one short paragraph;
    - **`cas` core parts used** — the exact components/APIs exercised (e.g.
-     `Store[T]`, `JSONCodec[T]`, `FSBackend` fan-out, `Verify`, `GC`,
-     `LRUCache[T]`, `CachedObject[T]`), as a list or table;
+     `Store[T]`, the JSON codec (`json.New[T]()`), fs-backend fan-out
+     (`fs.WithFanOut`/`fs.WithFanLevels`), `Verify`, `GC`, cache types
+     (`memory.CachedStore[T]`, `lru.Cache`), `CachedObject[T]`), as a list or
+     table;
    - **What it extends** — everything the example adds on top of the core
      (custom `Codec[T]`, `RegisterHash` algorithms, own `Object[T]` types,
      own repository/resolver pattern, HTTP surface), and explicitly what it
@@ -143,7 +145,8 @@ those states are scan results, never stored metadata.
 
 **Aspects covered.** `gitlike` object model (`Blob`/`Tree`/`Commit`/`Tag`),
 `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]` with
-`JSONCodec[T]`, `FSBackend` fan-out layout, `Verify`, `Stats`, derived
+the JSON codec (`json.New[T]()`), the `fs` backend fan-out layout, `Verify`,
+`Stats`, derived
 object-state audit (`List` + reachability mark + per-object `Verify`), CLI
 with std `flag`.
 
@@ -167,7 +170,8 @@ examples/files/
 - `log` walks parents via `WalkGraph`/`References()`; `cat <hash>` resolves
   and prints blob bytes; `graph` prints the reachable graph with types.
 - `audit [-no-verify]` lists every stored object, marks the reachable set
-  from `HEAD` (`References()` walk), verifies each with `FSBackend.Verify`,
+  from `HEAD` (`References()` walk), verifies each with the `fs` backend's
+  `Verify`,
   and prints per-object state: `verified` (intact + reachable), `orphaned`
   (intact, unreachable — GC candidate), `corrupt` (Verify failed), or
   `unverified` (reachable, integrity skipped under `-no-verify`). States are
@@ -189,11 +193,11 @@ with a custom codec (gzip), a custom registered hash algorithm, bounded
 caching, metrics, and mark-and-sweep GC — exercising the maintenance and
 caching machinery.
 
-**Aspects covered.** Custom `Codec[T]` (gzip-wrapped `JSONCodec[T]`),
+**Aspects covered.** Custom `Codec[T]` (gzip-wrapped JSON codec),
 `RegisterHash` with a std-lib-only custom algorithm (e.g. `sha256double` —
 the name must obey the hash-string validation pattern of defaults §2, so
 the earlier illustrative `sha256-double` is not used),
-`PutDedup` (dedup reporting), `CachedStore[T]`/`LRUCache[T]`,
+`PutDedup` (dedup reporting), caching (`lru.Cache`),
 cache metrics (its own `CacheMonitor` recipe), `GC` (reachable = manifest-referenced artifacts),
 `Stats`.
 
@@ -203,7 +207,7 @@ cache metrics (its own `CacheMonitor` recipe), `GC` (reachable = manifest-refere
 examples/artifacts/
 ├── main.go      # CLI: put, get, gc, stats, monitor
 ├── manifest.go  # Manifest object referencing artifact hashes
-├── codec.go     # gzipCodec[T] wrapping JSONCodec[T]
+├── codec.go     # gzipCodec[T] wrapping the JSON codec
 ├── hasher.go    # RegisterHash("sha256double", ...)
 ├── main_test.go # dedup, cache hit-rate, GC deletes only unreferenced
 └── README.md    # required per §2 rule 8: core used/extended, walkthrough, mermaid
@@ -213,7 +217,7 @@ examples/artifacts/
 
 - `put <file>` computes the custom hash, stores via `PutDedup`, and prints
   `deduplicated: true/false`; manifests reference artifact hashes.
-- `get <hash>` serves from cache (`LRUCache`) with the example's own `CacheMonitor` printing
+- `get <hash>` serves from cache (`lru.Cache`) with the example's own `CacheMonitor` printing
   hit rate on exit.
 - `gc` mark-and-sweeps: objects not reachable from any manifest are deleted;
   `stats` before/after shows the difference.
@@ -309,7 +313,7 @@ the pattern needs no `internal/` and no SDK.
 | Aspect                                            | files | artifacts | notes | api | viewer |
 | ------------------------------------------------- | :-------------: | :------------: | :---: | :-----: | :--------: |
 | `Hash` / pluggable algorithms                     | ✓ (sha256)      | ✓ (custom)     | ✓     | ✓ (algo) | product    |
-| `FSBackend` fan-out layouts                      | ✓               | ✓              | ✓     | ✓       | product    |
+| `fs` backend fan-out layouts (`WithFanOut`/`WithFanLevels`)        | ✓               | ✓              | ✓     | ✓       | product    |
 | `Codec[T]` (custom)                               | ✓ (JSON)        | ✓ (gzip)       | ✓     | ✓ (JSON) | product    |
 | `Object[T]` / `Store[T]`                          | ✓               | ✓              | ✓     | ✓       | product    |
 | Dedup (`PutDedup`)                                | ✓               | ✓              |       | ✓       |            |
@@ -317,7 +321,7 @@ the pattern needs no `internal/` and no SDK.
 | Custom app object model (own repo/resolver)       |                 |                | ✓     |         |            |
 | Generic `Walker[T]`                               | ✓               |                | ✓     |         |            |
 | Lazy loading (`CachedObject[T]`)                  |                 |                | ✓     |         | product    |
-| Caching (`CachedStore[T]`/`LRUCache[T]`)          |                 | ✓              | ✓     |         |            |
+| Caching (`memory.CachedStore[T]`/`lru.Cache`)    |                 | ✓              | ✓     |         |            |
 | Prefetch-on-access (own `SmartCache`)              |                 |                | ✓     |         |            |
 | Cache metrics (own `CacheMonitor`)                 |                 | ✓              |       |         |            |
 | Background `Preloader`                            |                 |                | ✓     |         |            |
