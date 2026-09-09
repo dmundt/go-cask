@@ -10,6 +10,16 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v1.0.0] - 2026-09-09
+
+**First stable release.** The `cas` stable surface (cas-core §7.1) is frozen:
+semver is now `v1.x.y`, and within a major version only additive, non-breaking
+changes are allowed (library-design §5). This release reaches the versioning.md
+§6 Definition-of-Done: every spec's acceptance checklist is fully ticked, the
+CI gates (race, ≥90% coverage, fuzz smoke, doc-integrity) hold, and the four
+runnable examples plus the `gitlike/` shared reference library and the embedded
+viewer are in place.
+
 ### Added
 
 - Fuzz targets `FuzzPathRoundTrip` and `FuzzVerify` (fs backend) and
