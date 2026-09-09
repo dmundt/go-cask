@@ -103,14 +103,14 @@ classDiagram
         +Delete(ctx, h) error
         +List(ctx, algo) []Hash
     }
-    class "fs.Backend" as fsBackend {
+    class FSBackend {
         <<backend>>
     }
-    class "mem.Backend" as memBackend {
+    class MemBackend {
         <<backend>>
     }
-    Backend <|.. fsBackend : implements
-    Backend <|.. memBackend : implements
+    Backend <|.. FSBackend : implements
+    Backend <|.. MemBackend : implements
 
     class Object~T~ {
         <<interface>>
