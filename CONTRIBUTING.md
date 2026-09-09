@@ -22,7 +22,7 @@ repository.
 | -------------------- | ----------------------------------------------------------- |
 | `cas/`               | The public core library (package `cas`) — see `cas-core`    |
 | `internal/`          | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
-| `gitlike/`  | Reference example object model (package `gitlike`)          |
+| `gitlike/`  | Shared reference object-model library, copy-source (package `gitlike`) |
 | `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
 | `examples/`          | Runnable example programs (`examples.md`)                   |
 | `docs/specs/` | The specification set (19 spec files + AGENT.md)            |
