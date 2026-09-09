@@ -41,7 +41,7 @@ The repo layout is:
 cas/       core library (package cas) — generic only; this spec defines it
 internal/  implementation detail (web — the viewer —, storage, index);
            not importable outside this module
-gitlike/ example package (package gitlike) — Git-like object model
+gitlike/  shared reference library (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
                  WalkGraph
 examples/  runnable example programs (per examples.md)
@@ -154,7 +154,7 @@ type-safe, registry-free design:
    `examples/notes` and `examples/artifacts`).
 10. **Generic core vs. example layer**: the git-like model (`Blob`/`Tree`/
     `Commit`/`Tag`, `Repository`, `Resolver`, `ResolvedObject`, `WalkGraph`,
-    `CachedRepository`, `Preloader`) is a **specific example** in a separate
+    `CachedRepository`, `Preloader`) is a shared reference object model in a separate
     `gitlike/` package — the `cas` core stays app-agnostic and generic only.
 
 The final user turn ("I want a repo from your code with all the latest changes
@@ -211,12 +211,12 @@ flowchart TB
 | `Walker[T]`      | Generic graph traversal over `References()`                 |
 | `CachedStore[T]` | Lazy loading + caching wrapper around `Store[T]`            |
 | `LRUCache[T]`    | Size-bounded cache with LRU eviction                        |
-| *(gitlike)* `Blob`/`Tree`/`Commit`/`Tag` | Example `Object[T]` types (application layer)   |
-| *(gitlike)* `Repository`/`Resolver`/`ResolvedObject`/`WalkGraph` | Example per-type stores + type-safe resolution (application layer) |
-| *(gitlike)* `CachedRepository`/`Preloader` | Example repository-bound caches (application layer) |
+| *(gitlike)* `Blob`/`Tree`/`Commit`/`Tag` | Reference `Object[T]` types (application layer)   |
+| *(gitlike)* `Repository`/`Resolver`/`ResolvedObject`/`WalkGraph` | Reference per-type stores + type-safe resolution (application layer) |
+| *(gitlike)* `CachedRepository`/`Preloader` | Reference repository-bound caches (application layer) |
 
 The `cas` package is **generic only**. Everything marked *(gitlike)* lives in
-the separate example package `gitlike/` and is NOT part of the core — apps
+the separate `gitlike/` reference library and is NOT part of the core — apps
 build their own equivalents for their own types.
 
 ---
@@ -342,7 +342,7 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    (package `cas/codec/json`) — the generic core stays untouched.
 3. If you need a repository/resolver for your types (per-type stores,
    `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
-   `gitlike` example package into your own package; do NOT add your types to
+   `gitlike` reference pattern into your own package; do NOT add your types to
    `cas` or extend `gitlike`.
 4. Never add `any` or reflection to do this — add explicit typed methods.
 
@@ -376,7 +376,7 @@ gofmt -l .
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the
-  example package `gitlike/` — it is NOT part of the generic `cas` core; the
+  reference library `gitlike/` — it is NOT part of the generic `cas` core; the
   core stays app-agnostic.
 - **No `any`/`interface{}` in exported API.** The typed layer is constrained
   (`Store[T Object[T]]`); reads return the concrete `T` via `Store[T].Get` —

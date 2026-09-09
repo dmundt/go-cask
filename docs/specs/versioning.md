@@ -2,12 +2,12 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v8
+version: v9
 ---
 
 # Versioning — go-cask
 
-How the `cas` library (and its `gitlike` example package) is versioned and released through Git. The project is **pre-release**: the first public tag is `v0.1.0-alpha.1`, heading toward `v1.0.0` once the stable surface is frozen. Related: `library-design.md` §5 (the compatibility policy this implements), `defaults.md` §7 (Go baseline), `AGENT.md` §3 (document versions — a different thing, §6).
+How the `cas` library (and the `gitlike/` reference library) is versioned and released through Git. The project is **pre-release**: the first public tag is `v0.1.0-alpha.1`, heading toward `v1.0.0` once the stable surface is frozen. Related: `library-design.md` §5 (the compatibility policy this implements), `defaults.md` §7 (Go baseline), `AGENT.md` §3 (document versions — a different thing, §6).
 
 ## 1. Model (semantic versioning)
 
@@ -24,7 +24,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 ## 2. Go module versioning rules
 
-- Module path: `github.com/dmundt/go-cask`; core in `cas/` subpackage (`.../go-cask/cas`), example in `gitlike/`.
+- Module path: `github.com/dmundt/go-cask`; core in `cas/` subpackage (`.../go-cask/cas`); the `gitlike/` reference library (`.../go-cask/gitlike`).
 - **v0/v1:** no path suffix. Tags `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, …
 - **v2+:** Go REQUIRES the major in the module path — `github.com/dmundt/go-cask/v2` (tags become `v2.0.0`, …). Layout: keep both majors in one repo by mirroring the library under `cas/v2/` (its `go.mod` declares the `/v2` path), so v1 and v2 consumers coexist without a fork. `gitlike` follows the same major as the core it builds on.
 - **Untagged commits:** consumers get a Go **pseudo-version** (`v1.2.3-0.<timestamp>-<commit>`) automatically — no action needed; tags are still the contract.

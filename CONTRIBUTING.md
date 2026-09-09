@@ -45,7 +45,7 @@ every change:
   exported surface is a spec change first (library-design §1).
 - **Policy-free byte layer**: GC/prune take app-supplied roots; roots are
   pins — there is no per-object pinned property (consistency §4).
-- **Examples teach, never ship**: `gitlike` is the shared reference model;
+- **Examples teach; gitlike is the shared reference**: runnable examples teach seams; `gitlike/` is a reference/copy-source object model the product never imports.
   the product never imports examples.
 
 ### The dev loop

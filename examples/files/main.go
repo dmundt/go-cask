@@ -1,4 +1,4 @@
-// Command files is a miniature Git built on the gitlike example
+// Command files is a miniature Git built on the gitlike reference layer
 // layer: it stores file trees as content-addressable objects, commits them,
 // and can log, cat, graph, verify and summarize the store — the closest
 // thing to a tiny Git on CASK (examples spec §3.1).

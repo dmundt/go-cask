@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v13
+version: v14
 ---
 
 # Examples — go-cask
@@ -15,7 +15,7 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 ## 2. How to generate an example (rules)
 
-1. **Location:** `examples/<name>/` inside the main module (no separate `go.mod` unless genuinely required). Runnable demo = `package main`; reusable pieces = subpackages. **`gitlike/` is the shared reference support library** — the one designated cross-example dependency (rule 11): an importable package (`package gitlike`), not a runnable `main`; the documented exception to the runnable rule. It is the reference object model apps (and `files`) build on; it stays an example, never part of `cas`.
+1. **Location:** `examples/<name>/` inside the main module (no separate `go.mod` unless genuinely required). Runnable demo = `package main`; reusable pieces = subpackages. **`gitlike/` is the shared reference support library** — the one designated cross-example dependency (rule 11): an importable package (`package gitlike`), not a runnable `main`; the documented exception to the runnable rule. It is the reference object model apps (and `files`) build on; it is NOT part of `cas`.
 2. **Runnable:** `go build ./...`, `go run ./examples/<name>`, and `go test ./examples/...` MUST pass (except `gitlike`, a library). The demo prints meaningful output (hashes, stats, traversal results).
 3. **Std-lib only:** no external deps (coding-guidelines §3). Custom hashes via `RegisterHash` with std-lib primitives (e.g. sha256-of-sha256); compression via `compress/gzip`.
 4. **Public APIs only:** documented exported API of `cas`/`gitlike`; never reach into unexported internals.

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v12
+version: v13
 tags: [go-cask]
 status: stable
 ---
@@ -61,7 +61,7 @@ All files MUST use exactly these terms (forbidden synonyms listed):
 | go-cask / CASK | The project (Content Addressable Store Kit). |
 | CAS / CASK | Acronyms, ALL-CAPS: "CAS" = Content Addressable Store, "CASK" = Content Addressable Store Kit. Never lowercase — lowercase `cas` is the Go package (next row). |
 | `cas` package | The generic core library (`cas/`, `package cas`). |
-| `gitlike` package | The example layer (`gitlike/`): Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
+| `gitlike` package | Shared reference object-model library at `gitlike/`: Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
 | the viewer | The embedded technical browser UI (`internal/web/`). Not "debug UI". |
 | viewer API | The hypermedia surface under `/viewer/` (HTML). |
 | CAS API | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface. |
@@ -69,7 +69,7 @@ All files MUST use exactly these terms (forbidden synonyms listed):
 | `Store[T]` / `Hash` | Generic typed store / content address `algo:hexdigest` validated with `ParseHash`. |
 | fan-out / lock-free reads / CAS laws | Directory layout (`FanOut`/`FanLevels`); `Get`/`Exists`/`List`/`Stats` take no lock; the testing-strategy §1 invariants. |
 
-Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guidelines" → **coding-guidelines**; "Repository/Resolver in the core" → they are the **gitlike example layer**; "sharded paths" → **fan-out**.
+Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guidelines" → **coding-guidelines**; "Repository/Resolver in the core" → they are the **gitlike shared reference layer**; "sharded paths" → **fan-out**.
 
 ## 7. Cross-referencing
 

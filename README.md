@@ -8,7 +8,7 @@ A generic, Git-like **content-addressable store** for Go: store any bytes once u
 
 - **Content-addressable** — same bytes ⇒ same hash ⇒ stored once (dedup).
 - **Immutable & verifiable** — objects never change; `Verify` detects corruption.
-- **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the reference example).
+- **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
 - **Pluggable** — hash algorithms, codecs, and storage backends (filesystem + memory ship; more plug in behind one `Backend` contract).
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
 
@@ -21,14 +21,15 @@ A **single-host content-addressable store kit**. Each named spec is the normativ
 - **Lean generic core** — app-agnostic `cas` with reference implementations for each pluggable seam (`sha1`/`sha256`, `fs`+`mem` backends, JSON codec); only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
-- **Examples teach, never ship** — `gitlike` = reference object model; `artifacts` = compression-codec seam; `api` = HTTP exposure pattern.
+- **Examples teach; `gitlike/` is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
 
 ## Repository layout
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
-examples/  runnable examples (incl. the gitlike reference object model)
+gitlike/  shared reference object-model library (package gitlike)
+examples/  runnable example programs
 benchmark/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 docs/specs/  the specification set (19 specs + AGENT.md)

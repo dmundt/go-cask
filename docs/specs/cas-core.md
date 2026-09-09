@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v33
+version: v34
 ---
 
 # CAS Core — go-cask
@@ -53,7 +53,7 @@ flowchart TB
     TYPED --> BYTE
 ```
 
-Dependency rule: byte depends on nothing; typed depends on byte; application depends on typed. Caching wraps the typed layer without changing either. `cas` contains only generic primitives; the git-like model is a specific example in `gitlike/` (§4.12) — apps build their own types/repositories and MUST NOT add them to the core.
+Dependency rule: byte depends on nothing; typed depends on byte; application depends on typed. Caching wraps the typed layer without changing either. `cas` contains only generic primitives; the git-like object model is a shared reference library in `gitlike/` (§4.12) — apps build their own types/repositories and MUST NOT add them to the core.
 
 ### 3.2 How the core fits together
 
@@ -189,7 +189,7 @@ classDiagram
     LRUCache --|> CachedStore~T~ : extends
 ```
 
-Example layer — gitlike (application code, not core):
+Shared reference layer — gitlike (application code, not core):
 
 ```mermaid
 classDiagram
@@ -397,9 +397,9 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 - **`fs.Backend.GC(ctx, reachable map[string]bool)`** — mark-and-sweep: deletes every object whose `h.String()` is not in `reachable`; the caller computes the reachable set.
 - **`fs.Backend.Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); `dryRun` returns the would-be-deleted set. Detection/consistency in `consistency.md`.
 
-### 4.12 Example layer: `gitlike` (NOT generic core)
+### 4.12 Shared reference layer: `gitlike` (NOT generic core)
 
-A **specific example** in `gitlike/`, `package gitlike` — not part of `cas`. Apps define their own `Object[T]` types; this is the reference set:
+A shared **reference object-model library** at `gitlike/`, `package gitlike` — not part of `cas`. Apps define their own `Object[T]` types; this is the reference set:
 
 | Type | Fields | References() |
 |---|---|---|
