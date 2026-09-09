@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v6
+version: v7
 ---
 
 # Viewer Security — go-cask
@@ -29,7 +29,7 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 
 ## 5. Authentication
 
-- The viewer SHALL require authentication; unauthenticated access is not permitted.
+- The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or performs a direct `?token=` login (§5.1) — neither exposes store data.
 - Login attempts MUST be rate limited (max 5 failures/IP/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
 - Startup token characteristics: cryptographically secure random; displayed only at startup (once); not stored in plaintext config; regenerated on every restart.
@@ -64,7 +64,7 @@ The viewer MUST communicate only with the backend API; never allow direct browse
 
 ## 11. Secret handling
 
-Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers.
+Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`.
 
 ## 12. Production deployments
 
