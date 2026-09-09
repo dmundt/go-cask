@@ -10,6 +10,14 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Docs & tests
+
+- Expanded the package doc comments for `cas/cache/{mem,lru,prefetch}` and
+  `cas/codec/{json,gob}` (godoc), and added a runnable, `// Output`-verified
+  `Example` per package so `go test` keeps the documented examples correct.
+- Fixed two remaining references to the old `docs/instructions` spec path
+  (`cas/errors.go`, `docs/specs/AGENT.md`).
+
 ## [v1.0.0] - 2026-09-09
 
 **First stable release.** The `cas` stable surface (cas-core §7.1) is frozen:
