@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v25
+version: v26
 ---
 
 # CAS Core — go-cask
@@ -759,9 +759,8 @@ type ResolvedObject struct {
 ```
 
 - `ResolveAny` determines the type from the serialized bytes via `parseType`
-  on the **self-describing envelope** `{"type": "<type>@<major>", "data":
-  ...}` (decision 1 in §8); it then dispatches to the matching `Resolve*`
-  method.
+  on the **TLV envelope** `[version][typeLen][type][payload]` (decision 1 in
+  §8); it then dispatches to the matching `Resolve*` method.
 - `PrintObject(*ResolvedObject) string` renders any resolved object with a type
   switch — no reflection.
 - **`WalkGraph`** — whole-graph traversal with unknown types:
@@ -973,13 +972,32 @@ type); keep `Stats`/`Verify`/`GC` semantics from §4.11.
 
 Resolved decisions (recorded here so implementation never re-litigates them):
 
-1. **Serialization format — RESOLVED: self-describing envelope.** Objects are
-   stored as `{"type": "<type>@<major>", "data": <codec bytes>}` (JSON
-   envelope). This makes `parseType`/`ResolveAny` work without a side
-   registry, carries the object-model version with the bytes
-   (object-versioning §2), and works for any `Codec[T]` (the `data` payload
-   is codec output, JSON for the envelope itself). Applies everywhere:
-   gitlike objects, app objects, `parseType` (§4.12), `ResolveAny`.
+1. **Serialization format — RESOLVED: TLV envelope.** Objects are stored as a
+   compact binary **TLV envelope** (see `cas/envelope.go`):
+
+   ```text
+   +--------+-----------+------------+---------+
+   | Version| TypeLen   | Type       | Payload |
+   +--------+-----------+------------+---------+
+   | 1 byte | uvarint   | N bytes    | rest    |
+   +--------+-----------+------------+---------+
+   ```
+
+   - `Version` is the envelope format version (currently `1`); a leading byte
+     makes the format versionable.
+   - `TypeLen` is the length of the versioned type name (e.g. `commit@1`) as a
+     `uvarint`.
+   - `Type` is the versioned type name bytes (`<type>@<major>`; an absent
+     major reads as `@1`).
+   - `Payload` is the rest — the `Codec[T]` output, arbitrary bytes.
+
+   This replaces the earlier JSON envelope (`{"type","data"}` + base64):
+   no JSON or base64 overhead, streamable, codec-agnostic, works for arbitrary
+   binary payloads, and versionable. Git's object header
+   (`<type> <size>\0<data>`) follows a similar philosophy. It makes
+   `parseType`/`ResolveAny` work without a side registry and carries the
+   object-model version with the bytes (object-versioning §2). Applies
+   everywhere: gitlike objects, app objects, `parseType` (§4.12), `ResolveAny`.
 2. **`hashRegistry` synchronization — RESOLVED**: populated at init only;
    reads are lock-free after startup. If runtime registration is ever
    required, guard the registry with a `sync.RWMutex`.
@@ -1003,7 +1021,7 @@ Open follow-ups (future extensions, not blocking):
    authenticated encryption (AES-256-GCM, std-lib `crypto/aes` +
    `crypto/cipher`); the key is supplied by the application and never
    generated or stored by the core; transparent to the byte layer (the
-   envelope's base64 payload carries ciphertext unchanged); deferred until a
+   envelope's payload carries ciphertext unchanged); deferred until a
    real need appears.
 
 ---

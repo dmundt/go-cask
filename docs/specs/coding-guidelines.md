@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.22+ baseline (generics, enhanced routing) and the latest generics (toolchain 1.27).
-version: v7
+version: v8
 ---
 
 # Go Coding Guidelines — go-cask
@@ -48,6 +48,16 @@ version: v7
 - **Naming:** mixedCaps identifiers; exported identifiers start uppercase;
   initialisms keep their case (`ID`, `URL`, `API`, `HTTP`); avoid package-name
   stutter (`cas.Store`, never `cas.CasStore`); short names for short scopes.
+- **Constructors:** the constructor name mirrors how many primary types the
+  package exposes.
+  - Use plain `New()` when the package exposes **one** primary type
+    (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`).
+  - Use `NewType()` / `NewXyz()` when the package exposes **multiple**
+    important types, or the constructor's type isn't the package's primary
+    type (`cas.NewHash`, `cas.NewHasher`, `cas.NewWalker`,
+    `memory.NewSmartCache`, `cas.NewStore`).
+  - Keep `New*` for real constructors (non-trivial setup); prefer a useful
+    zero value over an empty constructor otherwise.
 - **Errors:**
   - Every error is handled or explicitly ignored (`_ =` with a comment why).
   - Wrap with `%w` (`fmt.Errorf("...: %w", err)`); unwrap with `errors.Is` /

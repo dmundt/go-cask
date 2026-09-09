@@ -1,4 +1,4 @@
-﻿---
+---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
 version: v11
@@ -379,6 +379,11 @@ gofmt -l .
 - **No `any`/`interface{}` in exported API.** The typed layer is constrained
   (`Store[T Object[T]]`); reads return the concrete `T` via `Store[T].Get` —
   no type assertions anywhere.
+- **Constructors:** use plain `New()` when a package exposes one primary type
+  (`fs.New`, `mem.New`, `json.New[T]`); use `NewType()` when it exposes
+  several important types or the type isn't the package's primary one
+  (`cas.NewHash`, `cas.NewWalker`, `memory.NewSmartCache`) — coding-guidelines
+  §1 "Constructors".
 - Defaults: hash algorithm `sha256`, codec `JSONCodec[T]`, Git-like fan-out
   (`FanOut=2`, `FanLevels=1` → `<algo>/aa/<full-hex>`; any n-way/n-level
   layout via `WithFanOut`/`WithFanLevels`), directory permissions `0o755`,
@@ -392,8 +397,9 @@ gofmt -l .
   `Put`/`Delete`; caches use `sync.Map` + `atomic` counters; `hashRegistry`
   must be guarded by a `sync.RWMutex` once hash registration can happen after
   startup.
-- Serialization format: RESOLVED and implemented — self-describing envelope
-  `{"type": "...@major", "data": <base64 payload>}` (cas-core §8 decision 1),
-  enabling `parseType`/`ResolveAny` without a side registry.
+- Serialization format: RESOLVED and implemented — the TLV envelope
+  `[version u8][uvarint typeLen][type][payload]` (cas-core §8 decision 1,
+  `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side
+  registry.
 - Follow the sibling spec `docs/specs/viewer-security.md`
   for anything touching the embedded viewer (`internal/web/`).
