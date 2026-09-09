@@ -1,76 +1,49 @@
 # files — a miniature Git on CASK
 
-**What it demonstrates.** A runnable CLI that stores file trees as
-content-addressable objects and commits them, using the `gitlike` example layer
-end to end — the closest thing to a tiny Git built on the generic cas core
-(examples spec §3.1). Acceptance: `add → commit → log → cat` round-trips,
-identical content deduplicates across commits, `verify` detects corruption on
-disk, and `audit` reports every object's derived state
-(verified / orphaned / corrupt / unverified) from HEAD + `Verify`.
+**What it demonstrates.** A runnable CLI storing file trees as content-addressable objects and committing them, using the `gitlike` layer end to end (examples spec §3.1). Acceptance: `add → commit → log → cat` round-trips; identical content deduplicates across commits; `verify` detects on-disk corruption; `audit` reports each object's derived state (verified/orphaned/corrupt/unverified) from `HEAD` + `Verify`.
 
 ## `cas` core parts used
 
 | Component | Where |
-| --------- | ----- |
+|---|---|
 | `fs.Backend` (default fan-out 2/1) | `newApp` — the on-disk backend |
 | `gitlike.Repository` (per-type `Store[T]` over one `cas.Backend`) | `app.repo` |
-| `gitlike.Blob` / `Tree` / `Commit` — `Object[T]` with the JSON codec (`json.New[T]()`) | `add`, `commit` |
-| `Repository.Blobs/Trees/Commits.Put`, `Get` | storing and reading objects |
+| `gitlike.Blob`/`Tree`/`Commit` — `Object[T]` with the JSON codec (`json.New[T]()`) | `add`, `commit` |
+| `Repository.Blobs/Trees/Commits.Put`, `Get` | store/read objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph`, `audit` reachability |
-| `fs.Backend.Verify` | `verify`, `audit` — per-object integrity |
-| `fs.Backend.List` | `audit` — enumerate every stored object |
-| `fs.Backend.Stats` (`cas.Stats`) | `stats` |
+| `fs.Backend.Verify` / `List` / `Stats` (`cas.Stats`) | `verify`, `audit`, `stats` |
 | `Hash` / `ParseHash` | ref files (`HEAD`, `INDEX`) and hash args |
 
 ## What it extends
 
-Nothing — it is a pure consumer: `cas` and `gitlike` are untouched. The only
-app-level additions are the CLI itself and two small ref files (`HEAD` holds
-the current commit hash, `INDEX` the current tree hash) stored at the store
-root, which the store's `List`/`Stats` ignore.
+Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additions: the CLI and two ref files (`HEAD` = current commit, `INDEX` = current tree) at the store root, which the store's `List`/`Stats` ignore.
 
 ## Code walkthrough
 
-- `repo.go` — the `app` struct: `newApp` wires `fs.Backend` + `gitlike.Repository` and
-  locates the ref files; `readRef`/`writeRef` persist hashes as text;
-  `currentTree`/`headCommit` read `INDEX`/`HEAD`.
-- `main.go` — the std-`flag` CLI dispatches to:
-  - `add <file...>` — reads each file, `repo.Blobs.Put` (dedup by content
-    hash), builds a `gitlike.Tree` of entries, `repo.Trees.Put`, writes
-    `INDEX`;
-  - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old
-    `HEAD`), `repo.Commits.Put`, advances `HEAD`;
-  - `log` — walks the `Commit.Parent` chain;
-  - `cat <hash>` — `ResolveAny` → prints `Blob.Data`;
-  - `graph` — `WalkGraph` from `HEAD`, printing every resolved object;
-  - `audit [-no-verify]` — classifies every stored object (below);
-  - `verify` / `stats` — `fs.Backend.Verify` per object / `Stats`.
-- `audit.go` — the derived-state report: `audit` lists every object
-  (`fs.Backend.List`), marks the reachable set from `HEAD` by following
-  `References()` through the gitlike object model (`markReachable`), verifies
-  each object (`fs.Backend.Verify`), and assigns one of four states:
+- `repo.go` — the `app` struct: `newApp` wires `fs.Backend` + `gitlike.Repository`; `readRef`/`writeRef` persist hashes as text; `currentTree`/`headCommit` read `INDEX`/`HEAD`.
+- `main.go` — the std-`flag` CLI:
+  - `add <file...>` — `repo.Blobs.Put` (dedup by content hash), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
+  - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old `HEAD`), `Commits.Put`, advances `HEAD`;
+  - `log` — walks the `Commit.Parent` chain; `cat <hash>` — `ResolveAny` → `Blob.Data`; `graph` — `WalkGraph` from `HEAD`;
+  - `audit [-no-verify]` — classifies every stored object (below); `verify`/`stats` — `fs.Backend.Verify` per object / `Stats`.
+- `audit.go` — the derived-state report: `List` → mark the reachable set from `HEAD` via `References()` (`markReachable`) → `Verify` each → assign a state:
 
   | State | Meaning |
-  | ----- | ------- |
-  | `verified` | intact (Verify passed) and reachable from `HEAD` |
+  |---|---|
+  | `verified` | intact and reachable from `HEAD` |
   | `orphaned` | intact but unreachable — a GC candidate (consistency §4) |
-  | `corrupt` | `Verify` failed (bit rot / tampering) — reported even if orphaned |
-  | `unverified` | reachable but integrity not checked (`-no-verify`) |
+  | `corrupt` | `Verify` failed — reported even if orphaned |
+  | `unverified` | reachable but not checked (`-no-verify`) |
 
-  The states are **derived, never stored** — they are the point-in-time
-  result of the existing operations (`Verify` + reachability from roots), not
-  metadata the store keeps (consistency §8). `-no-verify` skips the integrity
-  pass for a fast orphan scan.
+  States are **derived, never stored** — the point-in-time result of `Verify` + reachability, not store metadata (consistency §8). `-no-verify` skips integrity for a fast orphan scan.
 
 ```mermaid
 flowchart TB
-    A["add file..."] --> B["Blobs.Put (dedup by hash)"]
-    B --> C["Tree.Put"] --> I["write INDEX"]
-    I --> D["commit -m"] --> E["Commit.Put (parent = HEAD)"]
-    E --> H["write HEAD"]
+    A["add file..."] --> B["Blobs.Put (dedup)"] --> C["Tree.Put"] --> I["write INDEX"]
+    I --> D["commit -m"] --> E["Commit.Put (parent = HEAD)"] --> H["write HEAD"]
     H --> F["log / cat / graph"]
     H --> G["verify / stats"]
-    H --> J["audit: List → mark reachable from HEAD → Verify each → state"]
+    H --> J["audit: List → mark reachable → Verify each → state"]
 ```
 
 ## How to run
@@ -86,6 +59,4 @@ go run ./examples/files -store ./objects verify
 go test ./examples/files/...
 ```
 
-`add` prints the tree hash, `commit` the commit hash, `stats` a
-`N objects, N bytes [sha256=N]` summary, and `audit` one `state hash` line
-per object plus a `verified/orphaned/corrupt/unverified` count.
+`add` prints the tree hash, `commit` the commit hash, `stats` a `N objects, N bytes [sha256=N]` summary, `audit` one `state hash` line per object plus a `verified/orphaned/corrupt/unverified` count.

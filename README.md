@@ -1,62 +1,34 @@
-﻿# CASK — Content Addressable Store Kit
+# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-A generic, Git-like **content-addressable store** for Go: store any bytes once under the hash of their content, reference them by
-hash, and build typed object graphs on top — reusable across apps and
-domains.
+A generic, Git-like **content-addressable store** for Go: store any bytes once under the hash of their content, reference them by hash, and build typed object graphs on top — reusable across apps and domains.
 
 - **Content-addressable** — same bytes ⇒ same hash ⇒ stored once (dedup).
-- **Immutable & verifiable** — objects never change; `Verify` detects any
-  corruption.
-- **Generic core, typed apps** — the `cas` core knows nothing about your
-  types; each app layers its own `Object[T]` model on top (the `gitlike`
-  package is the reference example).
-- **Pluggable** — hash algorithms, codecs, and storage backends (filesystem
-  and memory ship; more plug in behind one `Backend` contract).
-- **Simple, fast, powerful** — lock-free reads, streaming I/O,
-  multi-process-safe writers, semver-versioned object models, GC from roots
-  with a Git-style grace period — no over-engineering.
+- **Immutable & verifiable** — objects never change; `Verify` detects corruption.
+- **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the reference example).
+- **Pluggable** — hash algorithms, codecs, and storage backends (filesystem + memory ship; more plug in behind one `Backend` contract).
+- **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
 
-## Design principles & grounding
+## Design decisions
 
-go-cask is a **single-host content-addressable store kit**. The durable
-decisions that shape the repo (each named spec is the normative contract):
-
-- **No network surface ships.** The product has no CAS JSON API, no client
-  SDK, and no server binary — it is `cas` + the CLI + the embedded viewer.
-  HTTP exposure is an app-author pattern, demonstrated by `examples/api`
-  (backend-architecture §1).
-- **The viewer is a byte-layer admin tool.** It shows objects, bytes, and
-  integrity — never typed references or graphs — and product code never
-  imports `examples/` (viewer-design §7, coding-guidelines §9).
-- **Dependencies are one-directional.** `cas`/`internal`/`cmd` never import
-  `examples/`; examples never import `internal/` and are self-contained
-  except the `gitlike` shared reference library (examples §2 rule 11).
-- **Lean generic core with reference implementations.** `cas` stays
-  app-agnostic; each pluggable seam ships reference implementations (`sha1`/
-  `sha256`, the `fs` and `mem` backends, the JSON codec), and only the
-  cas-core §7.1 surface is stable — speculative surface is cut, not kept.
-- **The byte layer is policy-free.** GC/prune take app-supplied roots;
-  roots are pins (there is no per-object pinned property); the store never
-  interprets typed references (consistency §4).
-- **Concurrent by construction.** Object writes are safe across processes
-  (unique per-writer temps + atomic rename); maintenance sweeps
-  (`gc`/`prune`/`clean`) take an exclusive lock and reclaim only objects
-  older than their `--min-age` grace, so a concurrent writer's fresh
-  objects always survive (cas-core §6).
-- **Examples teach, never ship.** `gitlike` is the shared reference object
-  model; `artifacts` shows the compression-codec seam; `api` shows how an
-  app exposes a store over HTTP.
+A **single-host content-addressable store kit**. Each named spec is the normative contract:
+- **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern (`examples/api`) — backend-architecture §1.
+- **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports `examples/` (viewer-design §7, coding-guidelines §9).
+- **Dependencies one-directional** — `cas`/`internal`/`cmd` never import `examples/`; examples are self-contained except the shared `gitlike` library.
+- **Lean generic core** — app-agnostic `cas` with reference implementations for each pluggable seam (`sha1`/`sha256`, `fs`+`mem` backends, JSON codec); only the cas-core §7.1 surface is stable.
+- **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
+- **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
+- **Examples teach, never ship** — `gitlike` = reference object model; `artifacts` = compression-codec seam; `api` = HTTP exposure pattern.
 
 ## Repository layout
 
 ```text
 cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
-examples/  runnable example programs (incl. the gitlike reference object model)
+examples/  runnable examples (incl. the gitlike reference object model)
 benchmark/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 docs/specs/  the specification set (19 specs + AGENT.md)
@@ -67,75 +39,25 @@ AGENTS.md  the agent aggregator at the repo root
 
 ## Core interfaces at a glance
 
-`cas` is layered: a non-generic **byte layer** (`Hash`, `Backend` + backends)
-below a generic, constrained **typed layer** (`Object[T]`, `Codec[T]`,
-`Store[T]`, `Walker[T]`), with caching wrappers on top. The typed layer
-depends only on the byte layer; apps build their own `Object[T]` models on
-`Store[T]`.
-
-Architecture layers:
-
-```mermaid
-flowchart TB
-    APP["Application layer<br/>(per app — gitlike, notes, files, …)"]
-    TYPED["Typed layer<br/>(generic cas core — Store[T], caches)"]
-    BYTE["Byte layer<br/>(Hash · Backend · backends)"]
-    APP -->|"depends on"| TYPED
-    TYPED -->|"depends on"| BYTE
-```
-
-Interface detail:
+`cas` layers a non-generic **byte layer** (`Hash`, `Backend` + backends) under a generic **typed layer** (`Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`), with caching wrappers on top. Apps build their own `Object[T]` models on `Store[T]`.
 
 ```mermaid
 classDiagram
     direction LR
-
-    class Hash {
-        <<interface>>
-        +Algorithm() string
-        +String() string
-        +Equal(other Hash) bool
-    }
-    class Backend {
-        <<interface>>
-        +Put(ctx, h, r) error
-        +Get(ctx, h) io.ReadCloser
-        +Exists(ctx, h) (bool, error)
-        +Delete(ctx, h) error
-        +List(ctx, algo) []Hash
-    }
-    class FSBackend {
-        <<backend>>
-    }
-    class MemBackend {
-        <<backend>>
-    }
+    class Hash { +Algorithm() string +String() string +Equal(other Hash) bool }
+    class Backend { <<interface>> +Put(ctx, h, r) error +Get(ctx, h) io.ReadCloser +Exists(ctx, h) (bool, error) +Delete(ctx, h) error +List(ctx, algo) []Hash }
+    class FSBackend { <<backend>> }
+    class MemBackend { <<backend>> }
     Backend <|.. FSBackend : implements
     Backend <|.. MemBackend : implements
-
-    class Object~T~ {
-        <<interface>>
-        +Type() string
-        +References() []Hash
-    }
-    class Codec~T~ {
-        <<interface>>
-        +Marshal(v T) ([]byte, error)
-        +Unmarshal(data []byte) (T, error)
-    }
-    class Store~T~ {
-        +Put(ctx, obj T) (Hash, error)
-        +Get(ctx, h) (T, error)
-        +Delete(ctx, h) error
-    }
-    class Walker~T~ {
-        +Walk(ctx, h) error
-    }
+    class Object~T~ { <<interface>> +Type() string +References() []Hash }
+    class Codec~T~ { <<interface>> +Marshal(v T) ([]byte, error) +Unmarshal(data []byte) (T, error) }
+    class Store~T~ { +Put(ctx, obj T) (Hash, error) +Get(ctx, h) (T, error) +Delete(ctx, h) error }
+    class Walker~T~ { +Walk(ctx, h) error }
     Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
-
     class CachedStore~T~
     class LRUCache~T~
     CachedStore~T~ o-- Store~T~ : wraps
@@ -157,26 +79,16 @@ h, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
 blob, _ := repo.Blobs.Get(ctx, h)                 // *gitlike.Blob
 ```
 
-For tests and ephemeral use, swap the backend:
+For tests/ephemeral use, swap the backend:
 
 ```go
 mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
-
 raw := mem.New() // fast, deterministic, not persistent
 ```
 
 ## The specification set
 
-This project is specified, not guessed: `docs/specs/` contains the
-complete design contract — core architecture (`cas-core`), coding guidelines,
-library design, performance, testing, consistency (GC/pruning), the viewer
-HTTP surface, viewer design & security, versioning, defaults, examples,
-and extensions. `docs/specs/AGENT.md` in that folder is the
-meta-guide; read it before editing any spec. The full inventory is in
-`AGENT.md` §10. Non-normative design material lives in `docs/design/`
-(the core-overview pointer and the viewer design brief). AI agents working
-in this repo auto-load the repo-root `AGENTS.md`, which points at the full
-set.
+`docs/specs/` is the complete design contract: core architecture, coding guidelines, library design, performance, testing, consistency (GC/pruning), viewer HTTP surface, viewer design & security, versioning, defaults, examples, extensions. Read `docs/specs/AGENT.md` (its meta-guide) before editing any spec; the full inventory is in `AGENT.md` §10. Non-normative material lives in `docs/design/`. Agents auto-load the repo-root `AGENTS.md`, which points at the full set.
 
 ## Building & testing
 
@@ -187,9 +99,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (toolchain self-managing; library baseline Go 1.22+). See `CONTRIBUTING.md` for the
-development workflow, and `benchmark/README.md` for how to run and read the
-benchmarks (the regular perf suite and the on-demand scale probes).
+Requires Go 1.27 (toolchain self-managing; library baseline Go 1.22+). See `CONTRIBUTING.md` for the workflow, and `benchmark/README.md` for running/reading the benchmarks.
 
 ## License
 

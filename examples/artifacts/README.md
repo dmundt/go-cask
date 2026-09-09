@@ -1,18 +1,12 @@
 # artifacts — content-addressable build artifact cache
 
-**What it demonstrates.** A build-artifact cache that stores outputs under
-the hash of their content with a custom gzip codec, a custom registered hash
-algorithm, bounded LRU caching with a monitor, and mark-and-sweep GC from
-manifests — exercising the maintenance and caching machinery of the core
-(examples spec §3.2). Acceptance: same bytes → same hash →
-`deduplicated: true`; the second `get` hits the cache; `gc` deletes only
-unreferenced artifacts.
+**What it demonstrates.** A build-artifact cache storing outputs under their content hash with a custom gzip codec, a custom registered hash, bounded LRU caching with a monitor, and mark-and-sweep GC from manifests — exercising the core's maintenance and caching machinery (examples spec §3.2). Acceptance: same bytes → same hash → `deduplicated: true`; the second `get` hits the cache; `gc` deletes only unreferenced artifacts.
 
 ## `cas` core parts used
 
 | Component | Where |
-| --------- | ----- |
-| `Codec[T]` / the JSON codec (`json.New[T]()`) | wrapped by the custom `gzipCodec` |
+|---|---|
+| `Codec[T]` — the JSON codec (`json.New[T]()`) | wrapped by the custom `gzipCodec` |
 | `RegisterHash` + `NewHash` | the custom `sha256double` algorithm |
 | `Store[T]` / `PutDedup` | artifact + manifest storage, dedup reporting |
 | `Object[T]` (self-describing envelope) | `Artifact`, `Manifest` |
@@ -23,32 +17,18 @@ unreferenced artifacts.
 
 ## What it extends
 
-- **`gzipCodec[T]`** — wraps the JSON codec (`json.New[T]()`) with gzip (deterministic output:
-  the gzip header mtime is pinned, so identical values encode to identical
-  bytes → identical hashes, preserving dedup).
-- **`RegisterHash("sha256double", …)`** — a std-lib-only custom algorithm
-  (sha256 of sha256). Note: the name obeys the hash-string validation
-  pattern (lowercase alnum, defaults §2) — the illustrative
-  `sha256-double` from the spec is not a valid algorithm name.
-- **`Artifact` / `Manifest`** — the example's own `Object[T]` types,
-  serialized via the gzip codec into the core's self-describing TLV envelope.
+- **`gzipCodec[T]`** — wraps the JSON codec (`json.New[T]()`) with gzip. Deterministic output: the gzip header mtime is pinned, so identical values → identical bytes → identical hashes (dedup preserved).
+- **`RegisterHash("sha256double", …)`** — a std-lib-only custom algorithm (sha256 of sha256). The name obeys the hash-string validation pattern (lowercase alnum, defaults §2); the illustrative `sha256-double` is not a valid algorithm name.
+- **`Artifact` / `Manifest`** — the example's own `Object[T]` types, serialized via the gzip codec into the core's self-describing TLV envelope.
 - **`cas` and `gitlike` are untouched.**
 
 ## Code walkthrough
 
 - `hasher.go` — registers `sha256double` at init.
-- `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's
-  output, `Unmarshal` = gunzip then inner decode (deterministic: pinned gzip
-  mtime).
-- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest`
-  (references artifact hashes; `MarshalJSON`/`UnmarshalJSON` render the hash
-  slices as `algo:hex` strings), serialized through the gzip codec into the
-  core's self-describing TLV envelope (`Store.Put`); plus the CLI:
-  - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's
-    manifest** (delete the previous one), so the replaced artifact becomes
-    garbage;
-  - `get <hash>` — through the `LRUCache`, with a `CacheMonitor` printing
-    snapshots;
+- `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's output; `Unmarshal` = gunzip then inner decode (pinned gzip mtime).
+- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact hashes; `MarshalJSON`/`UnmarshalJSON` render the hash slices as `algo:hex`), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
+  - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's manifest** (delete the previous), so the replaced artifact becomes garbage;
+  - `get <hash>` — through the `LRUCache`, `CacheMonitor` printing snapshots;
   - `gc` — reachable = all manifests + referenced artifacts → `fs.Backend.GC`;
   - `stats` / `monitor`.
 
@@ -72,5 +52,4 @@ go run ./examples/artifacts -store ./objects stats
 go test ./examples/artifacts/...
 ```
 
-`put` prints `sha256double:… deduplicated: true/false`; `gc` prints the
-number of deleted objects.
+`put` prints `sha256double:… deduplicated: true/false`; `gc` prints the number of deleted objects.
