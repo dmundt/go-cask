@@ -7,218 +7,100 @@ version: v8
 
 # Consistency — go-cask
 
-> How the store stays consistent: what "broken" and "dangling" mean, how to
-> detect them, how garbage collection and age-based pruning work — built on
-> the best practices of Git, IPFS, restic, and S3 lifecycle policies, kept to
-> the simplest set that is still powerful. This is the document that makes
-> CASK "the last CAS you need": one consistent model, five maintenance
-> operations, no machinery beyond that.
->
-> Related: `cas-core.md` §4.11 (Maintenance: `Verify`, `GC`),
-> `operations.md` (integrity cadence, quarantine),
-> `viewer-design.md` (diagnostics UI),
-> `testing-strategy.md` (the CAS laws).
+The consistency model: what "broken" and "dangling" mean, how to detect them, and how GC + age-based pruning work — Git/IPFS/restic/S3-informed, kept minimal. Five maintenance operations, no machinery beyond that. Related: `cas-core.md` §4.11, `operations.md`, `viewer-design.md`, `testing-strategy.md`.
 
----
+## 1. Consistency model
 
-## 1. Consistency Model
+Content addressing is self-verifying (the address IS the checksum). Two independent failure classes.
 
-Content addressing makes the store **self-verifying**: the address IS the
-checksum. Two independent failure classes exist:
+| State | Meaning | Detection |
+|---|---|---|
+| OK | bytes at `h` match `h`; every reference exists | — |
+| Broken object | stored bytes no longer hash to the address (corruption/bit rot) | `Verify` (§2) |
+| Dangling ref | object references an unstored hash (missing/deleted) | reference scan (§3) |
+| Missing root | a pinned/root hash does not exist | `Exists(roots)` |
 
-| State             | Meaning                                                        | Detection            |
-| ----------------- | -------------------------------------------------------------- | -------------------- |
-| **OK**            | bytes at `h` match `h`; every reference exists                 | —                    |
-| **Broken object** | stored bytes no longer hash to the address (corruption, bit rot) | `Verify` (§2)       |
-| **Dangling ref**  | an object references a hash that is not stored (missing/deleted) | reference scan (§3) |
-| **Missing root**  | a pinned/root hash does not exist                              | `Exists(roots)`      |
+Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) and idempotent; reads are lock-free. Consistency is therefore **detection** of the two failure classes + **space reclamation** — never repair of torn writes.
 
-Store invariants (from cas-core §2) guarantee there are no torn objects:
-`Put` is atomic (rename) and idempotent, reads are lock-free. Consistency
-work is therefore about **detecting** the two failure classes and **reclaiming
-space** — never about repairing torn writes.
+## 2. Detecting broken objects (`Verify`)
 
----
+- `Verify(ctx, h)` re-reads bytes and recomputes the hash with the address's algorithm; mismatch → `ErrHashMismatch`.
+- Variants (pick by cost): **full scan** (every object; scheduled nightly or on demand; definitive), **sampled scan** (random subset on `List`; cheap coverage), **on-read** (verify while streaming; strongest but most expensive; critical objects only).
+- Handling (operations §4): report → **quarantine** (move the file aside) → audit-log → alert. The store never "fixes" a broken object — correct content must be re-`Put` (a new, valid hash).
 
-## 2. Detecting Broken Objects (`Verify`)
+## 3. Detecting dangling references
 
-- `Verify(ctx, h)` re-reads the bytes and recomputes the hash with the
-  algorithm from the address; mismatch → `ErrHashMismatch`.
-- **Variants** (pick by cost):
-  - **full scan** — every object; scheduled (nightly) or on demand; the
-    definitive check;
-  - **sampled scan** — random subset on `List`; cheap ongoing coverage;
-  - **on-read** — verify while streaming a read; the strongest guarantee and
-    the most expensive; use for critical objects only.
-- **Handling** (operations §4): report → **quarantine** (move the file
-  aside) → audit-log → alert. The store never "fixes" a broken object —
-  the correct content must be re-`Put` (a new, valid hash).
+- A reference dangles when some object's `References()` contains `h` with `Exists(h) == false` (target deleted, GC'd, or never stored).
+- Detection: one pass over all objects; for each reference, a lock-free `Exists` check. O(refs) lookups, cheap because reads are lock-free (performance §2).
+- Dangling refs are **diagnostics, not errors the core fixes**. The lazy resolver tolerates them (`ResolveAny` → not found); the viewer flags them explicitly. Repair is the application's job: re-`Put` the referencing object (a new hash) or re-pin the target.
+- The core MUST NOT auto-delete objects merely because they dangle — that is GC's job, and GC removes only *unreachable* objects (§4).
 
----
+## 4. Garbage collection (mark-and-sweep from roots)
 
-## 3. Detecting Dangling References
+**Model = Git's + IPFS's:** objects are kept while reachable from **roots**; the rest is reclaimable garbage.
 
-- A reference dangles when `References()` of some object contains `h` with
-  `Exists(h) == false` — the target was deleted, GC'd, or never stored.
-- **Detection**: one pass over all objects; for each reference, a lock-free
-  `Exists` check. Cost is O(refs) lookups, cheap because reads are lock-free
-  (performance §2).
-- **Handling**: dangling refs are **diagnostics, not errors the core fixes**.
-  The lazy resolver already tolerates them (`ResolveAny` → not found). The
-  viewer flags them explicitly (broken-link diagnostics, viewer-design §7).
-  Repair is the application's job: re-`Put` the referencing object (a new
-  hash) or re-pin the target.
-- The core MUST NOT auto-delete objects just because they dangle — that is
-  GC's job, and GC only removes *unreachable* objects (§4).
+- **Roots** are application-supplied pinned hashes (Git refs/branches, IPFS pins, Docker manifest digests; in `gitlike`, typically commit/tag hashes).
+- **Algorithm** (`GC(ctx, reachable map[string]bool)`, cas-core §4.11): **(1) Mark** — walk `References()` from every root (BFS/DFS with a visited set, robust even against cycles), collect the reachable set (via an app-side `Walker[T]`/`WalkGraph`); **(2) Sweep** — delete every object whose `h.String()` is not in the reachable set.
+- **When:** explicit only — `POST /gc` (admin), CLI, or scheduled job. Never automatic by default (a store with no roots must not silently delete itself).
+- **Concurrency:** sweeping unlinks files; a concurrent `Put` of a swept hash just re-creates it (idempotent, lock-free-safe); a reader holding an open FD keeps the bytes (POSIX). No GC-vs-write coordination within one process. Across OS processes, the **grace model** applies (cas-core §6): a sweep that MAY race a live writer MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h), so fresh writes survive. A forced `--min-age 0` sweep is the dangerous variant — safe only when no other process writes. Maintenance sweeps never run concurrently with each other (`cask` serializes via `.cask.lock`, cli §2).
+- **Why not reference counting:** refcounts need a persisted, updated counter on every write — complexity and a drift source. Mark-and-sweep is stateless, correct by construction, cheap enough for a write-dominated store. (Git and restic both trace, not refcount.)
 
----
+## 5. Age-based pruning (retention)
 
-## 4. Garbage Collection (mark-and-sweep from roots)
+Removes **unreachable** objects older than a threshold (restic-retention/S3-lifecycle style).
 
-**The model is Git's + IPFS's:** objects are kept while reachable from
-**roots**; everything else is garbage the store may reclaim.
+- **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration.
+- **Operation:** `Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`: mark reachable from roots (§4); delete objects that are **unreachable AND older than `minAge`**; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
+- **Grace period is the point:** unreachable-young objects are kept, giving a recovery window after a bad unpin/delete (restic "keep recent even if unreachable"; S3 noncurrent-version expiration).
+- **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL objects older than T regardless of reachability — removes history and can break references. Exists for legal/temp-data eviction; the one op that can destroy reachable data.
+- **Surface:** `cask` CLI `prune --min-age <dur> <roots...> [--dry-run]` (cli §2). The viewer exposes verify/GC admin actions (viewer-design §6); prune stays CLI-only — dry-run semantics and root-based interface don't fit the hypermedia surface. No HTTP surface (backend-architecture §1).
 
-- **Roots** are pinned hashes the application supplies — the analogue of Git
-  refs/branches, IPFS pins, or Docker manifest digests. In `gitlike` terms,
-  roots are typically commit/tag hashes.
-- **Algorithm** (the existing `GC(ctx, reachable map[string]bool)` contract,
-  cas-core §4.11):
-  1. **Mark** — walk `References()` from every root (BFS/DFS; a visited set
-     is cheap and makes the walk robust even if a graph ever cycles);
-     collect the reachable set (an app-side `Walker[T]`/`WalkGraph` helper
-     produces this).
-  2. **Sweep** — delete every object whose `h.String()` is not in the
-     reachable set.
-- **When**: explicit only — `POST /gc` (admin), CLI, or a scheduled job.
-  Never automatic by default: a store with no roots must not silently
-  delete itself.
-- **Concurrency**: sweeping unlinks files; a concurrent `Put` of a swept hash
-  simply re-creates it (idempotent, lock-free-safe); a reader holding an open
-  FD keeps the bytes until it closes (POSIX). No GC-vs-write coordination is
-  needed **within one process**. Across OS processes, the **grace model**
-  applies (cas-core §6): a sweep that may race a live writer MUST reclaim
-  only objects older than a grace `--min-age`, so recent writes survive the
-  sweep — this is what the `cask` CLI does (`gc`/`prune` default 1h). A
-  forced `--min-age 0` sweep is the dangerous variant: only safe when no
-  other process is writing. Maintenance sweeps never run concurrently with
-  each other (`cask` serializes via `.cask.lock`, cli §2).
-- **Why not reference counting**: refcounts require a persisted, updated
-  counter on every write — complexity and a source of drift. Mark-and-sweep
-  is stateless, correct by construction, and cheap enough for a store where
-  writes dominate deletes. (restic and Git both use tracing, not refcounts.)
+## 6. Detection algorithms — options and chosen defaults
 
----
+| Concern | Options | Chosen default |
+|---|---|---|
+| Broken objects | full scan / sample / on-read | scheduled full `Verify` + sample on `List` |
+| Dangling refs | on-write check / periodic scan / lazy only | periodic scan; lazy tolerance always |
+| Reachability | DFS/BFS from roots, refcounts, bloom tracing | BFS/DFS from roots with visited set |
+| GC | mark-and-sweep, refcounts, pack rewrite | mark-and-sweep; pack rewrite deferred (performance §9) |
+| Retention | age-based, keep-N, both | age-based (`minAge`) with dry-run |
 
-## 5. Age-Based Pruning (retention)
+Costs: full `Verify` O(bytes); reference scan O(refs) lock-free lookups; GC O(objects) per run. All background at scale (performance §8.1).
 
-Pruning removes **unreachable** objects older than a threshold — the store's
-retention policy, in the spirit of restic's retention rules and S3 lifecycle
-expiration.
+## 7. Principles borrowed from other CAS systems
 
-- **Age source**: the object's **creation time ≈ first-`Put` time**, taken
-  from the file mtime (the fs backend — zero schema change) or a per-object
-  timestamp map (the mem backend). No metadata sidecar, no schema migration.
-- **Operation**: `Prune(ctx, roots []Hash, minAge time.Duration,
-  dryRun bool)`:
-  1. mark reachable from roots (§4);
-  2. delete objects that are **unreachable AND older than `minAge`**;
-  3. `dryRun` returns the would-be-deleted set without deleting (default
-     `true` for safety; a real delete requires the explicit flag).
-- **The grace period is the point**: unreachable objects younger than
-  `minAge` are kept, giving applications a recovery window after a bad
-  unpin/delete. This is restic's "keep recent even if unreachable" and
-  S3's noncurrent-version expiration.
-- **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL
-  objects older than T regardless of reachability — this removes history and
-  can break references. Documented as the one operation that can destroy
-  reachable data; it exists for legal/temp-data eviction.
-- **Surface**: exposed as a `cask` CLI operation (`prune --min-age <dur>
-  <roots...> [--dry-run]`, cli §2). The viewer exposes verify and GC
-  admin actions (viewer-design §6); prune stays CLI-only — its dry-run
-  semantics and root-based interface don't fit the hypermedia surface.
-  There is no HTTP surface (backend-architecture §1).
+| System | Practice adopted |
+|---|---|
+| Git | unreachable objects kept until explicit `gc`; refs as roots |
+| IPFS | pins as roots; GC deletes only unpinned objects |
+| restic | snapshot roots + retention; keep recent unreachable data |
+| S3 lifecycle | age-based object expiration |
+| Docker registry | manifest digests as roots; GC walks manifests |
 
----
+Deliberately **not** adopted (yet): persisted refcounts, bloom-filter tracing, chunked pack GC (deferred with packfiles, performance §9), distributed GC coordination.
 
-## 6. Detection Algorithms — options and chosen defaults
+## 8. Anti-over-engineering
 
-| Concern          | Options                                        | Chosen default (simple)              |
-| ---------------- | ---------------------------------------------- | ------------------------------------ |
-| Broken objects   | full scan / sample / on-read                   | scheduled full `Verify` + sample on `List` |
-| Dangling refs    | on-write check / periodic scan / lazy only     | periodic scan; lazy tolerance always |
-| Reachability     | DFS/BFS from roots, refcounts, bloom tracing   | BFS/DFS from roots with visited set  |
-| GC               | mark-and-sweep, refcounts, pack rewrite        | mark-and-sweep; pack rewrite deferred to performance §9 |
-| Retention        | age-based, keep-N, both                        | age-based (`minAge`) with dry-run    |
+The entire consistency surface is **five operations**: `Verify(h)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored, per algorithm).
 
-Costs: full `Verify` is O(bytes); reference scan is O(refs) lock-free
-lookups; GC is O(objects) per run. All are background operations at scale
-(performance §8.1: `List`/`Stats`/scans are not hot paths).
+- No persisted refcounts, no incremental GC index, no automatic background GC, no GC-vs-write transactions, no distributed coordination.
+- Content addressing + atomic writes remove most consistency problems by construction; the rest is detection + explicit reclamation.
+- Future needs (pack rewriting, chunked GC) are added behind the same `Backend`/maintenance contracts — never a parallel model.
 
----
+## 9. Where these live
 
-## 7. Principles Borrowed from Other CAS Systems
-
-| System          | Practice we adopt                                             |
-| --------------- | ------------------------------------------------------------- |
-| **Git**         | unreachable objects are kept until explicit `gc`; refs as roots |
-| **IPFS**        | pins as roots; GC deletes only unpinned objects               |
-| **restic**      | snapshot roots + retention rules; keep recent unreachable data |
-| **S3 lifecycle**| age-based expiration of objects                               |
-| **Docker registry** | manifest digests as roots; GC walks manifests              |
-
-What we deliberately do **not** adopt (yet): persisted refcounts, bloom-filter
-tracing, chunked pack GC (deferred with packfiles, performance §9),
-distributed GC coordination.
-
----
-
-## 8. Anti-Over-Engineering (the simplicity manifesto)
-
-The entire consistency surface of the store is **five operations**:
-
-```text
-Verify(h)               # is this object intact?
-ScanRefs()              # which references dangle?
-GC(reachable)           # delete everything not reachable from roots
-Prune(roots, minAge)    # delete unreachable objects older than minAge (dry-run first)
-Stats()                 # what is stored, per algorithm
-```
-
-- No persisted refcounts, no incremental GC index, no automatic background
-  GC, no GC-vs-write transactions, no distributed coordination.
-- Content addressing + atomic writes remove most consistency problems by
-  construction; the rest is detection + explicit reclamation.
-- If a future problem genuinely needs more (pack rewriting, chunked GC), it
-  is added behind the same `Backend`/maintenance contracts — never as a new
-  parallel model.
-
----
-
-## 9. Where These Live
-
-- **Core (cas-core §4.11)**: the fs backend's `Verify`, `GC`, `Stats`, and
-  `Prune` — the age-based retention policy is defined in §5.
-- **CLI (cli §2)**: `verify`, `gc`, `prune`, `clean` operate in-process
-  over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan
-  `*.tmp` files older than a threshold (operations §2).
-- **Viewer (viewer-design.md)**: integrity diagnostics
-  (`Verify`); admin actions for verify/GC/prune with confirm. The viewer is
-  a byte-layer tool and does not surface typed references (viewer-design
-  §7).
-
----
+- **Core (cas-core §4.11):** fs backend `Verify`/`GC`/`Stats`/`Prune`; retention policy in §5.
+- **CLI (cli §2):** `verify`, `gc`, `prune`, `clean` in-process over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan `*.tmp` older than a threshold (operations §2).
+- **Viewer (viewer-design.md):** integrity diagnostics (`Verify`); admin actions for verify/GC/prune with confirm. Byte-layer tool; does not surface typed references (viewer-design §7).
 
 ## 10. Checklist
 
 - [x] `Verify` detects any single flipped byte (`ErrHashMismatch`)
-- [x] Broken objects are quarantined + audit-logged, never auto-"fixed"
-- [x] Dangling-reference scan is O(refs) lock-free; reported as diagnostics
-- [x] GC is mark-and-sweep from app-supplied roots; explicit only
-- [x] `Prune(roots, minAge, dryRun)` keeps unreachable-young objects as a
-      grace period; dry-run default
-- [x] Sweeps racing live writers are grace-gated (`--min-age`); forced
-      `--min-age 0` is the documented dangerous variant (cas-core §6)
-- [x] The dangerous all-objects prune is admin + dry-run + confirm
+- [x] Broken objects quarantined + audit-logged, never auto-"fixed"
+- [x] Dangling scan O(refs) lock-free; reported as diagnostics
+- [x] GC mark-and-sweep from app roots; explicit only
+- [x] `Prune(roots, minAge, dryRun)` keeps unreachable-young objects as grace; dry-run default
+- [x] Sweeps racing live writers grace-gated (`--min-age`); forced `--min-age 0` is the dangerous variant (cas-core §6)
+- [x] Dangerous all-objects prune is admin + dry-run + confirm
 - [x] No refcounts, no automatic GC, no GC transactions (§8)
-- [x] CLI + viewer expose verify/GC/prune per the conventions (cli §2)
-
+- [x] CLI + viewer expose verify/GC/prune per cli §2
