@@ -1,4 +1,4 @@
-﻿---
+---
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
@@ -570,8 +570,9 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
 - **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
   trick of `FSBackend` does not apply, but it is still orders of magnitude
   faster than disk, which is the point.
-- **Construction:** `NewMemoryBackend()`; swap-in compatible with any
-  `Store[T]`, `gitlike` repository, or HTTP handler that takes a `Backend`.
+- **Construction:** `mem.New(...)` (optionally `mem.WithMaxSize(n)` to cap
+  total stored bytes; 0 = unbounded); swap-in compatible with any `Store[T]`,
+  `gitlike` repository, or HTTP handler that takes a `Backend`.
 
 ### 4.6 `Codec[T]` — serialization contract
 

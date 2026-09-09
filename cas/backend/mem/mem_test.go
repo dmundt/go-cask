@@ -137,3 +137,45 @@ func TestMemoryBackendSuite(t *testing.T) {
 		t.Fatal("previous entry must survive the failed Put")
 	}
 }
+
+func TestMemoryBackendWithMaxSize(t *testing.T) {
+	ctx := context.Background()
+	b := New(WithMaxSize(5))                          // cap of 5 bytes
+	h1, _ := cas.HashBytes("sha256", []byte("hello")) // 5 bytes fits
+	if err := b.Put(ctx, h1, strings.NewReader("hello")); err != nil {
+		t.Fatalf("Put within cap = %v", err)
+	}
+	// A second distinct object pushes over the cap -> rejected.
+	h2, _ := cas.HashBytes("sha256", []byte("world")) // another 5 bytes
+	if err := b.Put(ctx, h2, strings.NewReader("world")); err == nil {
+		t.Fatal("Put over cap must error")
+	}
+	// Re-Put of the same hash is idempotent and fits.
+	if err := b.Put(ctx, h1, strings.NewReader("hello")); err != nil {
+		t.Fatalf("re-Put within cap = %v", err)
+	}
+	// Delete frees space, so a subsequent Put fits again.
+	if err := b.Delete(ctx, h1); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Put(ctx, h2, strings.NewReader("world")); err != nil {
+		t.Fatalf("Put after delete freeing space = %v", err)
+	}
+}
+
+func TestMemoryBackendUnboundedDefault(t *testing.T) {
+	ctx := context.Background()
+	b := New() // 0 = unbounded
+	var h cas.Hash
+	for i := 0; i < 100; i++ {
+		payload := strings.Repeat("x", 1024)
+		nh, _ := cas.HashBytes("sha256", []byte(payload))
+		if err := b.Put(ctx, nh, strings.NewReader(payload)); err != nil {
+			t.Fatalf("Put[%d] on unbounded backend = %v", i, err)
+		}
+		h = nh
+	}
+	if ok, _ := b.Exists(ctx, h); !ok {
+		t.Fatal("last object should exist")
+	}
+}

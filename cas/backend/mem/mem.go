@@ -11,21 +11,48 @@ import (
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
 )
 
+// config holds the in-memory backend's own configuration, applied via
+// backend.Option functions.
+type config struct {
+	maxBytes int64
+}
+
+// WithMaxSize caps the total stored bytes. 0 (the default) means unbounded.
+// Once the cap is set (> 0), every Put is checked before allocation and
+// rejected with an error if it would exceed the cap.
+func WithMaxSize(maxBytes int64) backend.Option {
+	return func(cfg any) {
+		if c, ok := cfg.(*config); ok {
+			c.maxBytes = maxBytes
+		}
+	}
+}
+
 // Backend is an in-memory Backend keeping objects in a map[string][]byte,
-// guarded by an RWMutex.
+// guarded by an RWMutex. If configured with WithMaxSize, it tracks total
+// stored bytes and rejects Puts that would exceed the cap.
 type Backend struct {
-	mu      sync.RWMutex
-	objects map[string][]byte
+	mu        sync.RWMutex
+	objects   map[string][]byte
+	maxBytes  int64
+	usedBytes int64
 }
 
-// New creates an empty in-memory backend.
-func New() *Backend {
-	return &Backend{objects: make(map[string][]byte)}
+// New creates an empty in-memory backend. Options may include WithMaxSize.
+func New(opts ...backend.Option) *Backend {
+	cfg := config{}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return &Backend{objects: make(map[string][]byte), maxBytes: cfg.maxBytes}
 }
 
-// Put buffers r and stores it under h. Idempotent.
+// Put buffers r and stores it under h. Idempotent. When a max size is set, a
+// Put whose addition would exceed the cap is rejected with an error and no
+// entry is stored.
 func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -36,9 +63,20 @@ func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	key := h.String()
+	// Bytes this Put would add: the new blob minus any existing blob at the
+	// same key (re-Put of an identical hash replaces, not grows).
+	added := int64(len(data))
+	if old, ok := m.objects[key]; ok {
+		added -= int64(len(old))
+	}
+	if m.maxBytes > 0 && m.usedBytes+added > m.maxBytes {
+		return fmt.Errorf("cas: memory backend would exceed max size %d bytes", m.maxBytes)
+	}
 	stored := make([]byte, len(data))
 	copy(stored, data)
-	m.objects[h.String()] = stored
+	m.objects[key] = stored
+	m.usedBytes += added
 	return nil
 }
 
@@ -74,7 +112,11 @@ func (m *Backend) Delete(ctx context.Context, h cas.Hash) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.objects, h.String())
+	key := h.String()
+	if old, ok := m.objects[key]; ok {
+		delete(m.objects, key)
+		m.usedBytes -= int64(len(old))
+	}
 	return nil
 }
 
