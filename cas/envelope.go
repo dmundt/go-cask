@@ -1,10 +1,8 @@
 package cas
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -39,72 +37,73 @@ type Envelope struct {
 const envelopeVersion byte = 1
 
 // marshalEnvelope encodes Type and payload as
-// [version u8][uvarint typeLen][type][uvarint payloadLen][payload].
+// [version u8][uvarint typeLen][type][uvarint payloadLen][payload]. The
+// encoded length is known up front, so the whole envelope is written into a
+// single pre-sized allocation (no growing buffer, no final copy).
 func marshalEnvelope(typ string, payload []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteByte(envelopeVersion)
 	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(typ)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(typ)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
-	buf.Write(lenBuf[:n])
-	buf.Write(payload)
-	return buf.Bytes()
+	nType := binary.PutUvarint(lenBuf[:], uint64(len(typ)))
+	nPayload := binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	total := 1 + nType + len(typ) + nPayload + len(payload)
+	out := make([]byte, total)
+	out[0] = envelopeVersion
+	off := 1
+	off += binary.PutUvarint(out[off:], uint64(len(typ)))
+	copy(out[off:], typ)
+	off += len(typ)
+	off += binary.PutUvarint(out[off:], uint64(len(payload)))
+	copy(out[off:], payload)
+	return out
 }
 
-// unmarshalEnvelope decodes a TLV envelope, returning the versioned type name
-// (an absent major version reads as "@1", object-versioning §2) and the codec
-// payload. It returns ErrUnknownType for a malformed envelope or an unknown
-// envelope version.
-func unmarshalEnvelope(data []byte) (string, []byte, error) {
-	r := bytes.NewReader(data)
-	ver, err := r.ReadByte()
-	if err != nil {
+// parseEnvelope decodes a TLV envelope from an in-memory buffer, returning the
+// versioned type name (an absent major version reads as "@1",
+// object-versioning §2) and the codec payload. The payload is returned as a
+// zero-copy sub-slice of data — the caller must not retain it past data's
+// lifetime (Store.Get, the hot path, decodes it and discards it immediately).
+// It returns ErrUnknownType for a malformed envelope or an unknown envelope
+// version.
+func parseEnvelope(data []byte) (string, []byte, error) {
+	if len(data) < 1 {
 		return "", nil, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)
 	}
-	if ver != envelopeVersion {
-		return "", nil, fmt.Errorf("%w: unsupported envelope version %d", ErrUnknownType, ver)
+	if data[0] != envelopeVersion {
+		return "", nil, fmt.Errorf("%w: unsupported envelope version %d", ErrUnknownType, data[0])
 	}
-	typeLen, err := binary.ReadUvarint(r)
-	if err != nil {
+	off := 1
+	typeLen, n := binary.Uvarint(data[off:])
+	if n <= 0 {
 		return "", nil, fmt.Errorf("%w: truncated type length", ErrUnknownType)
 	}
-	if typeLen == 0 {
-		return "", nil, fmt.Errorf("%w: object missing type", ErrUnknownType)
+	off += n
+	if typeLen == 0 || typeLen > uint64(len(data)-off) {
+		return "", nil, fmt.Errorf("%w: object missing or oversized type", ErrUnknownType)
 	}
-	if typeLen > uint64(r.Len()) {
-		return "", nil, fmt.Errorf("%w: type length %d exceeds envelope size", ErrUnknownType, typeLen)
-	}
-	typeBytes := make([]byte, typeLen)
-	if _, err := io.ReadFull(r, typeBytes); err != nil {
-		return "", nil, fmt.Errorf("%w: truncated type", ErrUnknownType)
-	}
-	typeName := string(typeBytes)
+	typeName := string(data[off : off+int(typeLen)])
+	off += int(typeLen)
 	if !strings.Contains(typeName, "@") {
 		typeName += "@1" // legacy unversioned type name
 	}
-	payloadLen, err := binary.ReadUvarint(r)
-	if err != nil {
+	payloadLen, n := binary.Uvarint(data[off:])
+	if n <= 0 {
 		return "", nil, fmt.Errorf("%w: truncated payload length", ErrUnknownType)
 	}
-	if payloadLen > uint64(r.Len()) {
-		return "", nil, fmt.Errorf("%w: payload length %d exceeds envelope size", ErrUnknownType, payloadLen)
+	off += n
+	if payloadLen > uint64(len(data)-off) {
+		return "", nil, fmt.Errorf("%w: payload length exceeds envelope size", ErrUnknownType)
 	}
-	payload := make([]byte, payloadLen)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		return "", nil, fmt.Errorf("%w: truncated payload", ErrUnknownType)
-	}
-	return typeName, payload, nil
+	return typeName, data[off : off+int(payloadLen)], nil
 }
 
 // EnvelopeFromBytes decodes a TLV envelope, returning the versioned type name
 // and the codec payload. It is the public accessor to the on-disk format for
 // tooling and example layers that inspect raw stored bytes (e.g. ResolveAny).
+// The returned Envelope.Data is an independent copy of the payload, so callers
+// may retain it beyond the input buffer's lifetime.
 func EnvelopeFromBytes(data []byte) (Envelope, error) {
-	typ, payload, err := unmarshalEnvelope(data)
+	typ, payload, err := parseEnvelope(data)
 	if err != nil {
 		return Envelope{}, err
 	}
-	return Envelope{Type: typ, Data: payload}, nil
+	return Envelope{Type: typ, Data: append([]byte(nil), payload...)}, nil
 }

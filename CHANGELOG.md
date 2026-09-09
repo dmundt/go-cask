@@ -10,6 +10,19 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Performance
+
+- Core hot-path allocation reduction (on-disk format and public API
+  unchanged): `marshalEnvelope` now writes the TLV envelope into a single
+  pre-sized allocation (no growing `bytes.Buffer`, no final copy), and the
+  internal envelope parser returns the payload as a zero-copy slice of the
+  read buffer instead of allocating `type`/`payload` copies
+  (`cas/envelope.go`). `Store.Get` uses the zero-copy parser; the public
+  `EnvelopeFromBytes` still returns an independent payload copy. The memory
+  backend `Put` stores its `io.ReadAll` buffer directly instead of making a
+  second copy. Measured (64 B object): `Store.Put` 13→11 allocs, `Store.Get`
+  13→10 allocs, B/op and ns/op down (e.g. `Store.Get` 1 KiB 3.7 µs→2.4 µs).
+
 ### Added
 
 - `Backend.Stats` is now part of the `cas.Backend` interface, and `StoreStats`

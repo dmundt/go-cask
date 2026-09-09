@@ -109,7 +109,7 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	typeName, payload, err := unmarshalEnvelope(data)
+	typeName, payload, err := parseEnvelope(data)
 	if err != nil {
 		return zero, err
 	}

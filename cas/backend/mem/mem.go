@@ -77,9 +77,10 @@ func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	if m.maxBytes > 0 && m.usedBytes+added > m.maxBytes {
 		return fmt.Errorf("cas: memory backend would exceed max size %d bytes", m.maxBytes)
 	}
-	stored := make([]byte, len(data))
-	copy(stored, data)
-	m.objects[key] = stored
+	// io.ReadAll returns a buffer owned by this Put, so it is stored directly
+	// — no second copy. Stored slices are never mutated after Put (Get returns
+	// a read-only view over them).
+	m.objects[key] = data
 	m.usedBytes += added
 	return nil
 }
