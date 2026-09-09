@@ -1,12 +1,14 @@
 // Package gitlike implements the reference object model for the cas core: a
 // Git-like Blob/Tree/Commit/Tag model layered on the generic Store[T]
-// primitives (cas-core §4.12). It is an example — applications define their
-// own Object[T] types and their own repository/resolver combinations; the
-// gitlike package demonstrates the pattern and is NOT part of the cas core.
+// primitives (cas-core §4.12). It is a reference/copy-source library — apps
+// build their own Object[T] types and repository/resolver combinations; gitlike
+// is NOT part of the cas core and is excluded from its stable surface
+// (cas-core §7.1).
 //
 // Every object type is versioned from the start (blob@1, tree@1, commit@1,
-// tag@1) and stored in the self-describing envelope
-// {"type": "<type>@<major>", "data": "<base64 payload>"} defined by the core.
+// tag@1); Store.Put stores each object in the core's self-describing TLV
+// envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
+// (cas-core §8 decision 1) around the codec payload.
 //
 // The package also provides Repository (per-type stores over one Backend),
 // Resolver/ResolvedObject (cross-type resolution without any), WalkGraph
@@ -242,13 +244,6 @@ func (g *Tag) References() []cas.Hash {
 }
 
 // Deserialize parses the envelope and returns the tag.
-
-// envelope is the self-describing storage form (cas-core §8 decision 1):
-// {"type": "<type>@<major>", "data": "<base64 payload>"}.
-type envelope struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
-}
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a
 // stored object's TLV envelope bytes (see cas.EnvelopeFromBytes). It returns
