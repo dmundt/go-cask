@@ -1,7 +1,7 @@
 ﻿# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
-[![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
 A generic, Git-like **content-addressable store** for Go: store any bytes once under the hash of their content, reference them by
