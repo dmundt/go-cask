@@ -330,33 +330,12 @@ func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	return hashes, nil
 }
 
-// StoreStats summarizes the store contents.
-type StoreStats struct {
-	AlgorithmCounts map[string]int
-	TotalSize       int64
-	ObjectCount     int64
-}
-
-// String renders a one-line human summary of the stats.
-func (st StoreStats) String() string {
-	algos := make([]string, 0, len(st.AlgorithmCounts))
-	for a := range st.AlgorithmCounts {
-		algos = append(algos, a)
-	}
-	sort.Strings(algos)
-	parts := make([]string, 0, len(algos))
-	for _, a := range algos {
-		parts = append(parts, fmt.Sprintf("%s=%d", a, st.AlgorithmCounts[a]))
-	}
-	return fmt.Sprintf("%d objects, %d bytes [%s]", st.ObjectCount, st.TotalSize, strings.Join(parts, ", "))
-}
-
 // Stats walks the tree and returns per-algorithm counts and total size.
-func (s *Backend) Stats(ctx context.Context) (*StoreStats, error) {
+func (s *Backend) Stats(ctx context.Context) (*cas.StoreStats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	st := &StoreStats{AlgorithmCounts: map[string]int{}}
+	st := &cas.StoreStats{AlgorithmCounts: map[string]int{}}
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v28
+version: v29
 ---
 
 # CAS Core — go-cask
@@ -242,11 +242,12 @@ classDiagram
         +Exists(ctx, h) (bool, error)
         +Delete(ctx, h) error
         +List(ctx, algo) ([]Hash, error)
+        +Stats(ctx) (*StoreStats, error)
     }
     class fsBackend["fs.Backend (cas/backend/fs)"]
     fsBackend : +fanOut int
     fsBackend : +fanLevels int
-    fsBackend : +Stats() *fs.StoreStats
+    fsBackend : +Stats() *cas.StoreStats
     fsBackend : +Verify(ctx, h) error
     fsBackend : +GC(ctx, reachable) error
     fsBackend : +Prune(ctx, roots, minAge, dryRun)
@@ -254,6 +255,7 @@ classDiagram
     fsBackend : +Clean(ctx, olderThan)
     class memBackend["memory.Backend (cas/backend/mem)"]
     memBackend : +objects map[string][]byte
+    memBackend : +Stats() *cas.StoreStats
     Backend <|.. fsBackend : implements
     Backend <|.. memBackend : implements
 ```
@@ -306,10 +308,10 @@ classDiagram
         +Preload(ctx, hashes) error
         +CacheStats() memory.CacheStats
     }
-    class lruCache["lru.Cache~T~"]
+    class LRUCache~T~
     CachedStore~T~ o-- Store~T~ : wraps
     CachedObject~T~ o-- CachedStore~T~ : back-ref
-    lruCache --|> CachedStore~T~ : extends
+    LRUCache --|> CachedStore~T~ : extends
 ```
 
 **Example layer — gitlike (application code, not core):**
@@ -436,6 +438,7 @@ type Backend interface {
     Exists(ctx context.Context, h Hash) (bool, error)
     Delete(ctx context.Context, h Hash) error
     List(ctx context.Context, algo string) ([]Hash, error)
+    Stats(ctx context.Context) (*StoreStats, error)
 }
 ```
 
@@ -448,10 +451,11 @@ Per-method contracts (every backend MUST honor these):
 | `Exists`  | Boolean presence check                                                 |
 | `Delete`  | Missing object ⇒ no-op, no error                                       |
 | `List`    | All stored hashes; `algo != ""` filters by algorithm                   |
+| `Stats`   | Per-algorithm counts, total stored bytes, object count (§4.11)         |
 
 This interface is the **backend extension point**: any storage system (S3,
 BadgerDB, PostgreSQL, IPFS blockstore, …) can be plugged in by implementing
-these five methods (recipe in §7.2).
+these six methods (recipe in §7.2).
 
 ### 4.4 `fs.Backend` — the filesystem backend (`cas/backend/fs`)
 
@@ -567,6 +571,10 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
 - **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
   trick of the fs backend does not apply, but it is still orders of magnitude
   faster than disk, which is the point.
+- **Stats.** Implements the `Backend.Stats` contract (`*cas.StoreStats`),
+  recomputing per-algorithm counts, total bytes and object count from the map
+  on each call — there is no separate counter to desynchronize. It has no
+  `Verify`/`GC`/`Prune` (those are fs-only, §4.11).
 - **Construction:** `memory.New(...)` (package `memory` at
   `cas/backend/mem`; optionally `memory.WithMaxSize(n)` to cap
   total stored bytes; 0 = unbounded); swap-in compatible with any `Store[T]`,
@@ -695,9 +703,12 @@ emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
 
-- **`fs.Backend.Stats(ctx)`** → `*fs.StoreStats` (`AlgorithmCounts`,
-  `TotalSize`, `ObjectCount`) with a `String()` summary; walks the tree,
-  ignores `.tmp`.
+- **`Backend.Stats(ctx)`** → `*cas.StoreStats` (`AlgorithmCounts`,
+  `TotalSize`, `ObjectCount`) with a `String()` summary. `Stats` is part of
+  the `Backend` interface, so **every backend** reports it: the fs backend
+  walks the tree and ignores `.tmp`; the memory backend recomputes from its
+  object map. `Verify`, `GC`, `Prune` and the tree walk are fs-specific
+  (the memory backend is a plain map).
 - **`fs.Backend.Verify(ctx, h)`** — integrity: re-reads the object, recomputes
   the hash with the algorithm from the address, and reports mismatch
   (`ErrHashMismatch`).
@@ -915,7 +926,7 @@ The stable API the core promises (library-design §1):
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, `fs.StoreStats`); the `memory` backend (`memory.New`, `memory.WithMaxSize`) |
+| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); the `memory` backend (`memory.New`, `memory.WithMaxSize`); shared `cas.StoreStats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`)  |
 | Caching       | `memory.CachedObject[T]`, `memory.CachedStore[T]`, `memory.CacheMetrics`, `memory.CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
@@ -926,9 +937,10 @@ additive-compatible (library-design §5).
 ### 7.2 Extension recipes
 
 **Add a storage backend** (S3, BadgerDB, PostgreSQL, …):
-1. Implement the five `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/
-   `List`) — idempotent `Put`, `Delete` no-op on missing, `List(algo)`
-   filter, `Get` → `ErrNotFound` on missing (library-design §2).
+1. Implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/
+   `List`/`Stats`) — idempotent `Put`, `Delete` no-op on missing,
+   `List(algo)` filter, `Get` → `ErrNotFound` on missing, and a `Stats`
+   summary (§4.11) (library-design §2).
 2. Keep the byte layer non-generic; everything above works unchanged.
 3. The `memory` backend (§4.5) is the minimal reference implementation.
 4. Add durability/atomicity per `operations.md` §1 where the

@@ -272,18 +272,14 @@ func BenchmarkScaleList(b *testing.B) {
 	}
 }
 
-// BenchmarkScaleStats measures StoreStats at CASK_SCALE_OBJECTS objects
-// (FS backend only — the mem backend has no Stats).
+// BenchmarkScaleStats measures StoreStats at CASK_SCALE_OBJECTS objects on
+// every backend (Memory and FS now both implement Backend.Stats).
 func BenchmarkScaleStats(b *testing.B) {
 	for _, be := range scaleBackends() {
 		b.Run(be.name, func(b *testing.B) {
 			n := scaleObjectCount(b)
 			ctx := context.Background()
 			raw := be.new(b)
-			fsBackend, ok := raw.(*fs.Backend)
-			if !ok {
-				b.Skip("backend has no Stats")
-			}
 			if b.N == 1 {
 				return
 			} // framework probe run (b.N=1); measure only the real run
@@ -291,7 +287,7 @@ func BenchmarkScaleStats(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := fsBackend.Stats(ctx); err != nil {
+				if _, err := raw.Stats(ctx); err != nil {
 					b.Fatal(err)
 				}
 			}

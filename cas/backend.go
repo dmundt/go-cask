@@ -36,10 +36,12 @@ import (
 //     %w). Delete of a missing object is a no-op (returns nil).
 //   - List returns hashes only — no storage metadata (paths, timestamps,
 //     permissions, S3 keys).
+//   - Stats returns a StoreStats summary (per-algorithm counts, total size,
+//     object count).
 //
 // Separation of responsibilities:
 //
-//	Backend:  Hash → Bytes
+//	Backend:  Hash → Bytes (+ Stats)
 //	Store:    Object ↔ Codec ↔ Envelope ↔ Bytes
 //
 // This keeps the backend contract stable while allowing codecs, envelopes,
@@ -50,4 +52,5 @@ type Backend interface {
 	Exists(ctx context.Context, h Hash) (bool, error)
 	Delete(ctx context.Context, h Hash) error
 	List(ctx context.Context, algo string) ([]Hash, error)
+	Stats(ctx context.Context) (*StoreStats, error)
 }

@@ -141,3 +141,23 @@ func (m *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	sort.Slice(hashes, func(i, j int) bool { return hashes[i].String() < hashes[j].String() })
 	return hashes, nil
 }
+
+// Stats returns per-algorithm object counts and total stored bytes.
+func (m *Backend) Stats(ctx context.Context) (*cas.StoreStats, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	st := &cas.StoreStats{AlgorithmCounts: map[string]int{}}
+	for key, data := range m.objects {
+		h, err := cas.ParseHash(key)
+		if err != nil {
+			continue
+		}
+		st.AlgorithmCounts[h.Algorithm()]++
+		st.TotalSize += int64(len(data))
+		st.ObjectCount++
+	}
+	return st, nil
+}

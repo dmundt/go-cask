@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"crypto/sha1"
 	"io"
 	"strings"
 	"testing"
@@ -160,6 +161,85 @@ func TestMemoryBackendWithMaxSize(t *testing.T) {
 	}
 	if err := b.Put(ctx, h2, strings.NewReader("world")); err != nil {
 		t.Fatalf("Put after delete freeing space = %v", err)
+	}
+}
+
+// TestMemoryBackendStats verifies Stats recomputes per-algorithm counts, the
+// total stored byte size, and the object count from the live map.
+func TestMemoryBackendStats(t *testing.T) {
+	// sha1 is not a built-in one-shot algorithm; register it via the documented
+	// recipe so the test can exercise per-algorithm counting.
+	cas.RegisterHash("sha1", func(data []byte) cas.Hash {
+		sum := sha1.Sum(data)
+		h, _ := cas.NewHash("sha1", sum[:])
+		return h
+	})
+	ctx := context.Background()
+	b := New()
+	// Two objects under sha256 (different sizes), one under sha1.
+	h1, _ := cas.HashBytes("sha256", []byte("alpha"))
+	h2, _ := cas.HashBytes("sha256", []byte("a-longer-beta-payload"))
+	h3, _ := cas.HashBytes("sha1", []byte("gamma"))
+	for _, put := range []struct {
+		h  cas.Hash
+		in string
+	}{
+		{h1, "alpha"},
+		{h2, "a-longer-beta-payload"},
+		{h3, "gamma"},
+	} {
+		if err := b.Put(ctx, put.h, strings.NewReader(put.in)); err != nil {
+			t.Fatalf("Put %s = %v", put.h, err)
+		}
+	}
+
+	st, err := b.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats = %v", err)
+	}
+	if st.ObjectCount != 3 {
+		t.Errorf("ObjectCount = %d, want 3", st.ObjectCount)
+	}
+	if want := int64(len("alpha") + len("a-longer-beta-payload") + len("gamma")); st.TotalSize != want {
+		t.Errorf("TotalSize = %d, want %d", st.TotalSize, want)
+	}
+	if len(st.AlgorithmCounts) != 2 {
+		t.Errorf("AlgorithmCounts covers %d algorithms, want 2", len(st.AlgorithmCounts))
+	}
+	if got := st.AlgorithmCounts["sha256"]; got != 2 {
+		t.Errorf("sha256 count = %d, want 2", got)
+	}
+	if got := st.AlgorithmCounts["sha1"]; got != 1 {
+		t.Errorf("sha1 count = %d, want 1", got)
+	}
+
+	// Delete updates Stats.
+	if err := b.Delete(ctx, h1); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = b.Stats(ctx)
+	if st.ObjectCount != 2 {
+		t.Errorf("ObjectCount after delete = %d, want 2", st.ObjectCount)
+	}
+	if want := int64(len("a-longer-beta-payload") + len("gamma")); st.TotalSize != want {
+		t.Errorf("TotalSize after delete = %d, want %d", st.TotalSize, want)
+	}
+	if got := st.AlgorithmCounts["sha256"]; got != 1 {
+		t.Errorf("sha256 count after delete = %d, want 1", got)
+	}
+}
+
+// TestMemoryBackendStatsCanceled checks Stats honors a canceled context.
+func TestMemoryBackendStatsCanceled(t *testing.T) {
+	b := New()
+	h, _ := cas.HashBytes("sha256", []byte("alpha"))
+	if err := b.Put(context.Background(), h, strings.NewReader("alpha")); err != nil {
+		t.Fatal(err)
+	}
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := b.Stats(cctx); err == nil {
+		t.Fatal("Stats with canceled context must error")
 	}
 }
 

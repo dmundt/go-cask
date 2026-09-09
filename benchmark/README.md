@@ -1,4 +1,4 @@
-﻿---
+---
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (benchmark/bench_test.go) and the on-demand state-scaling probes (benchmark/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
@@ -126,7 +126,7 @@ auto-cleaned temp dir):
 | `BenchmarkScaleExists`  | Existence checks                                          |
 | `BenchmarkScaleDelete`  | Deleting objects (store shrinks during the loop)          |
 | `BenchmarkScaleList`    | Full `List` scan — materializes every hash; **O(N) memory per op, keep N modest** |
-| `BenchmarkScaleStats`   | `Stats` (only the `fs` sub-benchmark; the `memory` sub-benchmark skips) |
+| `BenchmarkScaleStats`   | `Stats` summary (counts, total bytes) on both backends |
 
 The prefill of N objects happens before the timed loop — it can take minutes
 at large N and is **not** part of the per-operation numbers.

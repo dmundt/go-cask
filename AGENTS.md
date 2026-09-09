@@ -328,12 +328,12 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
 ## Extension Guide (how an agent should extend this library)
 
 **Add a new storage backend** (S3, BadgerDB, PostgreSQL, ...):
-1. Implement `Backend` exactly (`Put/Get/Exists/Delete/List`), honoring
+1. Implement `Backend` exactly (`Put/Get/Exists/Delete/List/Stats`), honoring
    context propagation, error wrapping, and atomic/durable writes.
 2. Keep the byte layer non-generic; everything above it works unchanged.
 3. Mirror the `fs` backend's guarantees: idempotent `Put`, `Delete` no-op on
-   missing objects, `List(algo)` filtering. The `mem` backend (`cas/backend/mem`)
-   is the minimal reference implementation.
+   missing objects, `List(algo)` filtering, and a `Stats` summary. The `mem` backend
+   (`cas/backend/mem`) is the minimal reference implementation.
 
 **Add a new object type** (e.g. `Document`):
 1. Implement `Object[Document]` (`Type/References`) — serialization is the

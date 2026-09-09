@@ -10,6 +10,15 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Added
+
+- `Backend.Stats` is now part of the `cas.Backend` interface, and `StoreStats`
+  moved to a shared home in `package cas` (`cas/storestats.go`) so the fs and
+  memory backends report the same type interchangeably. The memory backend
+  (`cas/backend/mem`) gained `Stats(ctx)`, recomputing per-algorithm counts,
+  total bytes, and object count from its object map (no desynchronized
+  counter). Spec/docs updated to the six-method backend contract.
+
 ## [v0.1.0] - 2026-09-08
 
 This release restructures the public API and the on-disk format ahead of

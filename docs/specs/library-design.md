@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v11
+version: v12
 ---
 
 # Library Design — go-cask
@@ -26,12 +26,12 @@ version: v11
   ceiling for additions, not a shrinking target.
 - **Stable core surface** (the API the docs promise — cas-core §7.1):
   `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`,
-  `HashBytes`, `Backend` (byte interface), `Codec[T]` (interface), `Object`,
-  `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and the six sentinel
-  `Err*` values — all in `package cas`. Byte backends, typed codecs and
-  caches live in subpackages, never in `package cas`:
+  `HashBytes`, `Backend` (byte interface), `StoreStats`, `Codec[T]`
+  (interface), `Object`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and
+  the six sentinel `Err*` values — all in `package cas`. Byte backends, typed
+  codecs and caches live in subpackages, never in `package cas`:
   filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`,
-  `fs.WithFanLevels`, `fs.WithDirSync`, `fs.StoreStats`; constants
+  `fs.WithFanLevels`, `fs.WithDirSync`; constants
   `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory
   `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); codecs
   `json.New[T]()` and `gob.New[T]()` (there is no `JSONCodec`/`GobCodec`
