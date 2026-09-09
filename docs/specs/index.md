@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Specification Set
 description: Index of every instruction file by concern. See docs/index.md for path-first lookup.
-version: v1
+version: v2
 ---
 
 # go-cask Specification Set

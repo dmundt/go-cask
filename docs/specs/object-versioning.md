@@ -2,7 +2,7 @@
 type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
-version: v3
+version: v4
 ---
 
 # Object Versioning — go-cask

@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v5
+version: v6
 ---
 
 # Operations — go-cask

@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v11
+version: v12
 ---
 
 # Examples — go-cask

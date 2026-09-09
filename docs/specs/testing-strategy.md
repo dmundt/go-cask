@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v10
+version: v11
 ---
 
 # Testing Strategy — go-cask

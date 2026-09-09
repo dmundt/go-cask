@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v7
+version: v8
 ---
 
 # Viewer Design — go-cask

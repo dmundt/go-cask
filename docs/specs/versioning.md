@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v6
+version: v7
 ---
 
 # Versioning — go-cask

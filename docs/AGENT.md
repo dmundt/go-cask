@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmark/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v6
+version: v7
 ---
 
 # AGENT — go-cask (docs/ folder)

@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v13
+version: v14
 ---
 
 # Defaults & Behavior — go-cask

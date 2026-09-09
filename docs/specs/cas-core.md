@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v30
+version: v31
 ---
 
 # CAS Core — go-cask

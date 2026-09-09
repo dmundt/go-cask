@@ -2,7 +2,7 @@
 type: Design Document
 title: Core Overview — go-cask
 description: Pointer to the canonical core-overview diagram of the cas interfaces (cas-core §3.3) — a non-normative orientation aid; the diagram lives in the spec so it cannot drift.
-version: v3
+version: v4
 ---
 
 # Core Overview — go-cask

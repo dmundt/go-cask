@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v4
+version: v5
 ---
 
 # API Design — go-cask

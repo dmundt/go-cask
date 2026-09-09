@@ -2,7 +2,7 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v3
+version: v4
 ---
 
 # Branch Naming — go-cask

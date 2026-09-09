@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v4
+version: v5
 ---
 
 # go-cask Rules Index

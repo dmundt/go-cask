@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v8
+version: v9
 ---
 
 # Consistency — go-cask
