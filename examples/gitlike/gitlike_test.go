@@ -686,6 +686,151 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	}
 }
 
+// --- UnmarshalJSON malformed-JSON error branches (types.go) ---
+
+func TestTreeEntryUnmarshalInvalidJSON(t *testing.T) {
+	var e TreeEntry
+	if err := e.UnmarshalJSON([]byte("{not-json")); err == nil {
+		t.Fatal("TreeEntry.UnmarshalJSON on malformed JSON must error")
+	}
+}
+
+func TestCommitUnmarshalInvalidJSON(t *testing.T) {
+	var c Commit
+	if err := c.UnmarshalJSON([]byte("{not-json")); err == nil {
+		t.Fatal("Commit.UnmarshalJSON on malformed JSON must error")
+	}
+}
+
+func TestTagUnmarshalInvalidJSON(t *testing.T) {
+	var g Tag
+	if err := g.UnmarshalJSON([]byte("{not-json")); err == nil {
+		t.Fatal("Tag.UnmarshalJSON on malformed JSON must error")
+	}
+}
+
+// TestCommitWithParentRoundTrip exercises the non-nil parent branches of
+// Commit.MarshalJSON (parent serialised) and Commit.UnmarshalJSON (parent
+// re-parsed back to a Hash).
+func TestCommitWithParentRoundTrip(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+
+	hb := putBlob(t, repo, "a")
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "a.txt", Hash: hb, Mode: "m"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := repo.Commits.Put(ctx, &Commit{Tree: ht, Author: "a", Message: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := repo.Commits.Put(ctx, &Commit{Tree: ht, Parent: root, Author: "a", Message: "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := repo.Commits.Get(ctx, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Message != "child" || back.Parent == nil || !back.Parent.Equal(root) {
+		t.Fatalf("commit with parent round-trip: %+v", back)
+	}
+}
+
+// --- parseType / ResolveAny error branches ---
+
+// TestParseTypeRejectsMalformedEnvelope covers parseType's EnvelopeFromBytes
+// error return (garbage bytes are not a TLV envelope).
+func TestParseTypeRejectsMalformedEnvelope(t *testing.T) {
+	// Version byte 0 is not the current envelope version.
+	if _, err := parseType([]byte{0x00}); err == nil {
+		t.Fatal("parseType on a malformed envelope must error")
+	}
+}
+
+// TestParseTypeRejectsEmptyBase covers the "object missing type" branch when
+// the versioned type has no unversioned base ("@1" → base "").
+func TestParseTypeRejectsEmptyBase(t *testing.T) {
+	env := marshalEnvelope("@1", []byte(`{}`))
+	if _, err := parseType(env); err == nil {
+		t.Fatal("parseType of a type without a base name must error")
+	}
+}
+
+// TestResolveAnySurfacesBadEnvelope makes ResolveAny surface a parseType error
+// (repo.go's error return after the envelope is decoded).
+func TestResolveAnySurfacesBadEnvelope(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+	h := mustStoreEnv(t, repo, "@1", `{}`)
+	if _, err := res.ResolveAny(ctx, h); err == nil {
+		t.Fatal("ResolveAny of a type without a base name must error")
+	}
+}
+
+// TestResolveAnyTypeDecodeErrors exercises each switch-case error return in
+// ResolveAny: the envelope advertises a known type but the typed store cannot
+// decode the payload.
+func TestResolveAnyTypeDecodeErrors(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+
+	cases := []struct {
+		base string
+	}{
+		{"blob@1"},
+		{"tree@1"},
+		{"commit@1"},
+		{"tag@1"},
+	}
+	for _, tc := range cases {
+		// Payload that is valid envelope bytes but not decodable JSON for the
+		// concrete type.
+		h := mustStoreEnv(t, repo, tc.base, `{"broken"`)
+		ro, err := res.ResolveAny(ctx, h)
+		if err == nil {
+			t.Fatalf("ResolveAny(%s) with undecodable payload = %+v, want error", tc.base, ro)
+		}
+	}
+}
+
+// --- shortHash nil guard via PrintObject on a tag with no target ---
+
+func TestPrintObjectNilTargetTag(t *testing.T) {
+	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1"}})
+	if !strings.Contains(got, "<nil>") {
+		t.Fatalf("PrintObject of nil-target tag = %q, want <nil>", got)
+	}
+}
+
+// --- WalkGraph propagates a child resolution error (dangling reference) ---
+
+func TestWalkGraphDanglingReference(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+
+	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("00", 32))
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: missing, Author: "a", Message: "dangling"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	err = WalkGraph(ctx, res, hc, func(ro *ResolvedObject) error {
+		visited = append(visited, ro.Type)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("WalkGraph over a dangling tree reference must error")
+	}
+	if len(visited) != 1 || visited[0] != "commit" {
+		t.Fatalf("visited before failure = %v, want only the commit", visited)
+	}
+}
+
 // TestPrintObjectShortHash exercises the shortHash non-truncation branch
 // (digest hex of 8 chars or fewer) via a tag target.
 func TestPrintObjectShortHash(t *testing.T) {

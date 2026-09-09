@@ -10,59 +10,100 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-09-08
+
+This release restructures the public API and the on-disk format ahead of
+`v1.0.0`. **It is a breaking release**: the byte-layer storage contract was
+renamed (its former name in the `cas` root package no longer exists) and
+re-homed under a pluggable `cas/backend` package, codecs moved to `cas/codec/*`
+subpackages with their serialization methods renamed to the standard
+`Marshal`/`Unmarshal` idiom, the caching layer was split into `cas/cache/*`
+subpackages, and stored objects switched to a versioned TLV envelope. No
+migration path is provided — data written by earlier alphas is incompatible.
+
 ### Added
 
-- `docs/benchmarks.md` — operator's guide to the benchmarks: the regular
-  perf suite and the on-demand scale probes, with commands, parameters
-  (`CASK_SCALE_OBJECTS`), purpose of each benchmark, and how to read the
-  output (README points to it).
+- `cas/backend` (`cas/backend/config.go`): the generic `type Option func(any)`
+  so each backend owns its own config and `With*` helpers; backend config and
+  option plumbing moved out of the `cas` root package.
+- `cas/backend/fs` (package `fs`): type `Backend`, `fs.New(base, opts...)`,
+  the `WithFanOut`/`WithFanLevels`/`WithDirSync` options, and `StoreStats` —
+  the filesystem backend.
+- `cas/backend/mem` (package `memory`): type `Backend`, `mem.New(opts...)`,
+  and `mem.WithMaxSize(n)` to cap total stored bytes (`0` = unbounded) — the
+  in-memory backend.
+- `cas/codec/json` (package `json`) and `cas/codec/gob` (package `gob`):
+  `json.New[T]()` and `gob.New[T]()`, each exposing `Marshal`/`Unmarshal`; a
+  stdlib `encoding/gob` binary codec joins the relocated JSON one.
+- The versioned **TLV envelope** as the stored-object format
+  (`[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`, in
+  `cas/envelope.go`, cas-core §8 decision 1) with the public accessor
+  `cas.EnvelopeFromBytes`; a missing `@major` reads as `@1` and the leading
+  version byte future-proofs the format.
+- `cas/cache/mem` (package `memory`: `CachedStore`, `CachedObject`,
+  `New(store)`), `cas/cache/lru` (package `lru`: `New(store, maxSize)` LRU
+  eviction over a `memory.CachedStore`), and `cas/cache/prefetch` (package
+  `prefetch`: `NewSmartCache`) — the caching layer split into three packages,
+  with `SmartCache` factored out of the mem cache.
+- A top-level `benchmark/` directory (`bench_test.go` + `scale_bench_test.go`)
+  hosting the suite moved out of `cas/`; the on-demand scale probes honor
+  `CASK_SCALE_OBJECTS`.
+- `internal/test/` shared test types/fixtures reused across packages.
+- `docs/index.md` (the path→spec rule index, read-first per AGENTS.md) plus
+  per-directory `index.md` and `AGENT.md` governance files under `docs/`,
+  `docs/design/`, and `docs/perf/`.
+- All docs frontmatter converted to OKF format; a constructor-naming rule
+  (`New()` vs `NewType()`) documented in `docs/AGENT.md`.
+- CI now gates each `cas/backend/*`, `cas/cache/*`, and `cas/codec/*` package
+  individually at ≥ 90% coverage and runs the doc-integrity gate against the
+  new `docs/specs/` home.
 
 ### Changed
 
-- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
-- Fan-out decision recorded (cas-core §4.4): the file-name style is **not
-  configurable** — full-hash names are the only layout. A Git-remainder
-  option was considered and rejected (no Git interop under either style,
-  a second mode in every layout-dependent method, and it loses the
-  self-describing "file name = full hash" property `List`/`Stats`/`Verify`
-  rely on); revisit only for a real consumer (cas-core v23).
-- Fan-out layout clarified (no code change): file names were already always
-  the complete digest at any fan-out level (verified on disk) — cas-core §4.4
-  now states it explicitly and corrects the Git comparison (Git loose
-  objects use the remainder `<38-hex>` as file name, we keep the full hash);
-  defaults fan-out row rewording (cas-core v22, defaults v9).
-- Examples spec §2 rule 11 records the 2026-09 decision: cache/recipe
-  helpers (`SmartCache`, `CacheMonitor`, …) stay inlined per-example
-  teaching code — a shared home appears only when a second consumer of the
-  same helper exists, chosen deliberately then (examples v10).
-- Deferred-extension catalog (`docs/instructions/extensions.md` §3) records
-  the 2026-09 deferral decision with data-driven revisit triggers: packfiles
-  (incl. its `.idx` index) only past ~10^5–10^6 objects or for bulk
-  small-object ingest; compression/encryption only when an app needs them;
-  chunking only for chunk-granular dedup of very large blobs (extensions v5).
-- Instruction specs relocated to a **host-agnostic home**: the specification
-  set moved from `.github/instructions/` to `docs/instructions/`, and the
-  `.instructions.md` filename suffix was dropped — plain topic names now
-  (`cas-core.md`, `cli.md`, `AGENT.md`, …). The agent aggregator also moved
-  to the repo root as `AGENTS.md` (was `.github/copilot-instructions.md`)
-  and was de-branded from Copilot: any agent honoring AGENTS.md auto-reads
-  it. AGENT.md, the CI doc-integrity gate, and every cross-reference were
-  updated for the new home (AGENT.md v8, AGENTS.md v8, cas-core v21; the
-  other renamed specs each +1, `defaults.md` v7 unchanged).
-- Non-code docs consolidated under `docs/`: the top-level `design/` folder
-  moved to `docs/design/` (`core-overview.md`, `viewer-brief.md`, the viewer
-  HTML mockup, the object-browser design JSON) — every doc now lives in the
-  `docs/` tree (AGENTS.md v9, viewer-design v7).
-- The CI allocs regression gate and its committed baseline were removed:
-  `benchmarks/` deleted (was `cas.txt` + the `REFRESH` self-refresh marker),
-  along with the CI benchmark/refresh/gate steps and `contents: write`;
-  benchmarks stay runnable on demand via `go test -bench` (performance v9,
-  defaults v8).
-- New on-demand **state-scaling probes** (`BenchmarkScale{...}` in
-  `cas/scale_bench_test.go`): prefill a store to N objects (N from
-  `CASK_SCALE_OBJECTS`), time Put/Get/Exists/Delete/List/Stats at that
-  size, and project wall time + FS file bytes for a 10^10-object store.
-  Skipped unless the env var is set — never part of CI (performance v10).
+- **The byte-layer storage contract is now the `Backend` interface** (package
+  `cas`, `cas/backend.go`), with concrete implementations living in the
+  `cas/backend/*` subpackages — a breaking rename of the core interface.
+- **`Codec[T]` serialization methods renamed to the standard
+  `Marshal`/`Unmarshal` names** used across the `encoding/*` packages — a
+  breaking API change.
+- **Stored-object serialization switched to the versioned TLV envelope** — a
+  breaking change to on-disk bytes and therefore to the content hashes.
+- Backend constructors/options and codecs moved out of the `cas` root package;
+  callers now use `fs.New`/`mem.New`/`json.New[T]`/`gob.New[T]` with the
+  `cas/backend` `Option` type (see Added).
+- `Store[T]`'s marshal/read paths rebuilt around the codec as the single
+  serialization authority plus the TLV envelope; reads verify the stored type
+  name against the decoded value's type.
+- The caching layer moved from the `cas` root package into `cas/cache/*`
+  (memory/LRU/prefetch split) with `SmartCache` promoted from `examples/notes`
+  to `cas/cache/prefetch`.
+- Examples (`files`, `notes`, `artifacts`, `gitlike`), `cmd/cask`, and the
+  viewer updated to the new API; codec wrappers now compose `json.New[T]`
+  with `Marshal`/`Unmarshal`.
+- Tests reorganized per package (cached/LRU/smartcache split; `cas` corner and
+  external tests distributed to their owning packages) and coverage lifted
+  across the tree (mem backend ~97%, fs backend ~90%, `cas` ~95%, `cas/codec`
+  ~92%); shared test types centralized in `internal/test/`.
+- `examples/files`'s `main` refactored for testability with error-path and
+  command-execution tests added.
+
+### Removed
+
+- The pre-TLV `type\npayload` serialization and the earlier JSON envelope,
+  both superseded by the versioned TLV envelope.
+- The in-`cas` byte-layer backend and codec files/constructors that the
+  `cas/backend/*` and `cas/codec/*` packages replace.
+- Stray generated coverage artifacts (`cachecover`, `cas/cache/mem/cover.out`).
+
+### Fixed
+
+- Full benchmark suites that were dropped when benchmarks moved to
+  `benchmark/` were restored.
+- `examples/files`'s `cat` now resolves blobs to raw bytes and other types to
+  a description.
+- Doc-integrity path updated to the `docs/specs/` home and all docs swept to
+  the current API after the refactors; README Mermaid diagram parse error
+  fixed; `envelope.go` consistency fixes and TLV doc alignment.
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 

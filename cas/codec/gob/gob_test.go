@@ -33,3 +33,11 @@ func TestDecodeError(t *testing.T) {
 		t.Fatal("invalid gob must error")
 	}
 }
+
+func TestMarshalError(t *testing.T) {
+	// encoding/gob cannot encode a channel, so Marshal must surface the error.
+	c := gob.New[chan int]()
+	if _, err := c.Marshal(make(chan int)); err == nil {
+		t.Fatal("encoding an unsupported type must error")
+	}
+}
