@@ -10,6 +10,24 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-09-09
+
+Documentation and editorial release. **No public API or on-disk-format change.**
+
+### Changed
+
+- Condensed every file under `docs/` (27 specs/design docs + the three folder
+  `AGENT.md` meta-guides) and all repo READMEs (`README.md`, the `benchmark`
+  guide, and the `examples/*` READMEs) while preserving 100% of requirements,
+  contracts, invariants, and compatibility notes; mermaid/fence blocks kept
+  balanced. Instruction-doc frontmatter versions bumped by one per file
+  (`benchmark/README.md` v4→v5); `cas-core` now v31.
+- Swept stale pre-refactor identifiers from the example READMEs and a few
+  source doc-comments: `FSRawStore`→`fs.Backend`, `RawStore`→`cas.Backend`,
+  `JSONCodec[T]`/`GobCodec[T]`→`json.New[T]()`/`gob.New[T]()`,
+  `StoreStats`→`cas.Stats`, `Encode`/`Decode`→`Marshal`/`Unmarshal`. Comment-
+  only; no behavior change (4 `.go` files, `gofmt`/`go vet` clean).
+
 ## [v0.1.1] - 2026-09-09
 
 The `cas.Backend` contract gained a `Stats` method returning the shared
