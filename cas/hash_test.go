@@ -1,6 +1,8 @@
 package cas
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -267,5 +269,29 @@ func TestHashBytesRoundTrip(t *testing.T) {
 	}
 	if !strings.HasPrefix(h.String(), "sha256:") {
 		t.Fatalf("hash = %q", h.String())
+	}
+}
+
+// TestHashOneShotRegistration pins the one-shot-only hash paths: HashBytes
+// works through the registry, NewHasher rejects non-streamable algorithms.
+func TestHashOneShotRegistration(t *testing.T) {
+	RegisterHash("obone", func(data []byte) Hash {
+		sum := sha256.Sum256(data)
+		h, _ := NewHash("obone", sum[:])
+		return h
+	})
+	want := sha256.Sum256([]byte("abc"))
+	h, err := HashBytes("obone", []byte("abc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.String() != "obone:"+hex.EncodeToString(want[:]) {
+		t.Fatalf("HashBytes = %q", h.String())
+	}
+	if _, err := NewHasher("obone"); !errors.Is(err, ErrUnknownAlgorithm) {
+		t.Fatalf("NewHasher(one-shot) err = %v, want ErrUnknownAlgorithm", err)
+	}
+	if hs, err := NewHasher("sha256"); err != nil || hs == nil {
+		t.Fatalf("NewHasher(sha256) = %v, %v", hs, err)
 	}
 }

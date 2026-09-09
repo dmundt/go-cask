@@ -1,7 +1,9 @@
 package cas_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -280,4 +282,72 @@ func TestStorePutDedup(t *testing.T) {
 		t.Fatal("second put must be dedup")
 	}
 	_ = h
+}
+
+// TestStoreGetLegacyEnvelope verifies a legacy unversioned type name (without
+// @major) decodes (reads as @1) and round-trips through Get.
+func TestStoreGetLegacyEnvelope(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	st, err := cas.New(raw, jsoncodec.New[test.Note](), "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := (jsoncodec.New[test.Note]()).Encode(test.Note{Title: "legacy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Legacy form: TLV envelope with type "note" (no @major). unmarshalEnvelope
+	// appends @1 when the type has no '@', so "note" -> "note@1".
+	var buf bytes.Buffer
+	buf.WriteByte(1) // version
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len("note")))
+	buf.Write(lenBuf[:n])
+	buf.WriteString("note")
+	buf.Write(payload)
+	env := buf.Bytes()
+	h, err := test.HashData("sha256", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Get(ctx, h)
+	if err != nil {
+		t.Fatalf("Get(legacy envelope) = %v", err)
+	}
+	if got.Title != "legacy" {
+		t.Fatalf("Get = %+v", got)
+	}
+}
+
+// TestStoreCanceledOps verifies the typed store short-circuits canceled
+// contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
+func TestStoreCanceledOps(t *testing.T) {
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Note](), "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h, _ := test.HashData("sha256", []byte("x"))
+	for _, tc := range []struct {
+		name string
+		run  func() error
+	}{
+		{"Put", func() error { _, err := st.Put(ctx, test.Note{Title: "t"}); return err }},
+		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, test.Note{Title: "t"}); return err }},
+		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
+		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
+		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
+		{"Delete", func() error { return st.Delete(ctx, h) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, context.Canceled) {
+				t.Fatalf("err = %v, want context.Canceled", err)
+			}
+		})
+	}
 }

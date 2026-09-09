@@ -82,3 +82,47 @@ func TestWalkerVisitError(t *testing.T) {
 		t.Fatalf("Walk = %v, want sentinel", err)
 	}
 }
+
+// TestWalkerRecursionErrors covers walker behavior below the root: a missing
+// reference mid-graph surfaces ErrNotFound, and a visit error from a child
+// propagates.
+func TestWalkerRecursionErrors(t *testing.T) {
+	ctx := context.Background()
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Node](), "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Hash{leafH}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingH, _ := test.HashData("sha256", []byte("missing"))
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Hash{missingH}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := cas.NewWalker(st, func(test.Node) error { return nil })
+	if err := w.Walk(ctx, brokenH); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Walk over broken ref = %v, want ErrNotFound", err)
+	}
+
+	seen := 0
+	w2 := cas.NewWalker(st, func(o test.Node) error {
+		seen++
+		if o.References() == nil { // the leaf
+			return errors.New("stop at leaf")
+		}
+		return nil
+	})
+	if err := w2.Walk(ctx, rootH); err == nil || err.Error() != "stop at leaf" {
+		t.Fatalf("Walk child error = %v", err)
+	}
+	if seen != 2 {
+		t.Fatalf("visited %d objects, want root+leaf = 2", seen)
+	}
+}

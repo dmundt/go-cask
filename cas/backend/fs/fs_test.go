@@ -268,3 +268,96 @@ func TestVerifyCustomOneShot(t *testing.T) {
 	// construct a hash of an unregistered algorithm because the public
 	// constructors (ParseHash/NewHash) reject it.
 }
+
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
+
+// TestContextCancellationFS verifies every Backend operation honors a
+// canceled context (no filesystem side effects happen).
+func TestContextCancellationFS(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h, err := hashData("sha256", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := []struct {
+		name string
+		run  func() error
+	}{
+		{"Put", func() error { return s.Put(ctx, h, strings.NewReader("x")) }},
+		{"Get", func() error { _, err := s.Get(ctx, h); return err }},
+		{"Exists", func() error { _, err := s.Exists(ctx, h); return err }},
+		{"Delete", func() error { return s.Delete(ctx, h) }},
+		{"List", func() error { _, err := s.List(ctx, ""); return err }},
+		{"Stats", func() error { _, err := s.Stats(ctx); return err }},
+		{"Verify", func() error { return s.Verify(ctx, h) }},
+		{"GC", func() error { return s.GC(ctx, map[string]bool{}) }},
+		{"Prune", func() error { _, err := s.Prune(ctx, []cas.Hash{h}, 0, true); return err }},
+		{"Clean", func() error { _, err := s.Clean(ctx, 0); return err }},
+	}
+	for _, tc := range ops {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, context.Canceled) {
+				t.Fatalf("err = %v, want context.Canceled", err)
+			}
+		})
+	}
+}
+
+// TestFSBackendErrorPaths covers portable Backend failures: constructor over
+// a file, Put with a failing reader (temp cleaned up), and Prune at minAge 0.
+func TestFSBackendErrorPaths(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(file); err == nil {
+		t.Fatal("New over an existing file must error")
+	}
+
+	ctx := context.Background()
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := hashData("sha256", []byte("data"))
+	if err := s.Put(ctx, h, errReader{err: io.ErrClosedPipe}); err == nil {
+		t.Fatal("Put with failing reader must error")
+	}
+	if n, _ := s.Clean(ctx, 0); n != 0 {
+		t.Fatalf("Clean after failed Put removed %d files, want 0 (temp cleaned)", n)
+	}
+	if ok, _ := s.Exists(ctx, h); ok {
+		t.Fatal("object exists after failed Put")
+	}
+
+	a, _ := hashData("sha256", []byte("keep"))
+	b, _ := hashData("sha256", []byte("drop"))
+	for _, x := range []struct {
+		h cas.Hash
+		d string
+	}{{a, "keep"}, {b, "drop"}} {
+		if err := s.Put(ctx, x.h, strings.NewReader(x.d)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	doomed, err := s.Prune(ctx, []cas.Hash{a}, 0, true)
+	if err != nil || len(doomed) != 1 || !doomed[0].Equal(b) {
+		t.Fatalf("prune dry-run = %v, %v; want [b]", doomed, err)
+	}
+	if _, err := s.Prune(ctx, []cas.Hash{a}, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.Exists(ctx, b); ok {
+		t.Fatal("unreachable object survived prune at minAge 0")
+	}
+	if ok, _ := s.Exists(ctx, a); !ok {
+		t.Fatal("reachable root was pruned")
+	}
+}
