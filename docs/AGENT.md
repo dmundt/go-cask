@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, docs/perf/, and any future subdirectories. The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v3
+version: v4
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -110,7 +110,23 @@ Root `docs/index.md` is the top-level rule index. Subdirectory index files
 
 ---
 
-## 6. Diagram & Formatting Rules
+## 6. Constructor Naming (when writing example code)
+
+Any Go example embedded in these docs must name constructors correctly,
+per `docs/specs/coding-guidelines.md` §1 "Constructors":
+
+- Use plain `New()` when the package exposes **one** primary type:
+  `fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`.
+- Use `NewType()` / `NewXyz()` when the package exposes **multiple**
+  important types, or the constructed type is not the package's primary one:
+  `cas.NewHash`, `cas.NewWalker`, `memory.NewSmartCache`, `cas.NewStore`.
+
+When the codebase diverges from this, the code wins — update the example to
+match the actual identifier (a doc example that won't compile is a defect).
+
+---
+
+## 7. Diagram & Formatting Rules
 
 - Mermaid for relationships/flow, ASCII only alongside mermaid (raw views).
 - Code fences always carry a language tag: `go`, `yaml`, `text`, `mermaid`.
@@ -118,7 +134,7 @@ Root `docs/index.md` is the top-level rule index. Subdirectory index files
 
 ---
 
-## 7. Editing & Maintenance Checklist
+## 8. Editing & Maintenance Checklist
 
 Before committing any change to a file in `docs/` (outside `docs/specs/`):
 
