@@ -10,6 +10,12 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v1.0.1] - 2026-09-09
+
+Patch release: documentation and test-only additions on top of the frozen
+`v1.0.0` surface. No change to the public `cas` API, semantics, or the on-disk
+format.
+
 ### Docs & tests
 
 - Expanded the package doc comments for `cas/cache/{mem,lru,prefetch}` and
