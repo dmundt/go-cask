@@ -1,4 +1,4 @@
----
+﻿---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
 version: v11
@@ -398,7 +398,7 @@ gofmt -l .
   must be guarded by a `sync.RWMutex` once hash registration can happen after
   startup.
 - Serialization format: RESOLVED and implemented — the TLV envelope
-  `[version u8][uvarint typeLen][type][payload]` (cas-core §8 decision 1,
+  `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` (cas-core §8 decision 1,
   `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side
   registry.
 - Follow the sibling spec `docs/specs/viewer-security.md`

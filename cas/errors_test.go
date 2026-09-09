@@ -90,16 +90,19 @@ func TestGetCorruptPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// TLV envelope: [version][uvarint typeLen][type][payload]. A payload
-	// that is not valid JSON for test.Note will cause the codec Decode to
-	// fail, surfacing as ErrCorrupt.
+	// TLV envelope: [version][uvarint typeLen][type][uvarint payloadLen][payload].
+	// A payload that is not valid JSON for test.Note will cause the codec
+	// Decode to fail, surfacing as ErrCorrupt.
+	payload := []byte("this is not json")
 	var buf bytes.Buffer
 	buf.WriteByte(1) // version
 	var lenBuf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
 	buf.Write(lenBuf[:n])
 	buf.WriteString("note@1")
-	buf.WriteString("this is not json")
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
+	buf.Write(payload)
 	stored := buf.Bytes()
 	h, _ := test.HashData("sha256", stored)
 	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {

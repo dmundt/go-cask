@@ -12,23 +12,24 @@ import (
 //
 // Stored objects use the TLV envelope wire format (cas-core §8 decision 1):
 //
-//	+--------+-----------+------------+---------+
-//	| Version| TypeLen   | Type       | Payload |
-//	+--------+-----------+------------+---------+
-//	| 1 byte | uvarint   | N bytes    | rest    |
-//	+--------+-----------+------------+---------+
+//	+--------+-----------+------------+-----------+---------+
+//	| Version| TypeLen   | Type       | PayloadLen| Payload |
+//	+--------+-----------+------------+-----------+---------+
+//	| 1 byte | uvarint   | N bytes    | uvarint   | M bytes |
+//	+--------+-----------+------------+-----------+---------+
 //
 // where:
 //   - Version is the envelope format version (currently envelopeVersion).
 //   - TypeLen is the length of the versioned type name (e.g. "commit@1"),
 //     encoded as a uvarint.
 //   - Type is the versioned type name bytes.
-//   - Payload is the rest of the object — the codec output, arbitrary bytes.
+//   - PayloadLen is the length of the payload, encoded as a uvarint.
+//   - Payload is exactly PayloadLen bytes — the codec output, arbitrary bytes.
 //
-// Benefits: no JSON or base64 overhead, streamable, codec-agnostic, works for
-// arbitrary binary payloads, and versionable (a future format bump can be
-// detected from the leading byte). Git's object header ("<type> <size>\0")
-// follows a similar philosophy.
+// The PayloadLen field makes the frame self-delimiting: a reader can locate
+// the exact payload extent without scanning to EOF, which is useful for
+// streaming and range reads. Version makes a future format bump detectable
+// from the leading byte.
 type Envelope struct {
 	Type string
 	Data []byte
@@ -38,7 +39,7 @@ type Envelope struct {
 const envelopeVersion byte = 1
 
 // marshalEnvelope encodes Type and payload as
-// [version u8][uvarint typeLen][type bytes][payload bytes].
+// [version u8][uvarint typeLen][type][uvarint payloadLen][payload].
 func marshalEnvelope(typ string, payload []byte) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte(envelopeVersion)
@@ -46,6 +47,8 @@ func marshalEnvelope(typ string, payload []byte) []byte {
 	n := binary.PutUvarint(lenBuf[:], uint64(len(typ)))
 	buf.Write(lenBuf[:n])
 	buf.WriteString(typ)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	return buf.Bytes()
 }
@@ -81,7 +84,14 @@ func unmarshalEnvelope(data []byte) (string, []byte, error) {
 	if !strings.Contains(typeName, "@") {
 		typeName += "@1" // legacy unversioned type name
 	}
-	payload := make([]byte, r.Len())
+	payloadLen, err := binary.ReadUvarint(r)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: truncated payload length", ErrUnknownType)
+	}
+	if payloadLen > uint64(r.Len()) {
+		return "", nil, fmt.Errorf("%w: payload length %d exceeds envelope size", ErrUnknownType, payloadLen)
+	}
+	payload := make([]byte, payloadLen)
 	if _, err := io.ReadFull(r, payload); err != nil {
 		return "", nil, fmt.Errorf("%w: truncated payload", ErrUnknownType)
 	}

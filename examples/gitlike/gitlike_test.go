@@ -545,6 +545,8 @@ func marshalEnvelope(typeName string, payload []byte) []byte {
 	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
 	buf.Write(lenBuf[:n])
 	buf.WriteString(typeName)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	return buf.Bytes()
 }

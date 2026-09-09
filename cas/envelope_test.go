@@ -122,3 +122,65 @@ func TestEnvelopeFromBytesExported(t *testing.T) {
 		t.Fatalf("data = %q", env.Data)
 	}
 }
+
+// TestEnvelopeFormatWithPayloadLen pins the byte layout: a payload-length
+// field precedes the payload, so the frame is self-delimiting.
+func TestEnvelopeFormatWithPayloadLen(t *testing.T) {
+	typ := "note@1"
+	payload := []byte("abc")
+	data := marshalEnvelope(typ, payload)
+	r := bytes.NewReader(data)
+	// [version u8]
+	if v, _ := r.ReadByte(); v != envelopeVersion {
+		t.Fatalf("version = %d", v)
+	}
+	// [typeLen uvarint][type]
+	typeLen, _ := binary.ReadUvarint(r)
+	tb := make([]byte, typeLen)
+	r.Read(tb)
+	if string(tb) != typ {
+		t.Fatalf("type = %q", tb)
+	}
+	// [payloadLen uvarint][payload]
+	payloadLen, _ := binary.ReadUvarint(r)
+	if int(payloadLen) != len(payload) {
+		t.Fatalf("payloadLen = %d, want %d", payloadLen, len(payload))
+	}
+	pb := make([]byte, payloadLen)
+	r.Read(pb)
+	if string(pb) != string(payload) {
+		t.Fatalf("payload = %q", pb)
+	}
+	if r.Len() != 0 {
+		t.Fatalf("trailing bytes after framed payload: %d", r.Len())
+	}
+}
+
+func TestEnvelopeTruncatedPayloadLen(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteByte(0x01)
+	var lenBuf [10]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
+	buf.Write(lenBuf[:n])
+	buf.WriteString("note@1")
+	// No payloadLen follows -> truncated payload length error.
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
+		t.Fatalf("truncated payloadLen = %v", err)
+	}
+}
+
+func TestEnvelopePayloadLenExceeds(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteByte(0x01)
+	var lenBuf [10]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
+	buf.Write(lenBuf[:n])
+	buf.WriteString("note@1")
+	// payloadLen = 100 but only a few bytes follow.
+	n = binary.PutUvarint(lenBuf[:], 100)
+	buf.Write(lenBuf[:n])
+	buf.WriteString("xy")
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
+		t.Fatalf("oversized payloadLen = %v", err)
+	}
+}

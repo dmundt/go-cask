@@ -305,6 +305,8 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	n := binary.PutUvarint(lenBuf[:], uint64(len("note")))
 	buf.Write(lenBuf[:n])
 	buf.WriteString("note")
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	env := buf.Bytes()
 	h, err := test.HashData("sha256", env)

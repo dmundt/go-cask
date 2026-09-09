@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v26
+version: v27
 ---
 
 # CAS Core — go-cask
@@ -976,11 +976,11 @@ Resolved decisions (recorded here so implementation never re-litigates them):
    compact binary **TLV envelope** (see `cas/envelope.go`):
 
    ```text
-   +--------+-----------+------------+---------+
-   | Version| TypeLen   | Type       | Payload |
-   +--------+-----------+------------+---------+
-   | 1 byte | uvarint   | N bytes    | rest    |
-   +--------+-----------+------------+---------+
+   +--------+-----------+------------+-----------+---------+
+   | Version| TypeLen   | Type       | PayloadLen| Payload |
+   +--------+-----------+------------+-----------+---------+
+   | 1 byte | uvarint   | N bytes    | uvarint   | M bytes |
+   +--------+-----------+------------+-----------+---------+
    ```
 
    - `Version` is the envelope format version (currently `1`); a leading byte
@@ -989,11 +989,15 @@ Resolved decisions (recorded here so implementation never re-litigates them):
      `uvarint`.
    - `Type` is the versioned type name bytes (`<type>@<major>`; an absent
      major reads as `@1`).
-   - `Payload` is the rest — the `Codec[T]` output, arbitrary bytes.
+   - `PayloadLen` is the length of the payload as a `uvarint`.
+   - `Payload` is exactly `PayloadLen` bytes — the `Codec[T]` output,
+     arbitrary bytes.
 
-   This replaces the earlier JSON envelope (`{"type","data"}` + base64):
-   no JSON or base64 overhead, streamable, codec-agnostic, works for arbitrary
-   binary payloads, and versionable. Git's object header
+   The `PayloadLen` field makes the frame self-delimiting: a reader can
+   locate the exact payload extent without scanning to EOF (streaming /
+   range reads). This replaces the earlier JSON envelope (`{"type","data"}` +
+   base64): no JSON or base64 overhead, streamable, codec-agnostic, works for
+   arbitrary binary payloads, and versionable. Git's object header
    (`<type> <size>\0<data>`) follows a similar philosophy. It makes
    `parseType`/`ResolveAny` work without a side registry and carries the
    object-model version with the bytes (object-versioning §2). Applies
