@@ -9,6 +9,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
+	"github.com/dmundt/go-cask/cas/cache/prefetch"
 )
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
@@ -91,7 +92,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newTestRepo(t)
 	noteCache := cachemem.New(repo.Notes)
-	smart := cachemem.NewSmartCache(noteCache, 2)
+	smart := prefetch.NewSmartCache(noteCache, 2)
 
 	second, err := repo.Notes.Put(ctx, &Note{Title: "second"})
 	if err != nil {

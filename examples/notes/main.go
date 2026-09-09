@@ -9,6 +9,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
+	"github.com/dmundt/go-cask/cas/cache/prefetch"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,
@@ -30,7 +31,7 @@ func demo() error {
 	// cache for notes.
 	attachments := cachemem.New(repo.Attachments)
 	noteCache := cachemem.New(repo.Notes)
-	smart := cachemem.NewSmartCache(noteCache, 2)
+	smart := prefetch.NewSmartCache(noteCache, 2)
 
 	// Tags.
 	workTag, err := repo.Tags.Put(ctx, &Tag{Name: "work"})

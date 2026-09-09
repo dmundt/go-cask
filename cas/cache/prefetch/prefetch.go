@@ -1,27 +1,31 @@
-package memory
+// Package prefetch provides SmartCache: a prefetch-on-access wrapper over a
+// memory.CachedStore. GetWithPrefetch loads an object then asynchronously
+// warms the cache with its references so later reads hit.
+package prefetch
 
 import (
 	"context"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	mem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 // prefetchTimeout bounds every asynchronous prefetch launched by SmartCache.
 const prefetchTimeout = 5 * time.Second
 
-// SmartCache[T] wraps a CachedStore[T] and adds prefetch-on-access:
+// SmartCache[T] wraps a memory.CachedStore[T] and adds prefetch-on-access:
 // GetWithPrefetch loads the requested object and then asynchronously
-// prefetches its references (to prefetchDepth levels) so later reads hit
-// the cache. Prefetching never blocks or fails the caller.
+// prefetches its references (to prefetchDepth levels) so later reads hit the
+// cache. Prefetching never blocks or fails the caller.
 type SmartCache[T cas.Object[T]] struct {
-	store         *CachedStore[T]
+	store         *mem.CachedStore[T]
 	prefetchDepth int
 }
 
 // NewSmartCache wraps store with reference prefetching to prefetchDepth
 // levels. A depth <= 0 disables prefetching.
-func NewSmartCache[T cas.Object[T]](store *CachedStore[T], prefetchDepth int) *SmartCache[T] {
+func NewSmartCache[T cas.Object[T]](store *mem.CachedStore[T], prefetchDepth int) *SmartCache[T] {
 	return &SmartCache[T]{store: store, prefetchDepth: prefetchDepth}
 }
 
