@@ -1,6 +1,16 @@
-// Package memory provides a lazy-loading, in-memory cache for the cas core.
-// CachedStore wraps a Store[T] with a sync.Map; CachedObject is a lazy proxy.
-// LRU eviction lives in the sibling lru package.
+// Package memory provides a lazy-loading, in-memory cache layer for the cas
+// core. It is not part of the stable cas surface (cas-core §4.10): it wraps a
+// typed *cas.Store[T] and is generic over the object type.
+//
+// CachedObject[T] is a lazy proxy for one object — Load uses double-checked
+// locking, fetches from the store exactly once, and memoizes the value and any
+// error; IsLoaded reports state without loading. CachedStore[T] wraps a
+// Store[T] with a sync.Map of CachedObject values plus atomic metrics (exposed
+// by CacheStats); build one with New(store). Preload and PreloadRecursive warm
+// the cache ahead of use.
+//
+// The size-bounded lru.Cache (cas/cache/lru) builds on this package, and the
+// prefetch recipe (cas/cache/prefetch) demonstrates warming it from references.
 package memory
 
 import (

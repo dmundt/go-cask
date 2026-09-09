@@ -1,5 +1,10 @@
-// Package gob provides a binary Codec[T] (encoding/gob) for the cas core.
-// Both producer and consumer must be Go programs using the same type.
+// Package gob provides a Codec[T] for the cas core that serializes typed
+// values with the standard library's encoding/gob (cas-core §4.6).
+//
+// New[T]() returns a codec for any storable value T, so a store can be built
+// directly: cas.New(raw, gob.New[T](), algo). gob is a Go-specific binary
+// format: both producer and consumer must be Go programs using the same type.
+// It satisfies the codec round-trip contract, Unmarshal(Marshal(v)) == v.
 package gob
 
 import (

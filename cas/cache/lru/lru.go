@@ -1,4 +1,11 @@
-// Package lru provides a size-bounded LRU cache that wraps a memory.CachedStore.
+// Package lru provides a size-bounded LRU cache for the cas core. It is not
+// part of the stable cas surface (cas-core §4.10); Cache[T] wraps a
+// memory.CachedStore[T] and adds a most-recently-used eviction policy over the
+// cached objects.
+//
+// New(store, maxSize) builds a cache and rejects maxSize <= 0. The access path
+// tracks and promotes entries on use, evicting the least-recently-used object
+// when the cache is at capacity.
 package lru
 
 import (

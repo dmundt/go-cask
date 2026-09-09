@@ -1,6 +1,11 @@
-// Package prefetch provides SmartCache: a prefetch-on-access wrapper over a
-// memory.CachedStore. GetWithPrefetch loads an object then asynchronously
-// warms the cache with its references so later reads hit.
+// Package prefetch provides SmartCache, a prefetch-on-access cache for the cas
+// core. It is not part of the stable cas surface (cas-core §4.10); SmartCache[T]
+// wraps a memory.CachedStore[T] and is an example recipe (see examples/notes).
+//
+// NewSmartCache(store, depth) returns a cache whose reads load an object and
+// then asynchronously warm the cache with its references (prefetchDepth levels
+// deep) on a detached goroutine with a timeout, so later reads hit and the hot
+// read path never blocks on preloading.
 package prefetch
 
 import (

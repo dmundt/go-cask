@@ -1,4 +1,12 @@
-// Package json provides a JSON Codec[T] for the cas core.
+// Package json provides a Codec[T] for the cas core that serializes typed
+// values with the standard library's encoding/json (cas-core §4.6). It is the
+// default codec.
+//
+// New[T]() returns a codec for any storable value T, so a store can be built
+// directly: cas.New(raw, json.New[T](), algo). It satisfies the codec
+// round-trip contract, Unmarshal(Marshal(v)) == v, for all values with valid
+// UTF-8 content (encoding/json replaces invalid UTF-8 on encode, which is
+// pinned by tests).
 package json
 
 import "encoding/json"
