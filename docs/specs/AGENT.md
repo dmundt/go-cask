@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v13
+version: v14
 tags: [go-cask]
 status: stable
 ---
@@ -19,7 +19,7 @@ Governs the other files in this folder. Every agent (Copilot, other AI tooling) 
 
 ## 2. File naming
 
-- Pattern `<Topic>.md`, one topic per file, lowercase kebab-case domain noun. The folder name already says "instructions", so filenames carry **no** `.instructions` suffix.
+- Pattern `<Topic>.md`, one topic per file, lowercase kebab-case domain noun. These files are the instruction set under `docs/specs/`, so filenames carry **no** `.instructions` suffix.
 - Topics are domain nouns: `api-design`, `backend-architecture`, `branch-naming`, `cas-core`, `cli`, `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`, `frontend-architecture`, `library-design`, `object-versioning`, `operations`, `performance`, `testing-strategy`, `versioning`, `viewer-design`, `viewer-security`.
 - No redundant prefixes (never `go-`, never "instructions" inside a name). `-api`/`-design`/`-security` suffixes disambiguate viewer facets. This meta-guide is the sole `AGENT.md`.
 
