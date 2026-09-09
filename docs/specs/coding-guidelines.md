@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.22+ baseline (generics, enhanced routing) and the latest generics (toolchain 1.27).
-version: v10
+version: v11
 ---
 
 # Go Coding Guidelines — go-cask
@@ -83,7 +83,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 9. Project structure & conventions
 
 - Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
-- **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `examples/gitlike/`).
+- **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `gitlike/`).
 - Viewer middleware (authn, sessions, CSRF, login throttle) lives in `internal/web`. An example surface MAY add its own IP rate limiter (std-lib token bucket, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
 - `go.mod` at root declaring `go 1.21` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic except object/hash registration.
 - Tests: every exported `cas/` function tested; handlers use `httptest`; template FS fixtures use `testing/fstest`.

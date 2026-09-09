@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v5
+version: v6
 ---
 
 # go-cask Rules Index
@@ -22,7 +22,7 @@ version: v5
 | `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) |
 | `internal/web/` (dashboard, objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
-| `examples/gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
+| `gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
 | `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |

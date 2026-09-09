@@ -15,7 +15,7 @@ import (
 	"sort"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/examples/gitlike"
+	"github.com/dmundt/go-cask/gitlike"
 )
 
 // auditState is one of the four derived states an audit run assigns.

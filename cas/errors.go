@@ -4,7 +4,7 @@
 // layered — a non-generic byte layer (Hash, Backend, backends) below a
 // generic typed layer (Object[T], Codec[T], Store[T], Walker[T], caches) —
 // and knows nothing about application object models; each app layers its own
-// typed objects on top (the gitlike example in examples/gitlike demonstrates
+// typed objects on top (the gitlike example (gitlike/) demonstrates
 // the pattern).
 //
 // The public surface and its contracts are specified in

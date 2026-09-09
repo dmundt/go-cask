@@ -43,11 +43,11 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: go vet ./...
 
-      - name: Import boundaries (no product → examples imports)
+      - name: Import boundaries (no product -> examples/gitlike imports)
         if: hashFiles('**/*.go') != ''
         run: |
-          if grep -rn "dmundt/go-cask/examples" cas internal cmd; then
-            echo "cas/, internal/ and cmd/ MUST NOT import examples/ (coding-guidelines §9)"
+          if grep -rn "dmundt/go-cask/examples\|dmundt/go-cask/gitlike" cas internal cmd; then
+            echo "cas/, internal/ and cmd/ MUST NOT import examples/ or the gitlike app layer (coding-guidelines §9)"
             exit 1
           fi
 
@@ -57,7 +57,7 @@ jobs:
           fail=0
           # One package per invocation so each package's coverage line is
           # gated individually (./cas/... would mask cas behind nothing else here).
-          for pkg in ./cas ./cas/backend/fs ./cas/backend/mem ./cas/cache/mem ./cas/cache/lru ./cas/cache/prefetch ./cas/codec/json ./cas/codec/gob ./examples/gitlike ./internal/index; do
+          for pkg in ./cas ./cas/backend/fs ./cas/backend/mem ./cas/cache/mem ./cas/cache/lru ./cas/cache/prefetch ./cas/codec/json ./cas/codec/gob ./gitlike ./internal/index; do
             out="$(go test -race -cover "$pkg")"
             echo "$out"
             cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"

@@ -27,7 +27,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	"github.com/dmundt/go-cask/examples/gitlike"
+	"github.com/dmundt/go-cask/gitlike"
 )
 
 const usage = `usage: files [-store <dir>] <command> [args]

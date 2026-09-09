@@ -70,7 +70,7 @@ classDiagram
 import (
     fs "github.com/dmundt/go-cask/cas/backend/fs" // or use the mem backend
     "github.com/dmundt/go-cask/cas"
-    "github.com/dmundt/go-cask/examples/gitlike"
+    "github.com/dmundt/go-cask/gitlike"
 )
 
 raw, _ := fs.New("./objects")                     // backend

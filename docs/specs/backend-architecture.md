@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v13
+version: v14
 ---
 
 # Backend Architecture — go-cask
@@ -18,7 +18,7 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 ## 2. Process & binary layout
 
 - `cmd/cask` is the only binary and a **thin main**: all viewer logic lives in `internal/` (`web` handlers+templates over `/viewer/*`, `index` listing/meta helpers); `cask web` wires the internal packages. `internal/` MUST NOT be imported outside the module (Go-enforced).
-- `cas/` is the public surface (embedded library + `examples/gitlike/`); everything else is private. Non-`web` `cmd/cask` subcommands are a thin CLI over the same library — the library is the single source of behavior.
+- `cas/` is the public surface (embedded library + `gitlike/`); everything else is private. Non-`web` `cmd/cask` subcommands are a thin CLI over the same library — the library is the single source of behavior.
 - No `internal/api`, no bearer-token `internal/auth`, no `client/` SDK — the network JSON API was removed to keep the kit single-host (§1); HTTP-exposure patterns live in `examples/api`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps).
 - Forbidden edges: `cas/`·`internal/`·`cmd/` → `examples/`; `examples/` → `internal/`; example → example except the sanctioned `files → gitlike` shared-support dependency. `internal/index` and `examples/api/demo` import nothing from the module.

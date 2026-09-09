@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v7
+version: v8
 ---
 
 # Versioning — go-cask
@@ -24,7 +24,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 
 ## 2. Go module versioning rules
 
-- Module path: `github.com/dmundt/go-cask`; core in `cas/` subpackage (`.../go-cask/cas`), example in `examples/gitlike/`.
+- Module path: `github.com/dmundt/go-cask`; core in `cas/` subpackage (`.../go-cask/cas`), example in `gitlike/`.
 - **v0/v1:** no path suffix. Tags `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, …
 - **v2+:** Go REQUIRES the major in the module path — `github.com/dmundt/go-cask/v2` (tags become `v2.0.0`, …). Layout: keep both majors in one repo by mirroring the library under `cas/v2/` (its `go.mod` declares the `/v2` path), so v1 and v2 consumers coexist without a fork. `gitlike` follows the same major as the core it builds on.
 - **Untagged commits:** consumers get a Go **pseudo-version** (`v1.2.3-0.<timestamp>-<commit>`) automatically — no action needed; tags are still the contract.

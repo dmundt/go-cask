@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/examples/gitlike"
+	"github.com/dmundt/go-cask/gitlike"
 )
 
 func writeTempFile(t *testing.T, dir, name, content string) string {

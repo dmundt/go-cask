@@ -1,4 +1,4 @@
-﻿# Contributing to go-cask
+# Contributing to go-cask
 
 Thank you for contributing! This project is **specified, not guessed**: the
 `docs/specs/` folder is the single source of truth for design,
@@ -22,7 +22,7 @@ repository.
 | -------------------- | ----------------------------------------------------------- |
 | `cas/`               | The public core library (package `cas`) — see `cas-core`    |
 | `internal/`          | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
-| `examples/gitlike/`  | Reference example object model (package `gitlike`)          |
+| `gitlike/`  | Reference example object model (package `gitlike`)          |
 | `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
 | `examples/`          | Runnable example programs (`examples.md`)                   |
 | `docs/specs/` | The specification set (19 spec files + AGENT.md)            |

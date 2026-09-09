@@ -63,7 +63,7 @@ classDiagram
 ## How to run
 
 ```text
-go test ./examples/gitlike/...
+go test ./gitlike/...
 ```
 
-It is a library; there is no standalone program. Apps import it with `github.com/dmundt/go-cask/examples/gitlike` and layer their own types the same way.
+It is a library; there is no standalone program. Apps import it with `github.com/dmundt/go-cask/gitlike` and layer their own types the same way.

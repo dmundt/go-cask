@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v8
+version: v9
 ---
 
 # Viewer Design — go-cask
@@ -85,7 +85,7 @@ All under `/viewer` (configurable via the `viewer:` config block). `{hash}` valu
 
 **Objects:** UI links ALWAYS show the **8-char short hash** (`shortHash`, e.g. `9f86d081`); the link `href` always carries the full `algo:hexdigest` — short form is display-only, identity never lost; the full hash is always on the detail page (`object-meta`). Generic lists render `<shorthash> (<type>)` (`hashWithType`); tables with a dedicated type column MAY show the plain short hash. List columns: hash (short+type), algorithm, `Type()`, size; filter by algorithm and hash/type substring (active search). Detail order: summary (`object-meta` `<dl>`: full hash, algorithm, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
 
-**References are out of scope:** the viewer is a **byte-layer** tool and MUST NOT interpret typed references (resolving `References()` needs an app object model; the product ships none; `internal/` and `cas/` MUST NOT import `examples/`). Reference graphs belong to app layers (`examples/gitlike`). The viewer shows objects, bytes, and integrity, not typed structure.
+**References are out of scope:** the viewer is a **byte-layer** tool and MUST NOT interpret typed references (resolving `References()` needs an app object model; the product ships none; `internal/` and `cas/` MUST NOT import `examples/`). Reference graphs belong to app layers (`gitlike`). The viewer shows objects, bytes, and integrity, not typed structure.
 
 **Blobs:** the `raw` view shows exact serialized bytes — a classic hex dump in a `<pre>` (16-byte rows: offset, hex, ASCII columns) plus exact total size. Hexdump is **lazy-loaded** via htmx (`revealed`) so large objects don't block the page (streaming reads; never buffer megabytes). Type shown per `Type()`; raw JSON visible as-is.
 

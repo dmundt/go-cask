@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v31
+version: v32
 ---
 
 # CAS Core — go-cask
@@ -33,7 +33,7 @@ Testable via the CAS laws (testing-strategy.md §1).
 ```mermaid
 flowchart TB
     subgraph APP["Application / domain layer (per app, NOT core)"]
-        GITLIKE["examples/gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
+        GITLIKE["gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
         OTHER["Other apps: Note, Job, Document, ... (same pattern)"]
     end
     subgraph TYPED["Typed layer — GENERIC CORE (package cas, type-safe, no any)"]
@@ -53,7 +53,7 @@ flowchart TB
     TYPED --> BYTE
 ```
 
-Dependency rule: byte depends on nothing; typed depends on byte; application depends on typed. Caching wraps the typed layer without changing either. `cas` contains only generic primitives; the git-like model is a specific example in `examples/gitlike/` (§4.12) — apps build their own types/repositories and MUST NOT add them to the core.
+Dependency rule: byte depends on nothing; typed depends on byte; application depends on typed. Caching wraps the typed layer without changing either. `cas` contains only generic primitives; the git-like model is a specific example in `gitlike/` (§4.12) — apps build their own types/repositories and MUST NOT add them to the core.
 
 ### 3.2 How the core fits together
 
@@ -399,7 +399,7 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 
 ### 4.12 Example layer: `gitlike` (NOT generic core)
 
-A **specific example** in `examples/gitlike/`, `package gitlike` — not part of `cas`. Apps define their own `Object[T]` types; this is the reference set:
+A **specific example** in `gitlike/`, `package gitlike` — not part of `cas`. Apps define their own `Object[T]` types; this is the reference set:
 
 | Type | Fields | References() |
 |---|---|---|

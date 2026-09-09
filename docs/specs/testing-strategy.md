@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v11
+version: v12
 ---
 
 # Testing Strategy — go-cask
@@ -69,7 +69,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
-- **Coverage as high as practical:** `cas/` core and `examples/gitlike/` ≥ **90%** statement coverage (excluding generated); every exported identifier exercised; any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
+- **Coverage as high as practical:** `cas/` core and `gitlike/` ≥ **90%** statement coverage (excluding generated); every exported identifier exercised; any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
 - CI runs `go test -coverprofile` and fails below the bar; report attached to core PRs. Fuzz corpora committed.
 
 ## 6. Checklist
@@ -81,6 +81,6 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 - [x] `-race` concurrent test green
 - [x] corruption test proves `Verify` fails on a flipped byte
 - [x] golden vectors assert exact digests
-- [x] coverage ≥ 90% on `cas/` + `examples/gitlike/`; every exported identifier exercised; untested branches commented
+- [x] coverage ≥ 90% on `cas/` + `gitlike/`; every exported identifier exercised; untested branches commented
 - [x] every HTTP route tested (success + 400/401/403/404/429)
 - [x] new requirements come with their test (review-gated)
