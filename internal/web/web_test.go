@@ -63,14 +63,17 @@ func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 func TestLoginFlow(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	// Unauthenticated dashboard → 401 empty body.
-	resp, err := http.Get(ts.URL + "/viewer/")
+	// Unauthenticated dashboard redirects to the login page.
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := c.Get(ts.URL + "/viewer/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated dashboard = %d, want 401", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/viewer/login" {
+		t.Fatalf("unauthenticated dashboard = %d, location=%q, want 303 /viewer/login", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
 	// Wrong token → 401.
@@ -84,8 +87,8 @@ func TestLoginFlow(t *testing.T) {
 	}
 
 	// Startup token → 303 + session cookie, then dashboard renders.
-	c := login(t, ts, testStartupToken)
-	resp, err = c.Get(ts.URL + "/viewer/")
+	authClient := login(t, ts, testStartupToken)
+	resp, err = authClient.Get(ts.URL + "/viewer/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +111,36 @@ func TestRoleTokensLogin(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("viewer gc page = %d, want 403 empty", resp.StatusCode)
+	}
+}
+
+func TestDirectTokenLogin(t *testing.T) {
+	ts, _ := newTestServer(t)
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := c.Get(ts.URL + "/viewer/?token=" + testStartupToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("direct token login status = %d, want 303", resp.StatusCode)
+	}
+	if resp.Header.Get("Location") != "/viewer/" {
+		t.Fatalf("direct token redirect = %q, want /viewer/", resp.Header.Get("Location"))
+	}
+
+	resp, err = c.Get(ts.URL + "/viewer/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "CASK viewer") {
+		t.Fatalf("authed dashboard = %d, %.80q", resp.StatusCode, body)
 	}
 }
 

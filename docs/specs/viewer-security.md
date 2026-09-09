@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v5
+version: v6
 ---
 
 # Viewer Security — go-cask
@@ -33,7 +33,8 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 - Login attempts MUST be rate limited (max 5 failures/IP/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
 - Startup token characteristics: cryptographically secure random; displayed only at startup (once); not stored in plaintext config; regenerated on every restart.
-- The startup token is accepted **only** by `POST /login` to establish a session. Every other endpoint MUST reject it and require a valid session cookie.
+- A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie.
+- **Direct `?token=` login (MUST):** the token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs; the server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`; login still honors the throttle and audit-logs the action **without** the token value; after the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
 
 ## 6. Session management
 
@@ -71,7 +72,7 @@ If remote access is required, the preferred architecture is **VPN + reverse prox
 
 ## 13. Defensive programming
 
-Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role; never disclose whether the target bucket/object exists in either case.
+- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The dashboard landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
 
 ## 14. Security principle
 
@@ -81,7 +82,7 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [x] Auth required; login throttled (5/IP/min, backoff, audit-logged without the token) (§5)
-- [x] Startup token accepted only by `POST /login`; regenerated per start; never stored in plaintext (§5.1)
+- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
 - [x] Cookies `HttpOnly` + `SameSite=Strict` (+ `Secure` over HTTPS); no sensitive data in cookies (§7)
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)

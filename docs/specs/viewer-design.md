@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v9
+version: v10
 ---
 
 # Viewer Design — go-cask
@@ -31,7 +31,7 @@ Simple/elegant/usable: (6) **dashboard-first** landing (numbers that matter, sam
 - Roles: `viewer` (dashboard, list, metadata, download raw — all GET); `operator` (+ run `verify`, POST); `admin` (+ `delete`, `GC`, maintenance, POST).
 - Every mutation is a POST with server-validated CSRF token (hidden form field; htmx forms are ordinary forms).
 - Audit-log all admin actions (delete, GC, verify); never log tokens/secrets.
-- Missing/expired session → 401 empty; insufficient role → 403 empty; never disclose object existence.
+- Missing/expired session → 401 empty on data endpoints; insufficient role → 403 empty; never disclose object existence. The dashboard landing (`/viewer/`) alone redirects (303) to `/viewer/login` when unauthenticated and also accepts a direct `?token=` login (viewer-security §5).
 - Browser talks only to the backend API; backend to the store. Validate every query param/header/hash (`ParseHash`); reject malformed before touching storage.
 
 ## 4. Rendering architecture — nested Go templates
@@ -70,7 +70,8 @@ All under `/viewer` (configurable via the `viewer:` config block). `{hash}` valu
 | Route | Method | Content | Role |
 |---|---|---|---|
 | `/viewer/login` | GET/POST | startup-token login → session cookie | — |
-| `/viewer/` | GET | dashboard: stat cards, algorithm table, sample, search, quick nav | viewer |
+| `/viewer/?token=<token>` | GET | direct `?token=` login → session cookie → 303 to `/viewer/` (throttled; `Referrer-Policy: no-referrer`) | — |
+| `/viewer/` | GET | dashboard: stat cards, algorithm table, sample, search, quick nav; unauthenticated → 303 to `/viewer/login` | viewer |
 | `/viewer/dashboard` | GET | dashboard panels (stats + sample), htmx refresh fragment | viewer |
 | `/viewer/objects` | GET | object list: filter + table (search fragment target) | viewer |
 | `/viewer/objects/{hash}` | GET | object detail: meta + actions | viewer |

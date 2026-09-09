@@ -67,7 +67,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/login", s.loginPage)
 	mux.HandleFunc("POST /viewer/login", s.loginPost)
 	mux.HandleFunc("GET /viewer/static/htmx.min.js", s.htmx)
-	mux.HandleFunc("GET /viewer/", s.require(RoleViewer, s.dashboard))
+	mux.HandleFunc("GET /viewer/", func(w http.ResponseWriter, r *http.Request) {
+		// Never let a token in the URL leak via Referer.
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
+			s.loginToken(w, r, token)
+			return
+		}
+		if _, ok := s.sessions.get(sessionID(r)); !ok {
+			http.Redirect(w, r, "/viewer/login", http.StatusSeeOther)
+			return
+		}
+		s.require(RoleViewer, s.dashboard)(w, r)
+	})
 	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, s.dashboardFragment))
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
 	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectDetail))
@@ -124,27 +136,15 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 // loginPost validates the submitted token against the startup token (admin)
 // or the configured per-role tokens, throttles failures per IP (5/min with
 // backoff, viewer-security §5), and issues a session cookie.
-func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
+func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string) {
 	ip := callerIP(r)
 	if s.loginThrottle.blocked(ip) {
 		slog.Warn("viewer login throttled", "ip", ip)
 		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
 		return
 	}
-	token := r.FormValue("token")
-	var role string
-	switch {
-	case token == s.cfg.StartupToken:
-		role = RoleAdmin
-	default:
-		for tok, want := range s.cfg.RoleTokens { // map is token → role
-			if tok == token {
-				role = want
-				break
-			}
-		}
-	}
-	if role == "" {
+	role, ok := s.resolveToken(token)
+	if !ok {
 		s.loginThrottle.fail(ip)
 		slog.Warn("viewer login failed", "ip", ip) // token value never logged
 		http.Error(w, "invalid token", http.StatusUnauthorized)
@@ -160,6 +160,24 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 	setSessionCookie(w, sess, s.cfg.Secure)
 	slog.Info("viewer login", "role", role, "ip", ip)
 	http.Redirect(w, r, "/viewer/", http.StatusSeeOther)
+}
+
+func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
+	s.loginToken(w, r, r.FormValue("token"))
+}
+
+func (s *Server) resolveToken(token string) (string, bool) {
+	switch {
+	case token == s.cfg.StartupToken:
+		return RoleAdmin, true
+	default:
+		for tok, want := range s.cfg.RoleTokens { // map is token → role
+			if tok == token {
+				return want, true
+			}
+		}
+		return "", false
+	}
 }
 
 // --- dashboard ---
