@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v12
+version: v13
 ---
 
 # Library Design — go-cask
@@ -26,7 +26,7 @@ version: v12
   ceiling for additions, not a shrinking target.
 - **Stable core surface** (the API the docs promise — cas-core §7.1):
   `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`,
-  `HashBytes`, `Backend` (byte interface), `StoreStats`, `Codec[T]`
+  `HashBytes`, `Backend` (byte interface), `Stats`, `Codec[T]`
   (interface), `Object`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and
   the six sentinel `Err*` values — all in `package cas`. Byte backends, typed
   codecs and caches live in subpackages, never in `package cas`:

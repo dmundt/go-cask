@@ -196,7 +196,7 @@ type objectRow struct {
 func (s *Server) dashboardData(ctx context.Context) dashboardData {
 	st, err := s.store.Stats(ctx)
 	if err != nil {
-		st = &cas.StoreStats{AlgorithmCounts: map[string]int{}}
+		st = &cas.Stats{AlgorithmCounts: map[string]int{}}
 	}
 	d := dashboardData{ObjectCount: st.ObjectCount, TotalSize: st.TotalSize}
 	for algo, n := range st.AlgorithmCounts {

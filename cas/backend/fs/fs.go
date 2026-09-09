@@ -335,11 +335,11 @@ func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 }
 
 // Stats walks the tree and returns per-algorithm counts and total size.
-func (s *Backend) Stats(ctx context.Context) (*cas.StoreStats, error) {
+func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	st := &cas.StoreStats{AlgorithmCounts: map[string]int{}}
+	st := &cas.Stats{AlgorithmCounts: map[string]int{}}
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

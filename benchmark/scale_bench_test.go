@@ -272,8 +272,8 @@ func BenchmarkScaleList(b *testing.B) {
 	}
 }
 
-// BenchmarkScaleStats measures StoreStats at CASK_SCALE_OBJECTS objects on
-// every backend (Memory and FS now both implement Backend.Stats).
+// BenchmarkScaleStats measures the Backend.Stats summary at CASK_SCALE_OBJECTS
+// objects on every backend (Memory and FS both implement Backend.Stats).
 func BenchmarkScaleStats(b *testing.B) {
 	for _, be := range scaleBackends() {
 		b.Run(be.name, func(b *testing.B) {

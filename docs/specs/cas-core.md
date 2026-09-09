@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v29
+version: v30
 ---
 
 # CAS Core — go-cask
@@ -242,12 +242,12 @@ classDiagram
         +Exists(ctx, h) (bool, error)
         +Delete(ctx, h) error
         +List(ctx, algo) ([]Hash, error)
-        +Stats(ctx) (*StoreStats, error)
+        +Stats(ctx) (*Stats, error)
     }
     class fsBackend["fs.Backend (cas/backend/fs)"]
     fsBackend : +fanOut int
     fsBackend : +fanLevels int
-    fsBackend : +Stats() *cas.StoreStats
+    fsBackend : +Stats() *cas.Stats
     fsBackend : +Verify(ctx, h) error
     fsBackend : +GC(ctx, reachable) error
     fsBackend : +Prune(ctx, roots, minAge, dryRun)
@@ -255,7 +255,7 @@ classDiagram
     fsBackend : +Clean(ctx, olderThan)
     class memBackend["memory.Backend (cas/backend/mem)"]
     memBackend : +objects map[string][]byte
-    memBackend : +Stats() *cas.StoreStats
+    memBackend : +Stats() *cas.Stats
     Backend <|.. fsBackend : implements
     Backend <|.. memBackend : implements
 ```
@@ -438,7 +438,7 @@ type Backend interface {
     Exists(ctx context.Context, h Hash) (bool, error)
     Delete(ctx context.Context, h Hash) error
     List(ctx context.Context, algo string) ([]Hash, error)
-    Stats(ctx context.Context) (*StoreStats, error)
+    Stats(ctx context.Context) (*Stats, error)
 }
 ```
 
@@ -571,7 +571,7 @@ A `Backend` implementation that keeps objects in a `map[string][]byte`
 - **Concurrency.** Uses an `RWMutex` (map access) — the lock-free rename
   trick of the fs backend does not apply, but it is still orders of magnitude
   faster than disk, which is the point.
-- **Stats.** Implements the `Backend.Stats` contract (`*cas.StoreStats`),
+- **Stats.** Implements the `Backend.Stats` contract (`*cas.Stats`),
   recomputing per-algorithm counts, total bytes and object count from the map
   on each call — there is no separate counter to desynchronize. It has no
   `Verify`/`GC`/`Prune` (those are fs-only, §4.11).
@@ -703,7 +703,7 @@ emitting snapshots — see their READMEs.
 
 ### 4.11 Maintenance
 
-- **`Backend.Stats(ctx)`** → `*cas.StoreStats` (`AlgorithmCounts`,
+- **`Backend.Stats(ctx)`** → `*cas.Stats` (`AlgorithmCounts`,
   `TotalSize`, `ObjectCount`) with a `String()` summary. `Stats` is part of
   the `Backend` interface, so **every backend** reports it: the fs backend
   walks the tree and ignores `.tmp`; the memory backend recomputes from its
@@ -926,7 +926,7 @@ The stable API the core promises (library-design §1):
 | Area          | Exported identifiers                                              |
 | ------------- | ----------------------------------------------------------------- |
 | Addressing    | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
-| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); the `memory` backend (`memory.New`, `memory.WithMaxSize`); shared `cas.StoreStats` |
+| Storage       | `Backend`; the `fs` backend (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); the `memory` backend (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
 | Typed layer   | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`)  |
 | Caching       | `memory.CachedObject[T]`, `memory.CachedStore[T]`, `memory.CacheMetrics`, `memory.CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors        | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` (library-design §2) |
