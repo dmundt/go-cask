@@ -9,10 +9,22 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/backend"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/internal/test"
 )
+
+// mustFS builds a filesystem backend rooted in a temp dir with the given
+// options.
+func mustFS(t *testing.T, opts ...backend.Option) *fs.Backend {
+	s, err := fs.New(t.TempDir(), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
 
 // test.ErrorObj / test.FailingCodec are defined in external_test.go. The FS-internal
 // error-path tests (TestFSPutMkdirError, TestFSPutReaderError,
