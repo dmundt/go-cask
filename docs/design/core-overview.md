@@ -7,11 +7,4 @@ version: v3
 
 # Core Overview — go-cask
 
-> Quick orientation to the `cas` core interfaces and their dependencies —
-> **not normative**. The canonical overview diagram (byte → typed → caching
-> layers) lives in `../specs/cas-core.md` §3.3,
-> alongside the four focused aspect diagrams; keep edits there so this
-> pointer and the README cannot drift from the spec.
-
-See [cas-core §3.3 — Core overview](../specs/cas-core.md).
-
+Quick, **non-normative** orientation to the `cas` interfaces. The canonical overview diagram (byte → typed → caching layers) and the four focused aspect diagrams live in [`../specs/cas-core.md`](../specs/cas-core.md) §3.3. Keep edits there so this pointer and the README cannot drift from the spec.

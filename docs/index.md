@@ -1,4 +1,4 @@
-﻿---
+---
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
@@ -7,11 +7,7 @@ version: v4
 
 # go-cask Rules Index
 
-**Four-step lookup:**
-1. Identify file being edited.
-2. Match its path against first column (longest match wins).
-3. Read file named in second column.
-4. Apply rules while planning and editing.
+**Lookup:** for the file being edited, match its path against the first column (longest match wins), read the linked rule file, and apply it while planning and editing.
 
 | Path | Rule file |
 |---|---|
@@ -31,13 +27,11 @@ version: v4
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
 | `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |
 | `examples/api/` | [`examples.md`](specs/examples.md) §3.4 + [`api-design.md`](specs/api-design.md) |
-| `cas/errors.go`; any exported `cas.*` identifier | [`library-design.md`](specs/library-design.md) |
+| `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
-| `benchmark/` (bench + scale probes) | [`performance.md`](specs/performance.md) + [`benchmark/README.md`](/benchmark/README.md) |
+| `benchmark/` | [`performance.md`](specs/performance.md) + [`benchmark/README.md`](/benchmark/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
 
-**Updating:** add/remove/re-target rows when rule files change. Bump version on material change.
-
-**Sibling indexes:** [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).
+**Updating:** add/remove/re-target rows when rule files change; bump version on material change. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).
