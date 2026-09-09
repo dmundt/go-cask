@@ -10,6 +10,28 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+## [v1.0.2] - 2026-09-09
+
+Patch release: documentation and CI additions on top of the frozen `v1.0.0`
+surface. No change to the public `cas` API, semantics, or the on-disk format.
+
+### Docs & tests
+
+- Added runnable, `// Output`-verified godoc `Example` functions for the `cas`
+  core and `gitlike` (package-level and per-symbol: `ExampleHashBytes`,
+  `ExampleRepository`), so `go test` keeps the documented examples correct.
+- Improved the `MarshalJSON`/`UnmarshalJSON` doc comments on the gitlike
+  object types (they note they implement `json.Marshaler`/`json.Unmarshaler`
+  and document nil behavior).
+- Reverted `docs/specs/index.md` and `docs/design/index.md` to their
+  pre-condensation originals.
+
+### CI
+
+- Added a nightly workflow (`.github/workflows/nightly.yml`) that runs each
+  fuzz target for 60 s and the regular benchmark suite — the long-running
+  checks the testing-strategy spec expects beyond the CI smoke.
+
 ## [v1.0.1] - 2026-09-09
 
 Patch release: documentation and test-only additions on top of the frozen
