@@ -52,7 +52,8 @@ type TreeEntry struct {
 	Mode string   `json:"mode"`
 }
 
-// MarshalJSON renders Hash as its "algo:hex" string (nil → omitted).
+// MarshalJSON implements json.Marshaler: it renders Hash as its "algo:hex"
+// string; a nil Hash is omitted from the JSON.
 func (e TreeEntry) MarshalJSON() ([]byte, error) {
 	type out struct {
 		Name string `json:"name"`
@@ -66,7 +67,9 @@ func (e TreeEntry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out{Name: e.Name, Hash: h, Mode: e.Mode})
 }
 
-// UnmarshalJSON parses the "algo:hex" string form back into a Hash.
+// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex" hash
+// string back into Hash. A missing or empty hash leaves Hash nil (a nil
+// reference round-trips as nil); a malformed hash returns an error.
 func (e *TreeEntry) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Name string `json:"name"`
@@ -116,7 +119,9 @@ type Commit struct {
 	Time    time.Time `json:"time"`
 }
 
-// MarshalJSON renders the hashes as "algo:hex" strings.
+// MarshalJSON implements json.Marshaler: it renders the tree and parent
+// hashes as "algo:hex" strings; a nil parent is omitted (a commit always
+// names a tree).
 func (c Commit) MarshalJSON() ([]byte, error) {
 	type out struct {
 		Tree    string    `json:"tree"`
@@ -138,7 +143,10 @@ func (c Commit) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON parses the "algo:hex" string hashes back into Hash values.
+// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex" tree
+// and parent strings back into Hash values. The tree hash is required; a
+// missing or empty parent leaves Parent nil (a root commit); a malformed hash
+// returns an error.
 func (c *Commit) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Tree    string    `json:"tree"`
@@ -189,7 +197,8 @@ type Tag struct {
 	Message string   `json:"message"`
 }
 
-// MarshalJSON renders the target hash as an "algo:hex" string.
+// MarshalJSON implements json.Marshaler: it renders the target hash as its
+// "algo:hex" string; a nil target encodes as an empty string.
 func (g Tag) MarshalJSON() ([]byte, error) {
 	type out struct {
 		Name    string `json:"name"`
@@ -204,7 +213,8 @@ func (g Tag) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out{Name: g.Name, Target: target, Tagger: g.Tagger, Message: g.Message})
 }
 
-// UnmarshalJSON parses the "algo:hex" target hash back into a Hash value.
+// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex"
+// target string back into a Hash value. An empty target leaves Target nil.
 func (g *Tag) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Name    string `json:"name"`
