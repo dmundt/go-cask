@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 func TestSmartCache(t *testing.T) {

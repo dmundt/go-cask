@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 // CacheSnapshot is the periodic observation a CacheMonitor emits: the

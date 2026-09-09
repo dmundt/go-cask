@@ -8,7 +8,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,

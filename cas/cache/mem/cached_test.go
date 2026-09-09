@@ -8,7 +8,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
-	cachemem "github.com/dmundt/go-cask/cas/cache/memory"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 

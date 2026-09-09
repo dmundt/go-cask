@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/cache/memory"
+	"github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 // Cache[T] is a size-bounded cache with LRU eviction: it embeds
