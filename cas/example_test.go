@@ -38,3 +38,16 @@ func Example() {
 	// Output:
 	// hi
 }
+
+// ExampleHashBytes shows hashing bytes with a registered algorithm (cas-core
+// §4.2); the returned Hash carries its algorithm and digest.
+func ExampleHashBytes() {
+	h, err := cas.HashBytes("sha256", []byte("hi"))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	fmt.Println(h.Algorithm())
+	// Output:
+	// sha256
+}
