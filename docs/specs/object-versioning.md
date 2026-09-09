@@ -2,7 +2,7 @@
 type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
-version: v2
+version: v3
 ---
 
 # Object Versioning — go-cask
@@ -48,9 +48,9 @@ func (g *Tag) Type() string    { return "tag@1" }
 ```
 
 - The **major version is part of the type identity**: it travels with every
-  serialized object (in the envelope `{"type": "commit@1", ...}` or the
-  header `type commit@1\n...` — whichever serialization format §8 chooses,
-  the versioned name is required either way).
+  serialized object — the versioned name is written into the TLV envelope's
+  Type field (`cas/envelope.go`; cas-core §8 decision 1), so it is required
+  regardless of codec.
 - The digest-part of the address (`algo:hexdigest`) is unaffected — the
   object model version lives in the bytes, not in the address.
 - **Legacy default**: a type name without `@major` is read as `@1`, so

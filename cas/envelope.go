@@ -5,10 +5,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 )
 
-// Envelope is the self-describing wire format for stored objects
-// (cas-core §8 decision 1):
+// Envelope is a decoded, self-describing object.
+//
+// Stored objects use the TLV envelope wire format (cas-core §8 decision 1):
 //
 //	+--------+-----------+------------+---------+
 //	| Version| TypeLen   | Type       | Payload |
@@ -17,7 +19,7 @@ import (
 //	+--------+-----------+------------+---------+
 //
 // where:
-//   - Version is the envelope format version (currently 1).
+//   - Version is the envelope format version (currently envelopeVersion).
 //   - TypeLen is the length of the versioned type name (e.g. "commit@1"),
 //     encoded as a uvarint.
 //   - Type is the versioned type name bytes.
@@ -27,15 +29,15 @@ import (
 // arbitrary binary payloads, and versionable (a future format bump can be
 // detected from the leading byte). Git's object header ("<type> <size>\0")
 // follows a similar philosophy.
-const envelopeVersion byte = 1
-
-// Envelope is a decoded self-describing object.
 type Envelope struct {
 	Type string
 	Data []byte
 }
 
-// marshalEnvelope encodes Type and Data as
+// envelopeVersion is the current envelope format version.
+const envelopeVersion byte = 1
+
+// marshalEnvelope encodes Type and payload as
 // [version u8][uvarint typeLen][type bytes][payload bytes].
 func marshalEnvelope(typ string, payload []byte) []byte {
 	var buf bytes.Buffer
@@ -65,22 +67,22 @@ func unmarshalEnvelope(data []byte) (string, []byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("%w: truncated type length", ErrUnknownType)
 	}
+	if typeLen == 0 {
+		return "", nil, fmt.Errorf("%w: object missing type", ErrUnknownType)
+	}
 	if typeLen > uint64(r.Len()) {
 		return "", nil, fmt.Errorf("%w: type length %d exceeds envelope size", ErrUnknownType, typeLen)
 	}
 	typeBytes := make([]byte, typeLen)
-	if _, err := r.Read(typeBytes); err != nil {
+	if _, err := io.ReadFull(r, typeBytes); err != nil {
 		return "", nil, fmt.Errorf("%w: truncated type", ErrUnknownType)
 	}
 	typeName := string(typeBytes)
-	if typeName == "" {
-		return "", nil, fmt.Errorf("%w: object missing type", ErrUnknownType)
-	}
-	if !containsAt(typeName) {
+	if !strings.Contains(typeName, "@") {
 		typeName += "@1" // legacy unversioned type name
 	}
 	payload := make([]byte, r.Len())
-	if _, err := r.Read(payload); err != nil && err != io.EOF {
+	if _, err := io.ReadFull(r, payload); err != nil {
 		return "", nil, fmt.Errorf("%w: truncated payload", ErrUnknownType)
 	}
 	return typeName, payload, nil
@@ -95,13 +97,4 @@ func EnvelopeFromBytes(data []byte) (Envelope, error) {
 		return Envelope{}, err
 	}
 	return Envelope{Type: typ, Data: payload}, nil
-}
-
-func containsAt(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '@' {
-			return true
-		}
-	}
-	return false
 }

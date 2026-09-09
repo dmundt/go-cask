@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v10
+version: v11
 ---
 
 # Defaults & Behavior — go-cask
@@ -54,7 +54,7 @@ version: v10
 | LRU `maxSize`                     | MUST be > 0                                        | cas-core §4.10      |
 | Sentinel errors                   | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` | library-design §2 |
 | Object type name format           | `<type>@<major>` (e.g. `commit@1`); absent version reads as `@1` | object-versioning §2 |
-| Object serialization envelope     | `{"type": "<type>@<major>", "data": <codec bytes>}` (JSON envelope) | cas-core §8, decision 1 |
+| Object serialization envelope     | TLV envelope `[version u8][uvarint typeLen][type][payload]` | cas-core §8, decision 1 |
 | `Prune` dry-run default           | `true` (delete requires explicit flag)             | consistency §5      |
 | `clean` default min-age           | 24 h                                                | cli §2              |
 | Object age source                 | file mtime ≈ first-`Put` time                      | consistency §5      |

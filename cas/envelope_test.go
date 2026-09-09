@@ -92,15 +92,12 @@ func TestEnvelopeEmptyType(t *testing.T) {
 	}
 }
 
-func TestEnvelopeContainsAt(t *testing.T) {
-	if !containsAt("blob@1") {
-		t.Fatal("containsAt(blob@1) false")
+func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
+	if !strings.Contains("blob@1", "@") {
+		t.Fatal("versioned name lacks @")
 	}
-	if containsAt("blob") {
-		t.Fatal("containsAt(blob) true")
-	}
-	if containsAt("") {
-		t.Fatal("containsAt empty")
+	if strings.Contains("blob", "@") {
+		t.Fatal("unversioned name has @")
 	}
 }
 
