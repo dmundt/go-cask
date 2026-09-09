@@ -8,7 +8,7 @@
 |---|---|
 | `fs.Backend` (`Put`/`Get`/`Exists`/`Delete`/`List`/`GC`/`Stats`) | all routes |
 | `Hash` / `ParseHash` | `{hash}` validation (→ 400), addresses |
-| `RegisterHash` built-ins (sha256/sha1) | `hash.go` — `newHasher` |
+| built-in `sha256` (others via `RegisterHash`) | `hash.go` — `newHasher` |
 | `cas.Stats` | `/stats` |
 
 ## What it extends
@@ -27,7 +27,7 @@ The product ships no HTTP data API or SDK; this is the **pattern** for apps that
 
 - `server/server.go` — the `server` type + `Handler()`: routes wrapped by `requireRole` (auth) and the whole mux by `rateLimit`. Handlers map one operation each: `postObject` (store, dedup, streaming), `listObjects`, `getObject` (streams bytes + `X-CAS-*` headers), `deleteObject`, `objectMeta`, `verifyObject`, `gc`, `stats`, `openapi`. A `sizes` map (maintained at Put, pruned on delete/GC) supplies per-object sizes for list/meta/headers.
 - `server/ratelimit.go` — `rateLimiter`: per-IP token buckets with lazy refill, idle expiry, and a max-entries guard.
-- `server/hash.go` — `newHasher`/`hashBytes` (sha256/sha1), `spoolAndHash`, `envelopeType`.
+- `server/hash.go` — `newHasher`/`hashBytes` (sha256), `spoolAndHash`, `envelopeType`.
 - `server/openapi.yaml` — the surface's OpenAPI document as a separate file, `//go:embed`-ed and served at `/api/cas/v1/openapi.yaml` (api-design §13: never an inline Go string).
 - `server/main.go` — flags (`-store`, `-bind`, `-tokens`, rate-limit knobs), graceful shutdown.
 - `demo/main.go` — a plain `net/http` client (no SDK): PUTs a file, GETs it back, prints meta and stats.

@@ -66,7 +66,7 @@ func HashBytes(algo string, data []byte) (Hash, error) {
 }
 
 // NewHasher returns a streaming hasher for a registered algorithm (the
-// built-ins sha1/sha256) as the standard library hash.Hash, so callers can
+// built-in sha256) as the standard library hash.Hash, so callers can
 // stream bytes into it. It returns ErrUnknownAlgorithm for algorithms
 // registered only as one-shot HashFunc, which cannot stream — use HashBytes
 // for those.

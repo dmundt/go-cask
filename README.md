@@ -18,7 +18,7 @@ A **single-host content-addressable store kit**. Each named spec is the normativ
 - **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern (`examples/api`) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports `examples/` (viewer-design §7, coding-guidelines §9).
 - **Dependencies one-directional** — `cas`/`internal`/`cmd` never import `examples/`; examples are self-contained except the shared `gitlike` library.
-- **Lean generic core** — app-agnostic `cas` with reference implementations for each pluggable seam (`sha1`/`sha256`, `fs`+`mem` backends, JSON codec); only the cas-core §7.1 surface is stable.
+- **Lean generic core** — app-agnostic `cas` with reference implementations for each pluggable seam (`sha256`; `fs`+`mem` backends; JSON codec); only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
 - **Examples teach; `gitlike/` is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
