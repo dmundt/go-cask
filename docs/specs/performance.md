@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v12
+version: v13
 ---
 
 # Performance — go-cask
@@ -45,8 +45,8 @@ Benchmarks live next to the code (`cas/`, examples). Suite: `BenchmarkStorePut`/
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
 - Store-logic benchmarks run against the in-memory `memory` backend (deterministic, no disk noise); disk behavior is covered by the `fs`-backend cases.
-- No committed baseline and no CI gate (shared CI runners too noisy; allocation regressions caught by P-03 and review). Run on demand: `go test -bench=. -benchmem -count=5 ./cas/...`.
-- **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`) prefill a store to N, time the op at that size, and log a projection for 10^10 objects. Not part of CI twice over (CI runs no `-bench`, and each skips unless `CASK_SCALE_OBJECTS` is set), e.g. `CASK_SCALE_OBJECTS=1000000 go test -bench=Scale -run=^$ -benchtime=100x -v ./cas/`.
+- No committed baseline and no CI gate (shared CI runners too noisy; allocation regressions caught by P-03 and review). Run on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
+- **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`) prefill a store to N, time the op at that size, and log a projection for 10^10 objects. Not part of CI twice over (CI runs no `-bench`, and each skips unless `CASK_SCALE_OBJECTS` is set), e.g. `CASK_SCALE_OBJECTS=1000000 go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v`.
 - The lock-free claim is exercised by `-race` tests and `BenchmarkParallelPutGet`.
 
 ## 6. Profiling workflow
