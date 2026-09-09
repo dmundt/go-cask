@@ -293,7 +293,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := (jsoncodec.New[test.Note]()).Encode(test.Note{Title: "legacy"})
+	payload, err := (jsoncodec.New[test.Note]()).Marshal(test.Note{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
 	}

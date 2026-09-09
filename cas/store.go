@@ -92,7 +92,7 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 // single serialization authority — the same codec decodes on read (Get). obj
 // is the concrete T (the Store constraint), so no type assertion is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
-	payload, err := s.codec.Encode(obj)
+	payload, err := s.codec.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
@@ -113,7 +113,7 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	v, err := s.codec.Decode(payload)
+	v, err := s.codec.Unmarshal(payload)
 	if err != nil {
 		return zero, fmt.Errorf("cas: %w: payload decode failed", ErrCorrupt)
 	}

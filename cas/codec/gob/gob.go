@@ -13,8 +13,8 @@ type Codec[T any] struct{}
 // New returns a gob codec for type T.
 func New[T any]() Codec[T] { return Codec[T]{} }
 
-// Encode gob-encodes v.
-func (Codec[T]) Encode(v T) ([]byte, error) {
+// Marshal gob-encodes v.
+func (Codec[T]) Marshal(v T) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(v); err != nil {
 		return nil, err
@@ -22,8 +22,8 @@ func (Codec[T]) Encode(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Decode gob-decodes data into a fresh T.
-func (Codec[T]) Decode(data []byte) (T, error) {
+// Unmarshal gob-decodes data into a fresh T.
+func (Codec[T]) Unmarshal(data []byte) (T, error) {
 	var v T
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&v); err != nil {
 		return v, err

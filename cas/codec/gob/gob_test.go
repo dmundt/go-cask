@@ -14,11 +14,11 @@ type obj struct {
 func TestRoundTrip(t *testing.T) {
 	c := gob.New[obj]()
 	orig := obj{Title: "gob", Body: "test"}
-	data, err := c.Encode(orig)
+	data, err := c.Marshal(orig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := c.Decode(data)
+	got, err := c.Unmarshal(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestRoundTrip(t *testing.T) {
 
 func TestDecodeError(t *testing.T) {
 	c := gob.New[obj]()
-	if _, err := c.Decode([]byte("garbage")); err == nil {
+	if _, err := c.Unmarshal([]byte("garbage")); err == nil {
 		t.Fatal("invalid gob must error")
 	}
 }

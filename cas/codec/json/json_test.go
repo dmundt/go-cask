@@ -14,11 +14,11 @@ type obj struct {
 func TestRoundTrip(t *testing.T) {
 	c := json.New[obj]()
 	orig := obj{Title: "json", Body: "test"}
-	data, err := c.Encode(orig)
+	data, err := c.Marshal(orig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := c.Decode(data)
+	got, err := c.Unmarshal(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestRoundTrip(t *testing.T) {
 
 func TestDecodeError(t *testing.T) {
 	c := json.New[obj]()
-	if _, err := c.Decode([]byte("{invalid")); err == nil {
+	if _, err := c.Unmarshal([]byte("{invalid")); err == nil {
 		t.Fatal("invalid JSON must error")
 	}
 }

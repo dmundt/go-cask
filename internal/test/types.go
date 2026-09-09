@@ -69,8 +69,8 @@ func (ErrorObj) References() []cas.Hash { return nil }
 // FailingCodec[T] is a Codec[T] that always fails on Encode.
 type FailingCodec[T any] struct{}
 
-func (FailingCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode exploded") }
-func (FailingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
+func (FailingCodec[T]) Marshal(T) ([]byte, error)   { return nil, errors.New("marshal exploded") }
+func (FailingCodec[T]) Unmarshal([]byte) (T, error) { var z T; return z, nil }
 
 // HashData is a test helper for hashing data.
 func HashData(algo string, data []byte) (cas.Hash, error) {
