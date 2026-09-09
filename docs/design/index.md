@@ -1,13 +1,13 @@
----
+﻿---
 okf_version: "0.2"
 title: Design Docs — go-cask
 description: Non-normative design documents. See docs/index.md for top-level rule index.
-version: v2
+version: v1
 ---
 
 # Design Docs — go-cask
 
-Non-normative — inform, never override instruction specs.
+Non-normative. Inform, never override instruction specs.
 
 | File | What |
 |---|---|
