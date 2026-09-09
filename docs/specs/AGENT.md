@@ -9,57 +9,23 @@ status: stable
 
 # AGENT — go-cask Instruction Folder Guide
 
-> This file governs **the other files in this folder**. Every agent (Copilot,
-> other AI tooling) and every human maintainer editing any
-> `docs/specs/*.md` MUST follow it, so the folder stays
-> a single, coherent specification set rather than a pile of docs.
->
-> Scope: this folder contains the normative specs of the go-cask project
-> (core architecture, coding style, security, APIs, viewer design, examples,
-> performance, testing, operations). The repo-root `AGENTS.md` is the agent
-> aggregator that points at them; it is outside this folder and follows the
-> same style rules where they apply.
+Governs the other files in this folder. Every agent (Copilot, other AI tooling) and every human maintainer editing any `docs/specs/*.md` MUST follow it so the folder stays one coherent specification set. Scope: the normative specs (core architecture, coding style, security, APIs, viewer design, examples, performance, testing, operations). The repo-root `AGENTS.md` is the aggregator pointing at them (outside this folder; follows the same style where applicable).
 
----
+## 1. Purpose & scope
 
-## 1. Purpose & Scope
+- The folder is the **single source of truth** for how go-cask is designed, built, secured, tested, and operated.
+- Every file states **requirements** (MUST/SHALL be true) and **context** (why), not project prose.
+- New files only when a real gap exists (cf. examples.md §5); prefer extending an existing file.
 
-- The folder is the **single source of truth** for how go-cask is designed,
-  built, secured, tested, and operated.
-- Every file states **requirements** (what MUST/SHALL be true) and **context**
-  (why), not prose about the project.
-- New files are added only when a real gap exists (see §5 of
-  `examples.md` for the example-generation analogue); prefer
-  extending an existing file over creating a new one.
+## 2. File naming
 
----
-
-## 2. File Naming
-
-- Pattern: `<Topic>.md` — one topic per file, where the topic is a lowercase
-  kebab-case domain noun. The folder name (`docs/specs/`) already says
-  "instructions", so filenames carry **no** `.instructions` suffix.
-- Topics are domain nouns — the full set is: `api-design`,
-  `backend-architecture`, `branch-naming`, `cas-core`, `cli`,
-  `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`,
-  `frontend-architecture`, `library-design`, `object-versioning`,
-  `operations`, `performance`, `testing-strategy`, `versioning`,
-  `viewer-design`, `viewer-security`.
-- No redundant prefixes: never prefix a topic with `go-` (the file is
-  `coding-guidelines.md`) and never repeat "instructions" inside a name.
-- One topic per file; `-api` / `-design` / `-security` suffixes disambiguate
-  facets of the same domain (viewer).
-- The specs live in `docs/specs/` — a host-agnostic home that is not
-  tied to GitHub (any host or agent can find it); the repo-root agent
-  aggregator (`AGENTS.md`) points at this folder and is auto-read by any
-  agent that honors the AGENTS.md convention. This meta-guide is the sole
-  `AGENT.md`.
-
----
+- Pattern `<Topic>.md`, one topic per file, lowercase kebab-case domain noun. The folder name already says "instructions", so filenames carry **no** `.instructions` suffix.
+- Topics are domain nouns: `api-design`, `backend-architecture`, `branch-naming`, `cas-core`, `cli`, `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`, `frontend-architecture`, `library-design`, `object-versioning`, `operations`, `performance`, `testing-strategy`, `versioning`, `viewer-design`, `viewer-security`.
+- No redundant prefixes (never `go-`, never "instructions" inside a name). `-api`/`-design`/`-security` suffixes disambiguate viewer facets. This meta-guide is the sole `AGENT.md`.
 
 ## 3. Frontmatter (required)
 
-Every file MUST begin with YAML frontmatter, exactly three keys:
+Every file MUST begin with exactly three YAML keys:
 
 ```yaml
 ---
@@ -69,171 +35,74 @@ description: One sentence stating what the file requires/documents and who it ap
 ---
 ```
 
-Rules:
+- `title` matches the H1 exactly (minus `# `). `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not on cosmetic fixes (typos, formatting, wording). `description` is one line. No other keys; no blank line before `---`.
 
-- `title` matches the H1 exactly (minus the leading `# `).
-- `version` is a simple marker (`v1`, `v2`, …). All files start at `v1`.
-  **Increment by one** (`v1` → `v2`, …) whenever the file is **significantly
-  extended or changed** — a material change to requirements, contracts, or
-  structure (e.g. a new section that adds requirements, a renamed concept).
-  Cosmetic fixes (typos, formatting, wording) do NOT bump the version.
-- `description` is a single line: imperative/descriptive, mentions the key
-  components and the related specs where useful.
-- No other frontmatter keys. No blank line before `---`.
+## 4. Document structure
 
----
+1. H1 `# <Title>` identical to frontmatter title.
+2. Intro blockquote (2–6 lines): what the file governs, then a `Related:` line of backticked sibling specs it must be read with.
+3. Numbered `## N.` sections from `## 1. Purpose & Scope`; subsections `### 3.1` (or `### 4.13`).
+4. `---` between top-level sections.
+5. Closing `## N. Checklist` of acceptance items derived from the body.
 
-## 4. Document Structure (template)
+- Requirements stated once and referenced, never duplicated with drift. Tables for enumerations/contracts; fenced code (`go`, `yaml`, `text`, `mermaid`) for concrete shapes; prose for rationale. Reference the shared glossary (§6); do not redefine terms.
 
-1. **H1** — `# <Title>`, identical to the frontmatter title.
-2. **Intro blockquote** (`>`) — 2–6 lines: what this file governs, in one or
-   two sentences, then a `Related:` line listing the specs it must be read
-   with (relative paths, backticked). Example:
-   ```
-   > Related: `docs/specs/cas-core.md` (…),
-   > `docs/specs/coding-guidelines.md` (…).
-   ```
-3. **Numbered `##` sections** — `## 1. Purpose & Scope` onwards. Sections are
-   numbered; subsections are `### 3.1 …` (or `### 4.13` style when appended).
-4. **`---` horizontal rules** between top-level sections.
-5. **Closing `## N. Checklist`** — most spec files end with a checklist of
-   acceptance items derived from the body.
+## 5. Normative language & tone
 
-Content rules:
-
-- Requirements are stated once and referenced, never duplicated with drift.
-- Tables for enumerations/contracts (methods, status codes, roles, aspects);
-  fenced code blocks (`go`, `yaml`, `text`, `mermaid`) for the concrete
-  shapes; prose for rationale.
-- Every file references the shared glossary (§6) — do not redefine terms.
-
----
-
-## 5. Normative Language & Tone
-
-- **MUST / MUST NOT / SHALL / SHALL NOT** — hard requirements.
-- **SHOULD / SHOULD NOT** — strong recommendation with a documented reason.
-- **MAY** — optional; state the decision point.
-- Imperative, present tense, active voice. No marketing, no "we", no filler.
-- Rules are checkable: an agent or reviewer can tick them off.
-- Where a requirement came from a decision (e.g. the DeepSeek design
-  conversation), one provenance sentence is allowed in the intro — never
-  repeated per section.
-
----
+- **MUST/MUST NOT/SHALL/SHALL NOT** = hard requirements. **SHOULD/SHOULD NOT** = strong recommendation with documented reason. **MAY** = optional; state the decision point.
+- Imperative, present tense, active voice; no marketing/"we"/filler. Rules checkable. One provenance sentence allowed in the intro (never repeated per section).
 
 ## 6. Terminology (shared glossary)
 
-All files MUST use exactly these terms. **Forbidden synonyms are listed.**
+All files MUST use exactly these terms (forbidden synonyms listed):
 
-| Term               | Meaning / usage                                                        |
-| ------------------ | ---------------------------------------------------------------------- |
-| go-cask / CASK     | The project (Content Addressable Store Kit).                           |
-| CAS / CASK         | Acronyms, always ALL-CAPS when written out: "CAS" = Content Addressable Store, "CASK" = Content Addressable Store Kit. Never lowercase (lowercase `cas` is the Go package, next row). |
-| `cas` package      | The generic core library (`cas/`, `package cas`).                      |
-| `gitlike` package  | The example layer (`examples/gitlike/`) — Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
-| the viewer         | The embedded technical browser UI (`internal/web/`). **Not** "debug UI".     |
-| viewer API         | The hypermedia surface under `/viewer/` (HTML).                        |
-| CAS API            | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface.                                |
-| `Backend`         | The non-generic byte-storage interface; backend implementations live in subpackages: `fs.Backend` (disk, `cas/backend/fs`), `memory.Backend` (in-memory, `cas/backend/mem`). |
-| `Store[T]`         | The generic typed store.                                               |
-| `Hash`             | Content address `algo:hexdigest`; validated with `ParseHash`.          |
-| fan-out            | The configurable directory layout (`FanOut`/`FanLevels`), Git-like default. |
-| lock-free reads    | `Get`/`Exists`/`List`/`Stats` take no lock (atomic rename).            |
-| CAS laws           | The invariants in `testing-strategy.md` §1.               |
+| Term | Meaning |
+|---|---|
+| go-cask / CASK | The project (Content Addressable Store Kit). |
+| CAS / CASK | Acronyms, ALL-CAPS: "CAS" = Content Addressable Store, "CASK" = Content Addressable Store Kit. Never lowercase — lowercase `cas` is the Go package (next row). |
+| `cas` package | The generic core library (`cas/`, `package cas`). |
+| `gitlike` package | The example layer (`examples/gitlike/`): Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
+| the viewer | The embedded technical browser UI (`internal/web/`). Not "debug UI". |
+| viewer API | The hypermedia surface under `/viewer/` (HTML). |
+| CAS API | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface. |
+| `Backend` | The non-generic byte-storage interface; impls in subpackages: `fs.Backend` (disk), `memory.Backend` (in-memory). |
+| `Store[T]` / `Hash` | Generic typed store / content address `algo:hexdigest` validated with `ParseHash`. |
+| fan-out / lock-free reads / CAS laws | Directory layout (`FanOut`/`FanLevels`); `Get`/`Exists`/`List`/`Stats` take no lock; the testing-strategy §1 invariants. |
 
-Forbidden / deprecated:
+Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guidelines" → **coding-guidelines**; "Repository/Resolver in the core" → they are the **gitlike example layer**; "sharded paths" → **fan-out**.
 
-- "debug UI" → **viewer**; "debug_ui" config key → **viewer**.
-- "go-coding-guidelines" → **coding-guidelines** (the file was renamed).
-- "Repository/Resolver in the core" → they are **gitlike example layer**.
-- "sharded paths" → **fan-out** layouts.
+## 7. Cross-referencing
 
----
+- Sibling files by backticked path (`docs/specs/cas-core.md`) or short backticked name (`cas-core.md`) in a `Related:` line. Reference sections by number (`§4.4`, `P-05`, `§2`), never approximate prose.
+- A contract change updates **all** referencing files in one pass; `grep` for the changed term across `docs/specs/` and `.github/` must be clean. The `AGENTS.md` "Related specs" list MUST list every instruction file (add new ones).
 
-## 7. Cross-Referencing & Related Specs
+## 8. Precedence & conflict resolution
 
-- Refer to sibling files by backticked path (`docs/specs/cas-core.md`)
-  or, inside a `Related:` line, by short backticked name (`cas-core.md`).
-- Reference sections by their number (`§4.4`, `P-05`, `§2`) — never by
-  approximate prose.
-- When a change affects a contract, update **all** files that reference it in
-  one pass; a `grep` for the changed term across `docs/specs/` and
-  `.github/` must come back clean.
-- The `AGENTS.md` aggregator's "Related specs" list MUST list every
-  instruction file (add new files there when created).
-
----
-
-## 8. Precedence & Conflict Resolution
-
-When two files appear to conflict, this order decides (highest first):
-
-1. **Security** — `viewer-security.md` is non-negotiable for
-   anything touching the viewer; nothing may weaken it.
-2. **Common conventions** — `api-design.md` (HTTP design),
-   `coding-guidelines.md` (Go style), `library-design.md`
-   (lean-core/errors).
-3. **Architecture** — `cas-core.md` defines the library
-   component contracts; `backend-architecture.md` and
-   `frontend-architecture.md` compose them into the viewer and
-   browser-facing system; `performance`/`testing-strategy`/`operations`
-   refine them.
+On conflict this order decides (highest first):
+1. **Security** — `viewer-security.md` is non-negotiable for the viewer; nothing may weaken it.
+2. **Common conventions** — `api-design.md`, `coding-guidelines.md`, `library-design.md`.
+3. **Architecture** — `cas-core.md` (component contracts); `backend-architecture.md`/`frontend-architecture.md` compose them; `performance`/`testing-strategy`/`operations` refine.
 4. **Examples** — `examples.md` may demonstrate, never redefine.
 5. **This file (AGENT.md)** governs the documents themselves.
 
-On any conflict: fix the **more specific** document to match the more general
-one, unless the specific document is higher in this order. Never leave two
-contradicting statements in the folder.
+Fix the **more specific** document to match the more general one, unless the specific document is higher in this order. Never leave two contradicting statements in the folder.
 
----
+## 9. Diagram & formatting rules
 
-## 9. Diagram & Formatting Rules
+- Mermaid for relationships/flow: `classDiagram` for object models, `flowchart` for flows; one diagram per concept next to what it visualizes.
+- **Mermaid blocks MUST be balanced** (every ```mermaid opener has a matching closer; unbalanced fences break rendering and swallow the rest of the file). The only exception is an explicitly stated illustrative fragment, labeled in the surrounding text. Never leave one unbalanced without that statement.
+- ASCII allowed alongside mermaid (raw/terminal) but box-aligned; prefer mermaid when both exist.
+- Code fences always tagged (`go`, `yaml`, `text`, `json`, `html`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced.
 
-- **Mermaid** for relationships/flow (renders on GitHub): `classDiagram` for
-  object models, `flowchart` for flows. One diagram per concept, next to the
-  concept it visualizes.
-- **Mermaid blocks MUST be balanced**: every ` ```mermaid ` opener has a
-  matching ` ``` ` closer (unbalanced fences break rendering and swallow the
-  rest of the file). The ONLY exception is an **explicitly stated**
-  unbalanced snippet — e.g. an illustrative mermaid fragment shown inside a
-  code example — which MUST be labeled in the surrounding text (e.g.
-  "unbalanced by design: illustrative fragment, not renderable"). Never leave
-  a mermaid block unbalanced without that statement.
-- **ASCII** diagrams are allowed alongside mermaid (raw/terminal views) but
-  must stay box-aligned; prefer mermaid when both would exist.
-- Code fences always carry a language tag: `go`, `yaml`, `text`, `json`,
-  `html`, `mermaid`.
-- Tables: pipe tables with a header separator row; alignment via
-  `:---:` only where it adds meaning.
-- Line width ≤ ~100 chars; LF endings; UTF-8.
-- Numbers/lists: requirements numbered (`P-01…`, `A-…`) only when
-  cross-referenced; otherwise bullet lists.
-
----
-
-## 10. Editing & Maintenance Checklist
+## 10. Editing & maintenance checklist
 
 Before committing any change to a file in this folder:
-
-- [x] Frontmatter present, `title` == H1, one-line `description`
-- [x] `version` bumped by one when the change is material (new/removed
-      requirements, contract changes, restructure); unchanged for cosmetic
-      edits (§3)
-- [x] Structure follows §4; `---` between sections; checklist at the end
-  where applicable
-- [x] Terminology matches §6 exactly (no "debug UI", no "go-coding-guidelines",
-      no "Repository in core")
-- [x] Normative language per §5 (MUST/SHALL/MAY used consistently)
-- [x] Cross-references updated in ALL files that mention the changed term;
-      `grep` over `docs/specs/` and `.github/` for old terms returns
-      nothing
-- [x] New files added to the `AGENTS.md` aggregator's "Related specs" list
-      and to the §10 inventory
-- [x] No contradictions with higher-precedence files (§8); conflicts resolved
-      in the more specific document
-- [x] Diagrams valid mermaid; fences tagged; no stale ASCII misalignment
-- [x] Every mermaid block balanced (` ```mermaid ` count == its ` ``` `
-      closers per file), unless explicitly stated as an illustrative fragment
-      (§9)
-
+- [x] Frontmatter present; `title` == H1; one-line `description`
+- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic
+- [x] Structure per §4; `---` between sections; checklist where applicable
+- [x] Terminology matches §6 (no "debug UI", "go-coding-guidelines", "Repository in core")
+- [x] Normative language per §5
+- [x] Cross-references updated in ALL files mentioning the term; `grep` of old terms across `docs/specs/` and `.github/` returns nothing
+- [x] New files added to the `AGENTS.md` aggregator "Related specs" list
+- [x] No contradictions with higher-precedence files (§8)
+- [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
