@@ -10,6 +10,15 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Fixed
+
+- Type sniffing from stored bytes now reads the **TLV** envelope instead of
+  the pre-TLV JSON envelope: `internal/index.EnvelopeType` (used by the viewer
+  and `cask meta`) and the `examples/api` server's `envelopeType` now call
+  `cas.EnvelopeFromBytes`. A legacy unversioned type name reads back as `@1`.
+  Removed an obsolete local JSON envelope struct and orphaned `Deserialize`
+  comments in `gitlike/types.go`.
+
 ## [v0.2.0] - 2026-09-09
 
 Documentation and editorial release. **No public API or on-disk-format change.**

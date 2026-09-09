@@ -1,8 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
+
+	"github.com/dmundt/go-cask/cas"
 )
 
 // spoolAndHash copies r into w while hashing it, returning the byte count.
@@ -14,14 +15,12 @@ func spoolAndHash(w io.Writer, hasher interface {
 	return io.Copy(io.MultiWriter(w, hasher), r)
 }
 
-// envelopeType extracts the versioned type name from the self-describing
-// envelope (cas-core §8 decision 1) on a best-effort basis; "" when the
-// bytes are not an envelope (raw objects have no type).
+// envelopeType extracts the versioned type name from the self-describing TLV
+// envelope (cas-core §8 decision 1) on a best-effort basis; "" when the bytes
+// are not an envelope (raw objects have no type).
 func envelopeType(data []byte) string {
-	var env struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(data, &env); err != nil || env.Type == "" {
+	env, err := cas.EnvelopeFromBytes(data)
+	if err != nil {
 		return ""
 	}
 	return env.Type

@@ -1,9 +1,9 @@
 // Package index provides the listing/metadata helpers shared by the cask CLI
 // and the viewer: pagination over stored hashes and best-effort type
-// detection from the self-describing envelope (cas-core §8 decision 1).
+// detection from the self-describing TLV envelope (cas-core §8 decision 1).
 package index
 
-import "encoding/json"
+import "github.com/dmundt/go-cask/cas"
 
 // Paginate returns the items in the [offset, offset+limit) window,
 // bounded to the slice (list pagination per defaults §3).
@@ -15,13 +15,13 @@ func Paginate[T any](items []T, offset, limit int) []T {
 }
 
 // EnvelopeType extracts the versioned type name ("blob@1", …) from the
-// self-describing envelope on a best-effort basis; "" when the bytes are
-// not an envelope (raw objects have no type).
+// self-describing TLV envelope (cas-core §8 decision 1) on a best-effort
+// basis; "" when the bytes are not an envelope (raw objects have no type).
+// A legacy unversioned type name reads back with "@1" appended (object-
+// versioning §2).
 func EnvelopeType(data []byte) string {
-	var env struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(data, &env); err != nil || env.Type == "" {
+	env, err := cas.EnvelopeFromBytes(data)
+	if err != nil {
 		return ""
 	}
 	return env.Type

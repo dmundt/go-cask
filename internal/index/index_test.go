@@ -1,8 +1,8 @@
 package index
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"bytes"
+	"encoding/binary"
 	"testing"
 )
 
@@ -32,29 +32,38 @@ func TestPaginate(t *testing.T) {
 	}
 }
 
-// TestEnvelopeType pins the best-effort envelope sniffing contract: the
-// versioned type name is returned verbatim when the bytes are a JSON object
-// with a non-empty string "type"; "" otherwise (raw objects have no type).
-func TestEnvelopeType(t *testing.T) {
-	payload := base64.StdEncoding.EncodeToString([]byte(`{"data":"aGk="}`))
-	env, _ := json.Marshal(map[string]string{"type": "blob@1", "data": payload})
-	versioned := []byte(`{"type":"blob@1","data":"aGk="}`)
-	raw := []byte("not an envelope")
+// tlvEnvelope builds a TLV envelope ([version][uvarint typeLen][type][uvarint
+// payloadLen][payload], cas-core §8 decision 1) for the test input.
+func tlvEnvelope(typeName string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(1) // envelopeVersion
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
+	buf.Write(lenBuf[:n])
+	buf.WriteString(typeName)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
+	buf.Write(payload)
+	return buf.Bytes()
+}
 
+// TestEnvelopeType pins the best-effort envelope sniffing contract against
+// the TLV envelope: the versioned type name is returned when the bytes are a
+// TLV envelope; "" otherwise (raw objects, or any non-TLV bytes, have no
+// type). A legacy unversioned type name reads back as "@1".
+func TestEnvelopeType(t *testing.T) {
 	cases := []struct {
 		name string
 		in   []byte
 		want string
 	}{
-		{"versioned type returned verbatim", env, "blob@1"},
-		{"bare type without version", []byte(`{"type":"blob","data":"aGk="}`), "blob"},
-		{"missing type key", []byte(`{"data":"aGk="}`), ""},
-		{"empty type", []byte(`{"type":"","data":"aGk="}`), ""},
-		{"non-string type", []byte(`{"type":5}`), ""},
-		{"json array is not an envelope", []byte(`[1,2]`), ""},
-		{"garbage bytes", raw, ""},
+		{"versioned type", tlvEnvelope("blob@1", []byte("x")), "blob@1"},
+		{"legacy unversioned type reads as @1", tlvEnvelope("blob", []byte("x")), "blob@1"},
+		{"other versioned type", tlvEnvelope("commit@1", []byte("{}")), "commit@1"},
+		{"empty payload is still typed", tlvEnvelope("blob@1", nil), "blob@1"},
+		{"garbage bytes are not an envelope", []byte("not an envelope"), ""},
+		{"JSON object is not a TLV envelope", []byte(`{"type":"blob@1","data":"aGk="}`), ""},
 		{"empty input", nil, ""},
-		{"versioned without data payload still typed", versioned, "blob@1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

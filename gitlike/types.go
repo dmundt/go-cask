@@ -44,8 +44,6 @@ func (b *Blob) Type() string { return TypeBlob }
 // References returns nil — a blob is a leaf.
 func (b *Blob) References() []cas.Hash { return nil }
 
-// Deserialize parses the envelope and returns the blob.
-
 // TreeEntry is one entry in a Tree. It is an entry, not an object itself;
 // Hash references the stored object for Name.
 type TreeEntry struct {
@@ -107,8 +105,6 @@ func (t *Tree) References() []cas.Hash {
 	}
 	return refs
 }
-
-// Deserialize parses the envelope and returns the tree.
 
 // Commit points at a tree (and optionally a parent commit); nil Parent marks
 // a root commit.
@@ -185,8 +181,6 @@ func (c *Commit) References() []cas.Hash {
 	return refs
 }
 
-// Deserialize parses the envelope and returns the commit.
-
 // Tag names a target object (typically a commit).
 type Tag struct {
 	Name    string   `json:"name"`
@@ -242,8 +236,6 @@ func (g *Tag) References() []cas.Hash {
 	}
 	return []cas.Hash{g.Target}
 }
-
-// Deserialize parses the envelope and returns the tag.
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a
 // stored object's TLV envelope bytes (see cas.EnvelopeFromBytes). It returns
