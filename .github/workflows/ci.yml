@@ -71,12 +71,12 @@ jobs:
       - name: Fuzz smoke
         if: hashFiles('**/*.go') != ''
         run: |
-          # -fuzz cannot target multiple packages, and ./cas/... now matches
-          # the fuzz targets live in package cas only.
+          # Each fuzz target lives in its own package; -fuzz runs one target
+          # per invocation. Brief smoke only; longer runs in nightly.
           go test -run=^$ -fuzz=FuzzParseHash -fuzztime=5s ./cas/
-          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/
-          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/
-          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/
+          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/backend/fs/
+          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/backend/fs/
+          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 
       - name: Doc integrity (docs/specs)
         run: |

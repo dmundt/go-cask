@@ -10,6 +10,14 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+### Added
+
+- Fuzz targets `FuzzPathRoundTrip` and `FuzzVerify` (fs backend) and
+  `FuzzCodecRoundTrip` (JSON codec, restricted to valid UTF-8). The CI fuzz
+  smoke now runs each target against its real package — previously three of
+  the four runs targeted `./cas/` where the targets did not exist, so they
+  were vacuous.
+
 ## [v0.3.0] - 2026-09-09
 
 Layout, documentation, and stale-code release. No change to the generic `cas`
