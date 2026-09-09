@@ -7,317 +7,100 @@ version: v9
 
 # Go Coding Guidelines — go-cask
 
-> Applies to **all Go code** in this repository (`cas/`, `internal/`,
-> `cmd/`).
-> Complements `docs/specs/cas-core.md` (what to
-> build) and `docs/specs/viewer-security.md` (how the
-> viewer must be secured). Where this file conflicts with an older sketch in
-> another document, this file wins.
->
-> Summary of the rules: idiomatic Go, standard library only (no external Go
-> packages unless truly necessary), **no CSS, no JavaScript**, server-side
-> rendering with Go `html/template` plus **htmx** for interactivity, prefer raw
-> HTML, document every exported type and function, target **Go 1.21+**, and use
-> the latest Go generics where they genuinely help.
+Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; std-lib only; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
 
----
+## 1. Go version & toolchain
 
-## 1. Go Version & Toolchain
-
-- **Library baseline: Go 1.22+** (generics, enhanced routing, stdlib-only). The `go.mod` declares
-  `go 1.21` with `toolchain go1.27` — the self-managing toolchain auto-downloads
-  1.27 for CI; consumers on 1.21+ can build the module.
-- Language features available and allowed in the library baseline (1.21+):
-  generics (1.18+), type sets / `~` unions (1.18+), `comparable`,
-  `slices`/`maps`/`cmp` (1.21+), `range` over integers (1.22+), `iter` /
-  range-over-func (1.23+), generic type aliases (1.24+), and subsequent
-  additions.
-- Go ≥ 1.21 toolchains are self-managing: `GOTOOLCHAIN=auto` (default) uses
-  the toolchain declared by `go.mod`. CI MUST pin the same version so builds
-  are reproducible.
-- Do not use language features from a *newer* toolchain than the declared
-  `go` directive — the declared version is the contract.
-- Reference: [Go 1.21 release notes](https://go.dev/doc/go1.21).
-
----
+- Library baseline Go 1.22+. `go.mod` declares `go 1.21` with `toolchain go1.27` — self-managing toolchain auto-downloads 1.27 for CI; consumers on 1.21+ can build.
+- Language available in the baseline (1.21+): generics/type sets (`~` unions)/`comparable` (1.18+), `slices`/`maps`/`cmp` (1.21+), range-over-int (1.22+), `iter`/range-over-func (1.23+), generic type aliases (1.24+), and later additions.
+- `GOTOOLCHAIN=auto` (default) uses the `go.mod`-declared toolchain; CI MUST pin the same version for reproducibility.
+- Do NOT use features from a newer toolchain than the declared `go` directive — the declaration is the contract.
 
 ## 2. Idiomatic Go
 
-- **Formatting is non-negotiable:** `gofmt` before every commit; keep import
-  grouping with `goimports` conventions (std, then third-party, then local).
-- **Naming:** mixedCaps identifiers; exported identifiers start uppercase;
-  initialisms keep their case (`ID`, `URL`, `API`, `HTTP`); avoid package-name
-  stutter (`cas.Store`, never `cas.CasStore`); short names for short scopes.
-- **Constructors:** the constructor name mirrors how many primary types the
-  package exposes.
-  - Use plain `New()` when the package exposes **one** primary type
-    (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`), and for a
-    package's primary `Store` constructor even when the package also exposes
-    others (`cas.New`).
-  - Use `NewType()` / `NewXyz()` when the package exposes **multiple**
-    important types, or the constructor's type isn't the package's primary
-    type (`cas.NewHash`, `cas.NewHasher`, `cas.NewWalker`,
-    `prefetch.NewSmartCache`).
-  - Keep `New*` for real constructors (non-trivial setup); prefer a useful
-    zero value over an empty constructor otherwise.
-- **Errors:**
-  - Every error is handled or explicitly ignored (`_ =` with a comment why).
-  - Wrap with `%w` (`fmt.Errorf("...: %w", err)`); unwrap with `errors.Is` /
-    `errors.As`.
-  - Use sentinel errors for expected conditions; never string-match errors.
-  - Never `panic` in library code — panic only in `main` for unrecoverable
-    setup failures.
-- **Context:** `context.Context` MUST be the first parameter of any function
-  that does I/O or can be cancelled. Never store a `context.Context` in a
-  struct; derive and pass it down.
-- **Interfaces:** prefer small interfaces defined at the consumer side;
-  "accept interfaces, return concrete types".
-- **Zero values:** make zero values useful; use `NewX` constructors only when
-  setup is non-trivial (e.g. `fs.New` must create directories).
-- **Tests:** table-driven tests with the std `testing` package; `t.Run` for
-  subtests; `t.Parallel()` where safe.
+- `gofmt` before every commit; `goimports` grouping (std, third-party, local).
+- Naming: mixedCaps; exported uppercase; initialisms keep case (`ID`, `URL`, `API`, `HTTP`); no package-name stutter (`cas.Store`, never `cas.CasStore`); short names for short scopes.
+- Constructors mirror how many primary types the package exposes: plain `New()` when one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`) or the package's primary `Store` even with others (`cas.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructor type (`cas.NewHash`, `cas.NewHasher`, `cas.NewWalker`, `prefetch.NewSmartCache`). Keep `New*` for real (non-trivial) setup; prefer a useful zero value otherwise.
+- Errors: handle or explicitly ignore (`_ =` + comment why). Wrap with `%w`; unwrap with `errors.Is`/`errors.As`. Sentinel errors for expected conditions; never string-match. Never `panic` in library code — only in `main` for unrecoverable setup.
+- `context.Context` MUST be the first parameter of any I/O-capable/cancellable function; never store it in a struct — derive and pass down.
+- Prefer small consumer-side interfaces; "accept interfaces, return concrete types."
+- Make zero values useful; `NewX` only when setup is non-trivial (e.g. `fs.New` must create directories).
+- Tests: table-driven with `testing`, `t.Run` subtests, `t.Parallel()` where safe.
 
----
+## 3. Standard library only
 
-## 3. Standard Library Only
+| Need | Std-lib answer |
+|---|---|
+| HTTP | `net/http` (1.22+ pattern routing `mux.HandleFunc("GET /x/{id}")`) |
+| JSON | `encoding/json`; new code MAY use `encoding/json/v2` + `jsontext` (1.27) |
+| HTML | `html/template` (auto-escaping) — never `text/template` for HTML |
+| Hashing/signatures | `crypto/sha256`/`sha1`/`md5` via `io.TeeReader`; `crypto/mldsa` (1.27) |
+| UUIDs | `uuid` (1.27) — never `github.com/google/uuid` |
+| Concurrency | `sync`, `sync/atomic`, `context` |
+| CLI | `flag` (or `os.Args` for trivial tools) |
+| Testing/bench | `testing`, `net/http/httptest`, `testing/fstest` |
+| Data/strings | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast`/`bytes.CutLast` (1.27) |
 
-Use the standard library by default:
+Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution); any external dependency MUST be (1) justified in the commit/PR and (2) vendored (`go mod vendor`).
+Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; extra hash algorithms only via `RegisterHash` if genuinely required (std-lib `sha256`/`sha1` default); the only frontend exception is **htmx** (§5).
 
-| Need                       | Std-lib answer                                                    |
-| -------------------------- | ----------------------------------------------------------------- |
-| HTTP server & routing      | `net/http` (Go 1.22+ pattern routing: `mux.HandleFunc("GET /x/{id}")`) |
-| JSON                       | `encoding/json`; new code may use `encoding/json/v2` + `encoding/json/jsontext` (new in 1.27) |
-| HTML rendering             | `html/template` (auto-escaping) — never `text/template` for HTML  |
-| Hashing / signatures       | `crypto/sha256`, `crypto/sha1`, `crypto/md5`; stream via `io.TeeReader`; `crypto/mldsa` (new in 1.27) |
-| UUIDs                      | `uuid` (new in 1.27) — do not add `github.com/google/uuid`        |
-| Concurrency                | `sync`, `sync/atomic`, `context`                                  |
-| CLI                        | `flag` (or `os.Args` for trivial tools)                           |
-| Testing / benchmarks       | `testing`, `net/http/httptest`, `testing/fstest`                  |
-| Data structures & strings  | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast` / `bytes.CutLast` (new in 1.27) |
+## 4. No CSS, no JavaScript
 
-Go 1.27 std-lib additions worth using: `encoding/json/v2` and
-`encoding/json/jsontext` (structured JSON encode/decode with `Options`, token /
-value streams), the new `uuid` package, `strings.CutLast` / `bytes.CutLast`,
-and `crypto/mldsa` (post-quantum signatures). Before reaching for an external
-package, check the [Go 1.27 release notes](https://go.dev/doc/go1.27) — the
-standard library may already provide it.
+- SHALL NOT add CSS (no `.css`, no `<style>`, no inline `style="…"`).
+- SHALL NOT add JavaScript (no `.js`, no hand-written `<script>`, no client-side logic).
+- Only script allowed in the viewer is **htmx** (one pinned vendored file, or CDN URL with integrity attribute) — a framework, not "our" JS.
+- Interactivity is expressed only via htmx attributes (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-trigger`…) requesting HTML fragments; no client-side state.
+- Rationale: minimal attack surface/auditability (viewer-security), no build pipeline, no browser secrets, viewer works with JS disabled except htmx.
 
-External packages SHALL NOT be added unless **necessary** — i.e. no
-feature-equivalent standard-library solution exists. Any external Go dependency
-MUST be:
+## 5. Server-side rendering: templates + htmx
 
-1. justified in the commit/PR message, and
-2. vendored (`go mod vendor`) so builds never depend on the network.
+- All HTML SHALL be `html/template` — contextual auto-escaping is the XSS boundary; never write raw HTML outside a template.
+- Composition via `{{define "base"}}`/`{{template "content" .}}` or `template.ParseFS` over `embed.FS`; templates in `internal/web/templates/`, embedded in the binary.
+- Use latest template features (1.27): `ParseFS` over `embed.FS`; `{{define}}`/`{{template}}`/`{{block}}`; `{{else if}}` chains and `break`/`continue` in `{{range}}` (1.22+); `{{- -}}` whitespace control; pipelines and a registered `template.FuncMap` (registered before parsing; names lowercase, side-effect free).
+- Go 1.27 has no `text/template`/`html/template` API changes — "latest" means using the full feature set above, not another engine.
+- One template per view + small reusable partials; minimal template logic (`{{if}}`/`{{range}}`/`{{with}}`/pipeline funcs only); all computation in Go, pass pre-shaped data.
+- htmx endpoints return HTML fragments (not JSON); full pages for navigation. Forms use standard `method="POST"` with CSRF (viewer-security). Every mutation goes through the backend; the browser never talks to storage directly.
 
-Consequences for this repo:
+## 6. Prefer raw HTML
 
-- The LRU cache sketched in `cas-core.md` with
-  `github.com/hashicorp/golang-lru/v2` SHALL be implemented in-tree with std-lib
-  primitives (`container/list` + `sync.Mutex`, or a `sync.Map`-backed
-  approximation) — this implements cas-core §8 decision 3.
-- Extra hash algorithms (e.g. blake3) are only added via `RegisterHash` if
-  genuinely required; the std-lib algorithms (`sha256`, `sha1`) are the default.
-- The single allowed frontend exception is **htmx** (§5). No other frontend
-  library is permitted.
+- "Raw HTML" = hand-written semantic markup in templates — no client-side frameworks, no JS-generated DOM, no HTML built by string concatenation in Go.
+- Never build HTML in Go (`fmt.Sprintf("<td>…</td>")`) — dynamic output is always a template.
+- Prefer semantic elements (`<main>`, `<nav>`, `<table>`, `<form>`, `<label>`…) over `<div>` soup; accessibility required (labels, `alt`, logical heading order). Templates needing heavy logic signal the Go side should pre-compute.
 
----
+## 7. Document exported types & functions
 
-## 4. No CSS, No JavaScript
+- Every exported identifier MUST have a doc comment beginning with its name. Every package SHALL have a package comment (`// Package cas implements …`).
+- Comments document contracts (preconditions, ownership e.g. "caller MUST Close", concurrency safety, error behavior), not code. `go doc` must read cleanly.
+- Add runnable `Example` functions in `_test.go` for non-obvious public API (docs that cannot rot).
 
-- SHALL NOT add any CSS: no `.css` files, no `<style>` elements, no inline
-  `style="..."` attributes in templates.
-- SHALL NOT add any JavaScript: no `.js` files, no hand-written `<script>`
-  elements, no client-side logic of any kind.
-- The only script allowed anywhere in the viewer is **htmx** (one pinned,
-  vendored file, or a CDN URL with an integrity attribute). htmx's script is
-  not "our" JS — it is the framework that provides interactivity.
-- Interactivity is expressed **only** through htmx attributes (`hx-get`,
-  `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, ...) that request HTML
-  fragments from the backend. There is no client-side state.
-- Rationale: minimal attack surface and auditability (per
-  `viewer-security.md`), no build pipeline, no secrets in the
-  browser, and a viewer that works with JavaScript disabled except for the
-  htmx enhancement itself.
+## 8. Latest Go generics where possible
 
----
+- Core is generic by design (`Store[T]`, `Codec[T]`, `Object[T]`, caches) — replaces `any`+reflection, moves type errors to compile time.
+- No `any`/`interface{}` in the exported API. Constrain type parameters with interfaces (incl. type sets/`~` unions) where semantics require methods/operations; use `comparable` for map keys/equality; ordering constraints only where needed. Prefer std `slices`/`maps`/`cmp`; `range` over slices/maps (1.22+) and over functions (`iter`, 1.23+). Generic type aliases (1.24+) allowed when they clarify the API.
+- **1.27 additions:** generic methods (a method MAY declare its own type parameters) — but interface methods MAY NOT declare type parameters, and interface methods cannot be implemented by generic methods, so `Object[T]`'s methods stay non-generic; generalized function type inference (prefer inferable generic functions); field-selector keys in struct literals (`Config{Server.Port: 8080}`) where clear.
+- Use generic types/functions where they remove duplication or replace `any`/reflection — and no further. Do NOT over-generalize: for a single use or added indirection without removed duplication, write concrete code.
 
-## 5. Server-Side Rendering: Go Templates + htmx
+## 9. Project structure & conventions
 
-- All HTML SHALL be rendered by `html/template`. Its contextual auto-escaping
-  is the XSS boundary; never write raw HTML to the response outside a template.
-- Layout pattern: template composition via `{{define "base"}}` /
-  `{{template "content" .}}`, or `template.ParseFS` over an `embed.FS`.
-  Templates live in `internal/web/templates/` (or next to their handlers) and
-  are embedded into the binary.
-- **Use the latest template capabilities** available in 1.27:
-  - `template.ParseFS` over `embed.FS` for embedding (no runtime file I/O),
-  - composition via `{{define}}` / `{{template}}` / `{{block}}`,
-  - `{{else if}}` chains and `break` / `continue` inside `{{range}}` (1.22+),
-  - whitespace control with `{{- ... -}}`,
-  - pipelines, and a registered `template.FuncMap` for view helpers (registered
-    before parsing; keep function names lowercase and side-effect free).
-- The [Go 1.27 release notes](https://go.dev/doc/go1.27) contain **no changes
-  to `text/template` / `html/template`** — the API is stable. "Latest
-  templates" therefore means using the full modern feature set above with the
-  1.27 toolchain, not adopting a different template engine.
-- One template per view plus small reusable partials; keep templates
-  declarative and readable.
-- **Minimal logic in templates:** `{{if}}`, `{{range}}`, `{{with}}`, and
-  pipeline functions only. All computation happens in Go; pass simple,
-  pre-shaped data structures.
-- htmx endpoints return **HTML fragments** (not JSON) for partial updates;
-  full pages are returned for navigation. Forms use standard
-  `method="POST"` with CSRF protection (see
-  `viewer-security.md`).
-- Every mutation goes through the backend; the browser never talks to storage
-  directly (architecture rule from the security spec).
+- Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
+- **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `examples/gitlike/`).
+- Viewer middleware (authn, sessions, CSRF, login throttle) lives in `internal/web`. An example surface MAY add its own IP rate limiter (std-lib token bucket, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
+- `go.mod` at root declaring `go 1.21` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic except object/hash registration.
+- Tests: every exported `cas/` function tested; handlers use `httptest`; template FS fixtures use `testing/fstest`.
+- Verify before commit: `gofmt -l .`; `go vet ./...`; `go test ./...`; `go build ./...`.
 
----
+## 10. Frontend boundary (`internal/web/`)
 
-## 6. Prefer Raw HTML
+- Serves `html/template` pages and htmx fragments over `net/http`. No build step/npm/static pipeline — templates embedded via `embed.FS`; htmx one pinned vendored file (CDN only with integrity attribute).
+- MUST comply with `viewer-security.md` (secure by default, authn/authz, sessions, CSRF, audit logging); the no-CSS/no-JS rule keeps the viewer minimal/auditable.
 
-- "Raw HTML" means hand-written, plain, semantic markup in templates — no
-  client-side rendering frameworks, no JS-generated DOM, no HTML assembled by
-  string concatenation in Go.
-- Never build HTML in Go code (no `fmt.Sprintf("<td>%s</td>", ...)`).
-  Dynamic output is always a template.
-- Prefer semantic elements (`<main>`, `<nav>`, `<table>`, `<form>`, `<label>`,
-  ...) over `<div>` soup; accessibility is required (labels for inputs, `alt`
-  text for images, logical heading order).
-- Keep attributes static and obvious; a template that needs heavy logic is a
-  sign the Go side should pre-compute the data.
+## 11. Pre-commit checklist
 
----
-
-## 7. Document Exported Types & Functions
-
-- Every exported identifier (package, type, function, method, constant,
-  variable) MUST have a doc comment that begins with its name:
-
-  ```go
-  // Store is a generic, type-safe content-addressable store for objects of type T.
-  type Store[T any] struct { ... }
-
-  // Put stores obj and returns its content address.
-  func (s *Store[T]) Put(ctx context.Context, obj Object[T]) (Hash, error) { ... }
-  ```
-
-- Every package SHALL have a package comment (`// Package cas implements ...`).
-- Comments document contracts, not code: preconditions, ownership (e.g.
-  "the caller MUST Close the returned io.ReadCloser"), concurrency safety,
-  and error behavior.
-- Add runnable `Example` functions in `_test.go` files for non-obvious public
-  API; they are documentation that cannot rot.
-- `go doc` output must read cleanly; avoid comments that merely restate the
-  code.
-
----
-
-## 8. Use the Latest Go Generics Where Possible
-
-- This repo's core is generic by design — `Store[T]`, `Codec[T]`,
-  `Object[T]`, and the cache wrappers (see
-  `cas-core.md`). Generics replace `any` + reflection and
-  move type errors to compile time.
-- Rules:
-  - No `any` / `interface{}` in the exported API (architectural rule).
-  - Constrain type parameters with interfaces — including type sets / `~`
-    unions — instead of accepting unconstrained `T` where semantics require
-    methods or operations.
-  - Use `comparable` for map keys and equality; use ordering constraints only
-    where ordering is actually needed.
-  - Prefer std `slices` / `maps` / `cmp` helpers over hand-rolled loops where
-    they read better (1.21+).
-  - Prefer `range` over slices/maps (1.22+) and `range` over functions
-    (`iter`, 1.23+) for clean iteration.
-  - Generic type aliases (1.24+) are allowed when an alias clarifies the API.
-- **Go 1.27 language additions** (see
-  [release notes](https://go.dev/doc/go1.27)):
-  - **Generic methods** — a method may declare its own type parameters:
-    `func (s *Store[T]) Map[R any](ctx context.Context, h Hash, f func(T) (R, error)) (R, error)`.
-    Use them to add typed helpers to this repo's generic types (e.g. typed
-    resolution on `Store[T]`). Caveats: methods of interfaces may not declare
-    type parameters, and interface methods cannot be implemented by generic
-    methods — so `Object[T]`'s methods remain non-generic.
-  - **Generalized function type inference** — type inference now applies in
-    all contexts where a generic function is assigned to (or converted to) a
-    matching function type. Prefer writing generic functions whose type
-    arguments can be inferred from their arguments.
-  - **Field-selector keys in struct literals** — keys may be any valid field
-    selector for the struct type (e.g. `Config{Server.Port: 8080}`), not just
-    top-level field names. Use it only where it reads clearly.
-- **Use generic types and generic functions where needed** — where they remove
-  duplication or replace `any`/reflection — and no further.
-- **Do not over-generalize.** If a generic abstraction serves a single use or
-  adds indirection without removing duplication, write the concrete code.
-  Generics serve readability and type safety — not cleverness.
-
----
-
-## 9. Project Structure & Conventions
-
-- Layout: `cas/` (public core library, `package cas`), `internal/`
-  (implementation detail: `web` — the viewer — and `index`; NOT importable
-  outside the module), `cmd/` (thin `main` packages only), `examples/`.
-- **No product → example imports.** `cas/`, `internal/` and `cmd/` MUST NOT
-  import `examples/` packages: examples are downstream consumers of the
-  public surface, never upstream dependencies (backend-architecture §2).
-- `internal/` is the home of every implementation detail: viewer handlers,
-  middleware, config wiring. It is private by construction — Go rejects
-  imports of `internal/` from outside the module, so `cas/` is the only
-  public package (plus the `examples/gitlike/` example layer).
-- Viewer HTTP middleware (authn, sessions, CSRF, login throttle) lives in
-  `internal/web` (viewer-security). An example surface MAY add its own
-  IP-based rate limiter (std-lib token bucket per caller IP, 429 +
-  `Retry-After` + `X-RateLimit-*`, loopback exempt — see `examples/api` and
-  api-design §8).
-- `go.mod` at the repo root declaring `go 1.21` with `toolchain go1.27`; module path matches the
-  repository.
-- No blank imports except the `embed` pattern; no init-based magic except
-  object/hash registration per the architecture doc.
-- Tests: core `cas/` paths require tests for every exported function;
-  handlers use `net/http/httptest`; template FS fixtures use
-  `testing/fstest`.
-- Verification before commit:
-
-  ```text
-  gofmt -l .
-  go vet ./...
-  go test ./...
-  go build ./...
-  ```
-
----
-
-## 10. Frontend Boundary (`internal/web/`)
-
-- The viewer backend (`internal/web/`) serves `html/template` pages and htmx
-  fragments over `net/http`.
-- No build step, no npm, no static asset pipeline: templates are embedded with
-  `embed.FS`; htmx is one pinned file (vendored locally preferred; a CDN URL
-  is acceptable only with an integrity attribute).
-- The viewer MUST comply with
-  `docs/specs/viewer-security.md` (secure by default,
-  authn/authz, session management, CSRF, audit logging). The no-CSS/no-JS rule
-  is part of keeping the viewer minimal and auditable.
-
----
-
-## 11. Pre-Commit Checklist
-
-- [x] `gofmt -l .` is clean; `go vet` and `go test` pass
-- [x] `go.mod` declares `go 1.21` with `toolchain go1.27`; zero external Go dependencies, or each one
-      justified and vendored
-- [x] No CSS, no hand-written JS, no `<style>`/`<script>` in templates — htmx
-      only
-- [x] HTML rendered exclusively via `html/template` using the latest template
-      feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`,
-      `FuncMap`); no HTML string concatenation in Go
+- [x] `gofmt -l .` clean; `go vet` and `go test` pass
+- [x] `go.mod` declares `go 1.21` + `toolchain go1.27`; zero external deps, or each justified and vendored
+- [x] No CSS, no hand-written JS, no `<style>`/`<script>` — htmx only
+- [x] HTML via `html/template` only, using the latest feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`, `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)
-- [x] Generic types/functions used where needed (incl. generic methods);
-      nothing over-engineered, no features newer than the declared `go` directive
-- [x] `context.Context` first, errors wrapped with `%w`, no panics in library
-      code
-- [x] Viewer changes re-checked against
-      `docs/specs/viewer-security.md`
-
+- [x] Generics (incl. generic methods) where needed; nothing over-engineered; no features newer than the declared `go` directive
+- [x] `context.Context` first; errors wrapped `%w`; no panics in library code
+- [x] Viewer changes re-checked against `viewer-security.md`
