@@ -16,10 +16,10 @@ OpenAPI document is served and matches the routes.
 
 | Component | Where |
 | --------- | ----- |
-| `FSRawStore` (`Put`/`Get`/`Exists`/`Delete`/`List`/`GC`/`Stats`) | all routes |
+| `fs.Backend` (`Put`/`Get`/`Exists`/`Delete`/`List`/`GC`/`Stats`) | all routes |
 | `Hash` / `ParseHash` | `{hash}` validation (→ 400), addresses |
 | `RegisterHash` built-ins (sha256/sha1) | `hash.go` — `newHasher` |
-| `StoreStats` | `/stats` |
+| `cas.Stats` | `/stats` |
 
 ## What it extends
 
@@ -79,7 +79,7 @@ flowchart TB
     AUTH -->|"ok"| RT["route handler"]
     RT -->|"POST /objects"| SP["hash-on-write temp spool"]
     RT -->|"GET /objects/{hash}"| ST["stream bytes + X-CAS-*"]
-    RT -->|"meta / list / verify / gc / stats"| FS["FSRawStore"]
+    RT -->|"meta / list / verify / gc / stats"| FS["fs.Backend"]
 ```
 
 ## How to run

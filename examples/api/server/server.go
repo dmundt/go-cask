@@ -15,7 +15,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 )
 
-// server is the CAS API server: routes over a RawStore with bearer-token
+// server is the CAS API server: routes over an fs.Backend with bearer-token
 // role auth and IP-based rate limiting.
 type server struct {
 	raw            *fs.Backend

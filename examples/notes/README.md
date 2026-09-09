@@ -12,7 +12,7 @@ generic `Walker[T]`.
 | Component | Where |
 | --------- | ----- |
 | `Object[T]` (versioned `note@1`/`tag@1`/`attachment@1`) | `types.go` |
-| `Store[T]` + `JSONCodec[T]` | the three per-type stores in `Repository` |
+| `Store[T]` + the JSON codec (`json.New[T]()`) | the three per-type stores in `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
 | `CachedObject[T]` / `CachedStore[T]` | lazy attachment loading |
 | prefetch-on-access (own `SmartCache` recipe) | warms references via `CachedStore` |

@@ -12,42 +12,44 @@ unreferenced artifacts.
 
 | Component | Where |
 | --------- | ----- |
-| `Codec[T]` / `JSONCodec[T]` | wrapped by the custom `gzipCodec` |
+| `Codec[T]` / the JSON codec (`json.New[T]()`) | wrapped by the custom `gzipCodec` |
 | `RegisterHash` + `NewHash` | the custom `sha256double` algorithm |
 | `Store[T]` / `PutDedup` | artifact + manifest storage, dedup reporting |
 | `Object[T]` (self-describing envelope) | `Artifact`, `Manifest` |
 | `LRUCache[T]` | the bounded artifact cache (`get`) |
 | periodic cache snapshots (own `CacheMonitor` recipe) | emits `CacheStats` |
-| `FSRawStore.GC` / `Stats` | mark-and-sweep / store totals |
+| `fs.Backend.GC` / `Stats` | mark-and-sweep / store totals |
 | `Hash` / `ParseHash` | manifest references and `get` args |
 
 ## What it extends
 
-- **`gzipCodec[T]`** — wraps `JSONCodec[T]` with gzip (deterministic output:
+- **`gzipCodec[T]`** — wraps the JSON codec (`json.New[T]()`) with gzip (deterministic output:
   the gzip header mtime is pinned, so identical values encode to identical
   bytes → identical hashes, preserving dedup).
 - **`RegisterHash("sha256double", …)`** — a std-lib-only custom algorithm
   (sha256 of sha256). Note: the name obeys the hash-string validation
   pattern (lowercase alnum, defaults §2) — the illustrative
   `sha256-double` from the spec is not a valid algorithm name.
-- **`Artifact` / `Manifest`** — the example's own `Object[T]` types, with a
-  copied envelope implementation (`envelope.go`).
+- **`Artifact` / `Manifest`** — the example's own `Object[T]` types,
+  serialized via the gzip codec into the core's self-describing TLV envelope.
 - **`cas` and `gitlike` are untouched.**
 
 ## Code walkthrough
 
 - `hasher.go` — registers `sha256double` at init.
-- `codec.go` — `gzipCodec[T]`: `Encode` = gzip(JSON), `Decode` = gunzip + JSON.
-- `envelope.go` — the self-describing envelope `{type, data(base64)}`.
-- `manifest.go` — `Artifact` (leaf) and `Manifest` (references artifact
-  hashes; custom JSON for the hash slices). Both serialize via the gzip codec.
-- `main.go` — the CLI:
+- `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's
+  output, `Unmarshal` = gunzip then inner decode (deterministic: pinned gzip
+  mtime).
+- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest`
+  (references artifact hashes; `MarshalJSON`/`UnmarshalJSON` render the hash
+  slices as `algo:hex` strings), serialized through the gzip codec into the
+  core's self-describing TLV envelope (`Store.Put`); plus the CLI:
   - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's
     manifest** (delete the previous one), so the replaced artifact becomes
     garbage;
   - `get <hash>` — through the `LRUCache`, with a `CacheMonitor` printing
     snapshots;
-  - `gc` — reachable = all manifests + referenced artifacts → `FSRawStore.GC`;
+  - `gc` — reachable = all manifests + referenced artifacts → `fs.Backend.GC`;
   - `stats` / `monitor`.
 
 ```mermaid
@@ -56,7 +58,7 @@ flowchart TB
     A --> M["Manifest.Put (references artifact)"]
     M -->|"previous manifest deleted"| G1["old artifact unreferenced"]
     G["gc"] --> R["reachable = manifests + referenced artifacts"]
-    R --> S["FSRawStore.GC sweep"]
+    R --> S["fs.Backend.GC sweep"]
     G2["get hash"] --> C["LRUCache + CacheMonitor"]
 ```
 

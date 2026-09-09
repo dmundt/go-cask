@@ -10,10 +10,10 @@ pattern for building their own typed layers on `Store[T]`.
 
 | Component | Where |
 | --------- | ----- |
-| `Store[T]` + `JSONCodec[T]` | the four per-type stores |
+| `Store[T]` + the JSON codec (`json.New[T]()`) | the four per-type stores |
 | `Object[T]` (versioned `blob@1`…`tag@1`) | `types.go` |
 | `Hash` / `ParseHash` | all references (tree entries, commit tree/parent, tag target) |
-| `RawStore` | the shared backend under `Repository` |
+| `cas.Backend` | the shared backend under `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
 | `LRUCache[T]` | `CachedRepository` |
 | `CachedStore[T].PreloadRecursive` | `Preloader` |
@@ -24,7 +24,7 @@ pattern for building their own typed layers on `Store[T]`.
   (`types.go`) — including custom JSON methods that render `Hash` values as
   `algo:hex` strings (a `Hash` interface cannot be unmarshaled by
   `encoding/json` directly).
-- **`Repository`** — per-type `Store[T]` over one `RawStore` (cross-type
+- **`Repository`** — per-type `Store[T]` over one `cas.Backend` (cross-type
   access without `any`; the wrong store is a compile-time error).
 - **`Resolver` / `ResolvedObject` / `parseType` / `ResolveAny`** — typed
   resolution, with `ResolveAny` dispatching on the envelope's type name.

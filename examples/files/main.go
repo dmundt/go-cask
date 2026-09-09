@@ -4,9 +4,9 @@
 // thing to a tiny Git on CASK (examples spec §3.1).
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
-// Resolver/ResolvedObject, WalkGraph, Store[T] with JSONCodec[T],
-// FSBackend fan-out, Verify, Stats, derived object-state audit
-// (verified/orphaned/corrupt), and a std-flag CLI.
+// Resolver/ResolvedObject, WalkGraph, Store[T] with the JSON codec
+// (json.New[T]()), fs.Backend fan-out, Verify, Stats, derived object-state
+// audit (verified/orphaned/corrupt), and a std-flag CLI.
 //
 // Usage:
 //

@@ -12,14 +12,14 @@ disk, and `audit` reports every object's derived state
 
 | Component | Where |
 | --------- | ----- |
-| `FSRawStore` (default fan-out 2/1) | `newApp` — the on-disk backend |
-| `gitlike.Repository` (per-type `Store[T]` over one `RawStore`) | `app.repo` |
-| `gitlike.Blob` / `Tree` / `Commit` — `Object[T]` with `JSONCodec[T]` | `add`, `commit` |
+| `fs.Backend` (default fan-out 2/1) | `newApp` — the on-disk backend |
+| `gitlike.Repository` (per-type `Store[T]` over one `cas.Backend`) | `app.repo` |
+| `gitlike.Blob` / `Tree` / `Commit` — `Object[T]` with the JSON codec (`json.New[T]()`) | `add`, `commit` |
 | `Repository.Blobs/Trees/Commits.Put`, `Get` | storing and reading objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph`, `audit` reachability |
-| `FSRawStore.Verify` | `verify`, `audit` — per-object integrity |
-| `FSRawStore.List` | `audit` — enumerate every stored object |
-| `FSRawStore.Stats` (`StoreStats`) | `stats` |
+| `fs.Backend.Verify` | `verify`, `audit` — per-object integrity |
+| `fs.Backend.List` | `audit` — enumerate every stored object |
+| `fs.Backend.Stats` (`cas.Stats`) | `stats` |
 | `Hash` / `ParseHash` | ref files (`HEAD`, `INDEX`) and hash args |
 
 ## What it extends
@@ -31,7 +31,7 @@ root, which the store's `List`/`Stats` ignore.
 
 ## Code walkthrough
 
-- `repo.go` — the `app` struct: `newApp` wires `FSRawStore` + `gitlike.Repository` and
+- `repo.go` — the `app` struct: `newApp` wires `fs.Backend` + `gitlike.Repository` and
   locates the ref files; `readRef`/`writeRef` persist hashes as text;
   `currentTree`/`headCommit` read `INDEX`/`HEAD`.
 - `main.go` — the std-`flag` CLI dispatches to:
@@ -44,11 +44,11 @@ root, which the store's `List`/`Stats` ignore.
   - `cat <hash>` — `ResolveAny` → prints `Blob.Data`;
   - `graph` — `WalkGraph` from `HEAD`, printing every resolved object;
   - `audit [-no-verify]` — classifies every stored object (below);
-  - `verify` / `stats` — `FSRawStore.Verify` per object / `Stats`.
+  - `verify` / `stats` — `fs.Backend.Verify` per object / `Stats`.
 - `audit.go` — the derived-state report: `audit` lists every object
-  (`FSRawStore.List`), marks the reachable set from `HEAD` by following
+  (`fs.Backend.List`), marks the reachable set from `HEAD` by following
   `References()` through the gitlike object model (`markReachable`), verifies
-  each object (`FSRawStore.Verify`), and assigns one of four states:
+  each object (`fs.Backend.Verify`), and assigns one of four states:
 
   | State | Meaning |
   | ----- | ------- |

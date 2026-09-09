@@ -11,15 +11,16 @@ import (
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
-// gzipCodec[T] wraps a Codec[T] (the default JSONCodec[T]) with gzip
-// compression — the codec-composition pattern from cas-core §7.2. It is used
+// gzipCodec[T] wraps a Codec[T] (the default JSON codec, json.New[T]() from
+// cas/codec/json) with gzip compression — the codec-composition pattern from
+// cas-core §7.2. It is used
 // for both artifacts and manifests, so their stored payloads are compressed.
 //
 // Output is deterministic: the gzip header's mtime is pinned, so identical
 // values encode to identical bytes and therefore identical hashes (dedup).
 type gzipCodec[T any] struct{ inner cas.Codec[T] }
 
-// newGzipCodec wraps the default JSONCodec[T].
+// newGzipCodec wraps the default JSON codec (json.New[T]()).
 func newGzipCodec[T any]() gzipCodec[T] { return gzipCodec[T]{inner: jsoncodec.New[T]()} }
 
 // Marshal gzip-compresses the inner codec's output.
