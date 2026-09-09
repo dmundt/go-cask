@@ -41,6 +41,10 @@ type Backend struct {
 	usedBytes int64
 }
 
+// Compile-time check that Backend satisfies the cas.Backend interface
+// (including Stats), so dropping a method breaks this package's build.
+var _ cas.Backend = (*Backend)(nil)
+
 // New creates an empty in-memory backend. Options may include WithMaxSize.
 func New(opts ...backend.Option) *Backend {
 	cfg := config{}

@@ -77,6 +77,10 @@ type Backend struct {
 	mu sync.Mutex // Put/Delete only
 }
 
+// Compile-time check that Backend satisfies the cas.Backend interface
+// (including Stats), so dropping a method breaks this package's build.
+var _ cas.Backend = (*Backend)(nil)
+
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
 func New(basePath string, opts ...backend.Option) (*Backend, error) {
