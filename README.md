@@ -1,4 +1,4 @@
-# CASK — Content Addressable Store Kit
+﻿# CASK — Content Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/badge/Go-1.27-blue)](https://github.com/dmundt/go-cask)
@@ -57,6 +57,7 @@ decisions that shape the repo (each named spec is the normative contract):
 cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
 examples/  runnable example programs (incl. the gitlike reference object model)
+benchmark/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 docs/specs/  the specification set (19 specs + AGENT.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
@@ -187,7 +188,7 @@ gofmt -l .
 ```
 
 Requires Go 1.27 (toolchain self-managing; library baseline Go 1.22+). See `CONTRIBUTING.md` for the
-development workflow, and `docs/benchmarks.md` for how to run and read the
+development workflow, and `benchmark/README.md` for how to run and read the
 benchmarks (the regular perf suite and the on-demand scale probes).
 
 ## License

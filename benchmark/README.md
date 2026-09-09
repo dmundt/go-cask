@@ -1,8 +1,8 @@
----
+﻿---
 type: Guide
 title: Benchmarks — go-cask
-description: How to run and read the go-cask benchmarks — the regular performance suite (cas/bench_test.go) and the on-demand state-scaling probes (cas/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v3
+description: How to run and read the go-cask benchmarks — the regular performance suite (benchmark/bench_test.go) and the on-demand state-scaling probes (benchmark/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
+version: v4
 ---
 
 # Benchmarks — go-cask
@@ -18,10 +18,10 @@ running and reading the benchmarks themselves.
 
 | Suite            | File                      | What it measures                          | Gate            |
 | ---------------- | ------------------------- | ----------------------------------------- | --------------- |
-| Regular perf     | `cas/bench_test.go`       | Per-operation cost of store ops at fixed, small object counts (64 B – 1 MiB payloads, flat vs. fan-out layouts) | none (manual)   |
-| Scale probes     | `cas/scale_bench_test.go` | How per-operation cost behaves as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` is set |
+| Regular perf     | `benchmark/bench_test.go`       | Per-operation cost of store ops at fixed, small object counts (64 B – 1 MiB payloads, flat vs. fan-out layouts) | none (manual)   |
+| Scale probes     | `benchmark/scale_bench_test.go` | How per-operation cost behaves as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` is set |
 
-Both live next to the code in package `cas` and run with the standard
+Both live in the top-level `benchmark/` directory and run with the standard
 `go test -bench` machinery. Every benchmark reports allocations
 (`b.ReportAllocs`) and throughput bytes (`b.SetBytes`), per performance §5.
 
@@ -64,28 +64,28 @@ The canonical "run all benchmarks" command — identical in PowerShell,
 cmd, and bash:
 
 ```powershell
-go test -bench='.' -benchmem -run=^$ ./cas/
+go test -bench='.' -benchmem -run=^$ ./benchmark/
 ```
 
 > **PowerShell note — quote `-flag=value` tokens.** This shell (observed in
 > PowerShell 7.6) mis-parses an *unquoted* `-bench=.` token: `go test`
 > then treats `.` as the package list and fails with "no Go files".
 > Quoting the value (`-bench='.'`) fixes it and is the canonical form
-> above. Putting the package path first (`go test ./cas/ -bench=. …`)
+> above. Putting the package path first (`go test ./benchmark/ -bench=. …`)
 > also works in every shell, as does dropping `-run=^$` if you accept the
 > unit tests running first.
 
 ```powershell
 # one family, 5 repeats for stable numbers
-go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./cas/
+go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./benchmark/
 
 # a single benchmark, exact iteration count
-go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./cas/
+go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./benchmark/
 ```
 
 ```bash
 # bash / macOS / Linux (flags-first is fine here)
-go test -bench=. -benchmem -run=^$ ./cas/
+go test -bench=. -benchmem -run=^$ ./benchmark/
 ```
 
 ## 4. Scale probes (`BenchmarkScale*`)
@@ -111,7 +111,7 @@ and disk allow) and read the scaling curve.
 | ----------------------- | ---------------------------------------------------- | ----------- |
 | `CASK_SCALE_OBJECTS`    | Number of objects to prefill the store with (the scale knob) | unset → benchmarks **skip** |
 
-The env gate is the not-in-CI guarantee: without it, plain `go test ./cas/`
+The env gate is the not-in-CI guarantee: without it, plain `go test ./benchmark/`
 and CI never touch these benchmarks.
 
 ### 4.3 Benchmarks
@@ -136,15 +136,15 @@ at large N and is **not** part of the per-operation numbers.
 ```powershell
 # PowerShell (env var syntax; package first, see §3.2 note)
 $env:CASK_SCALE_OBJECTS = 100000
-go test ./cas/ -run=^$ -bench=Scale -benchtime=1000x -v
+go test ./benchmark/ -run=^$ -bench=Scale -benchtime=1000x -v
 
 $env:CASK_SCALE_OBJECTS = 1000000   # FS: expect several GBs of temp files
-go test ./cas/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
+go test ./benchmark/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
 ```
 
 ```bash
 # bash / macOS / Linux
-CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./cas/
+CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./benchmark/
 ```
 
 Notes:

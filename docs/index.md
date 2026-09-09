@@ -1,8 +1,8 @@
----
+﻿---
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v3
+version: v4
 ---
 
 # go-cask Rules Index
@@ -33,11 +33,11 @@ version: v3
 | `examples/api/` | [`examples.md`](specs/examples.md) §3.4 + [`api-design.md`](specs/api-design.md) |
 | `cas/errors.go`; any exported `cas.*` identifier | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
-| `cas/bench_test.go`, `scale_bench_test.go` | [`performance.md`](specs/performance.md) + [`docs/perf/benchmarks.md`](perf/benchmarks.md) |
+| `benchmark/` (bench + scale probes) | [`performance.md`](specs/performance.md) + [`benchmark/README.md`](/benchmark/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
 
 **Updating:** add/remove/re-target rows when rule files change. Bump version on material change.
 
-**Sibling indexes:** [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md), [`docs/perf/index.md`](perf/index.md).
+**Sibling indexes:** [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).

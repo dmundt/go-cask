@@ -1,8 +1,8 @@
----
+﻿---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, docs/perf/, and any future subdirectories. The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v5
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmark/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+version: v6
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -46,15 +46,14 @@ optional but MUST be used when applicable.
 |---|---|
 | `Specification` | Every file in `docs/specs/` |
 | `Design Document` | Every file in `docs/design/` |
-| `Guide` | `docs/perf/benchmarks.md` and similar how-to files |
+| `Guide` | `benchmark/README.md` and similar how-to files |
 | `Agent Instructions` | Any `AGENT.md` file |
 
 ### 1.3 Index files
 
 Every subdirectory MUST have an `index.md` (OKF progressive disclosure).
 Root `docs/index.md` is the top-level rule index. Subdirectory index files
-(`docs/design/index.md`, `docs/specs/index.md`,
-`docs/perf/index.md`) are shorter. All index files carry
+(`docs/design/index.md`, `docs/specs/index.md`) are shorter. All index files carry
 `okf_version: "0.2"` in frontmatter and no `type`.
 
 ---
@@ -76,7 +75,7 @@ Root `docs/index.md` is the top-level rule index. Subdirectory index files
 - **Keep the three directory structure:**
   - `docs/specs/` — normative specs (20 files)
   - `docs/design/` — non-normative design documents
-  - `docs/perf/` — benchmark and performance guides
+  - `benchmark/README.md` — the benchmark/performance guide (lives beside the benchmark code, outside `docs/`)
 
 ---
 
