@@ -1,8 +1,8 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmark/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v7
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+version: v8
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -28,7 +28,7 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 
 ### 1.2 Type values & locations
 
-`Specification` → every `docs/specs/` file; `Design Document` → every `docs/design/` file; `Guide` → `benchmark/README.md` and similar how-to; `Agent Instructions` → any `AGENT.md`.
+`Specification` → every `docs/specs/` file; `Design Document` → every `docs/design/` file; `Guide` → `benchmarks/README.md` and similar how-to; `Agent Instructions` → any `AGENT.md`.
 
 ### 1.3 Index files
 
@@ -40,7 +40,7 @@ Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-leve
 - Eliminate cross-document duplication: each fact lives in one place (`defaults.md` or its owning spec), referenced not restated.
 - **Mermaid diagrams are exempt** from trimming (they visualize complex relationships; kept even when large).
 - Dead code-style sections (deferred-feature sketches, historical rationales, single-run benchmark samples) → remove, replace with a pointer to the deferral record.
-- Keep the three-directory structure: `docs/specs/` (normative, 20 files), `docs/design/` (non-normative), `benchmark/README.md` (guide beside the benchmark code, outside `docs/`).
+- Keep the three-directory structure: `docs/specs/` (normative, 20 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
 
 ## 3. Adding a file
 

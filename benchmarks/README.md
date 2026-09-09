@@ -1,8 +1,8 @@
 ---
 type: Guide
 title: Benchmarks — go-cask
-description: How to run and read the go-cask benchmarks — the regular performance suite (benchmark/bench_test.go) and the on-demand state-scaling probes (benchmark/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v5
+description: How to run and read the go-cask benchmarks — the regular performance suite (benchmarks/bench_test.go) and the on-demand state-scaling probes (benchmarks/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
+version: v6
 ---
 
 # Benchmarks — go-cask
@@ -13,10 +13,10 @@ The go-cask benchmarks measure the `cas` core's speed and allocations. They are 
 
 | Suite | File | Measures | Gate |
 |---|---|---|---|
-| Regular perf | `benchmark/bench_test.go` | Per-op cost at fixed, small object counts (64 B – 1 MiB, flat vs. fan-out) | none (manual) |
-| Scale probes | `benchmark/scale_bench_test.go` | Per-op cost as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` set |
+| Regular perf | `benchmarks/bench_test.go` | Per-op cost at fixed, small object counts (64 B – 1 MiB, flat vs. fan-out) | none (manual) |
+| Scale probes | `benchmarks/scale_bench_test.go` | Per-op cost as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` set |
 
-Both live in `benchmark/` and use standard `go test -bench`. Every benchmark reports allocations (`b.ReportAllocs`) and throughput (`b.SetBytes`).
+Both live in `benchmarks/` and use standard `go test -bench`. Every benchmark reports allocations (`b.ReportAllocs`) and throughput (`b.SetBytes`).
 
 ## 2. Common flags
 
@@ -51,19 +51,19 @@ Store cases run against the in-memory `memory` backend (deterministic); the `fs`
 ### 3.2 Run them
 
 ```powershell
-go test -bench='.' -benchmem -run=^$ ./benchmark/   # canonical: quote flag values
+go test -bench='.' -benchmem -run=^$ ./benchmarks/   # canonical: quote flag values
 ```
 
-> **PowerShell note — quote `-flag=value` tokens.** PowerShell 7.6 mis-parses an *unquoted* `-bench=.` (treats `.` as the package list → "no Go files"). Quoting (`-bench='.'`) fixes it. Putting the package first (`go test ./benchmark/ -bench=. …`) also works everywhere, as does dropping `-run=^$`.
+> **PowerShell note — quote `-flag=value` tokens.** PowerShell 7.6 mis-parses an *unquoted* `-bench=.` (treats `.` as the package list → "no Go files"). Quoting (`-bench='.'`) fixes it. Putting the package first (`go test ./benchmarks/ -bench=. …`) also works everywhere, as does dropping `-run=^$`.
 
 ```powershell
-go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./benchmark/      # one family, 5 repeats
-go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./benchmark/
+go test -bench='Benchmark(Store|FS)' -benchmem -count=5 -run=^$ ./benchmarks/      # one family, 5 repeats
+go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./benchmarks/
 ```
 
 ```bash
 # bash / macOS / Linux (flags-first fine)
-go test -bench=. -benchmem -run=^$ ./benchmark/
+go test -bench=. -benchmem -run=^$ ./benchmarks/
 ```
 
 ## 4. Scale probes (`BenchmarkScale*`)
@@ -101,14 +101,14 @@ The N-object prefill happens before the timed loop (can take minutes at large N)
 
 ```powershell
 $env:CASK_SCALE_OBJECTS = 100000
-go test ./benchmark/ -run=^$ -bench=Scale -benchtime=1000x -v
+go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=1000x -v
 
 $env:CASK_SCALE_OBJECTS = 1000000   # FS: expect several GBs of temp files
-go test ./benchmark/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
+go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
 ```
 
 ```bash
-CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./benchmark/
+CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./benchmarks/
 ```
 
 Notes: `-v` is required for the `[scale]` projection lines; `-benchtime=NNx` is recommended (exact counts, bounded runs); without it Go's `1s` calibration re-runs each bench (wasteful at large N); add `-timeout 0` when the prefill nears minutes.

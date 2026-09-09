@@ -30,7 +30,7 @@ cas/       core library (package cas) — generic, app-agnostic, public
 internal/  implementation detail: web (the viewer), index
 gitlike/  shared reference object-model library (package gitlike)
 examples/  runnable example programs
-benchmark/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
+benchmarks/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
 cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
 docs/specs/  the specification set (19 specs + AGENT.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
@@ -100,7 +100,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (toolchain self-managing; library baseline Go 1.22+). See `CONTRIBUTING.md` for the workflow, and `benchmark/README.md` for running/reading the benchmarks.
+Requires Go 1.27 (toolchain self-managing; library baseline Go 1.22+). See `CONTRIBUTING.md` for the workflow, and `benchmarks/README.md` for running/reading the benchmarks.
 
 ## License
 

@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v6
+version: v7
 ---
 
 # go-cask Rules Index
@@ -29,7 +29,7 @@ version: v6
 | `examples/api/` | [`examples.md`](specs/examples.md) §3.4 + [`api-design.md`](specs/api-design.md) |
 | `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
-| `benchmark/` | [`performance.md`](specs/performance.md) + [`benchmark/README.md`](/benchmark/README.md) |
+| `benchmarks/` | [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |

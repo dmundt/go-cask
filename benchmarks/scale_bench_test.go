@@ -15,8 +15,8 @@ package benchmark_test
 // operation counts and keeps big runs bounded; -v shows each benchmark's
 // projection line:
 //
-//	CASK_SCALE_OBJECTS=100000  go test ./benchmark/ -bench=Scale -run=^$ -benchtime=1000x -v
-//	CASK_SCALE_OBJECTS=1000000 go test ./benchmark/ -bench=Scale -run=^$ -benchtime=100x -v   # FS: ~GBs of temp files
+//	CASK_SCALE_OBJECTS=100000  go test ./benchmarks/ -bench=Scale -run=^$ -benchtime=1000x -v
+//	CASK_SCALE_OBJECTS=1000000 go test ./benchmarks/ -bench=Scale -run=^$ -benchtime=100x -v   # FS: ~GBs of temp files
 //
 // Prefilling N objects happens before the measured loop and can take
 // minutes at large N — that setup time is not part of the per-op numbers.
