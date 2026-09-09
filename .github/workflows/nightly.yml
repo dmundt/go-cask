@@ -1,0 +1,37 @@
+name: Nightly (fuzz + benchmarks)
+
+# Long-running, non-blocking checks (per testing-strategy §4 layer 3 and
+# performance §11): the fuzz targets run far longer than the CI smoke, and the
+# benchmark suite runs for the record. Nightly only; never gates a PR.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # daily 03:17 UTC
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fuzz targets (60s each)
+        run: |
+          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=60s ./cas/
+          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=60s ./cas/backend/fs/
+          go test -run=^$ -fuzz=FuzzVerify -fuzztime=60s ./cas/backend/fs/
+          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=60s ./cas/codec/json/
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Regular perf suite
+        run: |
+          go test ./benchmarks/ -run=^$ -bench=. -benchmem -count=3
