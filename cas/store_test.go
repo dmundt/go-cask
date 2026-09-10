@@ -13,6 +13,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
 )
 
@@ -23,12 +24,12 @@ type backendFactory func(t *testing.T) cas.Backend
 // than write an envelope whose type parseEnvelope rejects on read.
 type untypedObj struct{}
 
-func (untypedObj) Type() string           { return "" }
-func (untypedObj) References() []cas.Hash { return nil }
+func (untypedObj) Type() string             { return "" }
+func (untypedObj) References() []cas.Digest { return nil }
 
 func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[untypedObj]())
+	s := cas.New(mem.New(), jsoncodec.New[untypedObj](), sha256.New())
 	if _, err := s.Put(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("Put(empty type) = %v, want ErrUnknownType", err)
 	}
@@ -70,7 +71,7 @@ func testBackendContract(t *testing.T, raw cas.Backend) {
 
 func newTestStore(t *testing.T, raw cas.Backend) *cas.Store[test.Note] {
 	t.Helper()
-	return cas.New(raw, jsoncodec.New[test.Note]())
+	return cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
 }
 
 func TestBackendContract(t *testing.T) {
@@ -97,8 +98,8 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.Algorithm() != "sha256" {
-		t.Fatalf("algorithm = %q", h.Algorithm())
+	if h.IsZero() || len(h) != sha256.Size {
+		t.Fatalf("digest = %q, want %d bytes", h, sha256.Size)
 	}
 
 	// Get returns the concrete value with no casts.
@@ -169,7 +170,7 @@ func TestStoreDedup(t *testing.T) {
 	if h1.String() != h2.String() {
 		t.Fatalf("identical content must hash identically: %s vs %s", h1, h2)
 	}
-	list, err := raw.List(ctx, "")
+	list, err := raw.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +201,7 @@ func TestStoreDedup(t *testing.T) {
 func TestStoreEmptyStore(t *testing.T) {
 	s := newTestStore(t, mem.New())
 	ctx := context.Background()
-	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("ab", 32))
+	missing := sha256.Of([]byte("never stored"))
 
 	if _, err := s.Get(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get = %v", err)
@@ -223,7 +224,7 @@ func TestStoreTypeSafety(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes := cas.New(raw, jsoncodec.New[test.Node]())
+	nodes := cas.New(raw, jsoncodec.New[test.Node](), sha256.New())
 	if _, err := nodes.Get(ctx, h); err == nil {
 		t.Fatal("decoding a note as a node must fail")
 	}
@@ -236,7 +237,7 @@ func TestStoreCancelledContext(t *testing.T) {
 	if _, err := s.Put(ctx, test.Note{Title: "t"}); err == nil {
 		t.Fatal("Put on cancelled context must error")
 	}
-	if _, err := s.Get(ctx, cas.Hash{}); err == nil {
+	if _, err := s.Get(ctx, nil); err == nil {
 		t.Fatal("Get on cancelled context must error")
 	}
 }
@@ -274,7 +275,7 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Note]())
+	s := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
 	h, dedup, err := s.PutDedup(ctx, test.Note{Title: "dedup"})
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +298,7 @@ func TestStorePutDedup(t *testing.T) {
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
-	st := cas.New(raw, jsoncodec.New[test.Note]())
+	st := cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
 	payload, err := (jsoncodec.New[test.Note]()).Marshal(test.Note{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
@@ -330,7 +331,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st := cas.New(mem.New(), jsoncodec.New[test.Note]())
+	st := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	h := test.HashData([]byte("x"))

@@ -13,6 +13,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
 )
 
@@ -57,7 +58,7 @@ func TestBackendCancelledContext(t *testing.T) {
 			if err := raw.Delete(ctx, h); err == nil {
 				t.Error("Delete on cancelled ctx must error")
 			}
-			if _, err := raw.List(ctx, ""); err == nil {
+			if _, err := raw.List(ctx); err == nil {
 				t.Error("List on cancelled ctx must error")
 			}
 		})
@@ -66,7 +67,7 @@ func TestBackendCancelledContext(t *testing.T) {
 
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), test.FailingCodec[test.ErrorObj]{})
+	s := cas.New(mem.New(), test.FailingCodec[test.ErrorObj]{}, sha256.New())
 	if _, err := s.Put(ctx, test.ErrorObj{}); err == nil {
 		t.Fatal("Put with failing codec must error")
 	}
@@ -89,7 +90,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
-	store := cas.New(raw, jsoncodec.New[test.Note]())
+	store := cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
 	// TLV envelope: [version][uvarint typeLen][type][uvarint payloadLen][payload].
 	// A payload that is not valid JSON for test.Note will cause the codec
 	// Decode to fail, surfacing as ErrCorrupt.
@@ -140,14 +141,14 @@ func TestVerifyCancelled(t *testing.T) {
 	h := test.HashData([]byte("x"))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := s.Verify(ctx, h); err == nil {
+	if err := s.Verify(ctx, h, sha256.New()); err == nil {
 		t.Fatal("Verify on cancelled ctx must error")
 	}
 }
 
 func TestStoreGetRawMissing(t *testing.T) {
 	s := newTestStore(t, mem.New())
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	missing := sha256.Of([]byte("never stored"))
 	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetRaw = %v, want ErrNotFound", err)
 	}

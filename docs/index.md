@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v8
+version: v9
 ---
 
 # go-cask Rules Index
@@ -11,10 +11,11 @@ version: v8
 
 | Path | Rule file |
 |---|---|
-| `cas/hash.go`; `TestHash*` / `BenchmarkHash*` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
+| `cas/digest.go`, `cas/hasher.go`; `TestDigest*` / `FuzzParseDigest` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
+| `cas/hash/sha256/` (the shipped client hasher) | [`cas-core.md`](specs/cas-core.md) §4.2 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |
-| `cas/codec/json/` (codec + the `jsoncodec.Hash` field type), `cas/codec/gob/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |
+| `cas/codec/json/`, `cas/codec/gob/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |
 | `cas/cached.go`, `lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/maintenance.go`; `backend.go` `GC`/`Prune`/`Clean` | [`consistency.md`](specs/consistency.md) |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) |

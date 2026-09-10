@@ -34,11 +34,11 @@ func NewSmartCache[T cas.Object[T]](store *mem.CachedStore[T], prefetchDepth int
 	return &SmartCache[T]{store: store, prefetchDepth: prefetchDepth}
 }
 
-// GetWithPrefetch loads the object at h and, if prefetching is enabled,
+// GetWithPrefetch loads the object at d and, if prefetching is enabled,
 // asynchronously warms the cache with every reachable reference up to
 // prefetchDepth levels.
-func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, h cas.Hash) (T, error) {
-	loaded, err := c.store.Get(ctx, h)
+func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, d cas.Digest) (T, error) {
+	loaded, err := c.store.Get(ctx, d)
 	if err != nil {
 		var zero T
 		return zero, err

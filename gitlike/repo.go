@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/dmundt/go-cask/cas"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Repository bundles the per-type stores (blob, tree, commit, tag) over one
-// Backend and one hash algorithm — cross-type access without any: each
+// Backend and the caller's Hasher — cross-type access without any: each
 // store is typed, so calling the wrong store is a compile-time error.
 type Repository struct {
 	raw     cas.Backend
@@ -21,15 +20,15 @@ type Repository struct {
 	Tags    *cas.Store[*Tag]
 }
 
-// NewRepository builds a Repository over raw. It cannot fail: the core has one
-// hash algorithm and no registry (cas-core §4.2).
-func NewRepository(raw cas.Backend) *Repository {
+// NewRepository builds a Repository over raw with the caller's hasher. The
+// repository names no algorithm: the client decides (cas-core §4.2).
+func NewRepository(raw cas.Backend, hasher cas.Hasher) *Repository {
 	return &Repository{
 		raw:     raw,
-		Blobs:   cas.New(raw, jsoncodec.New[*Blob]()),
-		Trees:   cas.New(raw, jsoncodec.New[*Tree]()),
-		Commits: cas.New(raw, jsoncodec.New[*Commit]()),
-		Tags:    cas.New(raw, jsoncodec.New[*Tag]()),
+		Blobs:   cas.New(raw, jsoncodec.New[*Blob](), hasher),
+		Trees:   cas.New(raw, jsoncodec.New[*Tree](), hasher),
+		Commits: cas.New(raw, jsoncodec.New[*Commit](), hasher),
+		Tags:    cas.New(raw, jsoncodec.New[*Tag](), hasher),
 	}
 }
 
@@ -56,31 +55,31 @@ func NewResolver(repo *Repository) *Resolver {
 	return &Resolver{repo: repo}
 }
 
-// ResolveCommit returns the commit at h, or ErrNotFound.
-func (r *Resolver) ResolveCommit(ctx context.Context, h cas.Hash) (*Commit, error) {
-	return r.repo.Commits.Get(ctx, h)
+// ResolveCommit returns the commit at d, or ErrNotFound.
+func (r *Resolver) ResolveCommit(ctx context.Context, d cas.Digest) (*Commit, error) {
+	return r.repo.Commits.Get(ctx, d)
 }
 
-// ResolveTree returns the tree at h, or ErrNotFound.
-func (r *Resolver) ResolveTree(ctx context.Context, h cas.Hash) (*Tree, error) {
-	return r.repo.Trees.Get(ctx, h)
+// ResolveTree returns the tree at d, or ErrNotFound.
+func (r *Resolver) ResolveTree(ctx context.Context, d cas.Digest) (*Tree, error) {
+	return r.repo.Trees.Get(ctx, d)
 }
 
-// ResolveBlob returns the blob at h, or ErrNotFound.
-func (r *Resolver) ResolveBlob(ctx context.Context, h cas.Hash) (*Blob, error) {
-	return r.repo.Blobs.Get(ctx, h)
+// ResolveBlob returns the blob at d, or ErrNotFound.
+func (r *Resolver) ResolveBlob(ctx context.Context, d cas.Digest) (*Blob, error) {
+	return r.repo.Blobs.Get(ctx, d)
 }
 
-// ResolveTag returns the tag at h, or ErrNotFound.
-func (r *Resolver) ResolveTag(ctx context.Context, h cas.Hash) (*Tag, error) {
-	return r.repo.Tags.Get(ctx, h)
+// ResolveTag returns the tag at d, or ErrNotFound.
+func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
+	return r.repo.Tags.Get(ctx, d)
 }
 
 // ResolveAny determines the object's type from the self-describing envelope
 // and dispatches to the matching typed resolver. It returns
 // (nil, ErrUnknownType) for an object type this repository does not know.
-func (r *Resolver) ResolveAny(ctx context.Context, h cas.Hash) (*ResolvedObject, error) {
-	rc, err := r.repo.raw.Get(ctx, h)
+func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
+	rc, err := r.repo.raw.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
@@ -95,25 +94,25 @@ func (r *Resolver) ResolveAny(ctx context.Context, h cas.Hash) (*ResolvedObject,
 	}
 	switch typ {
 	case "blob":
-		blob, err := r.ResolveBlob(ctx, h)
+		blob, err := r.ResolveBlob(ctx, d)
 		if err != nil {
 			return nil, err
 		}
 		return &ResolvedObject{Type: "blob", Blob: blob}, nil
 	case "tree":
-		tree, err := r.ResolveTree(ctx, h)
+		tree, err := r.ResolveTree(ctx, d)
 		if err != nil {
 			return nil, err
 		}
 		return &ResolvedObject{Type: "tree", Tree: tree}, nil
 	case "commit":
-		commit, err := r.ResolveCommit(ctx, h)
+		commit, err := r.ResolveCommit(ctx, d)
 		if err != nil {
 			return nil, err
 		}
 		return &ResolvedObject{Type: "commit", Commit: commit}, nil
 	case "tag":
-		tag, err := r.ResolveTag(ctx, h)
+		tag, err := r.ResolveTag(ctx, d)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +133,7 @@ func PrintObject(o *ResolvedObject) string {
 	case "commit":
 		return fmt.Sprintf("commit by %s: %s", o.Commit.Author, o.Commit.Message)
 	case "tag":
-		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortHash(o.Tag.Target.Hash()))
+		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortHash(o.Tag.Target))
 	default:
 		return fmt.Sprintf("unknown type %q", o.Type)
 	}
@@ -142,22 +141,20 @@ func PrintObject(o *ResolvedObject) string {
 
 // shortHash renders the first 8 hex chars of a digest for display (the
 // viewer's short-hash default).
-func shortHash(h cas.Hash) string {
-	if h.IsZero() {
+func shortHash(d cas.Digest) string {
+	if d.IsZero() {
 		return "<absent>"
 	}
-	s := h.String()
-	_, hexPart, _ := strings.Cut(s, ":")
-	return hexPart[:8]
+	return d.String()[:8]
 }
 
-// WalkGraph traverses the whole object graph reachable from h, resolving
+// WalkGraph traverses the whole object graph reachable from d, resolving
 // every node with the resolver and calling visit for each. The type-switch
 // dispatch makes it specific to this object set (the generic alternative is
 // cas.Walker[T]). Content addressing makes cycles impossible, so no visited
 // set is needed.
-func WalkGraph(ctx context.Context, resolver *Resolver, h cas.Hash, visit func(*ResolvedObject) error) error {
-	ro, err := resolver.ResolveAny(ctx, h)
+func WalkGraph(ctx context.Context, resolver *Resolver, d cas.Digest, visit func(*ResolvedObject) error) error {
+	ro, err := resolver.ResolveAny(ctx, d)
 	if err != nil {
 		return err
 	}
@@ -173,7 +170,7 @@ func WalkGraph(ctx context.Context, resolver *Resolver, h cas.Hash, visit func(*
 }
 
 // referencesOf returns the outgoing references of a resolved object.
-func referencesOf(ro *ResolvedObject) []cas.Hash {
+func referencesOf(ro *ResolvedObject) []cas.Digest {
 	switch ro.Type {
 	case "commit":
 		return ro.Commit.References()

@@ -27,7 +27,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -40,8 +40,8 @@ commands:
   cat <hash>        print a blob's bytes to stdout
   graph             print the object graph reachable from HEAD
   audit [-no-verify]  report every object's state (verified/orphaned/corrupt)
-  verify            recompute every stored hash
-  stats             print per-algorithm counts and total size`
+  verify            recompute every stored digest
+  stats             print the object count and total size`
 
 // app bundles the store, repository and the small ref files (HEAD/INDEX).
 type app struct {
@@ -57,69 +57,71 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo := gitlike.NewRepository(raw)
+	repo := gitlike.NewRepository(raw, sha256.New())
 	return &app{raw: raw, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
 }
 
-func (a *app) readRef(path string) (cas.Hash, error) {
+// readRef reads a ref file: the printable "sha256:hexdigest" form (or bare
+// hex).
+func (a *app) readRef(path string) (cas.Digest, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return cas.Hash{}, err
+		return nil, err
 	}
-	return cas.ParseHash(strings.TrimSpace(string(b)))
+	return sha256.Parse(strings.TrimSpace(string(b)))
 }
 
-func (a *app) writeRef(path string, h cas.Hash) error {
-	return os.WriteFile(path, []byte(h.String()+"\n"), 0o644)
+func (a *app) writeRef(path string, d cas.Digest) error {
+	return os.WriteFile(path, []byte(sha256.Format(d)+"\n"), 0o644)
 }
 
-func (a *app) currentTree() (cas.Hash, error) { return a.readRef(a.index) }
+func (a *app) currentTree() (cas.Digest, error) { return a.readRef(a.index) }
 
-func (a *app) headCommit() (cas.Hash, error) { return a.readRef(a.head) }
+func (a *app) headCommit() (cas.Digest, error) { return a.readRef(a.head) }
 
 // add stores each file as a blob and builds a tree of them; identical
-// content deduplicates (same bytes → same hash → stored once).
-func (a *app) add(ctx context.Context, paths []string) (cas.Hash, error) {
+// content deduplicates (same bytes → same digest → stored once).
+func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
 	var entries []gitlike.TreeEntry
 	for _, p := range paths {
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return cas.Hash{}, fmt.Errorf("read %s: %w", p, err)
+			return nil, fmt.Errorf("read %s: %w", p, err)
 		}
 		h, err := a.repo.Blobs.Put(ctx, &gitlike.Blob{Data: data})
 		if err != nil {
-			return cas.Hash{}, err
+			return nil, err
 		}
-		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: jsoncodec.NewHash(h), Mode: "100644"})
+		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: h, Mode: "100644"})
 	}
 	h, err := a.repo.Trees.Put(ctx, &gitlike.Tree{Entries: entries})
 	if err != nil {
-		return cas.Hash{}, err
+		return nil, err
 	}
 	if err := a.writeRef(a.index, h); err != nil {
-		return cas.Hash{}, err
+		return nil, err
 	}
 	return h, nil
 }
 
 // commit creates a Commit pointing at the current tree, with the previous
 // head as parent (if any), and advances HEAD.
-func (a *app) commit(ctx context.Context, msg string) (cas.Hash, error) {
+func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
 	tree, err := a.currentTree()
 	if err != nil {
-		return cas.Hash{}, fmt.Errorf("no tree to commit (run add first): %w", err)
+		return nil, fmt.Errorf("no tree to commit (run add first): %w", err)
 	}
 	parent, _ := a.headCommit() // absent for the first commit
 	c := &gitlike.Commit{
-		Tree:    jsoncodec.NewHash(tree),
-		Parent:  jsoncodec.NewHash(parent),
+		Tree:    tree,
+		Parent:  parent,
 		Author:  "files",
 		Message: msg,
 		Time:    time.Now(),
 	}
 	h, err := a.repo.Commits.Put(ctx, c)
 	if err != nil {
-		return cas.Hash{}, err
+		return nil, err
 	}
 	return h, a.writeRef(a.head, h)
 }
@@ -136,14 +138,14 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(out, "%s %s\n", short(h), c.Message)
-		h = c.Parent.Hash() // absent for a root commit: the walk ends
+		h = c.Parent // absent for a root commit: the walk ends
 	}
 	return nil
 }
 
-// cat resolves h to any object and writes its bytes to out.
-func (a *app) cat(ctx context.Context, h cas.Hash, out io.Writer) error {
-	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, h)
+// cat resolves d to any object and writes its bytes to out.
+func (a *app) cat(ctx context.Context, d cas.Digest, out io.Writer) error {
+	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, d)
 	if err != nil {
 		return err
 	}
@@ -155,31 +157,31 @@ func (a *app) cat(ctx context.Context, h cas.Hash, out io.Writer) error {
 	return err
 }
 
-// verify recomputes every stored hash and reports any corruption.
+// verify recomputes every stored digest and reports any corruption.
 func (a *app) verify(ctx context.Context) error {
-	hashes, err := a.raw.List(ctx, "")
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		return err
 	}
 	bad := 0
-	for _, h := range hashes {
-		if err := a.raw.Verify(ctx, h); err != nil {
+	for _, h := range digests {
+		if err := a.raw.Verify(ctx, h, sha256.New()); err != nil {
 			fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
 			bad++
 		}
 	}
-	fmt.Printf("verified %d objects, %d corrupt\n", len(hashes), bad)
+	fmt.Printf("verified %d objects, %d corrupt\n", len(digests), bad)
 	if bad > 0 {
 		return fmt.Errorf("%d corrupt objects", bad)
 	}
 	return nil
 }
 
-func short(h cas.Hash) string {
-	if h.IsZero() {
+func short(d cas.Digest) string {
+	if d.IsZero() {
 		return "<absent>"
 	}
-	return h.String()
+	return sha256.Format(d)
 }
 
 // run executes the CLI and returns the process exit code. It is factored out
@@ -241,7 +243,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, usage)
 			return 2
 		}
-		h, err := cas.ParseHash(rest[0])
+		h, err := sha256.Parse(rest[0])
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1

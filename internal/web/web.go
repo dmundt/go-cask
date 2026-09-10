@@ -16,6 +16,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/index"
 )
 
@@ -200,15 +201,8 @@ func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
 type dashboardData struct {
 	ObjectCount int64
 	TotalSize   int64
-	Algorithms  []algoRow
 	Sample      []objectRow
 	HasSample   bool
-}
-
-type algoRow struct {
-	Algo  string
-	Count int64
-	Size  int64
 }
 
 type objectRow struct {
@@ -221,17 +215,14 @@ type objectRow struct {
 func (s *Server) dashboardData(ctx context.Context) dashboardData {
 	st, err := s.store.Stats(ctx)
 	if err != nil {
-		st = &cas.Stats{AlgorithmCounts: map[string]int{}}
+		st = &cas.Stats{}
 	}
 	d := dashboardData{ObjectCount: st.ObjectCount, TotalSize: st.TotalSize}
-	for algo, n := range st.AlgorithmCounts {
-		d.Algorithms = append(d.Algorithms, algoRow{algo, int64(n), st.TotalSize})
-	}
-	hashes, err := s.store.List(ctx, "")
+	digests, err := s.store.List(ctx)
 	if err != nil {
 		return d
 	}
-	for _, h := range index.Paginate(hashes, 0, 10) {
+	for _, h := range index.Paginate(digests, 0, 10) {
 		d.Sample = append(d.Sample, objectRow{h.String(), shortHash(h), s.objectType(ctx, h), s.objectSize(ctx, h)})
 	}
 	d.HasSample = len(d.Sample) > 0
@@ -241,15 +232,14 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 // --- objects list ---
 
 func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
-	algo := r.URL.Query().Get("algo")
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	hashes, err := s.store.List(r.Context(), algo)
+	digests, err := s.store.List(r.Context())
 	if err != nil {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
 	var rows []objectRow
-	for _, h := range hashes {
+	for _, h := range digests {
 		typ := ""
 		if q != "" {
 			typ = s.objectType(r.Context(), h)
@@ -260,11 +250,10 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, objectRow{h.String(), shortHash(h), typ, s.objectSize(r.Context(), h)})
 	}
 	data := struct {
-		Algo    string
 		Query   string
 		Objects []objectRow
 		HasAny  bool
-	}{algo, q, rows, len(rows) > 0}
+	}{q, rows, len(rows) > 0}
 	if r.Header.Get("HX-Request") == "true" {
 		s.render(w, "object-table-fragment", data) // htmx search/refresh swap
 		return
@@ -292,7 +281,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 		Size      int64
 		CSRF      string
 		Role      string
-	}{h.String(), h.Algorithm(), typ, s.objectSize(r.Context(), h), s.csrfFor(r), s.roleFor(r)})
+	}{h.String(), sha256.Name, typ, s.objectSize(r.Context(), h), s.csrfFor(r), s.roleFor(r)})
 }
 
 func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +309,7 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.Verify(r.Context(), h); err != nil {
+	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
 		s.render(w, "result", "corrupt: "+template.HTMLEscapeString(err.Error()))
 		return
 	}
@@ -411,9 +400,9 @@ const previewLimit = 256 << 10
 // TLV header ([version][uvarint typeLen][type]) is needed, not the payload.
 const typePrefixLimit = 4 << 10
 
-// readN reads at most n bytes from the object at h.
-func (s *Server) readN(ctx context.Context, h cas.Hash, n int64) ([]byte, error) {
-	rc, err := s.store.Get(ctx, h)
+// readN reads at most n bytes from the object at d.
+func (s *Server) readN(ctx context.Context, d cas.Digest, n int64) ([]byte, error) {
+	rc, err := s.store.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
@@ -423,8 +412,8 @@ func (s *Server) readN(ctx context.Context, h cas.Hash, n int64) ([]byte, error)
 
 // readPreview reads at most previewLimit bytes and reports whether the object
 // was truncated.
-func (s *Server) readPreview(ctx context.Context, h cas.Hash) ([]byte, bool, error) {
-	data, err := s.readN(ctx, h, previewLimit+1)
+func (s *Server) readPreview(ctx context.Context, d cas.Digest) ([]byte, bool, error) {
+	data, err := s.readN(ctx, d, previewLimit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -435,16 +424,16 @@ func (s *Server) readPreview(ctx context.Context, h cas.Hash) ([]byte, bool, err
 }
 
 // objectSize returns an object's size in bytes (0 when unavailable).
-func (s *Server) objectSize(ctx context.Context, h cas.Hash) int64 {
-	n, err := s.store.Size(ctx, h)
+func (s *Server) objectSize(ctx context.Context, d cas.Digest) int64 {
+	n, err := s.store.Size(ctx, d)
 	if err != nil {
 		return 0
 	}
 	return n
 }
 
-func (s *Server) objectType(ctx context.Context, h cas.Hash) string {
-	data, err := s.readN(ctx, h, typePrefixLimit)
+func (s *Server) objectType(ctx context.Context, d cas.Digest) string {
+	data, err := s.readN(ctx, d, typePrefixLimit)
 	if err != nil {
 		return ""
 	}
@@ -465,55 +454,51 @@ func (s *Server) roleFor(r *http.Request) string {
 	return ""
 }
 
-func parseHash(w http.ResponseWriter, r *http.Request) (cas.Hash, bool) {
-	h, err := cas.ParseHash(r.PathValue("hash"))
+func parseHash(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
+	d, err := sha256.Parse(r.PathValue("hash"))
 	if err != nil {
 		http.Error(w, "malformed hash", http.StatusBadRequest)
-		return cas.Hash{}, false
+		return nil, false
 	}
-	return h, true
+	return d, true
 }
 
-func parseHashLines(s string) ([]cas.Hash, error) {
-	var out []cas.Hash
+func parseHashLines(s string) ([]cas.Digest, error) {
+	var out []cas.Digest
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		h, err := cas.ParseHash(line)
+		d, err := sha256.Parse(line)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, h)
+		out = append(out, d)
 	}
 	return out, nil
 }
 
-func shortHash(h cas.Hash) string {
-	if h.IsZero() {
+func shortHash(d cas.Digest) string {
+	if d.IsZero() {
 		return ""
 	}
-	_, hexPart, _ := strings.Cut(h.String(), ":")
-	if len(hexPart) > 8 {
-		return hexPart[:8]
-	}
-	return hexPart
+	return sha256.Short(d)
 }
 
 func hashWithType(h string, typ string) string {
 	if typ == "" {
-		return shortHash(parseHashOrNil(h))
+		return shortHash(parseDigestOrNil(h))
 	}
-	return shortHash(parseHashOrNil(h)) + " (" + typ + ")"
+	return shortHash(parseDigestOrNil(h)) + " (" + typ + ")"
 }
 
-func parseHashOrNil(s string) cas.Hash {
-	h, err := cas.ParseHash(s)
+func parseDigestOrNil(s string) cas.Digest {
+	d, err := sha256.Parse(s)
 	if err != nil {
-		return cas.Hash{}
+		return nil
 	}
-	return h
+	return d
 }
 
 // hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).

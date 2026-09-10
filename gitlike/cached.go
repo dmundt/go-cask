@@ -49,34 +49,34 @@ func NewCachedRepository(repo *Repository, maxSize int) (*CachedRepository, erro
 	}, nil
 }
 
-// GetCommit returns the commit at h via the commit cache.
-func (c *CachedRepository) GetCommit(ctx context.Context, h cas.Hash) (*Commit, error) {
-	return c.Commits.Get(ctx, h)
+// GetCommit returns the commit at d via the commit cache.
+func (c *CachedRepository) GetCommit(ctx context.Context, d cas.Digest) (*Commit, error) {
+	return c.Commits.Get(ctx, d)
 }
 
-// GetTree returns the tree at h via the tree cache.
-func (c *CachedRepository) GetTree(ctx context.Context, h cas.Hash) (*Tree, error) {
-	return c.Trees.Get(ctx, h)
+// GetTree returns the tree at d via the tree cache.
+func (c *CachedRepository) GetTree(ctx context.Context, d cas.Digest) (*Tree, error) {
+	return c.Trees.Get(ctx, d)
 }
 
-// GetBlob returns the blob at h via the blob cache.
-func (c *CachedRepository) GetBlob(ctx context.Context, h cas.Hash) (*Blob, error) {
-	return c.Blobs.Get(ctx, h)
+// GetBlob returns the blob at d via the blob cache.
+func (c *CachedRepository) GetBlob(ctx context.Context, d cas.Digest) (*Blob, error) {
+	return c.Blobs.Get(ctx, d)
 }
 
-// ResolveAny resolves h to any supported object type, using the caches where
+// ResolveAny resolves d to any supported object type, using the caches where
 // possible.
-func (c *CachedRepository) ResolveAny(ctx context.Context, h cas.Hash) (*ResolvedObject, error) {
-	return c.resolver.ResolveAny(ctx, h)
+func (c *CachedRepository) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
+	return c.resolver.ResolveAny(ctx, d)
 }
 
 // Preloader is a background worker pool that preloads commit graphs into a
-// CachedRepository: it consumes hashes from a channel and runs
-// Commits.PreloadRecursive(ctx, h, 2) for each. Preload is non-blocking;
+// CachedRepository: it consumes digests from a channel and runs
+// Commits.PreloadRecursive(ctx, d, 2) for each. Preload is non-blocking;
 // Stop cancels the workers and waits for them to drain.
 type Preloader struct {
 	cached *CachedRepository
-	jobs   chan cas.Hash
+	jobs   chan cas.Digest
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -88,7 +88,7 @@ func NewPreloader(cached *CachedRepository, workers int) *Preloader {
 		workers = 2
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	p := &Preloader{cached: cached, jobs: make(chan cas.Hash, 64), cancel: cancel}
+	p := &Preloader{cached: cached, jobs: make(chan cas.Digest, 64), cancel: cancel}
 	for i := 0; i < workers; i++ {
 		p.wg.Add(1)
 		go p.worker(ctx)
@@ -102,22 +102,22 @@ func (p *Preloader) worker(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case h, ok := <-p.jobs:
+		case d, ok := <-p.jobs:
 			if !ok {
 				return
 			}
 			// Best-effort: reference types this store cannot decode (trees,
 			// blobs) simply fail to load here and are dropped.
-			_ = p.cached.Commits.PreloadRecursive(ctx, h, 2)
+			_ = p.cached.Commits.PreloadRecursive(ctx, d, 2)
 		}
 	}
 }
 
-// Preload enqueues h for preloading without blocking: if the queue is full,
-// the hash is skipped (prefetching must never block the hot path).
-func (p *Preloader) Preload(h cas.Hash) {
+// Preload enqueues d for preloading without blocking: if the queue is full,
+// the digest is skipped (prefetching must never block the hot path).
+func (p *Preloader) Preload(d cas.Digest) {
 	select {
-	case p.jobs <- h:
+	case p.jobs <- d:
 	default:
 	}
 }

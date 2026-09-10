@@ -8,23 +8,24 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
 )
 
 func TestWalkerTraversal(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Node]())
+	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 
 	// Build a small graph: a -> b -> c (leaf).
 	hc, err := s.Put(ctx, test.Node{Name: "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: []jsoncodec.Hash{jsoncodec.NewHash(hc)}})
+	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: []cas.Digest{hc}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: []jsoncodec.Hash{jsoncodec.NewHash(hb)}})
+	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: []cas.Digest{hb}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +53,8 @@ func TestWalkerTraversal(t *testing.T) {
 }
 
 func TestWalkerNotFound(t *testing.T) {
-	s := cas.New(mem.New(), jsoncodec.New[test.Node]())
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
+	missing := sha256.Of([]byte("never stored"))
 	w := cas.NewWalker(s, func(test.Node) error { return nil })
 	if err := w.Walk(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Walk(missing) = %v, want ErrNotFound", err)
@@ -62,7 +63,7 @@ func TestWalkerNotFound(t *testing.T) {
 
 func TestWalkerVisitError(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Node]())
+	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 	h, err := s.Put(ctx, test.Node{Name: "x"})
 	if err != nil {
 		t.Fatal(err)
@@ -79,17 +80,17 @@ func TestWalkerVisitError(t *testing.T) {
 // propagates.
 func TestWalkerRecursionErrors(t *testing.T) {
 	ctx := context.Background()
-	st := cas.New(mem.New(), jsoncodec.New[test.Node]())
+	st := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Digest{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	missingH := test.HashData([]byte("missing"))
-	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []jsoncodec.Hash{jsoncodec.NewHash(missingH)}})
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Digest{missingH}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,24 +116,24 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	}
 }
 
-// TestWalkerSharedSubgraphVisitedOnce pins the visited-set contract: a hash
+// TestWalkerSharedSubgraphVisitedOnce pins the visited-set contract: a digest
 // reached through two paths is visited once, not once per path.
 func TestWalkerSharedSubgraphVisitedOnce(t *testing.T) {
 	ctx := context.Background()
-	st := cas.New(mem.New(), jsoncodec.New[test.Node]())
+	st := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	leftH, err := st.Put(ctx, test.Node{Name: "left", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
+	leftH, err := st.Put(ctx, test.Node{Name: "left", Refs: []cas.Digest{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rightH, err := st.Put(ctx, test.Node{Name: "right", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
+	rightH, err := st.Put(ctx, test.Node{Name: "right", Refs: []cas.Digest{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leftH), jsoncodec.NewHash(rightH)}})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Digest{leftH, rightH}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,12 +160,12 @@ func TestWalkerSharedSubgraphVisitedOnce(t *testing.T) {
 // algorithm is sha256, so an address depends on the bytes that contain it.)
 func TestWalkerVisitedSetKeyedByAddress(t *testing.T) {
 	ctx := context.Background()
-	st := cas.New(mem.New(), jsoncodec.New[test.Node]())
+	st := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Digest{leafH}})
 	if err != nil {
 		t.Fatal(err)
 	}

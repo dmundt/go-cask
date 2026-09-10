@@ -12,7 +12,7 @@ Design brief for the next viewer (`internal/web/`) iteration — the input an Op
 ## 1. Model alignment
 
 The viewer browses a **content-addressable store**, not buckets/files:
-- Identity is the **hash** (`algo:hexdigest`); objects are **immutable blobs** in a self-describing envelope (`type@major` + payload); the type is **sniffed from the bytes** for display only.
+- Identity is the **digest** (raw digest bytes, rendered as lowercase hex; the printable `sha256:hexdigest` form is a client rendering — the core names no algorithm); objects are **immutable blobs** in a self-describing envelope (`type@major` + payload); the type is **sniffed from the bytes** for display only.
 - The store exposes `Stats`, `Verify`, `Delete`, `GC`; object age = file mtime.
 
 Consequences: the viewer is a **byte-layer tool** (shows objects, bytes, integrity; never typed reference graphs — resolution is the app layer's job, e.g. `gitlike`, which the viewer does not import). **No buckets, no uploads** (ingestion via library/CLI; objects immutable), **no user settings**. Every screen drills down from the store root: overview → object index → object detail (metadata/bytes/integrity). Out of scope (no cas analog / demo-only): blake3/CID notation, media-type/path hints, tiers/compression (deferred extensions), pinned flags, refcounts/read stats, chunk maps (objects stored whole), reference graphs. The viewer never invents store state: integrity shown only as **on-demand `Verify` results** (verified / corrupt / not-yet-verified), never a persisted index column.
@@ -24,24 +24,24 @@ Consequences: the viewer is a **byte-layer tool** (shows objects, bytes, integri
 - No CSS in step 1: clean semantic HTML first; style is a later gated step.
 - Desktop-first, responsive: dense master-detail at ≥1280px; side panel collapses below.
 - Information design inspired by the cas-kit prototype, GitHub, MinIO Console — restrained, hash-first, no chrome (not feature set).
-- Readability: short hashes in lists (algorithm-prefixed, e.g. `sha256:9f86d0…`), full hash in the inspector; monospace + tabular numerals for hashes/numbers/hex.
+- Readability: short digests in lists (8 hex chars, e.g. `9f86d081`), the full hex digest in the inspector; monospace + tabular numerals for hashes/numbers/hex.
 - Every view is a URL: filters, sort, page, selection as query params; any state reconstructible/bookmarkable; a swapped fragment updates the URL via `HX-Push-Url` so back/forward works.
 - Security unchanged (viewer-security): startup-token login, session cookie, roles, CSRF on every mutation, empty-body 401/403, audit-logged mutations.
 
 ## 3. Views
 
 1. **Login** — token form only; no chrome.
-2. **Overview (hub)** — top-bar chips (objects · bytes · algorithms), algorithm breakdown table, sample objects, search that jumps into the index.
-3. **Object index (master)** — center of the app: **filter bar** (search digest-prefix or type text; type filter [sniffed]; size buckets; rows/page 25/50/100/250; reset-filters when active); **results table** (short algorithm-prefixed hash, `type@major`, size, age; sortable size/age columns with `aria-sort`; numeric cells right-aligned monospace); **pager** (`X–Y of N · <bytes>`, page-window elision, prev/next — swapped with the table so counts/sort/rows never disagree); **row click** loads the inspector fragment; rows degrade to full navigation without htmx.
-4. **Object detail (inspector)** — server-rendered side panel (or full page on narrow widths), swapped as one unit: **Metadata tab** (full hash, algorithm, size, envelope type [sniffed], age; link to `/objects/{hash}/raw`); **Bytes tab** (hexdump of first bytes, offset/hex/ASCII — lazy via `revealed` or explicit "load"); **actions** — verify (POST, swaps only the integrity fragment: verified ✓ / corrupt ✕ with message / not-yet-verified), delete (admin, CSRF + `hx-confirm`). The same URL (`/objects/{hash}`) renders a full document on cold load and a fragment for htmx (`HX-Request`) — a shared URL never shows a bare panel.
-5. **Stats** — objects, bytes, per-algorithm counts.
+2. **Overview (hub)** — top-bar chips (objects · bytes), sample objects, search that jumps into the index.
+3. **Object index (master)** — center of the app: **filter bar** (search digest-prefix or type text; type filter [sniffed]; size buckets; rows/page 25/50/100/250; reset-filters when active); **results table** (short hash, `type@major`, size, age; sortable size/age columns with `aria-sort`; numeric cells right-aligned monospace); **pager** (`X–Y of N · <bytes>`, page-window elision, prev/next — swapped with the table so counts/sort/rows never disagree); **row click** loads the inspector fragment; rows degrade to full navigation without htmx.
+4. **Object detail (inspector)** — server-rendered side panel (or full page on narrow widths), swapped as one unit: **Metadata tab** (full hex digest, algorithm — the client's constant `sha256`, size, envelope type [sniffed], age; link to `/objects/{hash}/raw`); **Bytes tab** (hexdump of first bytes, offset/hex/ASCII — lazy via `revealed` or explicit "load"); **actions** — verify (POST, swaps only the integrity fragment: verified ✓ / corrupt ✕ with message / not-yet-verified), delete (admin, CSRF + `hx-confirm`). The same URL (`/objects/{hash}`) renders a full document on cold load and a fragment for htmx (`HX-Request`) — a shared URL never shows a bare panel.
+5. **Stats** — objects, bytes.
 6. **GC (admin)** — confirm + status fragment; no reachable-root editing UI (an app-root concern).
 
 Explicitly out of scope: buckets overview, upload dialog, settings, user management, typed reference graphs (byte-layer), the prototype's demo-only columns.
 
 ## 4. Components
 
-- **Top bar** — brand + breadcrumb (`cas-kit / store / Objects`), status chips (objects, bytes, algorithms; "corrupt N" chip appears only after a session verify found corruption), primary actions; sticky.
+- **Top bar** — brand + breadcrumb (`cas-kit / store / Objects`), status chips (objects, bytes; "corrupt N" chip appears only after a session verify found corruption), primary actions; sticky.
 - **Filter bar** — owns durable view state; every fragment request pulls it via `hx-include`; sort in a hidden field (never an ambiguous headers/filters pair).
 - **Search box** — detects hex digest prefix (prefix match, `<mark>`-wrapped — built, never interpolated) vs. free text (type match).
 - **Results table** — sticky header, sortable columns, empty-state row; numeric cells right-aligned.

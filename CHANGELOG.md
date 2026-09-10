@@ -10,53 +10,85 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
-**BREAKING: the hash algorithm is fixed at compile time — the runtime registry is
-gone.** `cas` implements exactly one algorithm (`sha256`), and an address still
-carries its name, so the stored format and every object address are unchanged;
-what disappears is the ability to register or select an algorithm at runtime.
+**BREAKING: the core is now hash-agnostic — `cas.Hash` is gone, replaced by
+`cas.Digest` (raw digest bytes), and the client owns the algorithm.** The core
+names no algorithm, implements none, and cannot tell one digest width from
+another: it stores whatever digest the injected `cas.Hasher` returns. This is
+the OCI/Docker split (the storage layer keys blobs by an opaque digest; the
+algorithm lives with the client), combined with Git's model for a repository
+(one object format per store). Go-cask's own clients wire the shipped
+`cas/hash/sha256` hasher.
 
-### Removed
-
-- **`cas.RegisterHash`, `cas.LookupHash`, `cas.LookupStreamHash` and the
-  `cas.HashFunc` type** — there is no algorithm registry. The algorithm is
-  `sha256` (`cas.SHA256`) for the whole build. The one-shot/streaming duality
-  existed only to serve registered algorithms, so it is gone with them:
-  `HashBytes` is the one-shot entry point, `NewHasher()` the streaming one, and
-  `fs.Backend.Verify` streams through the latter without a lookup or a
-  buffering fallback.
-- **Every `algo` parameter that selected an algorithm**: `cas.New(raw, codec)`
-  (no longer returns an error — nothing can fail), `HashBytes(data)`,
-  `NewHasher()`, `NewHash(digest)`, and `gitlike.NewRepository(raw)` (also
-  error-free). The `examples/api` `POST /objects?algo=` parameter and the CLI's
-  `put -algo` flag go with them; the CLI's `list --algo` remains as a layout
-  filter over `Backend.List(ctx, algo)`, which is unchanged.
-- **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
-  The example keeps its custom `Codec[T]` seam (gzip) and now stores under
-  `sha256`.
+**Stored reference payloads changed and are not migrated**: a reference field is
+now one lowercase-hex string (`"ab12…"`) instead of `"sha256:ab12…"`. Object type
+names stay `@1` (no new major), so an object stored before this change FAILS to
+decode — `Digest.UnmarshalText` is strict and rejects the legacy `sha256:`
+prefix, surfacing as `ErrCorrupt` — rather than being silently misread. There is
+no migration tool: a store written by `v1.2.0` must be re-written by the old
+build if its objects are still needed.
 
 ### Changed
 
-- **An address is validated completely.** `NewHash` and `ParseHash` require a
-  `sha256.Size`-byte digest (64 hex digits), since with one algorithm any other
-  width cannot name a stored object; `ErrUnknownAlgorithm` now means exactly one
-  thing — a well-formed address naming an algorithm this build does not
-  implement (a store written by another build), which `List`/`Stats` skip rather
-  than misreport.
-- **Layout and walker simplifications that follow from one fixed-width digest**:
-  `fs.hashPath` no longer clamps chunks (`WithFanOut` × `WithFanLevels` is
-  bounded by the digest width), and `gitlike`'s `shortHash` no longer carries a
-  non-truncating branch. A cycle is no longer constructible through the public
-  API (an address depends on the bytes that would contain it), so the walker's
-  cycle test is replaced by a keys-by-address test; the visited set remains for
-  shared subgraphs.
-- Docs re-aligned with the code: `cas-core.md` v40→v41 (§3.1/§3.2 diagrams,
-  §4.1/§4.2 one algorithm and no registry, §4.8 `Store` without a hasher field,
-  §4.9 walker note, §5 write path, §6 concurrency table, §7.1 surface, §7.2
-  recipe), `library-design.md` v19→v20, `coding-guidelines.md` v13→v14,
-  `defaults.md` v16→v17, `examples.md` v15→v16, `extensions.md` v6→v7,
-  `operations.md` v6→v7 (algorithm migration is a format transition),
-  `testing-strategy.md` v12→v13, `versioning.md` v13→v14, `AGENTS.md` v15→v16,
-  `README.md`, `examples/artifacts/README.md`, `examples/api/README.md`.
+- **`cas.Digest` replaces `cas.Hash`.** A `Digest` is `[]byte` holding the raw
+  digest; the zero value is the absent reference. `NewDigest`, `ParseDigest`
+  (non-empty lowercase hex), `CheckDigest`, `IsZero`, `Equal`, `Bytes`,
+  `String` (hex, no algorithm prefix), and `MarshalText`/`UnmarshalText`
+  (so `encoding/json` — and any codec that honors `encoding.TextMarshaler` —
+  stores a reference as one hex string with no per-type JSON code).
+- **The client's `Hasher` is injected**: `cas.Hasher` is
+  `Digest(io.Reader) (Digest, error)` plus `Validate(Digest) error`, and
+  `cas.New(raw, codec, hasher)` takes it (no error return). Every key argument
+  is guarded by `CheckDigest` + `hasher.Validate`, so a wrong-width key is still
+  rejected at the store boundary.
+- **`cas/hash/sha256` is the shipped client hasher**: `New()`, `NewHasher()`,
+  `Of`, `Parse` (accepts `"sha256:hex"` or bare hex), `Format` (renders
+  `"sha256:hex"`), `Short`, `Name`, `Size`. The `cas` package imports nothing
+  from it.
+- **The byte layer is keyed by digest only**: `Backend.List(ctx)` lost its
+  algorithm filter, `cas.Stats` keeps only `ObjectCount`/`TotalSize` (a
+  per-algorithm breakdown is impossible — the core cannot know which algorithm
+  produced a key), and `fs.Backend.Verify(ctx, d, hasher)` recomputes through
+  the injected hasher.
+- **The filesystem layout lost the algorithm directory**:
+  `<base>/<fan-out dirs>/<full hex digest>` instead of `<base>/<algo>/…`.
+- **`gitlike.NewRepository(raw, hasher)`**, and its reference fields are
+  `cas.Digest`.
+- Sentinels: `ErrInvalidDigest` and `ErrDigestMismatch` replace `ErrInvalidHash`
+  and `ErrHashMismatch`; `ErrUnknownAlgorithm` is gone.
+- The viewer reports the addressing model instead of a per-algorithm table, and
+  its objects page lost the algorithm filter; the CLI drops `put -algo` and
+  `list --algo`, prints `sha256:hexdigest` (via `sha256.Format`), and reports
+  `"algorithm": "sha256"` as the client's constant. `examples/api` lost its
+  `algo` parameter and its `algorithm_counts` stats field.
+
+### Removed
+
+- **`cas.Hash`, `cas.ParseHash`, `cas.NewHash`, `cas.HashBytes`,
+  `cas.NewHasher`, `cas.CheckHash`, `cas.SHA256`** — the algorithm-agnostic core
+  has no address type that carries an algorithm.
+- **The JSON codec's hash field type `jsoncodec.Hash`** (`NewHash`, `Hash()`,
+  `MarshalJSON`, `UnmarshalJSON`): a `cas.Digest` field renders itself, so the
+  codec needs no hash type and `gitlike` imports no codec package.
+- **`cas.RegisterHash`, `cas.LookupHash`, `cas.LookupStreamHash` and the
+  `cas.HashFunc` type** — there is no algorithm registry, no mutexed map, no
+  init-order coupling, and no one-shot/streaming duality. (These were removed
+  earlier in this same unreleased cycle; they are listed here because the whole
+  change ships together.)
+- **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
+  The example keeps its custom `Codec[T]` (gzip) seam and now stores under
+  `sha256`.
+- The `go 1.24` floor stays: object fields still use `omitzero`, and an older
+  standard library would emit `""` instead of omitting an absent reference.
+
+### Docs
+
+`cas-core.md` v41→v42 (the `Digest`/`Hasher` model throughout: invariants,
+diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
+§8 decisions), `library-design.md` v20→v21, `coding-guidelines.md` v14→v15,
+`defaults.md` v17→v18, `examples.md` v16→v17, `extensions.md` v7→v8,
+`operations.md` v7→v8, `testing-strategy.md` v13→v14, `versioning.md`
+v14→v15, `docs/index.md` v8→v9, `AGENTS.md` v16→v17, `README.md`, and the
+example/`gitlike` READMEs.
 
 ## [v1.2.0] - 2026-09-10
 

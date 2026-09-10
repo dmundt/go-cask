@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Object type names (versioned majors, object-versioning §6).
@@ -43,14 +42,14 @@ type Blob struct {
 func (b *Blob) Type() string { return TypeBlob }
 
 // References returns nil — a blob is a leaf.
-func (b *Blob) References() []cas.Hash { return nil }
+func (b *Blob) References() []cas.Digest { return nil }
 
 // TreeEntry is one entry in a Tree. It is an entry, not an object itself;
 // Hash references the stored object for Name and may be absent.
 type TreeEntry struct {
-	Name string         `json:"name"`
-	Hash jsoncodec.Hash `json:"hash,omitzero"` // optional: absent is omitted
-	Mode string         `json:"mode"`
+	Name string     `json:"name"`
+	Hash cas.Digest `json:"hash,omitzero"` // optional: absent is omitted
+	Mode string     `json:"mode"`
 }
 
 // Validate reports whether the entry can be stored and read back: a tree entry
@@ -84,12 +83,12 @@ func (t *Tree) Validate() error {
 	return nil
 }
 
-// References returns the hashes of every entry.
-func (t *Tree) References() []cas.Hash {
-	refs := make([]cas.Hash, 0, len(t.Entries))
+// References returns the digests of every entry.
+func (t *Tree) References() []cas.Digest {
+	refs := make([]cas.Digest, 0, len(t.Entries))
 	for _, e := range t.Entries {
-		if h := e.Hash.Hash(); !h.IsZero() {
-			refs = append(refs, h)
+		if !e.Hash.IsZero() {
+			refs = append(refs, e.Hash)
 		}
 	}
 	return refs
@@ -98,11 +97,11 @@ func (t *Tree) References() []cas.Hash {
 // Commit points at a tree (and optionally a parent commit); an absent Parent
 // marks a root commit.
 type Commit struct {
-	Tree    jsoncodec.Hash `json:"tree"`            // required: a missing/empty/null tree fails decode
-	Parent  jsoncodec.Hash `json:"parent,omitzero"` // optional: absent is omitted
-	Author  string         `json:"author"`
-	Message string         `json:"message"`
-	Time    time.Time      `json:"time"`
+	Tree    cas.Digest `json:"tree"`            // required: a missing/empty/null tree fails decode
+	Parent  cas.Digest `json:"parent,omitzero"` // optional: absent is omitted
+	Author  string     `json:"author"`
+	Message string     `json:"message"`
+	Time    time.Time  `json:"time"`
 }
 
 // Validate reports whether the commit can be stored and read back: a commit
@@ -117,8 +116,9 @@ func (c *Commit) Validate() error {
 }
 
 // MarshalJSON implements json.Marshaler. It only enforces the mandatory tree;
-// the hash fields render themselves through jsoncodec.Hash, the JSON codec's
-// field type (cas-core §4.2), so no hand-written hash rendering is involved.
+// the reference fields are cas.Digest, which renders itself as one hex string
+// through encoding.TextMarshaler, so no hand-written digest rendering is
+// involved.
 func (c Commit) MarshalJSON() ([]byte, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
@@ -127,10 +127,10 @@ func (c Commit) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(c))
 }
 
-// UnmarshalJSON implements json.Unmarshaler. The hash fields decode themselves
-// (jsoncodec.Hash validates every reference), so this method only exists to keep
-// the required tree strict: a missing, empty, or null tree is a decode error
-// rather than a silently rootless commit. An absent parent decodes as absent.
+// UnmarshalJSON implements json.Unmarshaler. The reference fields decode
+// themselves (cas.Digest.UnmarshalText), so this method only exists to keep the
+// required tree strict: a missing, empty, or null tree is a decode error rather
+// than a silently rootless commit. An absent parent decodes as absent.
 func (c *Commit) UnmarshalJSON(data []byte) error {
 	type plain Commit // no methods: decodes by field, no recursion
 	var p plain
@@ -147,24 +147,24 @@ func (c *Commit) UnmarshalJSON(data []byte) error {
 // Type returns the versioned type name "commit@1".
 func (c *Commit) Type() string { return TypeCommit }
 
-// References returns the tree hash and the parent hash (if any).
-func (c *Commit) References() []cas.Hash {
-	refs := make([]cas.Hash, 0, 2)
-	if h := c.Tree.Hash(); !h.IsZero() {
-		refs = append(refs, h)
+// References returns the tree digest and the parent digest (if any).
+func (c *Commit) References() []cas.Digest {
+	refs := make([]cas.Digest, 0, 2)
+	if !c.Tree.IsZero() {
+		refs = append(refs, c.Tree)
 	}
-	if h := c.Parent.Hash(); !h.IsZero() {
-		refs = append(refs, h)
+	if !c.Parent.IsZero() {
+		refs = append(refs, c.Parent)
 	}
 	return refs
 }
 
 // Tag names a target object (typically a commit).
 type Tag struct {
-	Name    string         `json:"name"`
-	Target  jsoncodec.Hash `json:"target"` // may be absent; a plain field keeps the historical ""
-	Tagger  string         `json:"tagger"`
-	Message string         `json:"message"`
+	Name    string     `json:"name"`
+	Target  cas.Digest `json:"target"` // may be absent; a plain field keeps the historical ""
+	Tagger  string     `json:"tagger"`
+	Message string     `json:"message"`
 }
 
 // Validate reports whether the tag can be stored and read back: a tag must be
@@ -181,10 +181,10 @@ func (g *Tag) Validate() error {
 // Type returns the versioned type name "tag@1".
 func (g *Tag) Type() string { return TypeTag }
 
-// References returns the target hash.
-func (g *Tag) References() []cas.Hash {
-	if h := g.Target.Hash(); !h.IsZero() {
-		return []cas.Hash{h}
+// References returns the target digest.
+func (g *Tag) References() []cas.Digest {
+	if !g.Target.IsZero() {
+		return []cas.Digest{g.Target}
 	}
 	return nil
 }

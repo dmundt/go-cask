@@ -10,8 +10,9 @@ import (
 )
 
 // lockFileName is the lock file's name inside the store directory. It lives
-// at the store root (not under <algo>/), so the backend's List/Stats never
-// see it (cas-core §4.4).
+// at the store root, where no digest file is ever named (object files are
+// <hex>.tmp-free hex names inside fan-out directories), so the backend's
+// List/Stats never see it (cas-core §4.4).
 const lockFileName = ".cask.lock"
 
 // storeLock is an exclusive, advisory cross-process lock on a store

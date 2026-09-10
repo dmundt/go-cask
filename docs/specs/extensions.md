@@ -2,12 +2,12 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v7
+version: v8
 ---
 
 # Extensions — go-cask
 
-Requirements for **future extensions and clients** (backends, object types, codecs, hash algorithms, services, apps on the `cas` core). Related: `cas-core.md` §7 (extension contract/recipes), `library-design.md`, `coding-guidelines.md`, `examples.md`.
+Requirements for **future extensions and clients** (backends, object types, codecs, hashers, services, apps on the `cas` core). Related: `cas-core.md` §7 (extension contract/recipes), `library-design.md`, `coding-guidelines.md`, `examples.md`.
 
 ## 1. Principles
 
@@ -18,7 +18,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 
 ## 2. Requirements
 
-1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]`, or wrap `CachedStore[T]` — nothing else.
+1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]` or `Hasher`, or wrap `CachedStore[T]` — nothing else. A custom algorithm is a `cas.Hasher` (`Digest(io.Reader)` + `Validate(Digest)`) injected into `cas.New`/`gitlike.NewRepository`; there is no `HashFunc`, no registry, and no core change involved.
 2. Never add `any`/`interface{}` or reflection to a public API (coding-guidelines §8).
 3. Wrap the core's sentinel errors with `%w` and use `errors.Is`; map them to your layer (api-design §6 for HTTP).
 4. Additive changes only; never break the core's stable surface (library-design §5).

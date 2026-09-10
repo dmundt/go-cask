@@ -54,18 +54,18 @@ func New(opts ...backend.Option) *Backend {
 	return &Backend{objects: make(map[string][]byte), maxBytes: cfg.maxBytes}
 }
 
-// Put buffers r and stores it under h. Idempotent. When a max size is set, a
+// Put buffers r and stores it under d. Idempotent. When a max size is set, a
 // Put whose addition would exceed the cap is rejected with an error and no
 // entry is stored; buffering is bounded to the remaining budget first, so an
 // oversized Put cannot allocate past the cap.
-func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
+func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckHash(h, "mem: put"); err != nil {
+	if err := cas.CheckDigest(d, "mem: put"); err != nil {
 		return err
 	}
-	key := h.String()
+	key := string(d)
 	reader := r
 	if budget, capped := m.budget(key); capped {
 		// One byte past the budget is enough to detect an overflow, so the
@@ -117,47 +117,47 @@ func (m *Backend) store(key string, data []byte) error {
 }
 
 // Get returns a reader over the stored bytes; the caller MUST close it.
-func (m *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
+func (m *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := cas.CheckHash(h, "mem: get"); err != nil {
+	if err := cas.CheckDigest(d, "mem: get"); err != nil {
 		return nil, err
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	data, ok := m.objects[h.String()]
+	data, ok := m.objects[string(d)]
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, h)
+		return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 	}
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 // Exists reports whether the object is stored.
-func (m *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
+func (m *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	if err := cas.CheckHash(h, "mem: exists"); err != nil {
+	if err := cas.CheckDigest(d, "mem: exists"); err != nil {
 		return false, err
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	_, ok := m.objects[h.String()]
+	_, ok := m.objects[string(d)]
 	return ok, nil
 }
 
 // Delete removes the object. A missing object is a no-op.
-func (m *Backend) Delete(ctx context.Context, h cas.Hash) error {
+func (m *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckHash(h, "mem: delete"); err != nil {
+	if err := cas.CheckDigest(d, "mem: delete"); err != nil {
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := h.String()
+	key := string(d)
 	if old, ok := m.objects[key]; ok {
 		delete(m.objects, key)
 		m.usedBytes -= int64(len(old))
@@ -165,42 +165,37 @@ func (m *Backend) Delete(ctx context.Context, h cas.Hash) error {
 	return nil
 }
 
-// List returns every stored hash, filtered by algorithm when algo != "".
-func (m *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
+// List returns every stored digest, sorted. Keys are the raw digest bytes (a
+// map key does not need the hex form), so rebuilding a digest needs no parse.
+func (m *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	hashes := make([]cas.Hash, 0, len(m.objects))
+	digests := make([]cas.Digest, 0, len(m.objects))
 	for key := range m.objects {
-		h, err := cas.ParseHash(key)
-		if err != nil {
-			continue
+		if key == "" {
+			continue // the absent digest is never a key (CheckDigest rejects it)
 		}
-		if algo != "" && h.Algorithm() != algo {
-			continue
-		}
-		hashes = append(hashes, h)
+		digests = append(digests, cas.NewDigest([]byte(key)))
 	}
-	sort.Slice(hashes, func(i, j int) bool { return hashes[i].String() < hashes[j].String() })
-	return hashes, nil
+	sort.Slice(digests, func(i, j int) bool { return digests[i].String() < digests[j].String() })
+	return digests, nil
 }
 
-// Stats returns per-algorithm object counts and total stored bytes.
+// Stats returns the object count and total stored bytes.
 func (m *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	st := &cas.Stats{AlgorithmCounts: map[string]int{}}
+	st := &cas.Stats{}
 	for key, data := range m.objects {
-		h, err := cas.ParseHash(key)
-		if err != nil {
+		if key == "" {
 			continue
 		}
-		st.AlgorithmCounts[h.Algorithm()]++
 		st.TotalSize += int64(len(data))
 		st.ObjectCount++
 	}

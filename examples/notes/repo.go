@@ -18,12 +18,12 @@ type Repository struct {
 	Attachments *cas.Store[*Attachment]
 }
 
-func newRepository(raw cas.Backend) (*Repository, error) {
+func newRepository(raw cas.Backend, hasher cas.Hasher) (*Repository, error) {
 	return &Repository{
 		raw:         raw,
-		Notes:       cas.New(raw, jsoncodec.New[*Note]()),
-		Tags:        cas.New(raw, jsoncodec.New[*Tag]()),
-		Attachments: cas.New(raw, jsoncodec.New[*Attachment]()),
+		Notes:       cas.New(raw, jsoncodec.New[*Note](), hasher),
+		Tags:        cas.New(raw, jsoncodec.New[*Tag](), hasher),
+		Attachments: cas.New(raw, jsoncodec.New[*Attachment](), hasher),
 	}, nil
 }
 
@@ -40,22 +40,22 @@ type Resolver struct{ repo *Repository }
 
 func newResolver(repo *Repository) *Resolver { return &Resolver{repo: repo} }
 
-func (r *Resolver) ResolveNote(ctx context.Context, h cas.Hash) (*Note, error) {
-	return r.repo.Notes.Get(ctx, h)
+func (r *Resolver) ResolveNote(ctx context.Context, d cas.Digest) (*Note, error) {
+	return r.repo.Notes.Get(ctx, d)
 }
 
-func (r *Resolver) ResolveTag(ctx context.Context, h cas.Hash) (*Tag, error) {
-	return r.repo.Tags.Get(ctx, h)
+func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
+	return r.repo.Tags.Get(ctx, d)
 }
 
-func (r *Resolver) ResolveAttachment(ctx context.Context, h cas.Hash) (*Attachment, error) {
-	return r.repo.Attachments.Get(ctx, h)
+func (r *Resolver) ResolveAttachment(ctx context.Context, d cas.Digest) (*Attachment, error) {
+	return r.repo.Attachments.Get(ctx, d)
 }
 
 // ResolveAny discovers the type from the self-describing envelope and
 // dispatches to the matching typed resolver.
-func (r *Resolver) ResolveAny(ctx context.Context, h cas.Hash) (*ResolvedObject, error) {
-	rc, err := r.repo.raw.Get(ctx, h)
+func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
+	rc, err := r.repo.raw.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
@@ -70,19 +70,19 @@ func (r *Resolver) ResolveAny(ctx context.Context, h cas.Hash) (*ResolvedObject,
 	}
 	switch typ {
 	case "note":
-		n, err := r.ResolveNote(ctx, h)
+		n, err := r.ResolveNote(ctx, d)
 		if err != nil {
 			return nil, err
 		}
 		return &ResolvedObject{Type: "note", Note: n}, nil
 	case "tag":
-		t, err := r.ResolveTag(ctx, h)
+		t, err := r.ResolveTag(ctx, d)
 		if err != nil {
 			return nil, err
 		}
 		return &ResolvedObject{Type: "tag", Tag: t}, nil
 	case "attachment":
-		a, err := r.ResolveAttachment(ctx, h)
+		a, err := r.ResolveAttachment(ctx, d)
 		if err != nil {
 			return nil, err
 		}

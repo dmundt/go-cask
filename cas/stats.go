@@ -1,31 +1,20 @@
 package cas
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
+import "fmt"
 
-// Stats summarizes the store contents: per-algorithm object counts,
-// total size in bytes, and total object count. Both built-in backends (fs,
-// mem) return it from their Stats method so callers can treat them
-// interchangeably.
+// Stats summarizes the store contents: total size in bytes and total object
+// count. Both built-in backends (fs, mem) return it from their Stats method so
+// callers can treat them interchangeably.
+//
+// There is no per-algorithm breakdown: the core does not know which algorithm
+// produced a digest (cas-core §4.2), so it cannot group objects by one. A client
+// that needs that groups its own digests.
 type Stats struct {
-	AlgorithmCounts map[string]int
-	TotalSize       int64
-	ObjectCount     int64
+	TotalSize   int64
+	ObjectCount int64
 }
 
 // String renders a one-line human summary of the stats.
 func (st Stats) String() string {
-	algos := make([]string, 0, len(st.AlgorithmCounts))
-	for a := range st.AlgorithmCounts {
-		algos = append(algos, a)
-	}
-	sort.Strings(algos)
-	parts := make([]string, 0, len(algos))
-	for _, a := range algos {
-		parts = append(parts, fmt.Sprintf("%s=%d", a, st.AlgorithmCounts[a]))
-	}
-	return fmt.Sprintf("%d objects, %d bytes [%s]", st.ObjectCount, st.TotalSize, strings.Join(parts, ", "))
+	return fmt.Sprintf("%d objects, %d bytes", st.ObjectCount, st.TotalSize)
 }

@@ -20,7 +20,7 @@ flags:
 commands:
   put <file|-> [-json]       store bytes (or stdin); prints the hash
   get <hash> [-o <file>]     (no -o prints to stdout)
-  list [--algo] [--limit] [--offset]
+  list [--limit] [--offset]
   meta <hash>
   stats
   verify <hash|--all>

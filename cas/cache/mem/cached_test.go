@@ -10,34 +10,34 @@ import (
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 type testObject struct {
 	Name string
-	Refs []jsoncodec.Hash
+	Refs []cas.Digest
 }
 
 func (o testObject) Type() string { return "test@1" }
 
-// References returns the non-absent references, or nil for a leaf (the JSON
-// codec's field type carries the wire shape and validates on decode, so this
-// type needs no JSON code).
-func (o testObject) References() []cas.Hash {
+// References returns the non-absent references, or nil for a leaf (a cas.Digest
+// renders itself as one hex string, so this type needs no JSON code).
+func (o testObject) References() []cas.Digest {
 	if len(o.Refs) == 0 {
 		return nil
 	}
-	refs := make([]cas.Hash, 0, len(o.Refs))
-	for _, r := range o.Refs {
-		if h := r.Hash(); !h.IsZero() {
-			refs = append(refs, h)
+	refs := make([]cas.Digest, 0, len(o.Refs))
+	for _, d := range o.Refs {
+		if !d.IsZero() {
+			refs = append(refs, d)
 		}
 	}
 	return refs
 }
 
-func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) cas.Hash {
+func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Digest) cas.Digest {
 	t.Helper()
-	obj := testObject{Name: name, Refs: newRefs(refs)}
+	obj := testObject{Name: name, Refs: refs}
 	h, err := s.Put(context.Background(), obj)
 	if err != nil {
 		t.Fatal(err)
@@ -45,22 +45,9 @@ func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) 
 	return h
 }
 
-// newRefs wraps plain hashes as the JSON codec's field type; nil stays nil so
-// a leaf object encodes without a refs field.
-func newRefs(refs []cas.Hash) []jsoncodec.Hash {
-	if len(refs) == 0 {
-		return nil
-	}
-	out := make([]jsoncodec.Hash, len(refs))
-	for i, h := range refs {
-		out[i] = jsoncodec.NewHash(h)
-	}
-	return out
-}
-
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	return cas.New(mem.New(), jsoncodec.New[testObject]())
+	return cas.New(mem.New(), jsoncodec.New[testObject](), sha256.New())
 }
 
 func TestCachedObjectLazyLoad(t *testing.T) {
@@ -134,7 +121,7 @@ func TestCachedStoreGet(t *testing.T) {
 func TestCachedStoreMissingObject(t *testing.T) {
 	ctx := context.Background()
 	c := cachemem.New(newStore(t))
-	m, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	m := sha256.Of([]byte("never stored"))
 	if _, err := c.Get(ctx, m); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) = %v", err)
 	}
@@ -144,7 +131,7 @@ func TestCachedStorePreload(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
 	c := cachemem.New(s)
-	var hs []cas.Hash
+	var hs []cas.Digest
 	for i := 0; i < 20; i++ {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
 	}
@@ -192,8 +179,8 @@ func TestCachedStorePreloadEmpty(t *testing.T) {
 func TestCachedStorePreloadMissError(t *testing.T) {
 	ctx := context.Background()
 	c := cachemem.New(newStore(t))
-	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if err := c.Preload(ctx, []cas.Hash{h}); err == nil {
+	h := sha256.Of([]byte("never stored"))
+	if err := c.Preload(ctx, []cas.Digest{h}); err == nil {
 		t.Fatal("Preload of missing must return error")
 	}
 }
@@ -204,7 +191,7 @@ func TestCachedStoreEvictClearWarmup(t *testing.T) {
 	c := cachemem.New(s)
 	h1 := put(t, s, "one")
 	h2 := put(t, s, "two")
-	if err := c.Warmup(ctx, []cas.Hash{h1, h2}); err != nil {
+	if err := c.Warmup(ctx, []cas.Digest{h1, h2}); err != nil {
 		t.Fatal(err)
 	}
 	if st := c.CacheStats(); st.Size != 2 {
@@ -226,7 +213,7 @@ func TestCachedStoreEvictClearWarmup(t *testing.T) {
 
 func TestCachedStoreEvictMissing(t *testing.T) {
 	c := cachemem.New(newStore(t))
-	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	h := sha256.Of([]byte("never stored"))
 	c.Evict(h)
 	if st := c.CacheStats(); st.Evicts != 0 {
 		t.Fatalf("Evict on missing = %d", st.Evicts)
@@ -238,8 +225,8 @@ func TestCachedStoreWarmupMissing(t *testing.T) {
 	s := newStore(t)
 	c := cachemem.New(s)
 	h := put(t, s, "exists")
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if err := c.Warmup(ctx, []cas.Hash{h, missing}); err != nil {
+	missing := sha256.Of([]byte("never stored either"))
+	if err := c.Warmup(ctx, []cas.Digest{h, missing}); err != nil {
 		t.Fatal(err)
 	}
 	if st := c.CacheStats(); st.Size != 1 {
@@ -251,7 +238,7 @@ func TestCachedStoreConcurrent(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
 	c := cachemem.New(s)
-	var hs []cas.Hash
+	var hs []cas.Digest
 	for i := 0; i < 10; i++ {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
 	}
@@ -281,7 +268,7 @@ func TestCachedStoreStatsZero(t *testing.T) {
 	}
 }
 
-func TestCachedObjectHash(t *testing.T) {
+func TestCachedObjectDigest(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
 	c := cachemem.New(s)
@@ -290,8 +277,8 @@ func TestCachedObjectHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := co.Hash(); got.String() != h.String() {
-		t.Fatalf("Hash() = %v, want %v", got, h)
+	if got := co.Digest(); got.String() != h.String() {
+		t.Fatalf("Digest() = %v, want %v", got, h)
 	}
 }
 

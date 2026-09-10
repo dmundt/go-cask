@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // run executes a cask operation in-process, returning its stdout and exit
@@ -50,8 +50,11 @@ func TestPutJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("put -json output %q: %v", out, err)
 	}
-	if _, err := cas.ParseHash(got.Hash); err != nil {
-		t.Fatalf("put -json hash %q: %v", got.Hash, err)
+	if _, err := sha256.Parse(got.Hash); err != nil {
+		t.Fatalf("put -json digest %q: %v", got.Hash, err)
+	}
+	if !strings.HasPrefix(got.Hash, "sha256:") {
+		t.Fatalf("put -json digest %q must carry the printable %q prefix", got.Hash, "sha256:")
 	}
 	if got.Deduplicated {
 		t.Fatal("first put must not be reported as deduplicated")
@@ -97,8 +100,8 @@ func TestLocalRoundTrip(t *testing.T) {
 		t.Fatalf("put exit %d", code)
 	}
 	h := strings.TrimSpace(out)
-	if _, err := cas.ParseHash(h); err != nil {
-		t.Fatalf("put printed invalid hash %q: %v", h, err)
+	if _, err := sha256.Parse(h); err != nil {
+		t.Fatalf("put printed invalid digest %q: %v", h, err)
 	}
 
 	// cat → stdout
@@ -122,13 +125,54 @@ func TestLocalRoundTrip(t *testing.T) {
 	if code != 0 || !strings.Contains(out, h) {
 		t.Fatalf("list = (%q, %d)", out, code)
 	}
+	// list -json keeps the documented item fields: "hash" (the printable
+	// sha256:hexdigest form), "algorithm" (the client's constant) and "size"
+	// (cli §3). There is no -algo/--algo flag any more.
+	out, code = run(t, mf, "list", "-json")
+	if code != 0 {
+		t.Fatalf("list -json exit %d", code)
+	}
+	var listOut struct {
+		Total   int `json:"total"`
+		Objects []struct {
+			Hash      string `json:"hash"`
+			Algorithm string `json:"algorithm"`
+			Size      int64  `json:"size"`
+		} `json:"objects"`
+	}
+	if err := json.Unmarshal([]byte(out), &listOut); err != nil {
+		t.Fatalf("list -json output %q: %v", out, err)
+	}
+	if listOut.Total != 1 || len(listOut.Objects) != 1 {
+		t.Fatalf("list -json = %+v, want one object", listOut)
+	}
+	if it := listOut.Objects[0]; it.Hash != h || it.Algorithm != "sha256" || it.Size != 10 {
+		t.Fatalf("list -json object = %+v, want hash %q algorithm sha256 size 10", it, h)
+	}
 	out, code = run(t, mf, "meta", h)
 	if code != 0 || !strings.Contains(out, "size=10") {
 		t.Fatalf("meta = (%q, %d), want size=10", out, code)
 	}
+	// meta -json prints the printable digest form and the constant algorithm.
+	out, code = run(t, mf, "meta", "-json", h)
+	if code != 0 {
+		t.Fatalf("meta -json exit %d", code)
+	}
+	var metaOut map[string]any
+	if err := json.Unmarshal([]byte(out), &metaOut); err != nil {
+		t.Fatalf("meta -json output %q: %v", out, err)
+	}
+	if metaOut["hash"] != h || metaOut["algorithm"] != "sha256" || metaOut["size"] != float64(10) {
+		t.Fatalf("meta -json = %v, want hash %q algorithm sha256 size 10", metaOut, h)
+	}
 	out, code = run(t, mf, "stats")
 	if code != 0 || !strings.Contains(out, "1 objects") {
 		t.Fatalf("stats = (%q, %d)", out, code)
+	}
+	// stats keeps the flat "N objects, M bytes" summary (no per-algorithm
+	// counts: the core does not know the algorithm).
+	if !strings.Contains(out, "10 bytes") {
+		t.Fatalf("stats = %q, want the object/byte summary", out)
 	}
 
 	// verify ok
@@ -181,13 +225,16 @@ func TestExitCodes(t *testing.T) {
 	if _, code := run(t, modeFlags{}, "list"); code != 2 {
 		t.Fatalf("no-mode exit = %d, want 2", code)
 	}
-	// Invalid hash → usage (2).
-	if _, code := run(t, mf, "get", "not-a-hash"); code != 2 {
-		t.Fatalf("bad-hash exit = %d, want 2", code)
+	// Invalid digest → usage (2).
+	if _, code := run(t, mf, "get", "not-a-digest"); code != 2 {
+		t.Fatalf("bad-digest exit = %d, want 2", code)
 	}
 	// Missing object → runtime error (1).
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if _, code := run(t, mf, "get", missing.String()); code != 1 {
+	missing, err := sha256.Parse("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, code := run(t, mf, "get", sha256.Format(missing)); code != 1 {
 		t.Fatalf("missing-object exit = %d, want 1", code)
 	}
 }

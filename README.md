@@ -4,12 +4,12 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-A generic, Git-like **content-addressable store** for Go: store any bytes once under the hash of their content, reference them by hash, and build typed object graphs on top — reusable across apps and domains.
+A generic, Git-like **content-addressable store** for Go: store any bytes once under the digest of their content, reference them by digest, and build typed object graphs on top — reusable across apps and domains.
 
-- **Content-addressable** — same bytes ⇒ same hash ⇒ stored once (dedup).
+- **Content-addressable** — same bytes ⇒ same digest ⇒ stored once (dedup).
 - **Immutable & verifiable** — objects never change; `Verify` detects corruption.
 - **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
-- **Pluggable** — hash algorithms, codecs, and storage backends (filesystem + memory ship; more plug in behind one `Backend` contract).
+- **Composable** — codecs and storage backends (filesystem + memory ship) plug in behind one `Backend` contract, and the client injects its hash algorithm (`cas/hash/sha256` ships as go-cask's default; the core names none).
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
 
 ## Design decisions
@@ -18,7 +18,7 @@ A **single-host content-addressable store kit**. Each named spec is the normativ
 - **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern (`examples/api`) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports `examples/` (viewer-design §7, coding-guidelines §9).
 - **Dependencies one-directional** — `cas`/`internal`/`cmd` never import `examples/`; examples are self-contained except the shared `gitlike` library.
-- **Lean generic core** — app-agnostic `cas` with one fixed hash algorithm (`sha256`), reference `fs`+`mem` backends and a JSON codec; only the cas-core §7.1 surface is stable.
+- **Lean generic core** — app-agnostic `cas` that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends and a JSON codec; only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
 - **Examples teach; `gitlike/` is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
@@ -40,22 +40,26 @@ AGENTS.md  the agent aggregator at the repo root
 
 ## Core interfaces at a glance
 
-`cas` layers a non-generic **byte layer** (`Hash`, `Backend` + backends) under a generic **typed layer** (`Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`), with caching wrappers on top. Apps build their own `Object[T]` models on `Store[T]`.
+`cas` layers a non-generic **byte layer** (`Digest`, `Backend` + backends) under a generic **typed layer** (`Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`), with caching wrappers on top. A store also carries the client's `Hasher` — the algorithm seam. Apps build their own `Object[T]` models on `Store[T]`.
 
 ```mermaid
 classDiagram
     direction TB
-    class Hash { 
-        +Algorithm() string +String() string 
-        +Equal(other Hash) bool
+    class Digest { 
+        +String() string +Equal(other Digest) bool 
+    }
+    class Hasher { 
+        <<interface>>
+        +Digest(r io.Reader) (Digest, error)
+        +Validate(d Digest) error
     }
     class Backend { 
         <<interface>>
-        +Put(ctx, h, r) error
-        +Get(ctx, h) io.ReadCloser
-        +Exists(ctx, h) (bool, error)
-        +Delete(ctx, h) error
-        +List(ctx, algo) []Hash
+        +Put(ctx, d, r) error
+        +Get(ctx, d) io.ReadCloser
+        +Exists(ctx, d) (bool, error)
+        +Delete(ctx, d) error
+        +List(ctx) []Digest
     }
     class FSBackend { 
         <<backend>>
@@ -68,7 +72,7 @@ classDiagram
     class Object~T~ {
         <<interface>>
         +Type() string
-        +References() []Hash
+        +References() []Digest
     }
     class Codec~T~ {
         <<interface>>
@@ -89,15 +93,16 @@ classDiagram
     Codec~T~ <|.. GobCodec~T~ : implements
     Store~T~ ..> Envelope : wraps codec payload
     class Store~T~ {
-        +Put(ctx, obj T) (Hash, error)
-        +Get(ctx, h) (T, error)
-        +Delete(ctx, h) error
+        +Put(ctx, obj T) (Digest, error)
+        +Get(ctx, d) (T, error)
+        +Delete(ctx, d) error
     }
     class Walker~T~ {
-        +Walk(ctx, h) error
+        +Walk(ctx, d) error
     }
     Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
+    Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
     class CachedStore~T~
@@ -112,13 +117,14 @@ classDiagram
 import (
     fs "github.com/dmundt/go-cask/cas/backend/fs" // or use the mem backend
     "github.com/dmundt/go-cask/cas"
+    sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
     "github.com/dmundt/go-cask/gitlike"
 )
 
 raw, _ := fs.New("./objects")                     // backend
-repo, _ := gitlike.NewRepository(raw, "sha256")   // typed layer on top
-h, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
-blob, _ := repo.Blobs.Get(ctx, h)                 // *gitlike.Blob
+repo := gitlike.NewRepository(raw, sha256.New())  // typed layer + the client's hasher
+d, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
+blob, _ := repo.Blobs.Get(ctx, d)                 // *gitlike.Blob
 ```
 
 For tests/ephemeral use, swap the backend:
@@ -141,7 +147,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (toolchain self-managing; library baseline Go 1.24+, needed for the `omitzero` JSON tags used by hash reference fields). See `CONTRIBUTING.md` for the workflow, and `benchmarks/README.md` for running/reading the benchmarks.
+Requires Go 1.27 (toolchain self-managing; library baseline Go 1.24+, needed for the `omitzero` JSON tags used by `cas.Digest` reference fields). See `CONTRIBUTING.md` for the workflow, and `benchmarks/README.md` for running/reading the benchmarks.
 
 ## License
 

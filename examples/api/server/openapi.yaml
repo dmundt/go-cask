@@ -3,8 +3,10 @@ info:
   title: CASK CAS API (example server)
   description: >
     JSON data API of the content-addressed object store (cas-api spec).
-    Objects are raw bytes addressed by the hash of their content, immutable
-    and deduplicated. All endpoints are rate-limited per caller IP.
+    Objects are raw bytes addressed by the digest of their content, immutable
+    and deduplicated. The core names no hash algorithm; this server digests with
+    sha256 and reports it as the constant "algorithm": "sha256".
+    All endpoints are rate-limited per caller IP.
   version: 1.0.0
 servers:
   - url: /api/cas/v1
@@ -12,11 +14,7 @@ paths:
   /objects:
     post:
       summary: Store an object
-      description: Computes the hash from the body with ?algo (default sha256); deduplicates.
-      parameters:
-        - name: algo
-          in: query
-          schema: { type: string, default: sha256 }
+      description: Computes the sha256 digest of the body; deduplicates.
       responses:
         '201':
           description: Stored (deduplicated: true when it already existed)
@@ -27,14 +25,11 @@ paths:
                 properties:
                   hash: { type: string }
                   deduplicated: { type: boolean }
-        '400': { description: Unknown algorithm or empty body }
+        '400': { description: Empty body }
         '429': { description: Rate limited }
     get:
       summary: List objects
       parameters:
-        - name: algo
-          in: query
-          schema: { type: string }
         - name: limit
           in: query
           schema: { type: integer, default: 100, minimum: 1, maximum: 1000 }
@@ -66,7 +61,7 @@ paths:
         - name: hash
           in: path
           required: true
-          schema: { type: string, pattern: '^[a-z0-9]+:[0-9a-f]+$' }
+          schema: { type: string, pattern: '^([a-z0-9]+:)?[0-9a-f]{64}$' }
       responses:
         '200':
           description: Stored bytes
@@ -122,9 +117,7 @@ paths:
                 properties:
                   object_count: { type: integer }
                   total_size: { type: integer }
-                  algorithm_counts:
-                    type: object
-                    additionalProperties: { type: integer }
+                  algorithm: { type: string }
   /gc:
     post:
       summary: Run mark-and-sweep garbage collection (admin)

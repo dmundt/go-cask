@@ -11,6 +11,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/index"
 )
 
@@ -42,7 +43,7 @@ func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprin
 // pruneCount runs raw.Prune (delete unreachable-from-roots objects older
 // than minAge; dryRun reports without deleting) and returns how many objects
 // it deleted / would delete.
-func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Hash, minAge time.Duration, dryRun bool) (int, error) {
+func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Digest, minAge time.Duration, dryRun bool) (int, error) {
 	doomed, err := raw.Prune(ctx, roots, minAge, dryRun)
 	if err != nil {
 		return 0, err
@@ -84,43 +85,40 @@ func opPut(ctx context.Context, t *target, args []string) error {
 		return err
 	}
 	if jsonOut {
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{"hash": h.String(), "deduplicated": dedup})
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"hash": sha256.Format(h), "deduplicated": dedup})
 	}
 	if dedup {
-		fmt.Printf("%s (deduplicated)\n", h)
+		fmt.Printf("%s (deduplicated)\n", sha256.Format(h))
 	} else {
-		fmt.Println(h)
+		fmt.Println(sha256.Format(h))
 	}
 	return nil
 }
 
-// localPut stores bytes under the hash of their content, streaming through a
-// temp spool (hash-on-write).
-func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Hash, bool, error) {
-	hasher := cas.NewHasher()
+// localPut stores bytes under the digest of their content, streaming through a
+// temp spool while hashing (hash-on-write).
+func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Digest, bool, error) {
+	hasher := sha256.NewHasher()
 	spool, err := os.CreateTemp("", "cask-put-*")
 	if err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
 	defer os.Remove(spool.Name())
 	defer spool.Close()
 	if _, err := io.Copy(io.MultiWriter(spool, hasher), r); err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
-	h, err := cas.NewHash(hasher.Sum(nil))
-	if err != nil {
-		return cas.Hash{}, false, err
-	}
+	h := cas.NewDigest(hasher.Sum(nil))
 	exists, err := raw.Exists(ctx, h)
 	if err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
 	if !exists {
 		if _, err := spool.Seek(0, 0); err != nil {
-			return cas.Hash{}, false, err
+			return nil, false, err
 		}
 		if err := raw.Put(ctx, h, spool); err != nil {
-			return cas.Hash{}, false, err
+			return nil, false, err
 		}
 	}
 	return h, exists, nil
@@ -146,7 +144,7 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	if len(hashes) != 1 {
 		return usagef("get needs exactly one <hash>")
 	}
-	h, err := cas.ParseHash(hashes[0])
+	h, err := sha256.Parse(hashes[0])
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
@@ -173,7 +171,6 @@ func opGet(ctx context.Context, t *target, args []string) error {
 
 func opList(ctx context.Context, t *target, args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	algo := fs.String("algo", "", "filter by algorithm")
 	limit := fs.Int("limit", 100, "max items (1-1000)")
 	offset := fs.Int("offset", 0, "start offset")
 	jsonOut := fs.Bool("json", false, "machine-readable JSON")
@@ -191,18 +188,18 @@ func opList(ctx context.Context, t *target, args []string) error {
 		Algorithm string `json:"algorithm"`
 		Size      int64  `json:"size"`
 	}
-	hashes, err := t.raw.List(ctx, *algo)
+	digests, err := t.raw.List(ctx)
 	if err != nil {
 		return err
 	}
-	total := len(hashes)
+	total := len(digests)
 	items := make([]item, 0, total)
-	for _, h := range index.Paginate(hashes, *offset, *limit) {
+	for _, h := range index.Paginate(digests, *offset, *limit) {
 		size, err := t.raw.Size(ctx, h)
 		if err != nil {
 			return err
 		}
-		items = append(items, item{h.String(), h.Algorithm(), size})
+		items = append(items, item{sha256.Format(h), sha256.Name, size})
 	}
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"total": total, "objects": items})
@@ -224,7 +221,7 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if fs.NArg() != 1 {
 		return usagef("meta needs exactly one <hash>")
 	}
-	h, err := cas.ParseHash(fs.Arg(0))
+	h, err := sha256.Parse(fs.Arg(0))
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
@@ -244,10 +241,10 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	typ := index.EnvelopeType(data)
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"hash": h.String(), "algorithm": h.Algorithm(), "size": size, "type": typ,
+			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size, "type": typ,
 		})
 	}
-	fmt.Printf("%s %s size=%d type=%q\n", h, h.Algorithm(), size, typ)
+	fmt.Printf("%s %s size=%d type=%q\n", sha256.Format(h), sha256.Name, size, typ)
 	return nil
 }
 
@@ -272,31 +269,31 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 		return usagef("verify needs <hash> or --all")
 	}
 	if args[0] == "--all" {
-		hashes, err := t.raw.List(ctx, "")
+		digests, err := t.raw.List(ctx)
 		if err != nil {
 			return err
 		}
 		bad := 0
-		for _, h := range hashes {
-			if err := t.raw.Verify(ctx, h); err != nil {
+		for _, h := range digests {
+			if err := t.raw.Verify(ctx, h, sha256.New()); err != nil {
 				fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
 				bad++
 			}
 		}
-		fmt.Printf("verified %d objects, %d corrupt\n", len(hashes), bad)
+		fmt.Printf("verified %d objects, %d corrupt\n", len(digests), bad)
 		if bad > 0 {
 			return fmt.Errorf("%d corrupt objects", bad)
 		}
 		return nil
 	}
-	h, err := cas.ParseHash(args[0])
+	h, err := sha256.Parse(args[0])
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	if err := t.raw.Verify(ctx, h); err != nil {
+	if err := t.raw.Verify(ctx, h, sha256.New()); err != nil {
 		return err
 	}
-	fmt.Printf("%s ok\n", h)
+	fmt.Printf("%s ok\n", sha256.Format(h))
 	return nil
 }
 
@@ -314,7 +311,7 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
-	roots, err := parseHashes(fs.Args())
+	roots, err := parseDigests(fs.Args())
 	if err != nil {
 		return err
 	}
@@ -364,7 +361,7 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
-	roots, err := parseHashes(fs.Args())
+	roots, err := parseDigests(fs.Args())
 	if err != nil {
 		return err
 	}
@@ -389,14 +386,14 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	return nil
 }
 
-func parseHashes(args []string) ([]cas.Hash, error) {
-	hashes := make([]cas.Hash, 0, len(args))
+func parseDigests(args []string) ([]cas.Digest, error) {
+	digests := make([]cas.Digest, 0, len(args))
 	for _, s := range args {
-		h, err := cas.ParseHash(s)
+		h, err := sha256.Parse(s)
 		if err != nil {
 			return nil, usagef("invalid hash %q: %v", s, err)
 		}
-		hashes = append(hashes, h)
+		digests = append(digests, h)
 	}
-	return hashes, nil
+	return digests, nil
 }

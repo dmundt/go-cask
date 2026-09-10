@@ -10,6 +10,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // demo builds a small document graph and exercises cross-type resolution,
@@ -21,7 +22,7 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	repo, err := newRepository(raw)
+	repo, err := newRepository(raw, sha256.New())
 	if err != nil {
 		return err
 	}
@@ -57,9 +58,9 @@ func demo() error {
 	first, err := repo.Notes.Put(ctx, &Note{
 		Title:       "first",
 		Body:        "the root note",
-		Tags:        refs(workTag, ideaTag),
-		Attachments: refs(att),
-		Related:     refs(second),
+		Tags:        []cas.Digest{workTag, ideaTag},
+		Attachments: []cas.Digest{att},
+		Related:     []cas.Digest{second},
 	})
 	if err != nil {
 		return err
@@ -73,7 +74,7 @@ func demo() error {
 	fmt.Printf("resolved: %s %q (tags=%d attachments=%d related=%d)\n",
 		ro.Type, ro.Note.Title, len(ro.Note.Tags), len(ro.Note.Attachments), len(ro.Note.Related))
 	for _, th := range ro.Note.Tags {
-		t, err := res.ResolveTag(ctx, th.Hash())
+		t, err := res.ResolveTag(ctx, th)
 		if err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ func demo() error {
 	fmt.Printf("attachment loaded after access: %v (%d bytes)\n", co.IsLoaded(), len(obj.Data))
 
 	// SmartCache prefetch: loading a related-only note warms its references.
-	prefetchRoot, err := repo.Notes.Put(ctx, &Note{Title: "prefetch-root", Related: refs(second)})
+	prefetchRoot, err := repo.Notes.Put(ctx, &Note{Title: "prefetch-root", Related: []cas.Digest{second}})
 	if err != nil {
 		return err
 	}
@@ -112,8 +113,8 @@ func demo() error {
 	// Broken reference: a note pointing at a hash that was never stored.
 	// The note itself resolves; its dangling reference is reported when the
 	// graph is walked.
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: refs(missing)})
+	missing := sha256.Of([]byte("never stored by this example"))
+	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.Digest{missing}})
 	if err != nil {
 		return err
 	}
@@ -133,11 +134,11 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	mid, err := repo.Notes.Put(ctx, &Note{Title: "chain-b", Related: refs(leaf)})
+	mid, err := repo.Notes.Put(ctx, &Note{Title: "chain-b", Related: []cas.Digest{leaf}})
 	if err != nil {
 		return err
 	}
-	root, err := repo.Notes.Put(ctx, &Note{Title: "chain-a", Related: refs(mid)})
+	root, err := repo.Notes.Put(ctx, &Note{Title: "chain-a", Related: []cas.Digest{mid}})
 	if err != nil {
 		return err
 	}

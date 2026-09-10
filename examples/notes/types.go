@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/dmundt/go-cask/cas"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Type names (versioned majors per object-versioning §6).
@@ -29,42 +28,26 @@ const (
 	typeAttachment = "attachment@1"
 )
 
-// ref wraps a plain cas.Hash as the JSON codec's field type, and refs wraps a
-// group of them, for object literals. The wrapper carries the wire shape and
-// validates on decode, so the object types need no JSON code for hashes.
-func ref(h cas.Hash) jsoncodec.Hash { return jsoncodec.NewHash(h) }
-
-func refs(hs ...cas.Hash) []jsoncodec.Hash {
-	if len(hs) == 0 {
-		return nil
-	}
-	out := make([]jsoncodec.Hash, len(hs))
-	for i, h := range hs {
-		out[i] = ref(h)
-	}
-	return out
-}
-
-// Note references tags, attachments, and related notes by hash. The reference
-// fields use jsoncodec.Hash, the JSON codec's field type: it serializes as an
-// "algo:hex" string and validates on decode without any code here
-// (cas-core §4.2), and `omitempty` drops an empty group.
+// Note references tags, attachments, and related notes by digest. A reference
+// field is a cas.Digest: it renders itself as one hex string through
+// encoding.TextMarshaler and needs no JSON code here (cas-core §4.2), and
+// `omitempty` drops an empty group.
 type Note struct {
-	Title       string           `json:"title"`
-	Body        string           `json:"body"`
-	Tags        []jsoncodec.Hash `json:"tags,omitempty"`
-	Attachments []jsoncodec.Hash `json:"attachments,omitempty"`
-	Related     []jsoncodec.Hash `json:"related,omitempty"`
+	Title       string       `json:"title"`
+	Body        string       `json:"body"`
+	Tags        []cas.Digest `json:"tags,omitempty"`
+	Attachments []cas.Digest `json:"attachments,omitempty"`
+	Related     []cas.Digest `json:"related,omitempty"`
 }
 
 func (n *Note) Type() string { return typeNote }
 
-func (n *Note) References() []cas.Hash {
-	refs := make([]cas.Hash, 0, len(n.Tags)+len(n.Attachments)+len(n.Related))
-	for _, group := range [][]jsoncodec.Hash{n.Tags, n.Attachments, n.Related} {
-		for _, r := range group {
-			if h := r.Hash(); !h.IsZero() {
-				refs = append(refs, h)
+func (n *Note) References() []cas.Digest {
+	refs := make([]cas.Digest, 0, len(n.Tags)+len(n.Attachments)+len(n.Related))
+	for _, group := range [][]cas.Digest{n.Tags, n.Attachments, n.Related} {
+		for _, d := range group {
+			if !d.IsZero() {
+				refs = append(refs, d)
 			}
 		}
 	}
@@ -76,16 +59,16 @@ type Tag struct {
 	Name string `json:"name"`
 }
 
-func (t *Tag) Type() string           { return typeTag }
-func (t *Tag) References() []cas.Hash { return nil }
+func (t *Tag) Type() string             { return typeTag }
+func (t *Tag) References() []cas.Digest { return nil }
 
 // Attachment is a large blob, loaded lazily on access.
 type Attachment struct {
 	Data []byte `json:"data"`
 }
 
-func (a *Attachment) Type() string           { return typeAttachment }
-func (a *Attachment) References() []cas.Hash { return nil }
+func (a *Attachment) Type() string             { return typeAttachment }
+func (a *Attachment) References() []cas.Digest { return nil }
 
 // parseType extracts the unversioned type name ("note", "tag", ...) from the
 // stored TLV envelope bytes (see cas.EnvelopeFromBytes).

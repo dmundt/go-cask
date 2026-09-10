@@ -18,6 +18,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 const testStartupToken = "AAAA-BBBB-CCCC"
@@ -203,7 +204,7 @@ func TestVerifyAndDelete(t *testing.T) {
 
 	admin := login(t, ts, testStartupToken)
 
-	// Object detail renders with the full hash.
+	// Object detail renders with the full digest (bare hex, no algorithm name).
 	resp, err := admin.Get(ts.URL + "/viewer/objects/" + h.String())
 	if err != nil {
 		t.Fatal(err)
@@ -251,9 +252,9 @@ func TestStatic(t *testing.T) {
 	}
 }
 
-func mustParse(t *testing.T, s string) cas.Hash {
+func mustParse(t *testing.T, s string) cas.Digest {
 	t.Helper()
-	h, err := cas.ParseHash(s)
+	h, err := sha256.Parse(s)
 	if err != nil {
 		t.Fatal(err)
 	}

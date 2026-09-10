@@ -4,17 +4,15 @@
 
 {{define "stat-cards"}}
 <section aria-label="Store overview">
-<p><strong>{{.ObjectCount}}</strong> objects · <strong>{{.TotalSize}}</strong> bytes total · <strong>{{len .Algorithms}}</strong> algorithm(s)</p>
+<p><strong>{{.ObjectCount}}</strong> objects · <strong>{{.TotalSize}}</strong> bytes total</p>
 </section>
 {{end}}
 
-{{define "algo-table"}}
+{{define "digest-note"}}
 <table>
-<caption>By algorithm</caption>
-<thead><tr><th scope="col">Algorithm</th><th scope="col">Objects</th><th scope="col">Bytes</th></tr></thead>
-<tbody>
-{{range .Algorithms}}<tr><td>{{.Algo}}</td><td>{{.Count}}</td><td>{{.Size}}</td></tr>{{else}}<tr><td colspan="3">empty store</td></tr>{{end}}
-</tbody>
+<caption>Addressing</caption>
+<thead><tr><th scope="col">Digest</th><th scope="col">Algorithms</th></tr></thead>
+<tbody><tr><td>raw digest bytes, hex-encoded</td><td>client-side (this viewer: sha256)</td></tr></tbody>
 </table>
 {{end}}
 

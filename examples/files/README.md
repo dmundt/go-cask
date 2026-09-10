@@ -12,16 +12,17 @@
 | `Repository.Blobs/Trees/Commits.Put`, `Get` | store/read objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph`, `audit` reachability |
 | `fs.Backend.Verify` / `List` / `Stats` (`cas.Stats`) | `verify`, `audit`, `stats` |
-| `Hash` / `ParseHash` | ref files (`HEAD`, `INDEX`) and hash args |
+| `cas.Digest` / `sha256.Parse` / `sha256.Format` | ref files (`HEAD`, `INDEX`) and digest args |
+| `sha256.New()` (the client's `cas.Hasher`) | the `gitlike.Repository` and every `Verify` call |
 
 ## What it extends
 
-Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additions: the CLI and two ref files (`HEAD` = current commit, `INDEX` = current tree) at the store root, which the store's `List`/`Stats` ignore.
+Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additions: the CLI and two ref files (`HEAD` = current commit, `INDEX` = current tree) at the store root, which the store's `List`/`Stats` ignore. The ref files hold the printable `sha256:hexdigest` form (`sha256.Format`; `sha256.Parse` accepts bare hex too).
 
 ## Code walkthrough
 
-- `main.go` — the `app` struct (`newApp` wires `fs.Backend` + `gitlike.Repository`; `readRef`/`writeRef` persist hashes; `currentTree`/`headCommit` read `INDEX`/`HEAD`) and the argument-parsing CLI:
-  - `add <file...>` — `repo.Blobs.Put` (dedup by content hash), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
+- `main.go` — the `app` struct (`newApp` wires `fs.Backend` + `gitlike.Repository` over `sha256.New()`; `readRef`/`writeRef` persist digests; `currentTree`/`headCommit` read `INDEX`/`HEAD`) and the argument-parsing CLI:
+  - `add <file...>` — `repo.Blobs.Put` (dedup by content digest), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
   - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old `HEAD`), `Commits.Put`, advances `HEAD`;
   - `log` — walks the `Commit.Parent` chain; `cat <hash>` — `ResolveAny` → `Blob.Data`; `graph` — `WalkGraph` from `HEAD`;
   - `audit [-no-verify]` — classifies every stored object (below); `verify`/`stats` — `fs.Backend.Verify` per object / `Stats`.
@@ -58,4 +59,4 @@ go run ./examples/files -store ./objects verify
 go test ./examples/files/...
 ```
 
-`add` prints the tree hash, `commit` the commit hash, `stats` a `N objects, N bytes [sha256=N]` summary, `audit` one `state hash` line per object plus a `verified/orphaned/corrupt/unverified` count.
+`add` prints the tree digest and `commit` the commit digest in bare hex (`cas.Digest.String`), `log` prints the printable `sha256:…` form, `stats` a `N objects, M bytes` summary, and `audit` one `state hash` line per object plus a `verified/orphaned/corrupt/unverified` count.

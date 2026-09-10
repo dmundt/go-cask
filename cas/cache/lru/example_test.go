@@ -8,13 +8,14 @@ import (
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/cache/lru"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // Example shows the size-bounded LRU cache (cas-core §4.10): New wraps a
 // Store with an eviction policy and Get serves cached objects.
 func Example() {
 	ctx := context.Background()
-	s := cas.New(backmem.New(), jsoncodec.New[item]())
+	s := cas.New(backmem.New(), jsoncodec.New[item](), sha256.New())
 	h, err := s.Put(ctx, item{ID: "one"})
 	if err != nil {
 		fmt.Println("error:", err)

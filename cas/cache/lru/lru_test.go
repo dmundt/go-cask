@@ -8,21 +8,22 @@ import (
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/cache/lru"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 type item struct {
 	ID string
 }
 
-func (item) Type() string           { return "item@1" }
-func (item) References() []cas.Hash { return nil }
+func (item) Type() string             { return "item@1" }
+func (item) References() []cas.Digest { return nil }
 
 func newStore(t *testing.T) *cas.Store[item] {
 	t.Helper()
-	return cas.New(mem.New(), jsoncodec.New[item]())
+	return cas.New(mem.New(), jsoncodec.New[item](), sha256.New())
 }
 
-func putItem(t *testing.T, s *cas.Store[item], id string) cas.Hash {
+func putItem(t *testing.T, s *cas.Store[item], id string) cas.Digest {
 	t.Helper()
 	h, err := s.Put(context.Background(), item{ID: id})
 	if err != nil {
@@ -38,7 +39,7 @@ func TestCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hs []cas.Hash
+	var hs []cas.Digest
 	for i := 0; i < 3; i++ {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}
@@ -72,7 +73,7 @@ func TestCacheBoundViaAllAccessors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hs []cas.Hash
+	var hs []cas.Digest
 	for i := 0; i < 5; i++ {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}
@@ -95,7 +96,7 @@ func TestGetMissingReturnsError(t *testing.T) {
 	}
 	// A valid hash whose content was never stored must surface an error from
 	// Proxy (and Get) rather than panicking.
-	ghost := cas.HashBytes([]byte("never-stored-object"))
+	ghost := sha256.Of([]byte("never-stored-object"))
 	if _, err := c.Get(ctx, ghost); err == nil {
 		t.Fatal("Get on an absent object must error")
 	}
@@ -160,7 +161,7 @@ func TestRepeatedGetOfMRUSurvivesEvictions(t *testing.T) {
 	hC := putItem(t, s, "c")
 	hD := putItem(t, s, "d")
 
-	for _, h := range []cas.Hash{hA, hB, hC} {
+	for _, h := range []cas.Digest{hA, hB, hC} {
 		if _, err := c.Get(ctx, h); err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +201,7 @@ func TestCacheBoundViaWarmupPreload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hs []cas.Hash
+	var hs []cas.Digest
 	for i := 0; i < 5; i++ {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}

@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v14
+version: v15
 ---
 
 # Versioning — go-cask
@@ -20,7 +20,8 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 | PATCH | Bug fixes and behavior corrections within the same contract |
 
 - The stable surface and compatibility rules come from `library-design.md` §1/§5 — this doc only turns them into Git mechanics.
-- **Ratified exception (v1.2.0):** one breaking change shipped inside the `v1` line — `cas.Hash` went from an interface to a concrete value type, deleting `cas.HashRef`/`NewHashRef`/`Ref` before any of them were released, and hash JSON rendering moved out of the core into the JSON codec (`cas/codec/json`'s `jsoncodec.Hash` field type), so `cas` no longer imports `encoding/json`. It was accepted because the surface was weeks old with negligible adoption, the break is compile-time only (`h == nil` → `h.IsZero()`, custom `Hash` implementations, `jsoncodec.Hash` reference fields), and the on-disk format is unchanged. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). This is a one-off, not a policy change: every later breaking change needs a MAJOR with the `/v2` mechanics in §2.
+- **Ratified exception (v1.2.0):** one breaking change shipped inside the `v1` line — `cas.Hash` went from an interface to a concrete value type, deleting `cas.HashRef`/`NewHashRef`/`Ref` before any of them were released, and hash JSON rendering moved out of the core into the JSON codec (`cas/codec/json`'s `jsoncodec.Hash` field type), so `cas` no longer imports `encoding/json`. It was accepted because the surface was weeks old with negligible adoption, the break is compile-time only (`h == nil` → `h.IsZero()`, custom `Hash` implementations, `jsoncodec.Hash` reference fields), and the on-disk format is unchanged. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). It is the first of the two recorded first-cycle exceptions; beyond them, every breaking change needs a MAJOR with the `/v2` mechanics in §2.
+- **Ratified exception (unreleased, after `v1.2.0`): the digest change.** The address type is now `cas.Digest` — raw digest bytes whose zero value is the absent reference, rendered as one lowercase-hex string — and the core names no hash algorithm: the client injects a `cas.Hasher` (`cas/hash/sha256` ships go-cask's default). `cas.Hash`, `HashBytes`, `ParseHash`, `NewHash`, `CheckHash`, `NewHasher`, `SHA256` and the JSON codec's `jsoncodec.Hash` field type are gone, and `cas.New`/`gitlike.NewRepository` take the hasher. It was accepted on the same first-cycle grounds, but unlike the earlier one it **changes stored bytes**: object type names stay `@1`, yet reference payloads went from `"sha256:hexdigest"` to bare hex, so an object written by the previous build fails to decode with `ErrCorrupt` — a deliberate loud break with no migration tool and no `@2` type (operations §5). It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). Together with the `v1.2.0` concrete-`Hash` change these are the library's recorded breaking changes; any further breaking change follows the ordinary rule again.
 - **Pre-release policy:** breaking changes are allowed in `v0.x.y` minor bumps (Go convention). The project may start at `v0.1.0` and reach `v1.0.0` when the stable surface is frozen, or go straight to `v1.0.0`. **Decision: start at `v0.1.0`** — first public tag is the pre-release `v0.1.0-alpha.1`, then further pre-releases (`-alpha.N`, `-beta.N`, `-rc.N`) and `v0.1.0`, then `v1.0.0` when cas-core §7.1 is frozen. Pre-release tags sort below their final release (`v0.1.0-alpha.1` < `v0.1.0`) and use the same annotated-tag mechanics (§3, §5).
 
 ## 2. Go module versioning rules
@@ -60,9 +61,9 @@ Every item MUST be satisfied before the first stable release.
 
 ### 6.1 Stable surface freeze
 - [x] cas-core §7.1 stable surface enumerated; renames/breaking changes closed
-- [x] Hash naming: keep `Hash` (algo:hexdigest) — no rename
+- [x] Address naming: `cas.Digest` — raw digest bytes, one lowercase-hex text form; the earlier `Hash` (`algo:hexdigest`) name is gone
 - [x] Fan-out file-name style: full-hash names only; Git-remainder option rejected
-- [x] Hash algorithm: `sha256`, fixed at compile time (the runtime registry was dropped; sha1 had already been removed from the core)
+- [x] Hash algorithm: none named by the core — the client injects a `cas.Hasher`, and go-cask's own clients wire `sha256` (`cas/hash/sha256`); the runtime registry was dropped earlier
 - [x] GC concurrency: writers lock-free, maintenance sweeps exclusive + grace-gated (`--min-age 1h` default)
 - [x] Lean-core export budget re-baselined to ~40 (library-design v10)
 - [x] Library baseline declared Go 1.24 (toolchain 1.27; `omitzero` JSON tags)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -21,11 +21,11 @@ func writeTempFile(t *testing.T, dir, name, content string) string {
 	return p
 }
 
-// objectPath rebuilds the on-disk path for a hash under the default (2,1)
-// fan-out layout: <dir>/<algo>/<2 hex>/<full hex>.
+// objectPath rebuilds the on-disk path for a digest under the default (2,1)
+// fan-out layout: <dir>/<2 hex>/<full hex>. There is no algorithm directory:
+// the backend does not know the client's hash algorithm.
 func objectPath(dir string, h string) string {
-	algo, hex, _ := strings.Cut(h, ":")
-	return filepath.Join(dir, algo, hex[:2], hex)
+	return filepath.Join(dir, h[:2], h)
 }
 
 // Acceptance: add → commit → log → cat round-trips.
@@ -45,14 +45,14 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tree.IsZero() {
-		t.Fatal("add returned no tree hash")
+		t.Fatal("add returned no tree digest")
 	}
 	commit, err := a.commit(ctx, "initial")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if commit.IsZero() {
-		t.Fatal("commit returned no hash")
+		t.Fatal("commit returned no digest")
 	}
 
 	// log shows the commit message.
@@ -99,9 +99,10 @@ func TestDedup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1 blob (deduplicated) + 2 trees (different entry names).
-	if st.AlgorithmCounts["sha256"] != 3 {
-		t.Fatalf("sha256 object count = %d, want 3", st.AlgorithmCounts["sha256"])
+	// 1 blob (deduplicated) + 2 trees (different entry names). Stats has no
+	// per-algorithm breakdown: the core does not know the algorithm.
+	if st.ObjectCount != 3 {
+		t.Fatalf("object count = %d, want 3", st.ObjectCount)
 	}
 }
 
@@ -150,7 +151,7 @@ func TestAuditStates(t *testing.T) {
 	}
 
 	// Corrupt a reachable object on disk: audit reports it corrupt.
-	hashes, err := a.raw.List(ctx, "")
+	hashes, err := a.raw.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +207,7 @@ func TestVerify(t *testing.T) {
 	}
 
 	// Corrupt one stored object on disk.
-	hashes, err := a.raw.List(ctx, "")
+	hashes, err := a.raw.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,8 +228,8 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-func TestShortHash(t *testing.T) {
-	h, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+func TestShortDigest(t *testing.T) {
+	h, _ := sha256.Parse("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	s := short(h)
 	if len(s) == 0 {
 		t.Fatal("short() empty")
@@ -296,9 +297,23 @@ func TestRunCommands(t *testing.T) {
 	if code := run(ctx, []string{"-store", store, "add", f}, &stdout, &stderr); code != 0 {
 		t.Fatalf("add code=%d stderr=%s", code, stderr.String())
 	}
-	hash := strings.TrimSpace(stdout.String())
-	if hash == "" {
+	digest := strings.TrimSpace(stdout.String())
+	if digest == "" {
 		t.Fatal("add stdout empty")
+	}
+	// `add` prints the digest's bare hex form (cas.Digest.String): no
+	// algorithm prefix. The ref files use the printable form, but the CLI
+	// prints the digest itself.
+	if len(digest) != 64 || strings.Contains(digest, ":") {
+		t.Fatalf("add printed %q, want a bare 64-hex digest", digest)
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// cat accepts the bare hex form and resolves the object (`add` returns
+	// the tree digest, which cat renders as the tree's entries).
+	if code := run(ctx, []string{"-store", store, "cat", digest}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "tree") {
+		t.Fatalf("cat code=%d out=%q stderr=%s", code, stdout.String(), stderr.String())
 	}
 	stdout.Reset()
 	stderr.Reset()
@@ -348,7 +363,7 @@ func TestRunUsageErrors(t *testing.T) {
 		{"-store"},             // -store missing value
 		{"add"},                // add missing file
 		{"commit"},             // commit missing -m
-		{"cat"},                // cat missing hash
+		{"cat"},                // cat missing digest
 		{"unknown"},            // unknown command
 		{"audit", "-badflag"},  // bad audit flag
 		{"-store", "x", "add"}, // add missing file
@@ -403,9 +418,11 @@ func TestRunStoreError(t *testing.T) {
 	}
 }
 
-func TestSplitHash(t *testing.T) {
-	h, _ := cas.ParseHash("sha256:" + strings.Repeat("ab", 32))
-	if short(cas.Hash{}) != "<absent>" {
+// TestShortDigestForm pins short()'s two renderings: the printable
+// "sha256:hexdigest" form for a present digest and "<absent>" for the zero one.
+func TestShortDigestForm(t *testing.T) {
+	h, _ := sha256.Parse("sha256:" + strings.Repeat("ab", 32))
+	if short(nil) != "<absent>" {
 		t.Fatal("short(absent) should say <absent>")
 	}
 	if !strings.Contains(short(h), "sha256") {

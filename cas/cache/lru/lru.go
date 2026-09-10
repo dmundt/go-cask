@@ -58,7 +58,7 @@ func (c *Cache[T]) note(key string) {
 		}
 		c.list.Remove(last)
 		evicted := last.Value.(*memory.CachedObject[T])
-		evictedKey := evicted.Hash().String()
+		evictedKey := evicted.Digest().String()
 		delete(c.index, evictedKey)
 		// note holds c.mu, so use the embedded (unlocked) removal.
 		c.CachedStore.EvictKey(evictedKey)
@@ -76,10 +76,10 @@ func (c *Cache[T]) forget(key string) {
 	}
 }
 
-// Evict removes the cached object for h together with its LRU bookkeeping.
-func (c *Cache[T]) Evict(h cas.Hash) {
-	c.CachedStore.Evict(h)
-	c.forget(h.String())
+// Evict removes the cached object for d together with its LRU bookkeeping.
+func (c *Cache[T]) Evict(d cas.Digest) {
+	c.CachedStore.Evict(d)
+	c.forget(d.String())
 }
 
 // EvictKey removes the entry for key together with its LRU bookkeeping,
@@ -111,14 +111,14 @@ func (c *Cache[T]) touchLocked(key string) {
 	c.index[key] = c.list.PushFront(co)
 }
 
-// Proxy returns the (possibly not-yet-loaded) CachedObject for h, promoting
+// Proxy returns the (possibly not-yet-loaded) CachedObject for d, promoting
 // it to the most-recent position.
-func (c *Cache[T]) Proxy(ctx context.Context, h cas.Hash) (*memory.CachedObject[T], error) {
-	co, err := c.CachedStore.Proxy(ctx, h)
+func (c *Cache[T]) Proxy(ctx context.Context, d cas.Digest) (*memory.CachedObject[T], error) {
+	co, err := c.CachedStore.Proxy(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	key := h.String()
+	key := d.String()
 	c.mu.Lock()
 	c.touchLocked(key)
 	c.mu.Unlock()
@@ -127,8 +127,8 @@ func (c *Cache[T]) Proxy(ctx context.Context, h cas.Hash) (*memory.CachedObject[
 
 // Get returns the loaded object, routing through Proxy so existing entries
 // are promoted on every access.
-func (c *Cache[T]) Get(ctx context.Context, h cas.Hash) (T, error) {
-	co, err := c.Proxy(ctx, h)
+func (c *Cache[T]) Get(ctx context.Context, d cas.Digest) (T, error) {
+	co, err := c.Proxy(ctx, d)
 	if err != nil {
 		var zero T
 		return zero, err

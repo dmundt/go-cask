@@ -8,6 +8,7 @@ import (
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // Example shows the lazy, in-memory CachedStore (cas-core §4.10): New wraps a
@@ -15,7 +16,7 @@ import (
 // once.
 func Example() {
 	ctx := context.Background()
-	s := cas.New(backmem.New(), jsoncodec.New[testObject]())
+	s := cas.New(backmem.New(), jsoncodec.New[testObject](), sha256.New())
 	h, err := s.Put(ctx, testObject{Name: "alpha"})
 	if err != nil {
 		fmt.Println("error:", err)

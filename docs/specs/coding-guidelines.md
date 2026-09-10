@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v14
+version: v15
 ---
 
 # Go Coding Guidelines — go-cask
@@ -20,7 +20,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 
 - `gofmt` before every commit; `goimports` grouping (std, third-party, local).
 - Naming: mixedCaps; exported uppercase; initialisms keep case (`ID`, `URL`, `API`, `HTTP`); no package-name stutter (`cas.Store`, never `cas.CasStore`); short names for short scopes.
-- Constructors mirror how many primary types the package exposes: plain `New()` when one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`) or the package's primary `Store` even with others (`cas.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructor type (`cas.NewHash`, `cas.NewHasher`, `cas.NewWalker`, `prefetch.NewSmartCache`). Keep `New*` for real (non-trivial) setup; prefer a useful zero value otherwise.
+- Constructors mirror how many primary types the package exposes: plain `New()` when one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`, `sha256.New`) or the package's primary `Store` even with others (`cas.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructor type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`). Keep `New*` for real (non-trivial) setup; prefer a useful zero value otherwise.
 - Errors: handle or explicitly ignore (`_ =` + comment why). Wrap with `%w`; unwrap with `errors.Is`/`errors.As`. Sentinel errors for expected conditions; never string-match. Never `panic` in library code — only in `main` for unrecoverable setup.
 - `context.Context` MUST be the first parameter of any I/O-capable/cancellable function; never store it in a struct — derive and pass down.
 - Prefer small consumer-side interfaces; "accept interfaces, return concrete types."
@@ -34,7 +34,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 | HTTP | `net/http` (1.22+ pattern routing `mux.HandleFunc("GET /x/{id}")`) |
 | JSON | `encoding/json`; new code MAY use `encoding/json/v2` + `jsontext` (1.27) |
 | HTML | `html/template` (auto-escaping) — never `text/template` for HTML |
-| Hashing/signatures | `crypto/sha256`/`sha1`/`md5` via `io.TeeReader`; `crypto/mldsa` (1.27) |
+| Hashing/signatures | `crypto/sha256` via an injected `cas.Hasher` (`cas/hash/sha256`); `crypto/sha1`/`md5` only where a protocol requires them; `io.MultiWriter`/`io.TeeReader` for hash-on-write; `crypto/mldsa` (1.27) |
 | UUIDs | `uuid` (1.27) — never `github.com/google/uuid` |
 | Concurrency | `sync`, `sync/atomic`, `context` |
 | CLI | `flag` (or `os.Args` for trivial tools) |
@@ -42,7 +42,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 | Data/strings | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast`/`bytes.CutLast` (1.27) |
 
 Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution); any external dependency MUST be (1) justified in the commit/PR and (2) vendored (`go mod vendor`).
-Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing uses the core's fixed std-lib `sha256` (no registry since the 2026-09 revision, cas-core §4.2); the only frontend exception is **htmx** (§5).
+Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing goes through the injected `cas.Hasher` seam (the shipped `cas/hash/sha256` is the client-side default; the core names no algorithm and has no registry, cas-core §4.2); the only frontend exception is **htmx** (§5).
 
 ## 4. No CSS, no JavaScript
 
@@ -85,7 +85,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 - Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `gitlike/`).
 - Viewer middleware (authn, sessions, CSRF, login throttle) lives in `internal/web`. An example surface MAY add its own IP rate limiter (std-lib token bucket, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
-- `go.mod` at root declaring `go 1.24` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic except object/hash registration.
+- `go.mod` at root declaring `go 1.24` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic (the core has no registry and no global state).
 - Tests: every exported `cas/` function tested; handlers use `httptest`; template FS fixtures use `testing/fstest`.
 - Verify before commit: `gofmt -l .`; `go vet ./...`; `go test ./...`; `go build ./...`.
 

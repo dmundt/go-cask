@@ -15,6 +15,7 @@ import (
 	"sort"
 
 	"github.com/dmundt/go-cask/cas"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -46,7 +47,7 @@ type auditReport struct {
 // noVerify skips the integrity pass (a fast orphan scan without reading
 // every object's bytes).
 func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
-	hashes, err := a.raw.List(ctx, "")
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -55,12 +56,12 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		return nil, err
 	}
 	rep := &auditReport{counts: make(map[auditState]int, 4)}
-	for _, h := range hashes {
+	for _, h := range digests {
 		key := h.String()
 		reach := reachable[key]
 		state := stateVerified
 		if !noVerify {
-			if err := a.raw.Verify(ctx, h); err != nil {
+			if err := a.raw.Verify(ctx, h, sha256.New()); err != nil {
 				state = stateCorrupt // corruption outranks orphaned: report it first
 			} else if !reach {
 				state = stateOrphaned
@@ -73,7 +74,7 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		rep.rows = append(rep.rows, auditRow{hash: key, state: state})
 		rep.counts[state]++
 	}
-	rep.total = len(hashes)
+	rep.total = len(digests)
 	sort.Slice(rep.rows, func(i, j int) bool {
 		if rep.rows[i].state != rep.rows[j].state {
 			return rep.rows[i].state < rep.rows[j].state
@@ -98,15 +99,15 @@ func (a *app) reachableFromHead(ctx context.Context) (map[string]bool, error) {
 	return seen, nil
 }
 
-// markReachable adds h and, recursively, every hash its object references.
-// A hash that cannot be resolved (dangling or corrupt) stops that branch;
+// markReachable adds d and, recursively, every digest its object references.
+// A digest that cannot be resolved (dangling or corrupt) stops that branch;
 // it was already marked, so it is still reported reachable-then-corrupt.
-func (a *app) markReachable(ctx context.Context, h cas.Hash, seen map[string]bool) error {
-	if h.IsZero() || seen[h.String()] {
+func (a *app) markReachable(ctx context.Context, d cas.Digest, seen map[string]bool) error {
+	if d.IsZero() || seen[d.String()] {
 		return nil
 	}
-	seen[h.String()] = true
-	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, h)
+	seen[d.String()] = true
+	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, d)
 	if err != nil {
 		return nil // dangling/corrupt: nothing more to walk from here
 	}
@@ -121,7 +122,7 @@ func (a *app) markReachable(ctx context.Context, h cas.Hash, seen map[string]boo
 // referencesOf returns the outgoing references of a resolved object — the
 // example's own type switch (gitlike's is unexported; this uses only the
 // public References() methods).
-func referencesOf(ro *gitlike.ResolvedObject) []cas.Hash {
+func referencesOf(ro *gitlike.ResolvedObject) []cas.Digest {
 	switch {
 	case ro.Blob != nil:
 		return ro.Blob.References()

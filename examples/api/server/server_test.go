@@ -12,6 +12,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // A tiny plain-HTTP test client: the example ships no SDK, so the tests
@@ -63,38 +64,38 @@ func (c *testClient) do(ctx context.Context, method, path string, body io.Reader
 	return resp.StatusCode, b
 }
 
-func (c *testClient) put(ctx context.Context, body string) (int, cas.Hash, bool) {
+func (c *testClient) put(ctx context.Context, body string) (int, cas.Digest, bool) {
 	status, b := c.do(ctx, http.MethodPost, "/api/cas/v1/objects", strings.NewReader(body))
 	var res struct {
 		Hash         string `json:"hash"`
 		Deduplicated bool   `json:"deduplicated"`
 	}
 	if err := json.Unmarshal(b, &res); err != nil {
-		return status, cas.Hash{}, false
+		return status, nil, false
 	}
-	h, err := cas.ParseHash(res.Hash)
+	h, err := sha256.Parse(res.Hash)
 	if err != nil {
-		return status, cas.Hash{}, false
+		return status, nil, false
 	}
 	return status, h, res.Deduplicated
 }
 
-func (c *testClient) getBytes(ctx context.Context, h cas.Hash) (int, []byte) {
+func (c *testClient) getBytes(ctx context.Context, h cas.Digest) (int, []byte) {
 	return c.do(ctx, http.MethodGet, "/api/cas/v1/objects/"+h.String(), nil)
 }
 
-func (c *testClient) del(ctx context.Context, h cas.Hash) (int, []byte) {
+func (c *testClient) del(ctx context.Context, h cas.Digest) (int, []byte) {
 	return c.do(ctx, http.MethodDelete, "/api/cas/v1/objects/"+h.String(), nil)
 }
 
-func (c *testClient) meta(ctx context.Context, h cas.Hash) (int, map[string]any) {
+func (c *testClient) meta(ctx context.Context, h cas.Digest) (int, map[string]any) {
 	status, b := c.do(ctx, http.MethodGet, "/api/cas/v1/objects/"+h.String()+"/meta", nil)
 	var m map[string]any
 	json.Unmarshal(b, &m)
 	return status, m
 }
 
-func (c *testClient) verify(ctx context.Context, h cas.Hash) (int, map[string]any) {
+func (c *testClient) verify(ctx context.Context, h cas.Digest) (int, map[string]any) {
 	status, b := c.do(ctx, http.MethodPost, "/api/cas/v1/objects/"+h.String()+"/verify", nil)
 	var v map[string]any
 	json.Unmarshal(b, &v)
@@ -115,12 +116,12 @@ func (c *testClient) stats(ctx context.Context) (int, map[string]any) {
 	return status, st
 }
 
-func (c *testClient) gc(ctx context.Context, reachable []cas.Hash) (int, map[string]any) {
-	hashes := make([]string, 0, len(reachable))
+func (c *testClient) gc(ctx context.Context, reachable []cas.Digest) (int, map[string]any) {
+	digests := make([]string, 0, len(reachable))
 	for _, h := range reachable {
-		hashes = append(hashes, h.String())
+		digests = append(digests, h.String())
 	}
-	body, _ := json.Marshal(map[string]any{"reachable": hashes})
+	body, _ := json.Marshal(map[string]any{"reachable": digests})
 	status, b := c.do(ctx, http.MethodPost, "/api/cas/v1/gc", bytes.NewReader(body))
 	var g map[string]any
 	json.Unmarshal(b, &g)
@@ -144,6 +145,22 @@ func TestRoundTripAndDedup(t *testing.T) {
 	status, got := c.getBytes(ctx, h1)
 	if status != http.StatusOK || string(got) != "hello server" {
 		t.Fatalf("get = (%d, %q)", status, got)
+	}
+
+	// GET carries the client-chosen algorithm as the constant X-CAS-Algorithm
+	// header (the server supplies "sha256"; the store itself knows none).
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/api/cas/v1/objects/"+h1.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := resp.Header.Get("X-CAS-Algorithm"); got != "sha256" {
+		t.Fatalf("X-CAS-Algorithm = %q, want sha256", got)
 	}
 }
 
@@ -236,7 +253,7 @@ func TestMetaVerifyListStats(t *testing.T) {
 		t.Fatalf("put status = %d", status)
 	}
 	status, m := c.meta(ctx, h)
-	if status != http.StatusOK || m["hash"] != h.String() || num(m, "size") != 7 {
+	if status != http.StatusOK || m["hash"] != h.String() || m["algorithm"] != "sha256" || num(m, "size") != 7 {
 		t.Fatalf("meta = (%d, %v)", status, m)
 	}
 	status, v := c.verify(ctx, h)
@@ -249,12 +266,16 @@ func TestMetaVerifyListStats(t *testing.T) {
 	}
 	objs := l["objects"].([]any)
 	first := objs[0].(map[string]any)
-	if num(first, "size") != 7 {
+	if num(first, "size") != 7 || first["hash"] != h.String() || first["algorithm"] != "sha256" {
 		t.Fatalf("list object = %v", first)
 	}
 	status, st := c.stats(ctx)
-	if status != http.StatusOK || num(st, "object_count") != 1 || num(st, "total_size") != 7 {
+	if status != http.StatusOK || num(st, "object_count") != 1 || num(st, "total_size") != 7 || st["algorithm"] != "sha256" {
 		t.Fatalf("stats = (%d, %v)", status, st)
+	}
+	// No per-algorithm breakdown: a stats response is a flat summary.
+	if _, ok := st["algorithm_counts"]; ok {
+		t.Fatalf("stats must not carry algorithm_counts: %v", st)
 	}
 }
 
@@ -270,7 +291,7 @@ func TestGCAndOpenAPI(t *testing.T) {
 	_, h2, _ := admin.put(ctx, "two")
 
 	// GC keeping only h1 → deletes h2.
-	status, g := admin.gc(ctx, []cas.Hash{h1})
+	status, g := admin.gc(ctx, []cas.Digest{h1})
 	if status != http.StatusOK || num(g, "deleted") != 1 {
 		t.Fatalf("gc = (%d, %v)", status, g)
 	}
@@ -287,18 +308,18 @@ func TestGCAndOpenAPI(t *testing.T) {
 	}
 }
 
-func TestMalformedHash(t *testing.T) {
+func TestMalformedDigest(t *testing.T) {
 	ctx := context.Background()
 	_, ts := newTestServer(t, DefaultRateLimit())
-	// A malformed hash in the path is rejected with 400.
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/cas/v1/objects/not-a-hash", nil)
-	req.Header.Set("Authorization", "Bearer viewer-tok") // pass auth; the hash is the failure
+	// A malformed digest in the path is rejected with 400.
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/cas/v1/objects/not-a-digest", nil)
+	req.Header.Set("Authorization", "Bearer viewer-tok") // pass auth; the digest is the failure
 	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("malformed hash status = %d, want 400", resp.StatusCode)
+		t.Fatalf("malformed digest status = %d, want 400", resp.StatusCode)
 	}
 }

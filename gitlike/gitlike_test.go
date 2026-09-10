@@ -3,9 +3,7 @@ package gitlike
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,20 +13,20 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// ref adapts a plain cas.Hash to the JSON codec's field type for object
-// literals. The field type carries the wire shape and validates on decode, so
-// the object types themselves need no JSON code for hashes (cas-core §4.2).
-func ref(h cas.Hash) jsoncodec.Hash { return jsoncodec.NewHash(h) }
+// ref keeps object literals readable: a reference field is a plain cas.Digest
+// now, so this is the identity function (it also documents where a reference
+// goes in a literal).
+func ref(d cas.Digest) cas.Digest { return d }
 
 func newRepo(t *testing.T, raw cas.Backend) *Repository {
 	t.Helper()
-	return NewRepository(raw)
+	return NewRepository(raw, sha256hash.New())
 }
 
-func putBlob(t *testing.T, repo *Repository, data string) cas.Hash {
+func putBlob(t *testing.T, repo *Repository, data string) cas.Digest {
 	h, err := repo.Blobs.Put(context.Background(), &Blob{Data: []byte(data)})
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +59,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tree.Entries) != 1 || tree.Entries[0].Name != "a.txt" || !tree.Entries[0].Hash.Hash().Equal(hb) {
+	if len(tree.Entries) != 1 || tree.Entries[0].Name != "a.txt" || !tree.Entries[0].Hash.Equal(hb) {
 		t.Fatalf("tree round-trip: %+v", tree)
 	}
 
@@ -75,7 +73,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if commit.Message != "m" || !commit.Tree.Hash().Equal(ht) || !commit.Parent.IsZero() {
+	if commit.Message != "m" || !commit.Tree.Equal(ht) || !commit.Parent.IsZero() {
 		t.Fatalf("commit round-trip: %+v", commit)
 	}
 	if commit.Time.Unix() != 1 {
@@ -90,7 +88,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag.Name != "v1" || !tag.Target.Hash().Equal(hc) {
+	if tag.Name != "v1" || !tag.Target.Equal(hc) {
 		t.Fatalf("tag round-trip: %+v", tag)
 	}
 }
@@ -133,8 +131,8 @@ func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 // --- References ---
 
 func TestReferences(t *testing.T) {
-	hb := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
-	hc := mustHash(t, "sha256:"+strings.Repeat("cd", 32))
+	hb := mustDigest(t, strings.Repeat("ab", 32))
+	hc := mustDigest(t, strings.Repeat("cd", 32))
 
 	if got := (&Blob{}).References(); got != nil {
 		t.Errorf("blob refs = %v", got)
@@ -173,7 +171,7 @@ func TestResolverTyped(t *testing.T) {
 	if _, err := res.ResolveCommit(ctx, hb); err == nil {
 		t.Fatal("ResolveCommit on a blob must fail")
 	}
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveBlob(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveBlob(missing) = %v, want ErrNotFound", err)
 	}
@@ -182,7 +180,7 @@ func TestResolverTyped(t *testing.T) {
 func TestResolverResolveAnyMissing(t *testing.T) {
 	repo := newRepo(t, mem.New())
 	res := NewResolver(repo)
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveAny(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
 	}
@@ -245,7 +243,7 @@ func TestResolveAnyLegacyUnversioned(t *testing.T) {
 	// the base type, and unmarshalEnvelope appends @1 automatically.
 	payload := []byte(`{"data":"bGVnYWN5"}`)
 	envelopeBytes := marshalEnvelope("blob", payload)
-	h, _ := cas.ParseHash("sha256:" + sha256Hex(envelopeBytes))
+	h := sha256hash.Of(envelopeBytes)
 	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +262,7 @@ func TestResolveAnyUnknownType(t *testing.T) {
 	res := NewResolver(repo)
 	// Store an object with an unknown type name as a TLV envelope.
 	envelopeBytes := marshalEnvelope("mystery@9", []byte(`{}`))
-	h, _ := cas.ParseHash("sha256:" + sha256Hex(envelopeBytes))
+	h := sha256hash.Of(envelopeBytes)
 	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +278,7 @@ func TestParseType(t *testing.T) {
 	repo := newRepo(t, mem.New())
 	// Stored type+payload bytes directly (no Store.Put) so we can test parseType.
 	env := marshalEnvelope("blob@1", []byte{})
-	h, _ := cas.ParseHash("sha256:" + sha256Hex(env))
+	h := sha256hash.Of(env)
 	if err := repo.raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +307,7 @@ func TestPrintObject(t *testing.T) {
 		{&ResolvedObject{Type: "blob", Blob: &Blob{Data: make([]byte, 5)}}, "blob (5 bytes)"},
 		{&ResolvedObject{Type: "tree", Tree: &Tree{}}, "tree (0 entries)"},
 		{&ResolvedObject{Type: "commit", Commit: &Commit{Author: "alice", Message: "hi"}}, "commit by alice: hi"},
-		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(mustHash(t, "sha256:"+strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
+		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(mustDigest(t, strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
 		{&ResolvedObject{Type: "other"}, "unknown type \"other\""},
 	}
 	for _, tc := range cases {
@@ -372,7 +370,7 @@ func TestWalkGraph(t *testing.T) {
 	}
 
 	// Missing root → ErrNotFound.
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if err := WalkGraph(ctx, res, missing, func(*ResolvedObject) error { return nil }); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("WalkGraph(missing) = %v", err)
 	}
@@ -447,7 +445,7 @@ func TestCachedRepositoryMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := cached.GetCommit(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetCommit(missing) = %v", err)
 	}
@@ -468,7 +466,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 	}
 	p := NewPreloader(cached, 0) // workers <= 0 → default
 	defer p.Stop()
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(mustHash(t, "sha256:"+strings.Repeat("ab", 32))), Author: "a"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(mustDigest(t, strings.Repeat("ab", 32))), Author: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,17 +519,13 @@ func TestPreloader(t *testing.T) {
 
 // --- Helpers ---
 
-func mustHash(t *testing.T, s string) cas.Hash {
-	h, err := cas.ParseHash(s)
+func mustDigest(t *testing.T, hexDigest string) cas.Digest {
+	t.Helper()
+	d, err := cas.ParseDigest(hexDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return h
-}
-
-func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return d
 }
 
 // marshalEnvelope builds a TLV envelope over payload bytes
@@ -553,13 +547,10 @@ func marshalEnvelope(typeName string, payload []byte) []byte {
 // Deserialize contract tests): invalid payloads are rejected when the typed
 // store decodes them, and error paths of the repo/print APIs are pinned. ---
 
-func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) cas.Hash {
+func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) cas.Digest {
 	t.Helper()
 	env := marshalEnvelope(typeName, []byte(payloadJSON))
-	h, err := cas.ParseHash("sha256:" + sha256Hex(env))
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := sha256hash.Of(env)
 	if err := repo.raw.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
@@ -592,14 +583,38 @@ func TestGetRejectsInvalidHashPayloads(t *testing.T) {
 	}
 }
 
+// TestLegacyAlgoPrefixedReferenceFailsLoudly pins the deliberate break that
+// comes with keeping the `@1` type names: an object written before the address
+// became a bare digest stores its references as "sha256:<hex>", and the strict
+// hex parser rejects that prefix — so the object fails to decode as ErrCorrupt
+// instead of being silently misread as a different address.
+func TestLegacyAlgoPrefixedReferenceFailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, mem.New())
+	legacy := "sha256:" + strings.Repeat("ab", 32)
+
+	h := mustStoreEnv(t, repo, TypeTree, `{"entries":[{"name":"f","hash":"`+legacy+`","mode":"m"}]}`)
+	if _, err := repo.Trees.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("legacy tree decode = %v, want ErrCorrupt", err)
+	}
+	h = mustStoreEnv(t, repo, TypeCommit, `{"tree":"`+legacy+`","author":"a","message":"m","time":"2026-09-09T12:00:00Z"}`)
+	if _, err := repo.Commits.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("legacy commit decode = %v, want ErrCorrupt", err)
+	}
+	h = mustStoreEnv(t, repo, TypeTag, `{"name":"v","target":"`+legacy+`","tagger":"t"}`)
+	if _, err := repo.Tags.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("legacy tag decode = %v, want ErrCorrupt", err)
+	}
+}
+
 func TestRepositoryErrorPaths(t *testing.T) {
 	raw := mem.New()
-	repo := NewRepository(raw)
+	repo := NewRepository(raw, sha256hash.New())
 	if _, err := NewCachedRepository(repo, 0); err == nil {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
 	}
 	// ResolveAny of a missing object → ErrNotFound.
-	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("00", 32))
+	missing := mustDigest(t, strings.Repeat("00", 32))
 	res := NewResolver(repo)
 	if _, err := res.ResolveAny(ctxBackground(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
@@ -706,7 +721,7 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 // TestCommitRequiredTreeDecode pins the strictness the required tree keeps:
 // a missing, empty, or null tree is a decode error, not a rootless commit.
 func TestCommitRequiredTreeDecode(t *testing.T) {
-	h := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
+	h := mustDigest(t, strings.Repeat("ab", 32))
 	for _, in := range []string{
 		`{"author":"a"}`,                         // missing
 		`{"tree":"","author":"a"}`,               // empty string
@@ -726,7 +741,7 @@ func TestCommitRequiredTreeDecode(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"tree":"`+h.String()+`","parent":null,"author":"a"}`), &c); err != nil {
 		t.Fatal(err)
 	}
-	if c.Tree.IsZero() || !c.Tree.Hash().Equal(h) {
+	if c.Tree.IsZero() || !c.Tree.Equal(h) {
 		t.Fatalf("tree = %v", c.Tree)
 	}
 	if !c.Parent.IsZero() {
@@ -758,7 +773,7 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if back.Message != "child" || back.Parent.IsZero() || !back.Parent.Hash().Equal(root) {
+	if back.Message != "child" || back.Parent.IsZero() || !back.Parent.Equal(root) {
 		t.Fatalf("commit with parent round-trip: %+v", back)
 	}
 }
@@ -769,7 +784,7 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 // TreeEntry drop its hand-written marshaller: cas.Hash marshals itself as its
 // "algo:hex" string, and a nil hash is omitted.
 func TestHashFieldsMarshalWithoutCustomCode(t *testing.T) {
-	h := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
+	h := mustDigest(t, strings.Repeat("ab", 32))
 
 	raw, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
 	if err != nil {
@@ -797,21 +812,21 @@ func TestStoredAddressesPinned(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
 	hb := putBlob(t, repo, "hello")
-	treeHash := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
-	parentHash := mustHash(t, "sha256:"+strings.Repeat("cd", 32))
+	treeHash := mustDigest(t, strings.Repeat("ab", 32))
+	parentHash := mustDigest(t, strings.Repeat("cd", 32))
 	ts := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 
 	cases := []struct {
 		name     string
 		typeName string
 		payload  string
-		put      func() (cas.Hash, error)
+		put      func() (cas.Digest, error)
 	}{
 		{
 			"tree with a hash entry and an absent-hash entry",
 			TypeTree,
 			`{"entries":[{"name":"f","hash":"` + treeHash.String() + `","mode":"100644"},{"name":"g","mode":"100644"}]}`,
-			func() (cas.Hash, error) {
+			func() (cas.Digest, error) {
 				return repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{
 					{Name: "f", Hash: ref(treeHash), Mode: "100644"},
 					{Name: "g", Mode: "100644"},
@@ -822,7 +837,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 			"root commit (absent parent omitted)",
 			TypeCommit,
 			`{"tree":"` + treeHash.String() + `","author":"a","message":"m","time":"2026-09-09T12:00:00Z"}`,
-			func() (cas.Hash, error) {
+			func() (cas.Digest, error) {
 				return repo.Commits.Put(ctx, &Commit{Tree: ref(treeHash), Author: "a", Message: "m", Time: ts})
 			},
 		},
@@ -830,7 +845,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 			"commit with parent",
 			TypeCommit,
 			`{"tree":"` + treeHash.String() + `","parent":"` + parentHash.String() + `","author":"a","message":"m","time":"2026-09-09T12:00:00Z"}`,
-			func() (cas.Hash, error) {
+			func() (cas.Digest, error) {
 				return repo.Commits.Put(ctx, &Commit{Tree: ref(treeHash), Parent: ref(parentHash), Author: "a", Message: "m", Time: ts})
 			},
 		},
@@ -838,7 +853,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 			"tag with target",
 			TypeTag,
 			`{"name":"v1","target":"` + hb.String() + `","tagger":"t","message":"rel"}`,
-			func() (cas.Hash, error) {
+			func() (cas.Digest, error) {
 				return repo.Tags.Put(ctx, &Tag{Name: "v1", Target: ref(hb), Tagger: "t", Message: "rel"})
 			},
 		},
@@ -846,14 +861,14 @@ func TestStoredAddressesPinned(t *testing.T) {
 			"tag without target keeps the historical empty string",
 			TypeTag,
 			`{"name":"v2","target":"","tagger":"","message":""}`,
-			func() (cas.Hash, error) {
+			func() (cas.Digest, error) {
 				return repo.Tags.Put(ctx, &Tag{Name: "v2"})
 			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			want := cas.HashBytes(marshalEnvelope(tc.typeName, []byte(tc.payload)))
+			want := sha256hash.Of(marshalEnvelope(tc.typeName, []byte(tc.payload)))
 			got, err := tc.put()
 			if err != nil {
 				t.Fatal(err)
@@ -868,7 +883,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 // TestValidate pins the advisory validation contract: naming rules for entries
 // and tags, the mandatory commit tree, and absent optional references.
 func TestValidate(t *testing.T) {
-	h := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
+	h := mustDigest(t, strings.Repeat("ab", 32))
 
 	if err := (&Commit{Tree: ref(h)}).Validate(); err != nil {
 		t.Errorf("commit with tree: %v", err)
@@ -980,7 +995,7 @@ func TestWalkGraphDanglingReference(t *testing.T) {
 	repo := newRepo(t, mem.New())
 	res := NewResolver(repo)
 
-	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("00", 32))
+	missing := mustDigest(t, strings.Repeat("00", 32))
 	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(missing), Author: "a", Message: "dangling"})
 	if err != nil {
 		t.Fatal(err)

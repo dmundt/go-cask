@@ -10,7 +10,8 @@
 |---|---|
 | `Store[T]` + the JSON codec (`json.New[T]()`) | the four per-type stores |
 | `Object[T]` (versioned `blob@1`…`tag@1`) | `types.go` |
-| `Hash` / `ParseHash` / `jsoncodec.Hash` | all references (tree entries, commit tree/parent, tag target) |
+| `cas.Digest` reference fields (rendered by the type's own `MarshalText`) | all references (tree entries, commit tree/parent, tag target) |
+| `cas.Hasher` (injected, not chosen here; the tests wire `sha256.New()`) | `NewRepository(raw, hasher)` → each per-type `cas.New` |
 | `cas.Backend` | the shared backend under `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
 | `LRUCache[T]` | `CachedRepository` |
@@ -18,9 +19,9 @@
 
 ## What it extends
 
-- **Four `Object[T]` types** with the self-describing envelope (`types.go`). Reference fields use `jsoncodec.Hash`, the JSON codec's field type (`cas/codec/json`): the zero value is "absent", and the tag `omitzero` leaves an absent reference out of the encoding (`TreeEntry.Hash`, `Commit.Parent`). `Tree`, `TreeEntry` and `Tag` therefore contain **no** JSON code at all, and every reference is rendered as `algo:hex` and validated as it decodes (`ErrInvalidHash` for a malformed string). Literals wrap with `jsoncodec.NewHash(h)`; reads that need the byte-layer address unwrap with `.Hash()`. `Commit` keeps two small methods for its one mandatory-field rule: write refuses a tree-less commit, decode rejects a missing, empty, or null tree. Stored bytes — and so every object address — are unchanged.
-- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — advisory checks for hand-built objects (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent `Hash` is valid where absence is legal). `Store.Put` marshals, it does not validate, so call a `Validate` yourself before `Put` when you build objects in code; a tree-less commit is the one case still rejected at `Put` (via `Commit.MarshalJSON`).
-- **`Repository`** — per-type `Store[T]` over one `cas.Backend` (cross-type access without `any`; the wrong store is a compile-time error).
+- **Four `Object[T]` types** with the self-describing envelope (`types.go`). Reference fields are plain `cas.Digest`: the zero value is "absent", the tag `omitzero` leaves an absent reference out of the encoding (`TreeEntry.Hash`, `Commit.Parent`), and `Digest` renders itself as one lowercase-hex string through `encoding.TextMarshaler` and validates as it decodes — so no hash JSON code lives in `gitlike` (`cas/codec/json` is imported only for `json.New[T]()`), and `Tree`, `TreeEntry` and `Tag` contain **no** JSON code at all. `Commit` keeps two small methods for its one mandatory-field rule: write refuses a tree-less commit, decode rejects a missing, empty, or null tree. Each reference is one bare hex string on the wire (the previous build wrote `"sha256:hexdigest"`) — see the migration note below.
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — advisory checks for hand-built objects (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent digest is valid where absence is legal). `Store.Put` marshals, it does not validate, so call a `Validate` yourself before `Put` when you build objects in code; a tree-less commit is the one case still rejected at `Put` (via `Commit.MarshalJSON`).
+- **`Repository`** — per-type `Store[T]` over one `cas.Backend` and the caller's `cas.Hasher` (`NewRepository(raw, hasher)`); cross-type access without `any`, and the wrong store is a compile-time error.
 - **`Resolver` / `ResolvedObject` / `parseType` / `ResolveAny`** — typed resolution; `ResolveAny` reads the envelope type via `parseType` and dispatches to the typed `Resolve*`.
 - **`WalkGraph`, `CachedRepository`, `Preloader`** — whole-graph traversal, per-type LRU caches, and a background commit preloader.
 - **`cas` is untouched** — the canonical *consumer* pattern.
@@ -28,7 +29,7 @@
 ## Code walkthrough
 
 - `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
-- `repo.go` — `Repository` wires the four stores; `Resolver.ResolveAny` resolves any hash via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
+- `repo.go` — `Repository` wires the four stores over one backend and the caller's hasher; `Resolver.ResolveAny` resolves any digest via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
 - `cached.go` — `CachedRepository` (per-type `LRUCache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
 - `gitlike_test.go` — round-trips, references, `ResolveAny` for every type, legacy unversioned envelopes, `WalkGraph`, cached repository, preloader.
 
@@ -49,9 +50,9 @@ classDiagram
     }
     class Blob { +Data []byte }
     class Tree { +Entries []TreeEntry }
-    class TreeEntry { +Name string +Hash Hash +Mode string }
-    class Commit { +Tree Hash +Parent Hash +Author +Message +Time }
-    class Tag { +Name string +Target Hash +Tagger +Message }
+    class TreeEntry { +Name string +Hash cas.Digest +Mode string }
+    class Commit { +Tree cas.Digest +Parent cas.Digest +Author +Message +Time }
+    class Tag { +Name string +Target cas.Digest +Tagger +Message }
     Repository --> Blob
     Repository --> Tree
     Repository --> Commit
@@ -62,6 +63,10 @@ classDiagram
     Commit --> Tree : Tree
     Tag --> Commit : Target
 ```
+
+## Migration: previously stored objects do not decode
+
+The object type names stay `@1` (`blob@1` … `tag@1`) even though a reference payload changed from `"sha256:hexdigest"` to bare hex. `cas.Digest.UnmarshalText` is strict — it rejects the legacy `sha256:` prefix rather than reinterpreting it — so an object stored by the previous build fails to decode with `cas.ErrCorrupt` (surfaced by `Store.Get`) instead of resolving to a different address. This is a deliberate loud break: there is **no** migration tool and **no** `@2` type. Keep the previous build available to decode those objects, re-create the values with the current build, and treat the old store as read-only until then (`operations.md` §5).
 
 ## How to run
 

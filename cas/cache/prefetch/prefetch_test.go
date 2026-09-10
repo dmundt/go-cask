@@ -11,26 +11,26 @@ import (
 	mem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 type testObject struct {
-	Name string           `json:"Name"`
-	Refs []jsoncodec.Hash `json:"Refs"`
+	Name string       `json:"Name"`
+	Refs []cas.Digest `json:"Refs"`
 }
 
 func (testObject) Type() string { return "test@1" }
 
-// References returns the non-absent references, or nil for a leaf (the JSON
-// codec's field type carries the wire shape and validates on decode, so this
-// type needs no JSON code).
-func (o testObject) References() []cas.Hash {
+// References returns the non-absent references, or nil for a leaf (a cas.Digest
+// renders itself as one hex string, so this type needs no JSON code).
+func (o testObject) References() []cas.Digest {
 	if len(o.Refs) == 0 {
 		return nil
 	}
-	refs := make([]cas.Hash, 0, len(o.Refs))
-	for _, r := range o.Refs {
-		if h := r.Hash(); !h.IsZero() {
-			refs = append(refs, h)
+	refs := make([]cas.Digest, 0, len(o.Refs))
+	for _, d := range o.Refs {
+		if !d.IsZero() {
+			refs = append(refs, d)
 		}
 	}
 	return refs
@@ -38,7 +38,7 @@ func (o testObject) References() []cas.Hash {
 
 func newStore(t *testing.T) (*cas.Store[testObject], *mem.CachedStore[testObject]) {
 	t.Helper()
-	s := cas.New(backmem.New(), jsoncodec.New[testObject]())
+	s := cas.New(backmem.New(), jsoncodec.New[testObject](), sha256.New())
 	return s, mem.New(s)
 }
 
@@ -74,7 +74,7 @@ func TestSmartCacheMissing(t *testing.T) {
 	ctx := context.Background()
 	_, cs := newStore(t)
 	sc := prefetch.NewSmartCache(cs, 2)
-	m, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+	m := sha256.Of([]byte("never stored"))
 	if _, err := sc.GetWithPrefetch(ctx, m); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get(missing) = %v", err)
 	}
@@ -82,16 +82,16 @@ func TestSmartCacheMissing(t *testing.T) {
 
 // waitCached polls until the given hash is loaded into the store's cache or
 // the deadline passes. It lets the asynchronous prefetch goroutine finish.
-func waitCached(t *testing.T, cs *mem.CachedStore[testObject], h cas.Hash) {
+func waitCached(t *testing.T, cs *mem.CachedStore[testObject], d cas.Digest) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if co := cs.Lookup(h.String()); co != nil && co.IsLoaded() {
+		if co := cs.Lookup(d.String()); co != nil && co.IsLoaded() {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("hash %s never became cached", h)
+	t.Fatalf("digest %s never became cached", d)
 }
 
 // TestSmartCachePrefetchReference warms a directly referenced object: the
@@ -101,7 +101,7 @@ func TestSmartCachePrefetchReference(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leaf)}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Digest{leaf}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	obj, err := sc.GetWithPrefetch(ctx, parent)
@@ -121,8 +121,8 @@ func TestSmartCachePrefetchChainRecursion(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leaf)}})
-	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(parent)}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Digest{leaf}})
+	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []cas.Digest{parent}})
 	sc := prefetch.NewSmartCache(cs, 3)
 
 	if _, err := sc.GetWithPrefetch(ctx, root); err != nil {
@@ -140,8 +140,8 @@ func TestSmartCachePrefetchSkipsMissing(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	child, _ := s.Put(ctx, testObject{Name: "child"})
-	missing, _ := cas.ParseHash("sha256:1111111111111111111111111111111111111111111111111111111111111111")
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(child), jsoncodec.NewHash(missing)}})
+	missing := sha256.Of([]byte("never stored either"))
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Digest{child, missing}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	if _, err := sc.GetWithPrefetch(ctx, parent); err != nil {

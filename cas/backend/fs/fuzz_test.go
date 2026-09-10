@@ -6,10 +6,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// FuzzPathRoundTrip checks that hashPath then pathToHash round-trips for
+// FuzzPathRoundTrip checks that hashPath then pathToDigest round-trips for
 // arbitrary content across several fan-out layouts (flat, Git-like, deep).
 func FuzzPathRoundTrip(f *testing.F) {
 	for _, seed := range [][]byte{{'a'}, []byte("abc"), bytes.Repeat([]byte{0xab}, 32)} {
@@ -17,13 +17,13 @@ func FuzzPathRoundTrip(f *testing.F) {
 	}
 	layouts := []struct{ fanOut, fanLevels int }{{0, 0}, {2, 1}, {4, 2}}
 	f.Fuzz(func(t *testing.T, content []byte) {
-		h := cas.HashBytes(content)
+		h := sha256.Of(content)
 		for _, lay := range layouts {
 			s := &Backend{fanOut: lay.fanOut, fanLevels: lay.fanLevels}
 			rel := s.hashPath(h)
-			got, err := pathToHash(rel)
+			got, err := pathToDigest(rel)
 			if err != nil {
-				t.Fatalf("layout %d/%d pathToHash(%q): %v", lay.fanOut, lay.fanLevels, rel, err)
+				t.Fatalf("layout %d/%d pathToDigest(%q): %v", lay.fanOut, lay.fanLevels, rel, err)
 			}
 			if !got.Equal(h) {
 				t.Fatalf("layout %d/%d round-trip: got %v, want %v", lay.fanOut, lay.fanLevels, got, h)
@@ -34,7 +34,7 @@ func FuzzPathRoundTrip(f *testing.F) {
 
 // FuzzVerify checks the integrity contract on the fs backend: an intact
 // object verifies, and any bit flip of the stored bytes must make Verify
-// fail (ErrHashMismatch).
+// fail (ErrDigestMismatch).
 func FuzzVerify(f *testing.F) {
 	for _, seed := range [][]byte{{'x'}, []byte("verify-me"), bytes.Repeat([]byte{0}, 16)} {
 		f.Add(seed)
@@ -45,11 +45,11 @@ func FuzzVerify(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h := cas.HashBytes(content)
+		h := sha256.Of(content)
 		if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Verify(ctx, h); err != nil {
+		if err := s.Verify(ctx, h, sha256.New()); err != nil {
 			t.Fatalf("intact object must verify: %v", err)
 		}
 		// Simulate bit rot: overwrite the stored file with different bytes.
@@ -65,7 +65,7 @@ func FuzzVerify(f *testing.F) {
 		if err := os.WriteFile(s.hashPath(h), corrupt, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Verify(ctx, h); err == nil {
+		if err := s.Verify(ctx, h, sha256.New()); err == nil {
 			t.Fatal("Verify of corrupted data must fail")
 		}
 	})

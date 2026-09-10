@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v13
+version: v14
 ---
 
 # Performance — go-cask
@@ -14,7 +14,7 @@ Every optimization MUST preserve the invariants of `cas-core.md`. Measure before
 | # | Goal | How |
 |---|---|---|
 | P-01 | Lock-free read path | `Get`/`Exists`/`List`/`Stats` take no lock (§2) |
-| P-02 | One-pass streaming | hash computed while writing via `io.TeeReader`; never read bytes twice |
+| P-02 | One-pass serialization | the envelope is marshaled once, digested, then streamed to `Backend.Put`; hash-on-write surfaces (CLI, `examples/api`) stream through `io.MultiWriter`/`io.Copy`; never re-serialize or re-read source bytes |
 | P-03 | Bounded allocations | hot paths flat; every benchmark calls `b.ReportAllocs()` |
 | P-04 | No reflection | generics monomorphize; no runtime type assertions in hot paths |
 | P-05 | Large objects never buffered | `Backend` streams `io.Reader`; HTTP layer streams bodies |
@@ -30,7 +30,7 @@ Writes are atomic (temp file → `f.Sync()` → `os.Rename`; Go's `os.Rename` al
 
 ## 3. One-pass hashing (`Store.Put`)
 
-Serialize once and hash while streaming (feed bytes through `io.TeeReader` into the hasher) before `raw.Put` — never read content twice. `Backend.Put(ctx, h, r)` MUST stream `r` without buffering; the hash in `h` is the trusted address (`Verify` is the integrity check).
+Serialize once: `Store.Put` marshals the envelope into one buffer, digests that buffer with the injected `Hasher`, then streams it to `raw.Put` — the envelope is never marshaled twice. Surfaces that hash while writing (the CLI's `put` and `examples/api`'s upload) spool and hash in a single pass through `io.MultiWriter`/`io.Copy` into `sha256.NewHasher()`. `Backend.Put(ctx, d, r)` MUST stream `r` without buffering; the digest `d` is the trusted address (`Verify` is the integrity check).
 
 ## 4. Allocation & streaming rules
 
@@ -41,7 +41,7 @@ Serialize once and hash while streaming (feed bytes through `io.TeeReader` into 
 
 ## 5. Benchmark suite
 
-Benchmarks live next to the code (`cas/`, examples). Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); `fs`-backend Put/Get (same sizes, flat vs fan-out); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseHash` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); `fs`-backend Put/Get (same sizes, flat vs fan-out); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`.
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
 - Store-logic benchmarks run against the in-memory `memory` backend (deterministic, no disk noise); disk behavior is covered by the `fs`-backend cases.
@@ -139,7 +139,7 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 ## 12. Checklist
 
 - [x] `Get`/`Exists`/`List`/`Stats` are lock-free
-- [x] hash-on-write in a single pass (`io.TeeReader`)
+- [x] hash-on-write in a single pass (CLI/HTTP: `io.MultiWriter` + `io.Copy`; core: marshal once, digest, stream)
 - [x] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
 - [x] `-race` concurrent Put/Get/Delete test green
 - [x] no reflection/`unsafe`/external speed dependencies

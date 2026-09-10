@@ -1,7 +1,7 @@
 package cas
 
 // Object[T] is a self-describing, reference-aware typed object: it knows
-// its versioned type name and which hashes it references. The generic core
+// its versioned type name and which digests it references. The generic core
 // never interprets types or references — References() is the single source
 // of truth for traversal, preloading, and GC reachability.
 //
@@ -12,6 +12,6 @@ package cas
 // (e.g. "commit@1") so several object-model majors can coexist in one store
 // and the version travels with the bytes.
 type Object[T any] interface {
-	Type() string       // versioned type name, e.g. "blob@1"
-	References() []Hash // hashes this object points to; may be nil
+	Type() string         // versioned type name, e.g. "blob@1"
+	References() []Digest // digests this object points to; may be nil
 }

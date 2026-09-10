@@ -18,6 +18,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // testNote is a small Object[T] used to size store benchmarks.
@@ -26,12 +27,12 @@ type testNote struct {
 	Body  string
 }
 
-func (testNote) Type() string           { return "note@1" }
-func (testNote) References() []cas.Hash { return nil }
+func (testNote) Type() string             { return "note@1" }
+func (testNote) References() []cas.Digest { return nil }
 
-// hashData computes the content address of data.
-func hashData(data []byte) cas.Hash {
-	return cas.HashBytes(data)
+// digestData computes the content address of data with the client's hasher.
+func digestData(data []byte) cas.Digest {
+	return sha256.Of(data)
 }
 
 func benchNote(size int) testNote {
@@ -51,7 +52,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s := cas.New(mem.New(), jsoncodec.New[testNote]())
+			s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
 			note := benchNote(sz.size)
 			b.SetBytes(int64(sz.size))
 			b.ReportAllocs()
@@ -69,7 +70,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s := cas.New(mem.New(), jsoncodec.New[testNote]())
+			s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
 			h, err := s.Put(ctx, benchNote(sz.size))
 			if err != nil {
 				b.Fatal(err)
@@ -117,7 +118,7 @@ func BenchmarkFSBackendPut(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					binary.BigEndian.PutUint64(data, uint64(i))
-					h := hashData(data)
+					h := digestData(data)
 					if err := s.Put(ctx, h, bytes.NewReader(data)); err != nil {
 						b.Fatal(err)
 					}
@@ -148,7 +149,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				h := hashData(make([]byte, sz.size))
+				h := digestData(make([]byte, sz.size))
 				data := strings.Repeat("x", sz.size)
 				if err := s.Put(ctx, h, strings.NewReader(data)); err != nil {
 					b.Fatal(err)
@@ -173,7 +174,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[testNote]())
+	s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
 	note := benchNote(1024)
 	b.SetBytes(1024)
 	b.ReportAllocs()
@@ -196,7 +197,7 @@ func BenchmarkVerify(b *testing.B) {
 		b.Fatal(err)
 	}
 	data := strings.Repeat("verify", 1024)
-	h := hashData([]byte(data))
+	h := digestData([]byte(data))
 	if err := s.Put(ctx, h, strings.NewReader(data)); err != nil {
 		b.Fatal(err)
 	}
@@ -204,19 +205,19 @@ func BenchmarkVerify(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := s.Verify(ctx, h); err != nil {
+		if err := s.Verify(ctx, h, sha256.New()); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func BenchmarkParseHash(b *testing.B) {
+func BenchmarkParseDigest(b *testing.B) {
 	valid := "sha256:" + strings.Repeat("ab", 32)
 	invalid := "sha256:not-hex"
 	b.Run("valid", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if _, err := cas.ParseHash(valid); err != nil {
+			if _, err := sha256.Parse(valid); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -224,7 +225,7 @@ func BenchmarkParseHash(b *testing.B) {
 	b.Run("invalid", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			cas.ParseHash(invalid)
+			sha256.Parse(invalid)
 		}
 	})
 }
@@ -233,22 +234,22 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[testNote]())
+	s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
 	const objects = 64
-	var hashes []cas.Hash
+	var digests []cas.Digest
 	for i := 0; i < objects; i++ {
 		h, err := s.Put(ctx, testNote{Title: fmt.Sprintf("obj-%d", i)})
 		if err != nil {
 			b.Fatal(err)
 		}
-		hashes = append(hashes, h)
+		digests = append(digests, h)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			h := hashes[i%objects]
+			h := digests[i%objects]
 			i++
 			if _, err := s.Get(ctx, h); err != nil {
 				b.Fatal(err)

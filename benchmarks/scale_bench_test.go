@@ -37,6 +37,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // scaleTarget is the object count these probes extrapolate to:
@@ -91,14 +92,14 @@ func scalePayload(p []byte, i int) {
 	}
 }
 
-// scaleFill prefills raw with n unique objects and returns their hashes.
-func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int) []cas.Hash {
+// scaleFill prefills raw with n unique objects and returns their digests.
+func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int) []cas.Digest {
 	b.Helper()
-	hs := make([]cas.Hash, n)
+	hs := make([]cas.Digest, n)
 	p := make([]byte, scaleObjSize)
 	for i := 0; i < n; i++ {
 		scalePayload(p, i)
-		h := cas.HashBytes(p)
+		h := sha256.Of(p)
 		hs[i] = h
 		if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
 			b.Fatal(err)
@@ -144,7 +145,7 @@ func BenchmarkScalePut(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				scalePayload(p, n+i)
-				h := cas.HashBytes(p)
+				h := sha256.Of(p)
 				if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
 					b.Fatal(err)
 				}
@@ -238,9 +239,9 @@ func BenchmarkScaleDelete(b *testing.B) {
 	}
 }
 
-// BenchmarkScaleList measures full List scans (materializes every hash) of
+// BenchmarkScaleList measures full List scans (materializes every digest) of
 // a store holding CASK_SCALE_OBJECTS objects. Keep N modest: each op
-// allocates the whole hash slice.
+// allocates the whole digest slice.
 func BenchmarkScaleList(b *testing.B) {
 	for _, be := range scaleBackends() {
 		b.Run(be.name, func(b *testing.B) {
@@ -254,7 +255,7 @@ func BenchmarkScaleList(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				hh, err := raw.List(ctx, "sha256")
+				hh, err := raw.List(ctx)
 				if err != nil {
 					b.Fatal(err)
 				}

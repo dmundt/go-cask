@@ -43,7 +43,7 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `fs`-backend Put/Get | `flat` vs `fan-out` × 64 B/1 KiB/1 MiB | Real-disk `fs` behavior |
 | `BenchmarkRoundTrip` | Put + Get | End-to-end cycle |
 | `BenchmarkVerify` | intact object | Integrity scan cost |
-| `BenchmarkParseHash` | `valid`/`invalid` | Hash-string parsing |
+| `BenchmarkParseDigest` | `valid`/`invalid` | Digest parsing (`sha256.Parse`: printable form + bare hex) |
 | `BenchmarkParallelPutGet` | concurrent | Lock-free reads + mutex writes |
 
 Store cases run against the in-memory `memory` backend (deterministic); the `fs` cases write to an auto-cleaned temp dir.

@@ -11,23 +11,24 @@ import (
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 	t.Helper()
-	repo, err := newRepository(mem.New())
+	repo, err := newRepository(mem.New(), sha256.New())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return repo, newResolver(repo)
 }
 
-// TestNoteJSONPayloadPinned locks the stored payload shape: it is the JSON the
-// hand-written marshaller used to emit, so moving the hash JSON shape into the
-// codec's field type (jsoncodec.Hash) does not re-address stored notes.
+// TestNoteJSONPayloadPinned locks the stored payload shape: a reference is one
+// hex digest string, rendered by cas.Digest's text marshaller, with no
+// per-type JSON code involved.
 func TestNoteJSONPayloadPinned(t *testing.T) {
-	h := cas.HashBytes([]byte("tag payload"))
-	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: refs(h)})
+	h := sha256.Of([]byte("tag payload"))
+	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: []cas.Digest{h}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestCrossTypeResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: refs(tag), Attachments: refs(att)})
+	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: []cas.Digest{tag}, Attachments: []cas.Digest{att}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: refs(second)})
+	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: []cas.Digest{second}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +147,8 @@ func TestPrefetchWarmsCache(t *testing.T) {
 func TestBrokenReference(t *testing.T) {
 	ctx := context.Background()
 	repo, res := newTestRepo(t)
-	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: refs(missing)})
+	missing := sha256.Of([]byte("never stored"))
+	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.Digest{missing}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +169,11 @@ func TestWalkerChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: refs(leaf)})
+	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: []cas.Digest{leaf}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: refs(mid)})
+	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: []cas.Digest{mid}})
 	if err != nil {
 		t.Fatal(err)
 	}

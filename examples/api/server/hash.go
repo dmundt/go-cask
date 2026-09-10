@@ -7,8 +7,8 @@ import (
 )
 
 // spoolAndHash copies r into w while hashing it, returning the byte count.
-// The hash is available from the hasher after the copy. Hashing itself uses
-// cas.NewHasher / cas.HashBytes (cas-core §4.2).
+// The digest is available from the hasher after the copy. The algorithm is the
+// client's choice (cas/hash/sha256 here); the core names none (cas-core §4.2).
 func spoolAndHash(w io.Writer, hasher interface {
 	Write([]byte) (int, error)
 }, r io.Reader) (int64, error) {

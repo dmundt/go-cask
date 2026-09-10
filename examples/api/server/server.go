@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // server is the CAS API server: routes over an fs.Backend with bearer-token
@@ -153,11 +154,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// Store raw bytes — the hash is computed while streaming
+// Store raw bytes — the digest is computed while streaming
 // the body to a temp spool (memory-bounded), then the spool streams into
-// the store. Identical bytes → identical hash → deduplicated.
+// the store. Identical bytes → identical digest → deduplicated.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
-	hasher := cas.NewHasher()
+	hasher := sha256.NewHasher()
 	spool, err := os.CreateTemp("", "cask-upload-*")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "upload spool failed"})
@@ -171,11 +172,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
 		return
 	}
-	h, err := cas.NewHash(hasher.Sum(nil))
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
+	h := cas.NewDigest(hasher.Sum(nil))
 	ctx := r.Context()
 	exists, err := s.raw.Exists(ctx, h)
 	if err != nil {
@@ -197,7 +194,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
 
-// List objects with algo filter and pagination.
+// List objects with pagination.
 func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, err := parseBounded(q.Get("limit"), 100, 1, 1000)
@@ -210,19 +207,19 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "offset must be >= 0"})
 		return
 	}
-	hashes, err := s.raw.List(r.Context(), q.Get("algo"))
+	digests, err := s.raw.List(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
 		return
 	}
-	total := len(hashes)
+	total := len(digests)
 	lo := min(offset, total)
 	hi := min(offset+limit, total)
 	objects := make([]map[string]any, 0, hi-lo)
-	for _, h := range hashes[lo:hi] {
+	for _, h := range digests[lo:hi] {
 		objects = append(objects, map[string]any{
 			"hash":      h.String(),
-			"algorithm": h.Algorithm(),
+			"algorithm": sha256.Name,
 			"size":      s.sizeOf(h.String()),
 		})
 	}
@@ -241,7 +238,7 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	w.Header().Set("X-CAS-Algorithm", h.Algorithm())
+	w.Header().Set("X-CAS-Algorithm", sha256.Name)
 	if size := s.sizeOf(h.String()); size > 0 {
 		w.Header().Set("X-CAS-Size", strconv.FormatInt(size, 10))
 	}
@@ -291,7 +288,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	// a typed-layer concern (this raw store cannot interpret them).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hash":       h.String(),
-		"algorithm":  h.Algorithm(),
+		"algorithm":  sha256.Name,
 		"size":       size,
 		"type":       envelopeType(data),
 		"references": []string{},
@@ -310,16 +307,12 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	hasher := cas.NewHasher()
+	hasher := sha256.NewHasher()
 	if _, err := io.Copy(hasher, rc); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
 		return
 	}
-	recomputed, err := cas.NewHash(hasher.Sum(nil))
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
+	recomputed := cas.NewDigest(hasher.Sum(nil))
 	valid := recomputed.Equal(h)
 	slog.Info("cas api audit", "action", "verify", "hash", h.String(), "valid", valid)
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -336,14 +329,10 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
 		return
 	}
-	counts := make(map[string]int64, len(st.AlgorithmCounts))
-	for algo, n := range st.AlgorithmCounts {
-		counts[algo] = int64(n)
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"object_count":     st.ObjectCount,
-		"total_size":       st.TotalSize,
-		"algorithm_counts": counts,
+		"object_count": st.ObjectCount,
+		"total_size":   st.TotalSize,
+		"algorithm":    sha256.Name,
 	})
 }
 
@@ -360,7 +349,7 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 	}
 	reachable := make(map[string]bool, len(body.Reachable))
 	for _, hs := range body.Reachable {
-		h, err := cas.ParseHash(hs)
+		h, err := sha256.Parse(hs)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid hash in reachable set"})
 			return
@@ -388,12 +377,12 @@ func (s *server) openapi(w http.ResponseWriter, r *http.Request) {
 	w.Write(openapiYAML)
 }
 
-// parseHashParam validates {hash} with ParseHash → 400 on malformed.
-func parseHashParam(w http.ResponseWriter, r *http.Request) (cas.Hash, bool) {
-	h, err := cas.ParseHash(r.PathValue("hash"))
+// parseHashParam validates {hash} with sha256.Parse → 400 on malformed.
+func parseHashParam(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
+	h, err := sha256.Parse(r.PathValue("hash"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed hash"})
-		return cas.Hash{}, false
+		return nil, false
 	}
 	return h, true
 }

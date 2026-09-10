@@ -2,17 +2,17 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v10
+version: v11
 ---
 
 # Viewer Design — go-cask
 
-The embedded technical browser UI in `internal/web/`, for developers/admins browsing the CAS. Defines **how** (hypermedia, nested Go templates + htmx only, raw HTML) and **what** (dashboard hub → objects/blobs/stats at a technical level). MUST be **simple, elegant, usable** — elegance from clean semantic structure/layout/hierarchy, not CSS. Read with `viewer-security.md` (all requirements apply unchanged), `coding-guidelines.md` (§4 no CSS/JS, §5 templates+htmx, §6 raw HTML, §10 viewer boundary), `cas-core.md` (data model: `Hash`, `Object[T]`, `Backend.Stats`, `Verify`, `GC`). Design reference: hypermedia.systems. `docs/design/viewer-brief.md` is non-normative next-iteration input; changes nothing here until folded back.
+The embedded technical browser UI in `internal/web/`, for developers/admins browsing the CAS. Defines **how** (hypermedia, nested Go templates + htmx only, raw HTML) and **what** (dashboard hub → objects/blobs/stats at a technical level). MUST be **simple, elegant, usable** — elegance from clean semantic structure/layout/hierarchy, not CSS. Read with `viewer-security.md` (all requirements apply unchanged), `coding-guidelines.md` (§4 no CSS/JS, §5 templates+htmx, §6 raw HTML, §10 viewer boundary), `cas-core.md` (data model: `Digest`, `Object[T]`, `Backend.Stats`, `Verify`, `GC`). Design reference: hypermedia.systems. `docs/design/viewer-brief.md` is non-normative next-iteration input; changes nothing here until folded back.
 
 ## 1. Purpose & persona
 
-- Persona: developer/operator answering "what is stored? how much space? what does this point to? is it intact? which algorithms?".
-- Hub: a **dashboard** (landing) with storage stats, algorithm breakdown, a sample of objects, and search — one click to every detail.
+- Persona: developer/operator answering "what is stored? how much space? what does this point to? is it intact?".
+- Hub: a **dashboard** (landing) with storage stats, an addressing note, a sample of objects, and search — one click to every detail.
 - Drill-down: dashboard → object list → object detail → raw blob/hexdump.
 - Aesthetic: simple, elegant, usable — dense but scannable, plain semantic HTML, no decoration.
 - Out of scope: object editing (objects are immutable), JSON/data APIs, client-side state, charting.
@@ -32,7 +32,7 @@ Simple/elegant/usable: (6) **dashboard-first** landing (numbers that matter, sam
 - Every mutation is a POST with server-validated CSRF token (hidden form field; htmx forms are ordinary forms).
 - Audit-log all admin actions (delete, GC, verify); never log tokens/secrets.
 - Missing/expired session → 401 empty on data endpoints; insufficient role → 403 empty; never disclose object existence. The dashboard landing (`/viewer/`) alone redirects (303) to `/viewer/login` when unauthenticated and also accepts a direct `?token=` login (viewer-security §5).
-- Browser talks only to the backend API; backend to the store. Validate every query param/header/hash (`ParseHash`); reject malformed before touching storage.
+- Browser talks only to the backend API; backend to the store. Validate every query param/header/hash (`sha256.Parse`); reject malformed before touching storage.
 
 ## 4. Rendering architecture — nested Go templates
 
@@ -65,32 +65,33 @@ Conventions: one template per view + small partials; minimal logic (`{{if}}`/`{{
 
 ## 6. Pages & routes
 
-All under `/viewer` (configurable via the `viewer:` config block). `{hash}` values validated with `ParseHash` before storage access.
+All under `/viewer` (configurable via the `viewer:` config block). `{hash}` values are parsed with the client's `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before storage access.
 
 | Route | Method | Content | Role |
 |---|---|---|---|
 | `/viewer/login` | GET/POST | startup-token login → session cookie | — |
 | `/viewer/?token=<token>` | GET | direct `?token=` login → session cookie → 303 to `/viewer/` (throttled; `Referrer-Policy: no-referrer`) | — |
-| `/viewer/` | GET | dashboard: stat cards, algorithm table, sample, search, quick nav; unauthenticated → 303 to `/viewer/login` | viewer |
-| `/viewer/dashboard` | GET | dashboard panels (stats + sample), htmx refresh fragment | viewer |
-| `/viewer/objects` | GET | object list: filter + table (search fragment target) | viewer |
+| `/viewer/` | GET | dashboard: stat cards, addressing note, sample, search, quick nav; unauthenticated → 303 to `/viewer/login` | viewer |
+| `/viewer/dashboard` | GET | dashboard panels (stats + addressing note + sample), htmx refresh fragment | viewer |
+| `/viewer/objects` | GET | object list: search box + table (search fragment target) | viewer |
 | `/viewer/objects/{hash}` | GET | object detail: meta + actions | viewer |
 | `/viewer/objects/{hash}/raw` | GET | raw serialized bytes + hexdump (lazy `<pre>`) | viewer |
 | `/viewer/objects/{hash}/verify` | POST | integrity check → result fragment | operator |
 | `/viewer/objects/{hash}/delete` | POST | delete (hx-confirm) → updated list | admin |
+| `/viewer/gc` | GET | GC page: root-hash form + result area | admin |
 | `/viewer/gc` | POST | mark-and-sweep GC with polling progress | admin |
 
 ## 7. Data views
 
-**Dashboard (landing):** stat cards (total objects, total size, algorithms in use); algorithm breakdown (`stats-panel` from `Backend.Stats`, OOB-refreshed — the dashboard is the stats view); sample objects (`sample-table`, first N from `Backend.List`, rows as `<shorthash> (<type>)` linking to details via the full hash); prominent search (swaps the object table — the entry point for "find this hash"); quick nav line (Objects · Verify · GC).
+**Dashboard (landing):** stat cards (total objects, total size); an **addressing note** (digests are raw digest bytes rendered as lowercase hex — the core names no algorithm; this viewer digests and validates with `sha256`); sample objects (`sample-table`, first N from `Backend.List`, rows as `<shorthash> (<type>)` linking to details via the full digest); prominent search (jumps into the object list — the entry point for "find this hash"); quick nav line (Objects · GC).
 
-**Objects:** UI links ALWAYS show the **8-char short hash** (`shortHash`, e.g. `9f86d081`); the link `href` always carries the full `algo:hexdigest` — short form is display-only, identity never lost; the full hash is always on the detail page (`object-meta`). Generic lists render `<shorthash> (<type>)` (`hashWithType`); tables with a dedicated type column MAY show the plain short hash. List columns: hash (short+type), algorithm, `Type()`, size; filter by algorithm and hash/type substring (active search). Detail order: summary (`object-meta` `<dl>`: full hash, algorithm, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
+**Objects:** UI links ALWAYS show the **8-char short hash** (`shortHash`, e.g. `9f86d081`); the link `href` always carries the **full digest** (lowercase hex, e.g. `/viewer/objects/9f86d081…`, no algorithm prefix) — short form is display-only, identity never lost; the full digest is always on the detail page (`object-meta`). Generic lists render `<shorthash> (<type>)`; tables with a dedicated type column MAY show the plain short hash. List columns: hash (short), `Type()`, size; search filters by hash or type substring (active search, `q`). Detail order: summary (`object-meta` `<dl>`: full digest, the client's constant algorithm name `sha256`, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
 
 **References are out of scope:** the viewer is a **byte-layer** tool and MUST NOT interpret typed references (resolving `References()` needs an app object model; the product ships none; `internal/` and `cas/` MUST NOT import `examples/`). Reference graphs belong to app layers (`gitlike`). The viewer shows objects, bytes, and integrity, not typed structure.
 
 **Blobs:** the `raw` view shows exact serialized bytes — a classic hex dump in a `<pre>` (16-byte rows: offset, hex, ASCII columns) plus exact total size. Hexdump is **lazy-loaded** via htmx (`revealed`) so large objects don't block the page (streaming reads; never buffer megabytes). Type shown per `Type()`; raw JSON visible as-is.
 
-**Integrity & maintenance:** `verify` recomputes the stored-bytes hash and reports match/mismatch (`Verify` contract). `gc` runs mark-and-sweep with a polling progress fragment; only objects not in the reachable set are removed; every deletion audit-logged (admin only).
+**Integrity & maintenance:** `verify` recomputes the stored-bytes digest with the client's hasher and reports match/mismatch (`Verify(ctx, d, hasher)` contract). `gc` runs mark-and-sweep with a polling progress fragment; only objects not in the reachable set are removed; every deletion audit-logged (admin only).
 
 ## 8. Out of scope
 
@@ -103,15 +104,15 @@ All under `/viewer` (configurable via the `viewer:` config block). `{hash}` valu
 
 ## 9. Acceptance checklist
 
-- [x] Dashboard is the landing page: stat cards, algorithm breakdown, sample objects, search, quick nav — all with drill-down links
+- [x] Dashboard is the landing page: stat cards, addressing note, sample objects, search, quick nav — all with drill-down links
 - [x] Simple/elegant/usable: consistent layout, scannable tables, one purpose per page, no dead ends
 - [x] Every `viewer-security.md` requirement implemented
 - [x] No CSS, no hand-written JS in `internal/web/`
 - [x] HTML only via `html/template`, nested `{{define}}`/`{{template}}`/`{{block}}`, embedded `embed.FS`
 - [x] Full pages and fragments share partials (incl. `stats-panel` as OOB target)
-- [x] Objects viewable: 8-char short-hash links (full hash on detail + link targets), algorithm, type, size; generic lists show `<shorthash> (<type>)`
+- [x] Objects viewable: 8-char short-hash links (full digest on detail + link targets), the client's constant algorithm name `sha256`, type, size; generic lists show `<shorthash> (<type>)`
 - [x] No typed references/graph in `internal/web/` (byte-layer)
 - [x] Blobs viewable: raw bytes + hex dump, lazy-loaded for large objects
 - [x] Mutations (verify/delete/GC) are POST + CSRF + role-checked + audit-logged; GET side-effect free
 - [x] Works with htmx disabled (links/forms still function)
-- [x] `{hash}` validated with `ParseHash`; malformed → 400, missing session → 401 empty, insufficient role → 403 empty
+- [x] `{hash}` parsed with `sha256.Parse`; malformed → 400, missing session → 401 empty, insufficient role → 403 empty

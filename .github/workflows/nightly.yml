@@ -20,7 +20,7 @@ jobs:
           cache: false
       - name: Fuzz targets (60s each)
         run: |
-          go test -run=^$ -fuzz=FuzzParseHash -fuzztime=60s ./cas/
+          go test -run=^$ -fuzz=FuzzParseDigest -fuzztime=60s ./cas/
           go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=60s ./cas/backend/fs/
           go test -run=^$ -fuzz=FuzzVerify -fuzztime=60s ./cas/backend/fs/
           go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=60s ./cas/codec/json/

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v14
+version: v15
 tags: [go-cask]
 status: stable
 ---
@@ -66,7 +66,7 @@ All files MUST use exactly these terms (forbidden synonyms listed):
 | viewer API | The hypermedia surface under `/viewer/` (HTML). |
 | CAS API | The JSON HTTP API **pattern** demonstrated by `examples/api` — the product ships no network surface. |
 | `Backend` | The non-generic byte-storage interface; impls in subpackages: `fs.Backend` (disk), `memory.Backend` (in-memory). |
-| `Store[T]` / `Hash` | Generic typed store / content address `algo:hexdigest` validated with `ParseHash`. |
+| `Store[T]` / `Digest` | Generic typed store / content address: raw digest bytes (zero value = absent), rendered as one lowercase-hex string; the client's `Hasher` validates it. The printable `sha256:hexdigest` form is a client rendering (`cas/hash/sha256`). |
 | fan-out / lock-free reads / CAS laws | Directory layout (`FanOut`/`FanLevels`); `Get`/`Exists`/`List`/`Stats` take no lock; the testing-strategy §1 invariants. |
 
 Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guidelines" → **coding-guidelines**; "Repository/Resolver in the core" → they are the **gitlike shared reference layer**; "sharded paths" → **fan-out**.

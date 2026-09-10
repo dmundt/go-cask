@@ -9,6 +9,7 @@ import (
 	memcache "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // Example shows prefetch-on-access (cas-core §4.10): NewSmartCache wraps a
@@ -16,7 +17,7 @@ import (
 // references.
 func Example() {
 	ctx := context.Background()
-	s := cas.New(backmem.New(), jsoncodec.New[testObject]())
+	s := cas.New(backmem.New(), jsoncodec.New[testObject](), sha256.New())
 	h, err := s.Put(ctx, testObject{Name: "root"})
 	if err != nil {
 		fmt.Println("error:", err)

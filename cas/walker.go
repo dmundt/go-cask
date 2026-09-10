@@ -22,16 +22,16 @@ func NewWalker[T Object[T]](store *Store[T], visit func(T) error) *Walker[T] {
 	return &Walker[T]{store: store, visit: visit}
 }
 
-// Walk visits the object at h and then every object reachable through
-// References(), depth first, visiting each hash at most once. It returns the
+// Walk visits the object at d and then every object reachable through
+// References(), depth first, visiting each digest at most once. It returns the
 // first error from visit or from any read. A missing object returns
 // ErrNotFound.
-func (w *Walker[T]) Walk(ctx context.Context, h Hash) error {
+func (w *Walker[T]) Walk(ctx context.Context, d Digest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	visited := make(map[string]bool)
-	stack := []Hash{h}
+	stack := []Digest{d}
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]

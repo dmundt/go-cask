@@ -22,21 +22,8 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	lru "github.com/dmundt/go-cask/cas/cache/lru"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
-
-// refs wraps plain hashes as the JSON codec's field type for object literals;
-// the wrapper carries the wire shape and validates on decode.
-func refs(hs ...cas.Hash) []jsoncodec.Hash {
-	if len(hs) == 0 {
-		return nil
-	}
-	out := make([]jsoncodec.Hash, len(hs))
-	for i, h := range hs {
-		out[i] = jsoncodec.NewHash(h)
-	}
-	return out
-}
 
 const usage = `usage: artifacts [-store <dir>] <command> [args]
 
@@ -56,30 +43,29 @@ type Artifact struct {
 
 func (a *Artifact) Type() string { return "artifact@1" }
 
-func (a *Artifact) References() []cas.Hash { return nil }
+func (a *Artifact) References() []cas.Digest { return nil }
 
 // Manifest names the current artifact(s) of a build target. GC keeps
-// everything reachable from manifests and reclaims replaced artifacts. The
-// reference field uses jsoncodec.Hash, the JSON codec's field type: it
-// serializes as "algo:hex" and validates on decode with no code here
-// (cas-core §4.2).
+// everything reachable from manifests and reclaims replaced artifacts. A
+// reference field is a cas.Digest: it renders itself as one hex string through
+// encoding.TextMarshaler and needs no JSON code here (cas-core §4.2).
 type Manifest struct {
-	Name      string           `json:"name"`
-	Artifacts []jsoncodec.Hash `json:"artifacts,omitempty"`
+	Name      string       `json:"name"`
+	Artifacts []cas.Digest `json:"artifacts,omitempty"`
 }
 
 func (m *Manifest) Type() string { return "manifest@1" }
 
-// References returns the artifact hashes, or nil for an empty manifest (nil
+// References returns the artifact digests, or nil for an empty manifest (nil
 // means "no references", which is what GC reads as unreachable).
-func (m *Manifest) References() []cas.Hash {
+func (m *Manifest) References() []cas.Digest {
 	if len(m.Artifacts) == 0 {
 		return nil
 	}
-	refs := make([]cas.Hash, 0, len(m.Artifacts))
-	for _, r := range m.Artifacts {
-		if h := r.Hash(); !h.IsZero() {
-			refs = append(refs, h)
+	refs := make([]cas.Digest, 0, len(m.Artifacts))
+	for _, d := range m.Artifacts {
+		if !d.IsZero() {
+			refs = append(refs, d)
 		}
 	}
 	return refs
@@ -136,8 +122,8 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts := cas.New(raw, newGzipCodec[*Artifact]())
-	manifests := cas.New(raw, newGzipCodec[*Manifest]())
+	artifacts := cas.New(raw, newGzipCodec[*Artifact](), sha256.New())
+	manifests := cas.New(raw, newGzipCodec[*Manifest](), sha256.New())
 	cache, err := lru.New(artifacts, 100)
 	if err != nil {
 		return nil, err
@@ -155,38 +141,38 @@ func (a *app) close() { a.monitor.Stop() }
 // The previous manifest for the name is deleted, so the artifact it
 // referenced becomes unreferenced — GC reclaims it (a build cache keeps only
 // the current artifact of each target).
-func (a *app) put(ctx context.Context, name, file string) (cas.Hash, bool, error) {
+func (a *app) put(ctx context.Context, name, file string) (cas.Digest, bool, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
 	h, dedup, err := a.artifacts.PutDedup(ctx, &Artifact{Name: name, Data: data})
 	if err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
 	prev, err := a.manifestsNamed(ctx, name)
 	if err != nil {
-		return cas.Hash{}, false, err
+		return nil, false, err
 	}
 	for _, ph := range prev {
 		if err := a.raw.Delete(ctx, ph); err != nil {
-			return cas.Hash{}, false, err
+			return nil, false, err
 		}
 	}
-	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: refs(h)}); err != nil {
-		return cas.Hash{}, false, err
+	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: []cas.Digest{h}}); err != nil {
+		return nil, false, err
 	}
 	return h, dedup, nil
 }
 
-// manifestsNamed returns the stored manifest hashes for name.
-func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Hash, error) {
-	hashes, err := a.raw.List(ctx, "")
+// manifestsNamed returns the stored manifest digests for name.
+func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Digest, error) {
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var out []cas.Hash
-	for _, h := range hashes {
+	var out []cas.Digest
+	for _, h := range digests {
 		m, err := a.manifests.Get(ctx, h)
 		if err != nil {
 			continue // not a manifest
@@ -198,20 +184,20 @@ func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Hash, erro
 	return out, nil
 }
 
-// get serves an artifact by hash through the LRU cache.
-func (a *app) get(ctx context.Context, h cas.Hash) (*Artifact, error) {
-	return a.cache.Get(ctx, h)
+// get serves an artifact by digest through the LRU cache.
+func (a *app) get(ctx context.Context, d cas.Digest) (*Artifact, error) {
+	return a.cache.Get(ctx, d)
 }
 
-// gc deletes every object not reachable from the manifests: manifest hashes
+// gc deletes every object not reachable from the manifests: manifest digests
 // plus the artifacts they reference.
 func (a *app) gc(ctx context.Context) (int, error) {
-	hashes, err := a.raw.List(ctx, "")
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		return 0, err
 	}
-	reachable := make(map[string]bool, len(hashes))
-	for _, h := range hashes {
+	reachable := make(map[string]bool, len(digests))
+	for _, h := range digests {
 		m, err := a.manifests.Get(ctx, h)
 		if err != nil {
 			continue // not a manifest (an artifact)
@@ -221,7 +207,7 @@ func (a *app) gc(ctx context.Context) (int, error) {
 			reachable[ref.String()] = true
 		}
 	}
-	before := len(hashes)
+	before := len(digests)
 	if err := a.raw.GC(ctx, reachable); err != nil {
 		return 0, err
 	}
@@ -271,7 +257,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, usage)
 			return 2
 		}
-		h, err := cas.ParseHash(rest[0])
+		h, err := sha256.Parse(rest[0])
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1
@@ -298,7 +284,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, st)
 	case "monitor":
 		for _, s := range rest {
-			h, err := cas.ParseHash(s)
+			h, err := sha256.Parse(s)
 			if err != nil {
 				fmt.Fprintf(stderr, "error: %v\n", err)
 				return 1

@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v5
+version: v6
 ---
 
 # API Design — go-cask
@@ -27,8 +27,8 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 - Plural resource nouns for collections (`/objects`, `/stats`).
 - Sub-resources by nesting: `/objects/{hash}/meta|raw|verify` (one level).
 - Actions are POST sub-resources (`/verify`, `/gc`) — never GET with side effects, never bare verbs at top level.
-- Path segments lowercase, hyphen-separated when multi-word. Query params short/lowercase (`q`, `algo`, `limit`, `offset`), documented defaults/bounds.
-- Hash params always named `{hash}`, formatted `algo:hexdigest`, validated with `ParseHash` (`^[a-z0-9]+:[0-9a-f]+$`).
+- Path segments lowercase, hyphen-separated when multi-word. Query params short/lowercase (`q`, `limit`, `offset`), documented defaults/bounds.
+- Hash params always named `{hash}`, accepted as the printable `sha256:hexdigest` form or bare lowercase hex and parsed with the client's `sha256.Parse` (malformed → 400). The core's `Digest` carries no algorithm name.
 
 ## 4. Methods & semantics
 
@@ -61,7 +61,7 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 - JSON surfaces: every error is `{"error": "<concise message>"}` — no stack traces, internal paths, secrets, or object bytes.
 - Viewer: minimal HTML pages/fragments; 401/403 empty bodies.
 - Messages actionable but never disclose internals/existence in 401/403.
-- Sentinel errors → statuses (per-surface): `ErrNotFound`→404, `ErrHashMismatch`→409/500, `ErrInvalidHash`→400, `ErrUnknownAlgorithm`→400. Exception: `verify` is a query returning `{"valid":true/false}` on 200 (not an error); `ErrHashMismatch` maps to the error status only on mutation paths.
+- Sentinel errors → statuses (per-surface): `ErrNotFound`→404, `ErrDigestMismatch`→409/500, `ErrInvalidDigest`→400. Exception: `verify` is a query returning `{"valid":true/false}` on 200 (not an error); `ErrDigestMismatch` maps to the error status only on mutation paths.
 
 ## 7. Authn/authz
 
@@ -78,7 +78,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 
 ## 9. Validation
 
-- Every `{hash}`: `ParseHash` first → 400 on malformed.
+- Every `{hash}`: `sha256.Parse` first (it accepts `sha256:hexdigest` and bare hex) → 400 on malformed.
 - Query params: reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0.
 - Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible).
 - Never trust client input — header, query, and body all validated (viewer-security).
@@ -87,7 +87,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 
 - Cursor-free offset pagination: `?limit=<1..max>&offset=<0..>`, documented defaults.
 - Envelope `{"total": <int>, "<items>": [...]}` (`<items>` = plural resource name); `total` semantics documented per endpoint.
-- Filters are query params (`algo`); filters change only the set, never the item shape.
+- Filters are query params (`q` for the viewer's hash/type search); filters change only the set, never the item shape.
 
 ## 11. Streaming & binary payloads
 
@@ -114,14 +114,14 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 3. Define the contract — method, body, response shape/content type, statuses (200/201/204 + 400/401/403/404/429).
 4. Define errors — JSON `{"error":…}` or minimal HTML; 401/403 never disclose existence.
 5. Apply middleware — rate limit, auth, CSRF (viewer mutations), role check; audit-log mutations.
-6. Validate — `ParseHash`, strict query/body.
+6. Validate — parse the `{hash}` with the client's `sha256.Parse`, strict query/body.
 7. Document — add to the surface's OpenAPI.
 8. Test — `httptest` for status/roles/429/streaming; fuzz complex input.
 
 ## 15. Checklist
 
 - [x] Correct prefix; content type matches the surface
-- [x] Naming per §3; `{hash}` with `ParseHash`
+- [x] Naming per §3; `{hash}` parsed with `sha256.Parse`
 - [x] Methods per §4 (GET side-effect free, POST create/action, DELETE idempotent)
 - [x] Status codes/errors per §5/§6
 - [x] Auth, CSRF, roles, rate limit, audit per §7/§8

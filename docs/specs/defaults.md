@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v17
+version: v18
 ---
 
 # Defaults & Behavior — go-cask
@@ -11,7 +11,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 ## 1. Basic design & architecture
 
-- Three layers (cas-core §3): byte (non-generic `Hash`/`Backend`/backends) → typed (generic `Object[T]`/`Codec[T]`/`Store[T]`/`Walker[T]`/caches) → application (per-app types; `gitlike` is the reference).
+- Three layers (cas-core §3): byte (non-generic `Digest`/`Backend`/backends) → typed (generic `Object[T]`/`Codec[T]`/`Store[T]`/`Walker[T]`/caches) → application (per-app types; `gitlike` is the reference).
 - One HTTP surface (api-design §2): the viewer (`/viewer/*`, HTML). No network JSON API ships (backend-architecture §1); `examples/api` demonstrates a JSON surface.
 - One server, one mux (backend-architecture §3–4), fixed middleware order: session auth → role → CSRF → handler.
 - Five maintenance operations (consistency §8): `Verify`, `ScanRefs`, `GC`, `Prune`, `Stats`.
@@ -20,20 +20,21 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 | Item | Default/value | Defined in |
 |---|---|---|
-| Default hash algorithm | `sha256` | cas-core §4.2 |
-| Built-in hash algorithm | `sha256` (the core's only algorithm; no registry) | cas-core §4.2 |
-| Hash string format | `"<algo>:<lowercase-hex>"` | cas-core §4.1 |
-| Hash validation pattern | `^[a-z0-9]+:[0-9a-f]+$` | api-design §3 |
-| Fan-out layout | `FanOut=2`, `FanLevels=1`; file name always the full digest | cas-core §4.4 |
+| Hash algorithm in the core | none — `cas` names no algorithm; the client injects a `cas.Hasher` | cas-core §4.2 |
+| Shipped client hasher | `sha256` (`cas/hash/sha256`: `sha256.New()`; go-cask's own clients — CLI, viewer, `gitlike`, examples — wire it) | cas-core §4.2 |
+| Digest text form | lowercase hex with no algorithm prefix (`Digest.String`/`MarshalText`) | cas-core §4.1 |
+| Digest validation | core `ParseDigest`/`UnmarshalText` accept lowercase hex only; the client's `sha256.Parse` also accepts the printable `sha256:` prefix | cas-core §4.1, §4.2 |
+| Printable digest form | `"sha256:hexdigest"` (`sha256.Format`; bare hex also parses) | cas-core §4.2 |
+| Fan-out layout | `FanOut=2`, `FanLevels=1` → `<base>/<fan-out dirs>/<full hex digest>`; no algorithm directory; file name always the full digest | cas-core §4.4 |
 | Fan-out bound | `FanLevels × FanOut ≤ 64` | cas-core §4.4 |
 | Dir / file perms | `0o755` / `0o644` | cas-core §4.4 |
 | Default codec | JSON (`json.New[T]()`) | cas-core §4.6 |
 | Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
-| Hash-on-write | single pass via `io.TeeReader` | performance §3 |
-| Cache key | `h.String()` → `*CachedObject[T]` in `sync.Map` | cas-core §4.10 |
+| Hash-on-write | one pass, spool + hasher (`io.MultiWriter`) | performance §3 |
+| Cache key | `d.String()` → `*CachedObject[T]` in `sync.Map` | cas-core §4.10 |
 | LRU `maxSize` | MUST be > 0 | cas-core §4.10 |
-| Sentinel errors | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` | library-design §2 |
+| Sentinel errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` | library-design §2 |
 | Object type name | `<type>@<major>`; absent version reads as `@1` | object-versioning §2 |
 | Serialization envelope | TLV `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` | cas-core §8 d1 |
 | `Prune` dry-run default | `true` (delete needs explicit flag) | consistency §5 |
@@ -67,7 +68,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Login throttle | max 5 failures/IP/min with backoff | viewer-security |
 | Active-search trigger | `input changed delay:300ms` | viewer-design §5 |
 | GC progress polling | `hx-trigger="every 2s"` | viewer-design §5 |
-| Dashboard stat cards | total objects, total size, algorithms in use | viewer-design §7 |
+| Dashboard stat cards | total objects, total size + the addressing note (digests are raw hex; this viewer uses `sha256`) | viewer-design §7 |
 | Roles | viewer (read) / operator (+store, verify) / admin (+delete, GC, prune) | viewer-security |
 
 ## 5. Maintenance & consistency defaults
@@ -81,7 +82,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Dangling-ref handling | diagnostics only; repair is the app's job | consistency §3 |
 | Orphan `*.tmp` | ignored by `List`/`Stats`; removed by `clean` | operations §2 |
 | Write durability | temp file → `f.Sync()` → `os.Rename` (dir fsync optional) | operations §1 |
-| Migration | optional; verify-before-delete; both algorithms coexist | operations §5 |
+| Migration | re-digest + rewrite, verify-before-delete; no algorithm dir and no registry to consult (a store holds one digest format) | operations §5 |
 
 ## 6. Performance baselines
 
@@ -103,7 +104,7 @@ Baselines are calibratable on CI hardware (performance §11.4) — default targe
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | std-lib only (external only if justified + vendored) | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS/CSS | coding-guidelines §4 |
-| Lean-core budget | `cas/` ≤ ~1500 LOC, ≤ ~20 exported | library-design §1 |
+| Lean-core budget | `cas/` ≤ ~1600 LOC, ≤ ~40 exported | library-design §1 |
 | Stable core surface | identifiers in cas-core §7.1 | cas-core §7.1 |
 | Extension rule | extend don't modify; own packages; stable surface only | extensions §1 |
 

@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v15
+version: v16
 ---
 
 # Backend Architecture — go-cask
@@ -76,7 +76,7 @@ All product shapes share the config contract and the viewer security model; an a
 
 ## 9. Security
 
-- The viewer enforces, in order: session auth (startup-token login behind its own throttle), role checks (viewer/operator/admin), CSRF on mutations, strict input validation (`ParseHash`, bounded params) — viewer-security + api-design §7–§9.
+- The viewer enforces, in order: session auth (startup-token login behind its own throttle), role checks (viewer/operator/admin), CSRF on mutations, strict input validation (`sha256.Parse`, bounded params) — viewer-security + api-design §7–§9.
 - 401/403 never disclose object existence (empty bodies); error messages never leak internals.
 
 ## 10. Checklist

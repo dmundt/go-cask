@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v9
+version: v10
 ---
 
 # Consistency — go-cask
@@ -24,7 +24,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 
 ## 2. Detecting broken objects (`Verify`)
 
-- `Verify(ctx, h)` re-reads bytes and recomputes the hash with the address's algorithm; mismatch → `ErrHashMismatch`.
+- `Verify(ctx, d, hasher)` re-reads the bytes and recomputes the digest with the injected `Hasher` (the client owns the algorithm; a digest carries none); mismatch → `ErrDigestMismatch`.
 - Variants (pick by cost): **full scan** (every object; scheduled nightly or on demand; definitive), **sampled scan** (random subset on `List`; cheap coverage), **on-read** (verify while streaming; strongest but most expensive; critical objects only).
 - Handling (operations §4): report → **quarantine** (move the file aside) → audit-log → alert. The store never "fixes" a broken object — correct content must be re-`Put` (a new, valid hash).
 
@@ -50,7 +50,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 Removes **unreachable** objects older than a threshold (restic-retention/S3-lifecycle style).
 
 - **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration.
-- **Operation:** `Prune(ctx, roots []Hash, minAge time.Duration, dryRun bool)`: mark reachable from roots (§4); delete objects that are **unreachable AND older than `minAge`**; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
+- **Operation:** `Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool)`: mark reachable from roots (§4); delete objects that are **unreachable AND older than `minAge`**; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
 - **Grace period is the point:** unreachable-young objects are kept, giving a recovery window after a bad unpin/delete (restic "keep recent even if unreachable"; S3 noncurrent-version expiration).
 - **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL objects older than T regardless of reachability — removes history and can break references. Exists for legal/temp-data eviction; the one op that can destroy reachable data.
 - **Surface:** `cask` CLI `prune --min-age <dur> <roots...> [--dry-run]` (cli §2). The viewer exposes verify/GC admin actions (viewer-design §6); prune stays CLI-only — dry-run semantics and root-based interface don't fit the hypermedia surface. No HTTP surface (backend-architecture §1).
@@ -81,7 +81,7 @@ Deliberately **not** adopted (yet): persisted refcounts, bloom-filter tracing, c
 
 ## 8. Anti-over-engineering
 
-The entire consistency surface is **five operations**: `Verify(h)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored, per algorithm).
+The entire consistency surface is **five operations**: `Verify(ctx, d, hasher)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored: object count and total size — the core cannot group by algorithm, since a digest carries none).
 
 - No persisted refcounts, no incremental GC index, no automatic background GC, no GC-vs-write transactions, no distributed coordination.
 - Content addressing + atomic writes remove most consistency problems by construction; the rest is detection + explicit reclamation.
@@ -95,7 +95,7 @@ The entire consistency surface is **five operations**: `Verify(h)` (is this obje
 
 ## 10. Checklist
 
-- [x] `Verify` detects any single flipped byte (`ErrHashMismatch`)
+- [x] `Verify` detects any single flipped byte (`ErrDigestMismatch`)
 - [x] Broken objects quarantined + audit-logged, never auto-"fixed"
 - [x] Dangling scan O(refs) lock-free; reported as diagnostics
 - [x] GC mark-and-sweep from app roots; explicit only

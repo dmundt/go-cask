@@ -11,15 +11,15 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// TestManifestJSONPayloadPinned locks the stored payload shape: it is the JSON
-// the hand-written marshaller used to emit, so moving the hash JSON shape into
-// the codec's field type (jsoncodec.Hash) does not re-address stored manifests
-// (the manifest hash is part of the GC reachability set).
+// TestManifestJSONPayloadPinned locks the stored payload shape: a reference is
+// one hex digest string, rendered by cas.Digest's text marshaller, with no
+// per-type JSON code involved.
 func TestManifestJSONPayloadPinned(t *testing.T) {
-	h := cas.HashBytes([]byte("artifact payload"))
-	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: refs(h)})
+	h := sha256.Of([]byte("artifact payload"))
+	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: []cas.Digest{h}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,10 +150,7 @@ func TestGC(t *testing.T) {
 // A get of a missing hash fails with ErrNotFound.
 func TestGetMissing(t *testing.T) {
 	a := newTestApp(t)
-	missing, err := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Fatal(err)
-	}
+	missing := sha256.Of([]byte("never stored"))
 	if _, err := a.get(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("get(missing) = %v, want ErrNotFound", err)
 	}

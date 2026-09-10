@@ -21,14 +21,15 @@ import (
 	"github.com/dmundt/go-cask/cas/backend"
 )
 
-// Default fan-out parameters, Git-like: <base>/<algo>/<2 hex>/<full hex>.
+// Default fan-out parameters, Git-like: <base>/<2 hex>/<full hex>.
 const (
 	DefaultFanOut    = 2
 	DefaultFanLevels = 1
 	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed the
-	// hex digest width. With the core's one algorithm (sha256, 64 hex chars)
-	// this makes a configured layout exactly cover the digest, so hashPath
-	// never runs past its end.
+	// hex digest width. Go-cask's own clients digest with sha256 (64 hex chars),
+	// so this makes a configured layout cover the digest exactly and hashPath
+	// never runs past its end. A client whose digest is shorter must keep
+	// FanOut × FanLevels within its own width.
 	MaxFanDepth = 64
 )
 
@@ -71,7 +72,8 @@ func WithDirSync() backend.Option {
 }
 
 // Backend is the filesystem backend: each object is one file under
-// <base>/<algorithm>/<fan-out dirs>/<full-hex-digest>.
+// <base>/<fan-out dirs>/<full-hex-digest>. There is no algorithm directory —
+// the core names no algorithm (cas-core §4.2).
 type Backend struct {
 	base      string
 	fanOut    int
@@ -117,15 +119,16 @@ func syncParentDir(path string) error {
 	return d.Sync()
 }
 
-// hashPath returns the on-disk path for h. Every caller has already rejected
-// the absent hash (cas.CheckHash), and a present one carries a validated
-// lowercase-alphanumeric algorithm name (cas.ParseHash/NewHash), so the
-// algorithm is a single safe path element. WithFanOut/WithFanLevels bound
-// FanOut × FanLevels to the digest width (MaxFanDepth), so every chunk is in
-// range.
-func (s *Backend) hashPath(h cas.Hash) string {
-	hexDigest := hex.EncodeToString(h.Bytes())
-	p := filepath.Join(s.base, h.Algorithm())
+// hashPath returns the on-disk path for a digest: the store base, then the
+// fan-out directory chunks, then the lowercase-hex digest as the file name.
+// There is no algorithm directory — the backend does not know which algorithm
+// produced a key (cas-core §4.2) — and a digest is hex by construction
+// (cas.Digest.UnmarshalText), so no path element needs sanitizing.
+// WithFanOut/WithFanLevels bound FanOut × FanLevels to the digest width
+// (MaxFanDepth), so every chunk is in range.
+func (s *Backend) hashPath(d cas.Digest) string {
+	hexDigest := hex.EncodeToString(d)
+	p := s.base
 	if s.fanOut > 0 && s.fanLevels > 0 {
 		for i := 0; i < s.fanLevels; i++ {
 			p = filepath.Join(p, hexDigest[i*s.fanOut:(i+1)*s.fanOut])
@@ -134,31 +137,27 @@ func (s *Backend) hashPath(h cas.Hash) string {
 	return filepath.Join(p, hexDigest)
 }
 
-// safeAlgo was removed: Hash is a concrete type with unexported fields, so an
-// algorithm name outside `^[a-z0-9]+$` is no longer constructible and the
-// path element needs no sanitizing.
-
-// pathToHash rebuilds a Hash from a path relative to the store base.
-func pathToHash(rel string) (cas.Hash, error) {
+// pathToDigest rebuilds a digest from a path relative to the store base: the
+// last element is the hex digest, any leading elements are fan-out chunks.
+// strings.Split always yields at least one element, so only the digest itself
+// can be malformed.
+func pathToDigest(rel string) (cas.Digest, error) {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) < 2 {
-		return cas.Hash{}, cas.ErrInvalidHash
-	}
-	return cas.ParseHash(parts[0] + ":" + parts[len(parts)-1])
+	return cas.ParseDigest(parts[len(parts)-1])
 }
 
-// Put stores the bytes read from r under h (atomic temp-file write + rename).
-func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
+// Put stores the bytes read from r under d (atomic temp-file write + rename).
+func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckHash(h, "fs: put"); err != nil {
+	if err := cas.CheckDigest(d, "fs: put"); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := s.hashPath(h)
+	path := s.hashPath(d)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("cas: create object dir: %w", err)
 	}
@@ -241,18 +240,18 @@ func createTempExcl(path string) (*os.File, string, error) {
 }
 
 // Get returns a stream of the object's bytes; the caller MUST close it.
-func (s *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
+func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := cas.CheckHash(h, "fs: get"); err != nil {
+	if err := cas.CheckDigest(d, "fs: get"); err != nil {
 		return nil, err
 	}
-	path := s.hashPath(h)
+	path := s.hashPath(d)
 	f, err := openObject(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, h)
+			return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
 		return nil, fmt.Errorf("cas: open object: %w", err)
 	}
@@ -292,14 +291,14 @@ func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, 
 }
 
 // Exists reports whether the object is stored. Lock-free.
-func (s *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
+func (s *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	if err := cas.CheckHash(h, "fs: exists"); err != nil {
+	if err := cas.CheckDigest(d, "fs: exists"); err != nil {
 		return false, err
 	}
-	_, err := os.Stat(s.hashPath(h))
+	_, err := os.Stat(s.hashPath(d))
 	if err == nil {
 		return true, nil
 	}
@@ -310,16 +309,16 @@ func (s *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
 }
 
 // Delete removes the object. A missing object is a no-op.
-func (s *Backend) Delete(ctx context.Context, h cas.Hash) error {
+func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckHash(h, "fs: delete"); err != nil {
+	if err := cas.CheckDigest(d, "fs: delete"); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := os.Remove(s.hashPath(h)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(s.hashPath(d)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("cas: delete object: %w", err)
 	}
 	return nil
@@ -327,17 +326,17 @@ func (s *Backend) Delete(ctx context.Context, h cas.Hash) error {
 
 // Size returns the stored object's size in bytes. A missing object returns
 // ErrNotFound. ctx is honored at entry for cancellation.
-func (s *Backend) Size(ctx context.Context, h cas.Hash) (int64, error) {
+func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	if err := cas.CheckHash(h, "fs: size"); err != nil {
+	if err := cas.CheckDigest(d, "fs: size"); err != nil {
 		return 0, err
 	}
-	fi, err := os.Stat(s.hashPath(h))
+	fi, err := os.Stat(s.hashPath(d))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, h)
+			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
 		return 0, fmt.Errorf("cas: stat object: %w", err)
 	}
@@ -406,15 +405,15 @@ func isTempFile(name string) bool {
 	return err == nil
 }
 
-// List returns every stored hash, filtered by algorithm when algo != "".
-// Hashes are rebuilt from their on-disk paths; a path whose algorithm this
-// build does not implement (a store written by a build with another algorithm)
-// cannot be parsed back into a Hash, so it is skipped rather than reported.
-func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
+// List returns every stored digest, sorted. Digests are rebuilt from their
+// on-disk paths; a file whose name is not a hex digest (a foreign file, a temp
+// leftover) is skipped rather than reported. The backend cannot filter by
+// algorithm: it does not know which one produced a key (cas-core §4.2).
+func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var hashes []cas.Hash
+	var digests []cas.Digest
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -426,31 +425,26 @@ func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 		if err != nil {
 			return nil
 		}
-		h, err := pathToHash(rel)
+		digest, err := pathToDigest(rel)
 		if err != nil {
 			return nil
 		}
-		if algo != "" && h.Algorithm() != algo {
-			return nil
-		}
-		hashes = append(hashes, h)
+		digests = append(digests, digest)
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
-	sort.Slice(hashes, func(i, j int) bool { return hashes[i].String() < hashes[j].String() })
-	return hashes, nil
+	sort.Slice(digests, func(i, j int) bool { return digests[i].String() < digests[j].String() })
+	return digests, nil
 }
 
-// Stats walks the tree and returns per-algorithm counts and total size. Like
-// List, it can only account for objects whose algorithm this build implements;
-// others are skipped.
+// Stats walks the tree and returns the object count and total size.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	st := &cas.Stats{AlgorithmCounts: map[string]int{}}
+	st := &cas.Stats{}
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -462,15 +456,13 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		if err != nil {
 			return nil
 		}
-		h, err := pathToHash(rel)
-		if err != nil {
+		if _, err := pathToDigest(rel); err != nil {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
-		st.AlgorithmCounts[h.Algorithm()]++
 		st.TotalSize += info.Size()
 		st.ObjectCount++
 		return nil
@@ -481,45 +473,44 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	return st, nil
 }
 
-// Verify re-reads the object and recomputes its address, streaming so a large
-// object is never buffered. It reports ErrHashMismatch when the stored bytes no
-// longer hash to h.
-func (s *Backend) Verify(ctx context.Context, h cas.Hash) error {
+// Verify re-reads the object and recomputes its digest with the client's
+// Hasher, streaming so a large object never buffered. It reports
+// ErrDigestMismatch when the stored bytes no longer digest to d.
+func (s *Backend) Verify(ctx context.Context, d cas.Digest, hasher cas.Hasher) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckHash(h, "fs: verify"); err != nil {
+	if err := cas.CheckDigest(d, "fs: verify"); err != nil {
 		return err
 	}
-	rc, err := s.Get(ctx, h)
+	if err := hasher.Validate(d); err != nil {
+		return err
+	}
+	rc, err := s.Get(ctx, d)
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
 
-	hasher := cas.NewHasher()
-	if _, err := io.Copy(hasher, rc); err != nil {
+	actual, err := hasher.Digest(rc)
+	if err != nil {
 		return fmt.Errorf("cas: verify read: %w", err)
 	}
-	actual, err := cas.NewHash(hasher.Sum(nil))
-	if err != nil {
-		return err // unreachable: a sha256 sum always has sha256.Size bytes
-	}
-	if !actual.Equal(h) {
-		return fmt.Errorf("%w: %s", cas.ErrHashMismatch, h)
+	if !actual.Equal(d) {
+		return fmt.Errorf("%w: %s", cas.ErrDigestMismatch, d)
 	}
 	return nil
 }
 
 // GC performs mark-and-sweep garbage collection.
 func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
-	hashes, err := s.List(ctx, "")
+	digests, err := s.List(ctx)
 	if err != nil {
 		return err
 	}
-	for _, h := range hashes {
-		if !reachable[h.String()] {
-			if err := s.Delete(ctx, h); err != nil {
+	for _, d := range digests {
+		if !reachable[d.String()] {
+			if err := s.Delete(ctx, d); err != nil {
 				return err
 			}
 		}
@@ -528,33 +519,33 @@ func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
 }
 
 // Prune deletes objects not reachable from roots AND older than minAge.
-func (s *Backend) Prune(ctx context.Context, roots []cas.Hash, minAge time.Duration, dryRun bool) ([]cas.Hash, error) {
+func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Duration, dryRun bool) ([]cas.Digest, error) {
 	reachable := make(map[string]bool, len(roots))
 	for _, r := range roots {
 		reachable[r.String()] = true
 	}
-	hashes, err := s.List(ctx, "")
+	digests, err := s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
-	var doomed []cas.Hash
-	for _, h := range hashes {
-		if reachable[h.String()] {
+	var doomed []cas.Digest
+	for _, d := range digests {
+		if reachable[d.String()] {
 			continue
 		}
-		info, err := os.Stat(s.hashPath(h))
+		info, err := os.Stat(s.hashPath(d))
 		if err != nil {
 			continue
 		}
 		if now.Sub(info.ModTime()) < minAge {
 			continue
 		}
-		doomed = append(doomed, h)
+		doomed = append(doomed, d)
 	}
 	if !dryRun {
-		for _, h := range doomed {
-			if err := s.Delete(ctx, h); err != nil {
+		for _, d := range doomed {
+			if err := s.Delete(ctx, d); err != nil {
 				return nil, err
 			}
 		}

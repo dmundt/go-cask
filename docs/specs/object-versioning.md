@@ -2,7 +2,7 @@
 type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names, registry and resolution of multiple model versions, compatibility rules, and migration; the 4th, independent version space of go-cask.
-version: v4
+version: v5
 ---
 
 # Object Versioning — go-cask
@@ -18,7 +18,7 @@ Object-model versions are a **fourth, independent version space** — separate f
 `Object[T].Type()` returns `<type>@<major>` (gitlike: `blob@1`, `tree@1`, `commit@1`, `tag@1`).
 
 - The major is part of the type identity: the versioned name is written into the TLV envelope's Type field (`cas/envelope.go`; cas-core §8 decision 1), required regardless of codec.
-- The address's digest-part (`algo:hexdigest`) is unaffected — the model version lives in the bytes, not the address.
+- The address is unaffected — it is the raw digest bytes rendered as lowercase hex, with no algorithm part; the model version lives in the bytes, not the address.
 - **Legacy default:** a name without `@major` is read as `@1`, so pre-versioning objects stay decodable.
 - `parseType`/`ResolveAny` split on `@`: `<type>` + `<major>`.
 
@@ -45,7 +45,7 @@ Registry is keyed by the **full versioned name**, so majors coexist: `RegisterTy
 
 - **Read v1 → write v2:** the app reads old-major objects (registered `@1` deserializer), transforms them, `Put`s the new-major objects; the new graph replaces the old roots.
 - Safety mirrors `operations.md` §5: keep both versions until the new data is verified; old objects are reclaimed only by the app's reachability (consistency §4) — never by the store.
-- Versioned names make migration **observable**: `Stats`/viewer can report per-`type@major` counts.
+- Versioned names make migration **observable**: the envelope type is visible per object (`meta`, the viewer's detail page), so an app can group objects by `type@major`.
 
 ## 6. gitlike reference
 

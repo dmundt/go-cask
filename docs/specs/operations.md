@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Operations — go-cask
-description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v7
+description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
+version: v8
 ---
 
 # Operations — go-cask
 
-How a CASK-backed deployment stays durable, observable, and migratable. Related: `cas-core.md` (`Stats`/`Verify`/`GC`), `viewer-security.md` (audit logging), `library-design.md` (`ErrHashMismatch`).
+How a CASK-backed deployment stays durable, observable, and migratable. Related: `cas-core.md` (`Stats`/`Verify`/`GC`), `viewer-security.md` (audit logging), `library-design.md` (`ErrDigestMismatch`).
 
 ## 1. Durability
 
@@ -29,14 +29,15 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 ## 4. Integrity cadence
 
 - `Verify` on every read is expensive; recommended: verify on write-back (re-read after `Put`) for critical data; scheduled full `Verify` (e.g. nightly); random-sample `Verify` during `List`.
-- On mismatch: return `ErrHashMismatch`, quarantine the object (move aside), audit-log, alert.
+- On mismatch: return `ErrDigestMismatch`, quarantine the object (move aside), audit-log, alert.
 
 ## 5. Migration
 
-- **One algorithm per build, and it is in every address.** The core implements exactly one hash algorithm (`sha256`, cas-core §4.2). A reference carries that name, so an object written by a build with another algorithm is *recognized* rather than misread (`ErrUnknownAlgorithm`) — but this build cannot read or verify it.
-- **Algorithm migration** (e.g. `sha1` → `sha256`, or a future `sha256` → `blake3`): list objects with the source build, re-hash each under the target, write, `Verify` **each** target object, and only then delete the source. Never delete the source before the target verifies. This is a format transition with a maintenance window, not a configuration switch.
+- **The address carries no algorithm and the layout has no algorithm directory.** A `Digest` is raw bytes stored at `<base>/<fan-out dirs>/<full hex digest>`; the core names no algorithm and keeps no registry, so nothing in the store records which algorithm produced a key. A store is therefore effectively single-format, like a Git object database with one object format.
+- **Algorithm migration** (e.g. `sha256` → `blake3`, or a legacy SHA-1 store) is a **client-side re-digest and rewrite**, not a configuration switch and not an operation the library performs for you. Run it at the byte layer with a client: `List` every digest → `Get` each object's bytes → digest them with the target `cas.Hasher` → `Put` under the new digest → `Verify` **each** target object through that hasher → and delete the source **only** after its replacement verifies. There is no registry to consult and no per-algorithm filter to lean on (`Backend.List(ctx)` returns every digest; `Backend.Stats` reports only `ObjectCount`/`TotalSize`).
+- **Objects stored before the digest change are not migrated at all.** Object type names stay `@1`, but reference payloads changed from `"sha256:hexdigest"` to bare hex: strict hex parsing rejects the legacy prefix, so such an object fails to decode with `ErrCorrupt` instead of resolving to a different address. There is no migration tool and no `@2` type. Keep the previous build available to decode those objects, re-create the values with the current build, and treat the old store as read-only until then (versioning §4).
 - **Layout migration** (change `FanOut`/`FanLevels`): same procedure — copy under the new layout, verify, then remove the old (or keep both during a transition, with reads falling back to the old layout).
-- Both are offline or low-write operations; document the maintenance window.
+- Algorithm and layout transitions are offline or low-write operations; document the maintenance window.
 
 ## 6. Backup
 
@@ -50,5 +51,5 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 - [x] orphan `*.tmp` sweep documented/implemented
 - [x] slog logging for mutations, login-throttle rejections, slow ops, GC runs
 - [x] verify cadence defined; mismatch → quarantine + audit + alert
-- [x] migration procedures (algorithm and layout) documented with verify-before-delete
+- [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
 - [x] backup procedure documented

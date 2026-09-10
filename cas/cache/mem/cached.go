@@ -40,13 +40,13 @@ type CacheStats struct {
 	Size    int     // entries currently cached
 }
 
-// CachedObject[T] is a lazy proxy for one hash: it loads the object from the
+// CachedObject[T] is a lazy proxy for one digest: it loads the object from the
 // underlying Store[T] exactly once (double-checked locking) and memoizes the
 // result.
 type CachedObject[T cas.Object[T]] struct {
 	store   *cas.Store[T]
 	metrics *CacheMetrics
-	hash    cas.Hash
+	digest  cas.Digest
 	mu      sync.RWMutex
 	obj     T
 	err     error
@@ -54,7 +54,7 @@ type CachedObject[T cas.Object[T]] struct {
 }
 
 // Load returns the object, loading it from the underlying store on first
-// access and memoizing the result. The first Load for a hash records one
+// access and memoizing the result. The first Load for a digest records one
 // CacheMetrics.Loads, whether or not the store fetch succeeds; later calls are
 // served from the memoized value.
 func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
@@ -70,7 +70,7 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	if c.loaded {
 		return c.obj, c.err
 	}
-	obj, err := c.store.Get(ctx, c.hash)
+	obj, err := c.store.Get(ctx, c.digest)
 	c.obj, c.err, c.loaded = obj, err, true
 	if c.metrics != nil {
 		c.metrics.Loads.Add(1)
@@ -78,8 +78,8 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	return obj, err
 }
 
-// Hash returns the hash this object is memoized for.
-func (c *CachedObject[T]) Hash() cas.Hash { return c.hash }
+// Digest returns the digest this object is memoized for.
+func (c *CachedObject[T]) Digest() cas.Digest { return c.digest }
 
 // IsLoaded reports whether the object has been loaded without triggering a load.
 func (c *CachedObject[T]) IsLoaded() bool {
@@ -124,22 +124,22 @@ func (c *CachedStore[T]) IncrEvicts() {
 	c.metrics.Evicts.Add(1)
 }
 
-// Proxy returns the (possibly not-yet-loaded) CachedObject for h.
-func (c *CachedStore[T]) Proxy(ctx context.Context, h cas.Hash) (*CachedObject[T], error) {
-	key := h.String()
+// Proxy returns the (possibly not-yet-loaded) CachedObject for d.
+func (c *CachedStore[T]) Proxy(ctx context.Context, d cas.Digest) (*CachedObject[T], error) {
+	key := d.String()
 	if v, ok := c.cache.Load(key); ok {
 		c.metrics.Hits.Add(1)
 		return v.(*CachedObject[T]), nil
 	}
 	c.metrics.Misses.Add(1)
-	exists, err := c.store.Exists(ctx, h)
+	exists, err := c.store.Exists(ctx, d)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("cache: %w: %s", cas.ErrNotFound, h)
+		return nil, fmt.Errorf("cache: %w: %s", cas.ErrNotFound, d)
 	}
-	co := &CachedObject[T]{store: c.store, metrics: &c.metrics, hash: h}
+	co := &CachedObject[T]{store: c.store, metrics: &c.metrics, digest: d}
 	actual, loaded := c.cache.LoadOrStore(key, co)
 	if !loaded && c.onNew != nil {
 		c.onNew(key)
@@ -147,9 +147,9 @@ func (c *CachedStore[T]) Proxy(ctx context.Context, h cas.Hash) (*CachedObject[T
 	return actual.(*CachedObject[T]), nil
 }
 
-// Get returns the loaded object for h: Proxy + Load.
-func (c *CachedStore[T]) Get(ctx context.Context, h cas.Hash) (T, error) {
-	co, err := c.Proxy(ctx, h)
+// Get returns the loaded object for d: Proxy + Load.
+func (c *CachedStore[T]) Get(ctx context.Context, d cas.Digest) (T, error) {
+	co, err := c.Proxy(ctx, d)
 	if err != nil {
 		var zero T
 		return zero, err
@@ -157,20 +157,20 @@ func (c *CachedStore[T]) Get(ctx context.Context, h cas.Hash) (T, error) {
 	return co.Load(ctx)
 }
 
-// Preload loads every hash in parallel.
-func (c *CachedStore[T]) Preload(ctx context.Context, hashes []cas.Hash) error {
+// Preload loads every digest in parallel.
+func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
-	errCh := make(chan error, len(hashes))
+	errCh := make(chan error, len(digests))
 	var wg sync.WaitGroup
-	for _, h := range hashes {
-		h := h
+	for _, d := range digests {
+		d := d
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			if _, err := c.Get(ctx, h); err != nil {
+			if _, err := c.Get(ctx, d); err != nil {
 				errCh <- err
 			}
 		}()
@@ -185,10 +185,10 @@ func (c *CachedStore[T]) Preload(ctx context.Context, hashes []cas.Hash) error {
 	return nil
 }
 
-// PreloadRecursive loads the object at h and, to the given depth, every
+// PreloadRecursive loads the object at d and, to the given depth, every
 // object it references.
-func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h cas.Hash, depth int) error {
-	obj, err := c.Get(ctx, h)
+func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, depth int) error {
+	obj, err := c.Get(ctx, d)
 	if err != nil {
 		return err
 	}
@@ -203,19 +203,19 @@ func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, h cas.Hash, depth
 	return nil
 }
 
-// Warmup preloads hashes into the cache; missing objects are tolerated.
-func (c *CachedStore[T]) Warmup(ctx context.Context, hashes []cas.Hash) error {
+// Warmup preloads digests into the cache; missing objects are tolerated.
+func (c *CachedStore[T]) Warmup(ctx context.Context, digests []cas.Digest) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
-	for _, h := range hashes {
-		h := h
+	for _, d := range digests {
+		d := d
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			co, err := c.Proxy(ctx, h)
+			co, err := c.Proxy(ctx, d)
 			if err != nil {
 				return
 			}
@@ -246,9 +246,9 @@ func (c *CachedStore[T]) CacheStats() CacheStats {
 	}
 }
 
-// Evict removes the cached object for h, if present.
-func (c *CachedStore[T]) Evict(h cas.Hash) {
-	if _, ok := c.cache.LoadAndDelete(h.String()); ok {
+// Evict removes the cached object for d, if present.
+func (c *CachedStore[T]) Evict(d cas.Digest) {
+	if _, ok := c.cache.LoadAndDelete(d.String()); ok {
 		c.metrics.Evicts.Add(1)
 	}
 }

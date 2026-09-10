@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v16
+version: v17
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -10,7 +10,8 @@ version: v16
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
 > content-addressable object store component written in Go, fully type-safe via
-> generics (no `any` in the public API), one fixed hash algorithm (`sha256`), a
+> generics (no `any` in the public API), a hash-agnostic core whose clients own
+> the algorithm (`sha256` ships as the default), a
 > filesystem backend, typed object layers, lazy loading and caching.
 >
 > Use this file as the authoritative design contract for all agent-assisted
@@ -175,7 +176,7 @@ below is consolidated from the last converged state of the conversation.
 │   CachedStore[T] / CachedObject[T] / LRUCache[T]            │
 ├─────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic)                                    │
-│   Hash (algo:digest) · Backend interface                   │
+│   Digest (raw bytes) · Backend interface                    │
 │   Backends: fs (reference), mem (tests) subpackages       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -185,14 +186,16 @@ flowchart TB
     subgraph APP["Application layer (per app)"]
         APP1["gitlike: Blob, Tree, Commit, Tag, Repository, Resolver, WalkGraph"]
         APP2["Your app: Note, Job, Document, ..."]
+        HASH["client hasher: cas/hash/sha256 (the core names no algorithm)"]
     end
     subgraph CORE["Generic core (package cas)"]
         TYPED["Typed layer: Object[T] · Codec[T] · Store[T] · Walker[T]"]
         CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
-        BYTE["Byte layer: Hash · Backend · fs/mem backends"]
+        BYTE["Byte layer: Digest · Backend · fs/mem backends"]
     end
     APP1 --> TYPED
     APP2 --> TYPED
+    HASH -. "Hasher" .-> TYPED
     TYPED --> CACHE
     TYPED --> BYTE
     CACHE --> BYTE
@@ -200,8 +203,8 @@ flowchart TB
 
 | Concept          | Responsibility                                              |
 | ---------------- | ----------------------------------------------------------- |
-| `Hash`           | Content address; carries algorithm + digest (`sha256:ab..`) |
-| `HashBytes` / `NewHasher` | The core's one hasher (sha256): one-shot / streaming |
+| `Digest`         | Content address: raw digest bytes, rendered as one hex string |
+| `Hasher`         | The client's algorithm: `Digest(io.Reader)` + `Validate(Digest)`; `cas/hash/sha256` ships the default |
 | `Backend`       | Raw byte storage interface (non-generic)                    |
 | `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
 | `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
@@ -223,14 +226,15 @@ build their own equivalents for their own types.
 
 ## Design Principles (Non-Negotiables)
 
-1. **Hash-addressed & immutable.** The key is the hash of the content; objects
-   are never mutated in place. Same content ⇒ same hash ⇒ stored once
+1. **Hash-addressed & immutable.** The key is the digest of the content; objects
+   are never mutated in place. Same content ⇒ same digest ⇒ stored once
    (deduplication is automatic).
-2. **Hash carries its algorithm.** `Hash` is `"algo:hexdigest"`. References are
-   self-describing, so a store written by a build with another algorithm is
-   recognized rather than misread. The core implements exactly one algorithm
-   (`sha256`), fixed at compile time — there is no registry.
-3. **Core storage is non-generic.** `Backend` deals in `Hash` + `io.Reader`
+2. **References are content digests; the client owns the algorithm.** `Digest` is
+   raw digest bytes (rendered as one lowercase-hex string), and the core names no
+   algorithm: the client injects a `Hasher` (go-cask's own clients use
+   `cas/hash/sha256`). A store is therefore effectively single-format, like a Git
+   repository, and changing the algorithm is a client-side re-digest and rewrite.
+3. **Core storage is non-generic.** `Backend` deals in `Digest` + `io.Reader`
    only. All generics live in the typed layer on top.
 4. **Fully type-safe — no `any` in the public API.** No `interface{}` in
    exported signatures, no reflection-based dispatch. Each object type gets its
@@ -257,11 +261,12 @@ build their own equivalents for their own types.
 > specifications with code) and section 5 (data flows). This aggregator does
 > not duplicate it: keep implementations and docs in sync with cas-core.
 
-> Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Hash`,
+> Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Digest`,
 > `Backend`); `backend/fs`/`backend/mem` → cas-core §4.4–4.5;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
 > `cas/cache/{mem,lru,prefetch}` → §4.10; backend `Stats`/`Verify`/`GC`/
-> `Prune` → §4.11; `gitlike/*` → §4.12.
+> `Prune` → §4.11; `gitlike/*` → §4.12; `cas/hash/sha256` is the shipped client
+> hasher (not part of the core's contract).
 
 ## Usage Example
 
@@ -274,37 +279,39 @@ import (
     "time"
 
     "github.com/dmundt/go-cask/cas/backend/fs"
-    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+    sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
     "github.com/dmundt/go-cask/gitlike"
 )
 
 func main() {
     ctx := context.Background()
 
-    // 1. Filesystem backend + git-like example repository on top.
+    // 1. Filesystem backend + git-like example repository on top, hashed by the
+    //    client's hasher — the core names no algorithm, and cas/hash/sha256 is
+    //    the default go-cask's own clients wire in.
     raw, _ := fs.New("./repo")
-    repo := gitlike.NewRepository(raw)
+    repo := gitlike.NewRepository(raw, sha256.New())
     resolver := gitlike.NewResolver(repo)
 
     // 2. Build a Git-like object graph: blob → tree → commit → tag.
-    //    Reference fields use jsoncodec.Hash, the JSON codec's field type:
-    //    the zero value is "absent", and a field tagged omitzero is left out
-    //    of the encoding when absent. NewHash wraps a byte-layer address.
+    //    A reference field is a plain cas.Digest: the zero value is "absent",
+    //    it renders itself as one hex string, and a field tagged omitzero is
+    //    left out of the encoding when absent.
     blobHash, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("Hello, World!")})
     treeHash, _ := repo.Trees.Put(ctx, &gitlike.Tree{Entries: []gitlike.TreeEntry{
-        {Name: "hello.txt", Hash: jsoncodec.NewHash(blobHash), Mode: "file"},
+        {Name: "hello.txt", Hash: blobHash, Mode: "file"},
     }})
     commitHash, _ := repo.Commits.Put(ctx, &gitlike.Commit{
-        Tree: jsoncodec.NewHash(treeHash), Author: "Alice",
+        Tree: treeHash, Author: "Alice",
         Message: "Initial commit", Time: time.Now(),
     })
-    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: jsoncodec.NewHash(commitHash), Tagger: "Bob", Message: "Release"})
+    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
 
-    // 3. Type-safe reads — no casts, no any. A reference field unwraps with
-    //    .Hash() where the byte layer's Hash is needed; IsZero reports absent.
+    // 3. Type-safe reads — no casts, no any: the fields ARE the addresses
+    //    (IsZero reports an absent one).
     commit, _ := resolver.ResolveCommit(ctx, tagHash)
-    tree, _ := resolver.ResolveTree(ctx, commit.Tree.Hash())
-    blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash.Hash())
+    tree, _ := resolver.ResolveTree(ctx, commit.Tree)
+    blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash)
     fmt.Println(string(blob.Data)) // "Hello, World!"
 
     // 4. Cached access (gitlike per-type LRU caches over the repository).
@@ -338,35 +345,36 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    context propagation, error wrapping, and atomic/durable writes.
 2. Keep the byte layer non-generic; everything above it works unchanged.
 3. Mirror the `fs` backend's guarantees: idempotent `Put`, `Delete` no-op on
-   missing objects, `List(algo)` filtering, and a `Stats` summary. The `mem` backend
-   (`cas/backend/mem`) is the minimal reference implementation.
+   missing objects, `List(ctx)` returning every digest, and a `Stats` summary.
+   The `mem` backend (`cas/backend/mem`) is the minimal reference implementation.
 
 **Add a new object type** (e.g. `Document`):
 1. Implement `Object[Document]` (`Type/References`) — serialization is the
    codec's job, not the object's.
 2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()`
-   (package `cas/codec/json`) — the generic core stays untouched.
-3. Reference other objects with `jsoncodec.Hash` fields — the JSON codec's
-   field type, which IS the address on the wire. Tag a field
+   (package `cas/codec/json`) and the client's hasher —
+   `cas.New(raw, json.New[Document](), sha256.New())`.
+3. Reference other objects with plain `cas.Digest` fields — the field IS the
+   address on the wire (one hex string, no codec wrapper). Tag a field
    `json:"…,omitzero"` when an absent reference should be left out of the
    encoding (a field that is always present needs no option, and keeps the
-   historical `""`); wrap literals with `jsoncodec.NewHash(h)`, unwrap with
-   `.Hash()` where the byte-layer `Hash` is needed, and skip `IsZero()` entries
-   in `References()`. Never hand-roll `MarshalJSON`/`UnmarshalJSON` for hashes:
-   `jsoncodec.Hash` implements both and validates on decode (cas-core §4.2,
-   §4.6).
+   historical `""`), and skip `IsZero()` entries in `References()`. Never
+   hand-roll `MarshalJSON`/`UnmarshalJSON` for references: `Digest` renders
+   itself through `encoding.TextMarshaler` (cas-core §4.2, §4.6).
 4. If you need a repository/resolver for your types (per-type stores,
    `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
    `gitlike` reference pattern into your own package; do NOT add your types to
    `cas` or extend `gitlike`.
 5. Never add `any` or reflection to do this — add explicit typed methods.
 
-**Change the hash algorithm:** there is no registry — `sha256` is the core's one
-algorithm, fixed at compile time (cas-core §4.2), and `cas.New(raw, codec)` takes
-no algorithm argument. Adding another means changing `cas` (and each codec that
-renders an address); the address keeps the algorithm name, so a store written
-under another algorithm is recognized (`ErrUnknownAlgorithm`) rather than
-misread.
+**Change the hash algorithm:** the core names no algorithm — it stores whatever
+`Digest` the injected `Hasher` returns. Implement `cas.Hasher`
+(`Digest(io.Reader) (cas.Digest, error)` + `Validate(cas.Digest) error`), pass it
+to `cas.New`, and use it for `Verify`. Because a digest carries no algorithm
+name, a store is effectively single-format (Git's model: one object format per
+repository): switching algorithms means re-digesting and rewriting every object
+(verify each, then delete the source — operations.md §5). Keeping
+`cas/hash/sha256` for go-cask's own clients is the default, not a core rule.
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
 Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
@@ -397,22 +405,23 @@ gofmt -l .
   (`Store[T Object[T]]`); reads return the concrete `T` via `Store[T].Get` —
   no type assertions anywhere.
 - **Constructors:** use plain `New()` when a package exposes one primary type
-  (`fs.New`, `mem.New`, `json.New[T]`); use `NewType()` when it exposes
-  several important types or the type isn't the package's primary one
-  (`cas.NewHash`, `cas.NewWalker`, `prefetch.NewSmartCache`) — coding-guidelines
+  (`fs.New`, `mem.New`, `json.New[T]`, `sha256.New`); use `NewType()` when it
+  exposes several important types or the type isn't the package's primary one
+  (`cas.NewWalker`, `prefetch.NewSmartCache`) — coding-guidelines
   §1 "Constructors".
-- Defaults: hash algorithm `sha256`, codec the JSON codec (`cas/codec/json`), Git-like fan-out
-  (`FanOut=2`, `FanLevels=1` → `<algo>/aa/<full-hex>`; any n-way/n-level
+- Defaults: the core names no algorithm — go-cask's own clients wire
+  `cas/hash/sha256`; codec the JSON codec (`cas/codec/json`), Git-like fan-out
+  (`FanOut=2`, `FanLevels=1` → `aa/<full-hex>`; any n-way/n-level
   layout via `WithFanOut`/`WithFanLevels`), directory permissions `0o755`,
   files `0o644`.
 - Every exported function takes `context.Context` first and wraps errors with
   `%w`. Never swallow context cancellation.
 - Immutability: never mutate stored objects in place; always re-`Put` to
-  change content (which yields a new hash).
+  change content (which yields a new digest).
 - Concurrency: backend reads are lock-free (atomic rename; see
   `performance.md` §2); one `sync.Mutex` coordinates
   `Put`/`Delete`; caches use `sync.Map` + `atomic` counters. The core has no
-  hash registry and no other mutable global.
+  registry and no other mutable global.
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` (cas-core §8 decision 1,
   `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side
