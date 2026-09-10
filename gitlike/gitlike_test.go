@@ -452,19 +452,28 @@ func TestWalkGraphTerminatesOnCycle(t *testing.T) {
 	}
 }
 
-// TestShortDigestClamps pins that a digest shorter than the display width is
-// rendered whole: a client hasher may produce one, and the core names no
-// algorithm, so the display helper must not slice out of range.
-func TestShortDigestClamps(t *testing.T) {
-	if got := shortDigest(cas.Digest{0xab}); got != "ab" {
-		t.Errorf("shortDigest(1-byte) = %q, want %q", got, "ab")
-	}
-	if got := shortDigest(cas.Digest{}); got != "<absent>" {
-		t.Errorf("shortDigest(absent) = %q, want %q", got, "<absent>")
-	}
+// TestPrintObjectTagTarget pins the tag rendering, which is the one place this
+// library displays a digest: the first 8 hex characters via the core's
+// cas.Digest.Prefix, and a visible marker when the target is absent (a tag may
+// exist before its target). A digest shorter than the display width is rendered
+// whole — a client hasher may produce one, and the core names no algorithm.
+func TestPrintObjectTagTarget(t *testing.T) {
 	full := mustDigest(t, strings.Repeat("cd", 32))
-	if got := shortDigest(full); got != "cdcdcdcd" {
-		t.Errorf("shortDigest(32-byte) = %q, want the first 8 hex chars", got)
+	for _, tc := range []struct {
+		name   string
+		target cas.Digest
+		want   string
+	}{
+		{"32-byte target", full, `tag "v1" -> cdcdcdcd`},
+		{"short target", cas.Digest{0xab}, `tag "v1" -> ab`},
+		{"absent target", nil, `tag "v1" -> <absent>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: tc.target}})
+			if got != tc.want {
+				t.Fatalf("PrintObject = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

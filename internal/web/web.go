@@ -49,7 +49,11 @@ type Server struct {
 // caller (cmd/cask) and printed once at startup.
 func New(store *fs.Backend, cfg Config) (*Server, error) {
 	tmpl, err := template.New("viewer").Funcs(template.FuncMap{
-		"shortDigest": shortDigest,
+		// The viewer's short form is the first 8 hex characters of a digest
+		// (cas.Digest.Prefix); templates that render a digest they hold as a
+		// string use this, while the list rows use the precomputed
+		// objectRow.Short.
+		"shortDigest": func(d cas.Digest) string { return d.Prefix(8) },
 	}).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -223,7 +227,7 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 		return d
 	}
 	for _, h := range index.Paginate(digests, 0, 10) {
-		d.Sample = append(d.Sample, objectRow{h.String(), shortDigest(h), s.objectType(ctx, h), s.objectSize(ctx, h)})
+		d.Sample = append(d.Sample, objectRow{h.String(), h.Prefix(8), s.objectType(ctx, h), s.objectSize(ctx, h)})
 	}
 	d.HasSample = len(d.Sample) > 0
 	return d
@@ -247,7 +251,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		rows = append(rows, objectRow{h.String(), shortDigest(h), typ, s.objectSize(r.Context(), h)})
+		rows = append(rows, objectRow{h.String(), h.Prefix(8), typ, s.objectSize(r.Context(), h)})
 	}
 	data := struct {
 		Query   string
@@ -481,17 +485,6 @@ func parseDigestLines(s string) ([]cas.Digest, error) {
 		out = append(out, d)
 	}
 	return out, nil
-}
-
-// shortDigest renders the first 8 hex chars of a digest for the FuncMap. The
-// templates currently use the precomputed objectRow.Short field, so this stays
-// registered for fragment templates that need to shorten a digest they hold as
-// a string.
-func shortDigest(d cas.Digest) string {
-	if d.IsZero() {
-		return ""
-	}
-	return sha256.Short(d)
 }
 
 // hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).

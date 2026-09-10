@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v49
+version: v50
 ---
 
 # CAS Core — go-cask
@@ -263,6 +263,7 @@ func (d Digest) IsZero() bool                  // absent?
 func (d Digest) Equal(o Digest) bool           // absent equals nothing
 func (d Digest) Bytes() []byte                 // copy; nil when absent
 func (d Digest) String() string                // lowercase hex, NO algorithm prefix; "" when absent
+func (d Digest) Prefix(n int) string           // first n HEX CHARS for display (viewer: Prefix(8)); total: absent/n<=0 → "", short digest whole
 func (d Digest) MarshalText() ([]byte, error)  // hex (encoding.TextMarshaler)
 func (d *Digest) UnmarshalText(b []byte) error // strict lowercase hex; "" → absent; else ErrInvalidDigest
 func ParseDigest(hex string) (Digest, error)   // shape only: non-empty lowercase hex
@@ -299,10 +300,9 @@ type Hasher interface {
   func Of(data []byte) cas.Digest          // one-shot digest of a byte slice
   func Parse(s string) (cas.Digest, error) // "sha256:hexdigest" or bare hex; else ErrInvalidDigest
   func Format(d cas.Digest) string         // "sha256:hexdigest"; "" when absent
-  func Short(d cas.Digest) string          // first 8 hex chars; "<absent>" when absent
   ```
 
-  `Hasher.Digest` streams `io.Copy` into sha256 and never buffers; `Hasher.Validate` requires a present digest of exactly `Size` bytes. `Parse` accepts the prefixed and the bare form and rejects anything else — including another algorithm's prefix — with `ErrInvalidDigest`. `Format`/`Short` are display helpers; the digest itself never carries the name. `cmd/cask`, `internal/web`, `gitlike` and the examples all construct this hasher (`sha256.New()`) and pass it to `cas.New`.
+  `Hasher.Digest` streams `io.Copy` into sha256 and never buffers; `Hasher.Validate` requires a present digest of exactly `Size` bytes. `Parse` accepts the prefixed and the bare form and rejects anything else — including another algorithm's prefix — with `ErrInvalidDigest`. `Format` is the client's printable form; the digest itself never carries the name. Any short/preview rendering is the core's `Digest.Prefix(n)` (§4.1), not a per-algorithm helper. `cmd/cask`, `internal/web`, `gitlike` and the examples all construct this hasher (`sha256.New()`) and pass it to `cas.New`.
 - **There is no registry.** No `RegisterHash`, no mutexed algorithm map, no init-order coupling, no one-shot/streaming duality, and no runtime-chosen name that must double as a path element — the failure modes the registry had cannot exist, because there is nothing to register and nothing to name. Replacing "recognize the address's algorithm" is the client's own knowledge: a `Hasher` validates the width it expects, so reading a store with the wrong algorithm fails loudly — a wrong-width key is `ErrInvalidDigest`, and a right-width key from another algorithm does not name the stored objects at all (`Get` → `ErrNotFound`; only the client can know the addresses are foreign).
 
 **Algorithm change & single-format stores:**
@@ -534,7 +534,7 @@ type ResolvedObject struct {
 ```
 
 - `ResolveAny` reads the raw bytes, determines the type via its `parseType` on the TLV envelope (§8 d1), then dispatches to the matching `Resolve*`; an unknown type returns `ErrUnknownType`.
-- `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. `shortDigest(d)` renders the first 8 hex chars of a digest (or `<absent>`); a digest shorter than that is rendered whole, since a client hasher may produce one (the core names no algorithm).
+- `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. The tag branch renders `Tag.Target` with `cas.Digest.Prefix(8)` — the core's total display helper (`""` when absent, a short digest whole) — and shows `<absent>` for a target that does not exist yet.
 - **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic alternative: `Walker[T]`, §4.9). It visits each digest **at most once** and uses an explicit stack, exactly like `Walker[T]`: a diamond-shaped history costs one visit per object instead of one per path (a 12-level diamond is 13 visits, not 2¹³−1), and a store this library did not write — the `Backend` stores bytes without re-verifying their digest — cannot make the walk loop.
 - **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob` serve from the caches, while `ResolveAny` reads through the shared resolver (raw bytes + per-type stores) and is therefore *not* cache-served.
 - **`Preloader`** — background worker pool on a `chan cas.Digest`, running `Commits.PreloadRecursive(ctx, d, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.
@@ -575,7 +575,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
 | Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
-| Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Short`, `Name`, `Size` |
+| Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` (any short/display form is `cas.Digest.Prefix`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` |
 

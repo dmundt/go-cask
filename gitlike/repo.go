@@ -149,25 +149,13 @@ func PrintObject(o *ResolvedObject) string {
 	case "commit":
 		return fmt.Sprintf("commit by %s: %s", o.Commit.Author, o.Commit.Message)
 	case "tag":
-		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortDigest(o.Tag.Target))
+		if o.Tag.Target.IsZero() {
+			return fmt.Sprintf("tag %q -> <absent>", o.Tag.Name) // a tag may exist before its target
+		}
+		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, o.Tag.Target.Prefix(8))
 	default:
 		return fmt.Sprintf("unknown type %q", o.Type)
 	}
-}
-
-// shortDigest renders the first 8 hex chars of a digest for display (the
-// viewer's short-digest default). A digest shorter than 8 hex chars (a client
-// hasher may produce one — the core names no algorithm) is rendered whole
-// instead of being sliced out of range.
-func shortDigest(d cas.Digest) string {
-	if d.IsZero() {
-		return "<absent>"
-	}
-	s := d.String()
-	if len(s) <= 8 {
-		return s
-	}
-	return s[:8]
 }
 
 // WalkGraph traverses the whole object graph reachable from d, resolving every

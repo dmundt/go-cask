@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v17
+version: v18
 ---
 
 # Testing Strategy — go-cask
@@ -48,7 +48,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 ## 3. Corner & error cases (mandatory inventory)
 
-- **Digest/parsing:** absent (zero) `Digest`, empty string, nil vs empty bytes; malformed text (odd-length hex, uppercase, non-hex, a legacy `"sha256:hexdigest"` reference → `ErrInvalidDigest`); `Equal` same/different digests and absent-vs-absent (false); `MarshalText`/`UnmarshalText` round-trip; the client hasher's `Validate` rejecting absent and wrong-width digests (`sha256`: 32 bytes) at the store boundary.
+- **Digest/rendering:** `Prefix(n)`: absent and `n <= 0` → `""`, a digest whose hex form is shorter than `n` returned whole, `n` beyond the hex form → the whole string, and the result is always a prefix of `String()`. **Digest/parsing:** absent (zero) `Digest`, empty string, nil vs empty bytes; malformed text (odd-length hex, uppercase, non-hex, a legacy `"sha256:hexdigest"` reference → `ErrInvalidDigest`); `Equal` same/different digests and absent-vs-absent (false); `MarshalText`/`UnmarshalText` round-trip; the client hasher's `Validate` rejecting absent and wrong-width digests (`sha256`: 32 bytes) at the store boundary.
 - **Codec/object model:** empty value, all-zero struct, nested/edge values; `Unmarshal(Marshal(v))==v`; versioned names (`type@1`/`type@2`), legacy unversioned (`@1`), unknown → `ErrUnknownType`.
 - **Store:** empty store (`GetRaw`/`Get`→`ErrNotFound`, `Exists` false, `Delete` no-op); `Put` empty bytes; `PutDedup` first vs repeat; `GetRaw` vs `Get`; type mismatch → `ErrUnknownType`.
 - **Object invariants:** `Put`/`PutDedup` of an invalid value fails with the value's own error (wrapped `cas: put: …`) and stores nothing; the same bytes written around the check read back as `ErrCorrupt`; a type without `Validate()` is unaffected (the contract is optional); a nil object on `Put` and a payload decoding to nil on `Get` are rejected.

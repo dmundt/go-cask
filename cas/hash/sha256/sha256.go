@@ -96,18 +96,3 @@ func Parse(s string) (cas.Digest, error) {
 	}
 	return d, nil
 }
-
-// Short renders the first 8 hex characters of a digest for display, or
-// "<absent>" for the absent digest. A digest shorter than 8 hex characters is
-// rendered whole: this package's own hasher always produces 32 bytes, but Short
-// is a display helper and must not slice out of range on a foreign digest.
-func Short(d cas.Digest) string {
-	if d.IsZero() {
-		return "<absent>"
-	}
-	s := hex.EncodeToString(d)
-	if len(s) <= 8 {
-		return s
-	}
-	return s[:8]
-}

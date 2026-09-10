@@ -228,11 +228,11 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-func TestShortDigest(t *testing.T) {
+func TestPrintableDigest(t *testing.T) {
 	h, _ := sha256.Parse("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	s := short(h)
+	s := printable(h)
 	if len(s) == 0 {
-		t.Fatal("short() empty")
+		t.Fatal("printable() empty")
 	}
 }
 
@@ -418,14 +418,14 @@ func TestRunStoreError(t *testing.T) {
 	}
 }
 
-// TestShortDigestForm pins short()'s two renderings: the printable
+// TestPrintableDigestForm pins printable()'s two renderings: the printable
 // "sha256:hexdigest" form for a present digest and "<absent>" for the zero one.
 func TestShortDigestForm(t *testing.T) {
 	h, _ := sha256.Parse("sha256:" + strings.Repeat("ab", 32))
-	if short(nil) != "<absent>" {
-		t.Fatal("short(absent) should say <absent>")
+	if printable(nil) != "<absent>" {
+		t.Fatal("printable(absent) should say <absent>")
 	}
-	if !strings.Contains(short(h), "sha256") {
-		t.Fatalf("short = %q", short(h))
+	if !strings.Contains(printable(h), "sha256") {
+		t.Fatalf("printable = %q", printable(h))
 	}
 }

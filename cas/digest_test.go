@@ -196,3 +196,37 @@ func FuzzParseDigest(f *testing.F) {
 		}
 	})
 }
+
+// TestDigestPrefix pins the display helper's contract: n counts hex characters,
+// the method is total (absent and n <= 0 are "", a short digest is returned
+// whole), and the result is always a prefix of String().
+func TestDigestPrefix(t *testing.T) {
+	full := Digest(bytes.Repeat([]byte{0xab}, 32)) // 64 hex chars
+	for _, tc := range []struct {
+		name string
+		d    Digest
+		n    int
+		want string
+	}{
+		{"absent", nil, 8, ""},
+		{"absent with n <= 0", nil, 0, ""},
+		{"n <= 0", full, 0, ""},
+		{"negative n", full, -3, ""},
+		{"viewer short form", full, 8, strings.Repeat("ab", 4)},
+		{"single character", full, 1, "a"},
+		{"whole digest", full, 64, strings.Repeat("ab", 32)},
+		{"n beyond the hex form", full, 100, strings.Repeat("ab", 32)},
+		{"shorter digest returned whole", Digest{0xab}, 8, "ab"},
+		{"shorter digest, n == len", Digest{0xab, 0xcd}, 4, "abcd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.d.Prefix(tc.n)
+			if got != tc.want {
+				t.Fatalf("Prefix(%d) = %q, want %q", tc.n, got, tc.want)
+			}
+			if !strings.HasPrefix(tc.d.String(), got) {
+				t.Fatalf("Prefix(%d) = %q is not a prefix of %q", tc.n, got, tc.d.String())
+			}
+		})
+	}
+}

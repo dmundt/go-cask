@@ -65,7 +65,12 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 - **`cas.Digest`** — the content address as raw digest bytes (zero value = the
   absent reference), with `NewDigest`, `ParseDigest`, `CheckDigest`, `IsZero`,
-  `Equal`, `Bytes`, `String` and `MarshalText`/`UnmarshalText`.
+  `Equal`, `Bytes`, `String`, `Prefix` and `MarshalText`/`UnmarshalText`.
+- **`cas.Digest.Prefix(n)`** — the short display form: the first `n` hex
+  characters (the viewer uses `Prefix(8)`). It is total — absent and `n <= 0`
+  give `""`, a digest whose hex form is shorter than `n` is returned whole, and
+  nothing panics or errors — so the core owns the one short-form helper the
+  clients used to duplicate.
 - **`cas.Hasher`** — the client-supplied algorithm seam
   (`Digest(io.Reader) (Digest, error)` + `Validate(Digest) error`), injected into
   `cas.New`; the core names no algorithm.
@@ -73,8 +78,8 @@ payloads are unchanged, so addresses are stable *within* this model.
   (`Validate() error`), enforced by `Store.Put`/`PutDedup` (before encoding) and
   `Store.Get` (after decoding).
 - **`cas/hash/sha256`** — the shipped client hasher (`New`, `NewHasher`, `Of`,
-  `Parse`, `Format`, `Short`, `Name`, `Size`), in its own package so `cas` never
-  imports an algorithm.
+  `Parse`, `Format`, `Name`, `Size`), in its own package so `cas` never imports
+  an algorithm.
 - **`gitlike.Codecs`** — the injected per-type codec set
   (`NewRepository(raw, hasher, codecs)`), so the reference model names no wire
   format and `package gitlike` imports no codec package (CI-enforced).
@@ -98,8 +103,7 @@ payloads are unchanged, so addresses are stable *within* this model.
   rejected at the store boundary.
 - **`cas/hash/sha256` is the shipped client hasher**: `New()`, `NewHasher()`,
   `Of`, `Parse` (accepts `"sha256:hex"` or bare hex), `Format` (renders
-  `"sha256:hex"`), `Short`, `Name`, `Size`. The `cas` package imports nothing
-  from it.
+  `"sha256:hex"`), `Name`, `Size`. The `cas` package imports nothing from it.
 - **The byte layer is keyed by digest only**: `Backend.List(ctx)` lost its
   algorithm filter, `cas.Stats` keeps only `ObjectCount`/`TotalSize` (a
   per-algorithm breakdown is impossible — the core cannot know which algorithm
@@ -150,6 +154,12 @@ payloads are unchanged, so addresses are stable *within* this model.
 - **`gitlike.Commit.MarshalJSON`/`gitlike.Commit.UnmarshalJSON`** — the
   required-tree rule is now `Commit.Validate()`, enforced by the core, so it
   survives a codec change instead of disappearing with the JSON codec.
+- **`sha256.Short`** — replaced by `cas.Digest.Prefix(n)`, so the short form is
+  defined once, in the core. The whole `cas/hash/sha256` package is new in this
+  cycle and had not been released yet, so nothing that ever shipped loses an
+  API; `gitlike`'s unexported `shortDigest` and the viewer's wrapper are gone
+  the same way, and `examples/files`'s `short()` (which actually rendered the
+  full `sha256:hexdigest` form) is renamed `printable()`.
 - **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
   The example keeps its custom `Codec[T]` (gzip) seam and now stores under
   `sha256`.
@@ -243,7 +253,8 @@ being fixed and now has one.
   stack like `cas.Walker[T]`: a 12-level diamond costs 13 visits instead of
   8191, and two hand-written trees that reference each other terminate.
 - **Short digests panicked the display helpers.** `sha256.Short` and `gitlike`'s
-  `shortDigest` sliced `[:8]`; both now render a shorter digest whole.
+  `shortDigest` sliced `[:8]`; that logic now lives in the core's total
+  `cas.Digest.Prefix` (below), which those two helpers were replaced by.
 - **`mem.Backend.Put` ignored cancellation during the read** — a canceled `Put`
   still buffered and stored the whole object. It now reads through a
   context-checking reader, matching `fs`.
@@ -276,7 +287,7 @@ being fixed and now has one.
 
 ### Docs
 
-`cas-core.md` v40→v49 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v40→v50 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule
@@ -285,22 +296,22 @@ which adds `Validator`/`Codecs` and corrects stale classes and member
 signatures; then `digestPath`/`shortDigest`; then the Resolver type-safety
 correction in §4.12 — the wrong resolver for a digest is a runtime
 `ErrUnknownType`, not a compile-time error — and the pre-tag hardening in
-§4.4/§4.5/§4.8/§4.9/§4.10/§4.12), `library-design.md` v19→v24 (`cas.Validator`
+§4.4/§4.5/§4.8/§4.9/§4.10/§4.12), `library-design.md` v19→v25 (`cas.Validator`
 in the exported surface; the third ratified exception in §5; the released-cycle
-wording), `coding-guidelines.md` v13→v16, `defaults.md` v16→v19 (the byte-layer
-allocation target and its measured numbers), `examples.md` v15→v17,
+wording), `coding-guidelines.md` v13→v16, `defaults.md` v16→v20 (the byte-layer
+allocation target and its measured numbers; the short-hash row names `Prefix`), `examples.md` v15→v17,
 `extensions.md` v6→v9 (the rejected `WithNamespace` decision in §3),
 `operations.md` v6→v10 (the legacy store's actual failure symptoms in §5),
-`testing-strategy.md` v12→v17 (the invariant law; `digestPath` in the
-round-trip law; the fuzz-corpus and coverage claims), `versioning.md` v13→v18
+`testing-strategy.md` v12→v18 (the invariant law; `digestPath` in the
+round-trip law; the fuzz-corpus and coverage claims; the `Prefix` cases), `versioning.md` v13→v18
 (the third exception, the `v1.3.0` release, the released-state intro, the
 registry exception's migration note, and the benchstat-gate correction),
-`viewer-design.md` v10→v13 (§4/§5 rewritten against the real templates, ids and
-htmx attributes), `frontend-architecture.md` v4→v5 (same corrections; it carried
+`viewer-design.md` v10→v14 (§4/§5 rewritten against the real templates, ids and
+htmx attributes; the short form is `Digest.Prefix(8)`), `frontend-architecture.md` v4→v5 (same corrections; it carried
 the same fictional htmx map), `docs/index.md` v7→v10 (three path rows pointed at
 files that do not exist), `AGENTS.md` v15→v21, `docs/AGENT.md` v8→v9
 (`cas.NewHash` → `cas.NewDigest`), `docs/design/AGENT.md` v2→v3 (the frontmatter
-contract), `AGENT.md` v14→v20 (the `hash` vs `digest` row, the `examples/` vs
+contract), `AGENT.md` v14→v21 (the `hash` vs `digest` row, the `examples/` vs
 `Example` row, the real four-key frontmatter contract),
 `object-versioning.md` v4→v6 (no runtime registry — the envelope carries the
 type), `consistency.md` v9→v11 (the viewer exposes verify/delete/GC, not prune),

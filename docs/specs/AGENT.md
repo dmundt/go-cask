@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v20
+version: v21
 tags: [go-cask]
 status: stable
 ---
@@ -71,7 +71,7 @@ All files MUST use exactly these terms (forbidden synonyms listed):
 | `Backend` | The non-generic byte-storage interface; impls in subpackages: `fs.Backend` (disk), `memory.Backend` (in-memory). |
 | `Store[T]` / `Digest` | Generic typed store / content address: raw digest bytes (zero value = absent), rendered as one lowercase-hex string; the client's `Hasher` validates it. The printable `sha256:hexdigest` form is a client rendering (`cas/hash/sha256`). |
 | fan-out / lock-free reads / CAS laws | Directory layout (`FanOut`/`FanLevels`); `Get`/`Exists`/`List`/`Stats` take no lock; the testing-strategy §1 invariants. |
-| `hash` vs `digest` | **`digest` is the value**: `cas.Digest`, `Hasher.Digest`, `pathToDigest`, `digestPath`, `shortDigest`, `test.DigestData`. **`hash` is the algorithm and the user-facing word**: `Hasher`, `cas/hash/sha256`, `hash.Hash`, "hash-on-write", the CLI/API/viewer `{hash}` params and `hash` JSON keys/UI labels. A stored wire tag is frozen: `gitlike.TreeEntry.Hash` keeps `json:"hash,omitzero"` (renaming the tag would re-address every tree), and the Go field is scheduled for the v2 rename. Rule: never name a new identifier that holds a `cas.Digest` "hash", and never rename a user-facing `hash` or a stored tag to "digest". |
+| `hash` vs `digest` | **`digest` is the value**: `cas.Digest`, `Hasher.Digest`, `pathToDigest`, `digestPath`, `Digest.Prefix`, `test.DigestData`. **`hash` is the algorithm and the user-facing word**: `Hasher`, `cas/hash/sha256`, `hash.Hash`, "hash-on-write", the CLI/API/viewer `{hash}` params and `hash` JSON keys/UI labels. A stored wire tag is frozen: `gitlike.TreeEntry.Hash` keeps `json:"hash,omitzero"` (renaming the tag would re-address every tree), and the Go field is scheduled for the v2 rename. Rule: never name a new identifier that holds a `cas.Digest` "hash", and never rename a user-facing `hash` or a stored tag to "digest". |
 | `examples/` vs `Example` functions | Two different artifacts that both say "example". `examples/<name>/` = runnable teaching **programs** (`package main` + README + mermaid, examples.md §2). `Example*` functions in `_test.go` = **executable godoc documentation**: rendered by pkg.go.dev, executed by `go test`, output pinned by `// Output:` (coding-guidelines §10). An Example belongs to the package it documents, lives in that package's external `_test` package, and MUST use public API only — never a test helper, since the rendered snippet must be copy-pasteable. Never "consolidate" one into the other, and never move an Example to another package (it stops being documentation there). |
 
 Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guidelines" → **coding-guidelines**; "Repository/Resolver in the core" → they are the **gitlike shared reference layer**; "sharded paths" → **fan-out**; "hash" for a digest *value* (a Go identifier holding a `cas.Digest`) → **digest** (see the glossary row above; "hash" stays correct for the algorithm and for user-facing names); bare "example" (say `examples/<name>` program or `Example` function).

@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v19
+version: v20
 ---
 
 # Defaults & Behavior — go-cask
@@ -60,7 +60,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 |---|---|---|
 | Startup | `cask web` IS the viewer; loopback-only default bind; admin token printed once | cli §2, viewer-security |
 | Default bind | `127.0.0.1:8080` | viewer-security |
-| Short-hash display | 8 hex chars (`9f86d081`) | viewer-design §7 |
+| Short-hash display | 8 hex chars (`9f86d081`) — `cas.Digest.Prefix(8)`, the core's total display helper | viewer-design §7 |
 | Generic-list hash format | `<shorthash> (<type>)` | viewer-design §7 |
 | Session idle timeout | 30 min | viewer-security |
 | Session max lifetime | 8 h | viewer-security |

@@ -11,21 +11,6 @@ import (
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// TestShortClampsShortDigest pins that a digest shorter than the 8-character
-// display width is rendered whole instead of panicking: Short is a display
-// helper and may be handed a digest this package's hasher did not produce.
-func TestShortClampsShortDigest(t *testing.T) {
-	if got := sha256hash.Short(cas.Digest{0xab}); got != "ab" {
-		t.Errorf("Short(1 byte) = %q, want %q", got, "ab")
-	}
-	if got := sha256hash.Short(nil); got != "<absent>" {
-		t.Errorf("Short(absent) = %q, want %q", got, "<absent>")
-	}
-	if got := sha256hash.Short(sha256hash.Of([]byte("x"))); len(got) != 8 {
-		t.Errorf("Short(32 bytes) = %q, want 8 hex characters", got)
-	}
-}
-
 // TestOfMatchesStdlib pins the digest bytes against crypto/sha256.
 func TestOfMatchesStdlib(t *testing.T) {
 	data := []byte("hash me")
@@ -115,16 +100,5 @@ func TestParseRejects(t *testing.T) {
 		if _, err := sha256hash.Parse(in); !errors.Is(err, cas.ErrInvalidDigest) {
 			t.Errorf("Parse(%q) = %v, want ErrInvalidDigest", in, err)
 		}
-	}
-}
-
-// TestShort pins the display form: 8 hex characters, or "<absent>".
-func TestShort(t *testing.T) {
-	d := sha256hash.Of([]byte("shorten me"))
-	if got := sha256hash.Short(d); len(got) != 8 || !strings.HasPrefix(d.String(), got) {
-		t.Fatalf("Short = %q, want the first 8 hex chars of %s", got, d)
-	}
-	if got := sha256hash.Short(nil); got != "<absent>" {
-		t.Fatalf("Short(absent) = %q", got)
 	}
 }

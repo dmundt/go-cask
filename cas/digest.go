@@ -73,6 +73,31 @@ func (d Digest) String() string {
 	return hex.EncodeToString(d)
 }
 
+// Prefix returns the first n characters of the lowercase-hex form for display —
+// the viewer's 8-character short form is Prefix(8). n counts HEX CHARACTERS, not
+// bytes. The method is total: it never panics and never returns an error, so a
+// display helper can be used anywhere in a formatting call.
+//
+//   - the absent digest returns "" — the same spelling String uses — because
+//     absence is a legitimate state (IsZero), not a failure;
+//   - a digest whose hex form is shorter than n (a client hasher may produce
+//     one: the core names no algorithm) is returned whole rather than sliced
+//     out of range;
+//   - n <= 0 returns "".
+//
+// A caller that wants a visible marker for absence ("<absent>") renders it
+// itself: that is a presentation choice, not a property of the value.
+func (d Digest) Prefix(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	s := d.String()
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
+
 // MarshalText implements encoding.TextMarshaler: a digest is stored as its
 // lowercase-hex string by encoding/json and any other codec that honors the
 // interface. The absent digest renders as "".

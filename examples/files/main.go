@@ -145,7 +145,7 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "%s %s\n", short(h), c.Message)
+		fmt.Fprintf(out, "%s %s\n", printable(h), c.Message)
 		h = c.Parent // absent for a root commit: the walk ends
 	}
 	return nil
@@ -185,7 +185,10 @@ func (a *app) verify(ctx context.Context) error {
 	return nil
 }
 
-func short(d cas.Digest) string {
+// printable renders a digest in the client's printable form ("sha256:hexdigest")
+// for the log output, or a marker when it is absent. It is NOT a short form:
+// truncation is cas.Digest.Prefix's job (the viewer's Prefix(8)).
+func printable(d cas.Digest) string {
 	if d.IsZero() {
 		return "<absent>"
 	}
