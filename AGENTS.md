@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v19
+version: v20
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -172,7 +172,7 @@ below is consolidated from the last converged state of the conversation.
 │   NoteStore, JobStore, DocumentStore, Git-like, ...         │
 ├─────────────────────────────────────────────────────────────┤
 │ Typed layer (generic, no any)                               │
-│   Object[T] · Codec[T] · Store[T] · Walker[T]               │
+│   Object[T] · Validator · Codec[T] · Store[T] · Walker[T]   │
 │   CachedStore[T] / CachedObject[T] / LRUCache[T]            │
 ├─────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic)                                    │
@@ -189,7 +189,7 @@ flowchart TB
         HASH["client hasher: cas/hash/sha256 (the core names no algorithm)"]
     end
     subgraph CORE["Generic core (package cas)"]
-        TYPED["Typed layer: Object[T] · Codec[T] · Store[T] · Walker[T]"]
+        TYPED["Typed layer: Object[T] · Validator · Codec[T] · Store[T] · Walker[T]"]
         CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
         BYTE["Byte layer: Digest · Backend · fs/mem backends"]
     end

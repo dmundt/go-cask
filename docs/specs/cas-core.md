@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v44
+version: v45
 ---
 
 # CAS Core — go-cask
@@ -39,11 +39,13 @@ flowchart TB
     end
     subgraph TYPED["Typed layer — GENERIC CORE (package cas, type-safe, no any)"]
         OBJECT["Object[T] — self-describing, reference-aware"]
+        VALIDATOR["Validator — optional object invariant: Validate() error"]
         CODEC["Codec[T] — serialization (default: json.New[T]())"]
         STORE["Store[T] — Put / Get / GetRaw / Exists / Delete"]
         WALKER["Walker[T] — traversal over References()"]
         CACHE["Caching / lazy layer (generic over T):<br/>CachedObject[T] → CachedStore[T] → lru.Cache"]
         CACHE -. "wraps" .-> STORE
+        STORE -. "enforces on Put/Get" .-> VALIDATOR
     end
     subgraph BYTE["Byte layer (non-generic, package cas)"]
         DIGEST["Digest — raw digest bytes · NewDigest · ParseDigest · CheckDigest"]
@@ -93,6 +95,7 @@ classDiagram
         +Exists(ctx, d) (bool, error)
         +Delete(ctx, d) error
         +List(ctx) ([]Digest, error)
+        +Stats(ctx) (*Stats, error)
     }
     class fsBackend["fs.Backend (filesystem)"]
     class memBackend["memory.Backend (in-memory)"]
@@ -104,6 +107,10 @@ classDiagram
         <<interface>>
         +Type() string
         +References() []Digest
+    }
+    class Validator {
+        <<interface>>
+        +Validate() error
     }
     class Codec~T~ {
         <<interface>>
@@ -120,6 +127,7 @@ classDiagram
     Store~T~ o-- Codec~T~ : codec
     Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
+    Store~T~ ..> Validator : enforces when T declares it
     Walker~T~ ..> Store~T~ : reads via Get
     class CachedStore~T~
     class lruCache["lru.Cache~T~"]
@@ -172,13 +180,15 @@ classDiagram
     class Object~T~ { +Type() string +References() []Digest }
     class Codec~T~ { +Marshal(T) ([]byte, error) +Unmarshal([]byte) (T, error) }
     class Hasher { <<interface>> +Digest(r) (Digest, error) +Validate(d) error }
+    class Validator { <<interface>> +Validate() error }
     class Store~T~ {
         +raw Backend
         +codec Codec~T~
         +hasher Hasher
-        +Put(ctx, obj) Digest
-        +Get(ctx, d) T
-        +GetRaw(ctx, d) []byte
+        +Put(ctx, obj) (Digest, error)
+        +PutDedup(ctx, obj) (Digest, bool, error)
+        +Get(ctx, d) (T, error)
+        +GetRaw(ctx, d) ([]byte, error)
         +Exists(ctx, d) (bool, error)
         +Delete(ctx, d) error
     }
@@ -186,6 +196,7 @@ classDiagram
     Store~T~ o-- Codec~T~ : codec
     Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
+    Store~T~ ..> Validator : optional contract of T
 ```
 
 Cache layer — lazy loading wrappers:
@@ -194,19 +205,25 @@ Cache layer — lazy loading wrappers:
 classDiagram
     direction LR
     class Store~T~
-    class CachedObject~T~ { +Load(ctx) T +IsLoaded() bool +Digest() Digest }
+    class CachedObject~T~ { +Load(ctx) (T, error) +IsLoaded() bool +Digest() Digest }
     class CachedStore~T~ {
+        +store *Store~T~
         +cache sync.Map
         +metrics memory.CacheMetrics
-        +Proxy(ctx, d) *CachedObject~T~
-        +Get(ctx, d) T
+        +Proxy(ctx, d) (*CachedObject~T~, error)
+        +Get(ctx, d) (T, error)
         +Preload(ctx, digests) error
+        +PreloadRecursive(ctx, d, depth) error
         +CacheStats() memory.CacheStats
     }
-    class LRUCache~T~
+    class LRUCache~T~ {
+        +maxSize int
+        +Evict(d)
+        +Clear()
+    }
     CachedStore~T~ o-- Store~T~ : wraps
     CachedObject~T~ o-- CachedStore~T~ : back-ref
-    LRUCache --|> CachedStore~T~ : extends
+    LRUCache~T~ --|> CachedStore~T~ : embeds (extends)
 ```
 
 Shared reference layer — gitlike (application code, not core):
@@ -215,11 +232,12 @@ Shared reference layer — gitlike (application code, not core):
 classDiagram
     direction LR
     class Blob { +Data []byte }
-    class Tree { +Entries []TreeEntry }
-    class TreeEntry { +Name string +Hash Digest +Mode string }
-    class Commit { +Tree Digest +Parent Digest +Author string +Message string +Time time.Time }
-    class Tag { +Name string +Target Digest +Tagger string +Message string }
-    class Repository { +hasher Hasher +Blobs +Trees +Commits +Tags }
+    class Tree { +Entries []TreeEntry +Validate() error }
+    class TreeEntry { +Name string +Hash Digest +Mode string +Validate() error }
+    class Commit { +Tree Digest +Parent Digest +Author string +Message string +Time time.Time +Validate() error }
+    class Tag { +Name string +Target Digest +Tagger string +Message string +Validate() error }
+    class Repository { +raw Backend +Blobs +Trees +Commits +Tags }
+    class Codecs { +Blob +Tree +Commit +Tag }
     class Resolver { +ResolveCommit() +ResolveTree() +ResolveBlob() +ResolveTag() +ResolveAny() }
     class ResolvedObject { +Type string +Commit *Commit +Tree *Tree +Blob *Blob +Tag *Tag }
     Tree o-- TreeEntry
@@ -227,7 +245,8 @@ classDiagram
     Commit --> Digest : Tree / Parent
     Tag --> Digest : Target
     Repository o-- Store~T~ : per-type stores
-    Repository o-- Hasher : injected
+    Repository ..> Codecs : constructor takes one Codec[T] per type
+    Repository ..> Hasher : the injected hasher goes to every store
     Resolver o-- Repository : resolves
     ResolvedObject o-- Resolver : produced by
 ```

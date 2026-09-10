@@ -128,19 +128,33 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 ### Docs
 
-`cas-core.md` v41→v44 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v45 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule
-and the "several stores under one root" recipe in §4.4), `library-design.md`
+and the "several stores under one root" recipe in §4.4; then the diagram pass,
+which adds `Validator`/`Codecs` and corrects stale classes and member
+signatures), `library-design.md`
 v20→v23 (`cas.Validator` in the exported surface; the third ratified exception
 in §5), `coding-guidelines.md` v14→v15, `defaults.md` v17→v18,
 `examples.md` v16→v17, `extensions.md` v7→v9 (the rejected `WithNamespace`
 decision in §3), `operations.md` v7→v9 (the legacy store's actual failure
 symptoms in §5), `testing-strategy.md` v13→v15 (the invariant law),
 `versioning.md` v14→v17 (the third exception, the `v1.3.0` release, and the
-layout's part in the break), `docs/index.md` v8→v9, `AGENTS.md` v16→v19 (the
-one-base rule in Constraints), `README.md`, and the example/`gitlike` READMEs.
+layout's part in the break), `docs/index.md` v8→v9, `AGENTS.md` v16→v20 (the
+one-base rule in Constraints; `Validator` in the architecture figures),
+`README.md`, and the example/`gitlike` READMEs.
+
+Every Mermaid diagram in the repo (13 blocks across 8 files) was re-checked
+against the code: `Validator` added to the layer/overview/typed-layer figures,
+`Codecs` added to the `gitlike` figures (and `Repository`'s stale `+hasher`
+field removed — the hasher is held by the stores, not the repository),
+`Commit`/`Tree`/`Tag`/`TreeEntry` show `+Validate() error`,
+`json.Codec`/`gob.Codec` replace the informal `JsonCodec`/`GobCodec` names, and
+the cached/envelope/store member signatures now match the code (`Load` returns
+`(T, error)`, `Envelope` has fields `Type`/`Data`, `Backend` lists `Stats`).
+Orientation (`flowchart TB`, `direction LR`/`TB`) is unchanged, and all 13
+blocks were verified to parse with the Mermaid parser.
 
 ## [v1.2.0] - 2026-09-10
 

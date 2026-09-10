@@ -59,7 +59,8 @@ classDiagram
         +Get(ctx, d) io.ReadCloser
         +Exists(ctx, d) (bool, error)
         +Delete(ctx, d) error
-        +List(ctx) []Digest
+        +List(ctx) ([]Digest, error)
+        +Stats(ctx) (*Stats, error)
     }
     class FSBackend { 
         <<backend>>
@@ -74,23 +75,26 @@ classDiagram
         +Type() string
         +References() []Digest
     }
+    class Validator {
+        <<interface>>
+        +Validate() error
+    }
     class Codec~T~ {
         <<interface>>
         +Marshal(v T) ([]byte, error)
         +Unmarshal(data []byte) (T, error)
     }
-    class JsonCodec~T~ {
-        <<codec>>
-    }
-    class GobCodec~T~ {
-        <<codec>>
-    }
+    class JsonCodec["json.Codec~T~ (cas/codec/json)"]
+    <<codec>> JsonCodec
+    class GobCodec["gob.Codec~T~ (cas/codec/gob)"]
+    <<codec>> GobCodec
     class Envelope {
-        +Type() string
-        +Payload() []byte
+        +Type string
+        +Data []byte
     }
-    Codec~T~ <|.. JsonCodec~T~ : implements
-    Codec~T~ <|.. GobCodec~T~ : implements
+    Envelope : +EnvelopeFromBytes(data) (Envelope, error)
+    Codec~T~ <|.. JsonCodec : implements
+    Codec~T~ <|.. GobCodec : implements
     Store~T~ ..> Envelope : wraps codec payload
     class Store~T~ {
         +Put(ctx, obj T) (Digest, error)
@@ -104,6 +108,7 @@ classDiagram
     Store~T~ o-- Codec~T~ : codec
     Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
+    Store~T~ ..> Validator : enforces when T declares it
     Walker~T~ ..> Store~T~ : reads via Get
     class CachedStore~T~
     class LRUCache~T~

@@ -28,8 +28,8 @@
 
 ## Code walkthrough
 
-- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
-- `repo.go` — `Repository` wires the four stores over one backend and the caller's hasher; `Resolver.ResolveAny` resolves any digest via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
+- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules, which the store enforces on every `Put` and `Get` (`cas.Validator`) rather than any codec. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
+- `repo.go` — `Repository` wires the four stores over one backend, the caller's hasher and the caller's `Codecs` (one `Codec[T]` per type); `Resolver.ResolveAny` resolves any digest via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
 - `cached.go` — `CachedRepository` (per-type `LRUCache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
 - `gitlike_test.go` — round-trips, references, `ResolveAny` for every type, legacy unversioned envelopes, `WalkGraph`, cached repository, preloader.
 
@@ -41,6 +41,12 @@ classDiagram
         +Commits Store~Commit~
         +Tags Store~Tag~
     }
+    class Codecs {
+        +Blob cas.Codec[*Blob]
+        +Tree cas.Codec[*Tree]
+        +Commit cas.Codec[*Commit]
+        +Tag cas.Codec[*Tag]
+    }
     class Resolver {
         +ResolveCommit() Commit
         +ResolveTree() Tree
@@ -49,14 +55,15 @@ classDiagram
         +ResolveAny() ResolvedObject
     }
     class Blob { +Data []byte }
-    class Tree { +Entries []TreeEntry }
-    class TreeEntry { +Name string +Hash cas.Digest +Mode string }
-    class Commit { +Tree cas.Digest +Parent cas.Digest +Author +Message +Time }
-    class Tag { +Name string +Target cas.Digest +Tagger +Message }
+    class Tree { +Entries []TreeEntry +Validate() error }
+    class TreeEntry { +Name string +Hash cas.Digest +Mode string +Validate() error }
+    class Commit { +Tree cas.Digest +Parent cas.Digest +Author +Message +Time +Validate() error }
+    class Tag { +Name string +Target cas.Digest +Tagger +Message +Validate() error }
     Repository --> Blob
     Repository --> Tree
     Repository --> Commit
     Repository --> Tag
+    Repository --> Codecs : built with one Codec[T] per type
     Resolver --> Repository
     Tree o-- TreeEntry
     TreeEntry --> Blob : Hash
