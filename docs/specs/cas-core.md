@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v43
+version: v44
 ---
 
 # CAS Core — go-cask
@@ -348,8 +348,10 @@ MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync
 
 **Concurrency (lock-free reads):** writes are atomic, so `Get`/`Exists`/`List`/`Stats` take **no lock** — a reader sees the old or the new file, never partial (performance §2). `Put` is idempotent, so concurrent same-digest writers never corrupt — in-process via the mutex, across processes via unique temp names (with the POSIX/Windows rename caveat). At most one `sync.Mutex` coordinates `Put`/`Delete` in-process; reads are wait-free. **Cross-process guarantees stop at object writes**: no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/`Clean`) racing another process's writes is NOT safe. The **grace model** applies: sweeps that MAY race live writers MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h; forced `--min-age 0` is the dangerous variant).
 
-**Maintenance methods** (§4.11): `Stats`, `Verify`, `GC`, `Prune`, `Clean`; `Size(d)` returns an object's size (`ErrNotFound` when missing); `Clean(ctx, olderThan)` sweeps leftover temp files (`<hex>.tmp` and `<hex>.tmp.<n>`) older than the threshold — always safe (a temp file is never a valid object). It tolerates a missing store directory (nothing to sweep) and returns walk/removal errors instead of swallowing them.
-- **Listing scope:** `List`/`Stats` rebuild each digest from its file name, so a foreign file (a non-hex name, a temp leftover) is skipped. No algorithm needs to be registered in the calling process — the backend stores no algorithm name at all.
+**Maintenance methods** (§4.11): `Stats`, `Verify`, `GC`, `Prune`, `Clean`; `Size(d)` returns an object's size (`ErrNotFound` when missing); `Clean(ctx, olderThan)` sweeps leftover temp files (`<hex>.tmp` and `<hex>.tmp.<n>`) older than the threshold — always safe within an exclusively-owned base (a temp file is never a valid object; see the one-base rule below). It tolerates a missing store directory (nothing to sweep) and returns walk/removal errors instead of swallowing them.
+- **Listing scope:** `List`/`Stats` rebuild each digest from its file name, so a foreign file whose *name* is not lowercase hex (a temp leftover, an app's `HEAD`/`INDEX` ref file) is skipped. The check is the file name at **any depth**, not the path shape: a digest-named file that is not at its canonical fan-out path is still reported. No algorithm needs to be registered in the calling process — the backend stores no algorithm name at all.
+- **One base = one store (exclusivity).** `base` is treated as exclusively this backend's own directory: `List`/`Stats` report every digest-named file anywhere beneath it, and `Clean` reclaims any `*.tmp`/`*.tmp.<n>` anywhere beneath it as its own crash leftover. An app MUST therefore keep scratch `*.tmp` files out of the store directory (an atomic ref write there is deleted by the next `Clean`), and MUST NOT point a backend at a directory containing another store — or an older build's `<base>/<algo>/…` tree. Objects below such a base are **phantom**: `List`/`Stats` report them (even duplicating a digest that also exists at its canonical path) while `Get`/`Verify` return `ErrNotFound`, and `GC`/`Prune` can never reclaim them, because `Delete` no-ops at the canonical path.
+- **Several stores under one root:** give each its own directory and pass it as the base — `fs.New(filepath.Join(root, name))`, then `cask -store root/name`. There is deliberately **no** `WithNamespace` option: it would be exactly that `filepath.Join` plus a validator for a client-supplied path element (separators, `..`, absolute paths, Windows reserved names, case/NFC folding) — reintroducing the runtime-chosen path name §4.2 removed — and it isolates nothing a separate base does not already isolate, because isolation comes from the exclusivity rule above, not from the option (extensions §3).
 
 ### 4.5 `memory.Backend` — in-memory backend (`cas/backend/mem`)
 

@@ -2,7 +2,7 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v8
+version: v9
 ---
 
 # Extensions — go-cask
@@ -40,6 +40,8 @@ Designed but deliberately deferred — not part of the core; SHALL be built as e
 | **Content-defined chunking** | Rolling-hash chunking of very large blobs for chunk-granular dedup | performance §10 |
 
 **Deferral decision (2026-09):** every catalog entry stays deferred — no new core surface before v1.0.0. Triggers: build **packfiles** only when a real workload stores ≳10^5–10^6 objects or needs bulk small-object ingest (~1–2 ms per-file write floor is the crossover); **compression** or **encryption** only when an app needs compressible large blobs / encryption at rest; **chunking** only when very large blobs need chunk-granular dedup. Below those triggers the per-object layout is the leaner choice.
+
+**Rejected (2026-09): a namespace option (`fs.WithNamespace`).** Putting several stores in one root as `<base>/<namespace>/<fan-out>/<hex>` was rejected on four grounds: (1) the whole option reduces to `filepath.Join(root, name)` — which callers already have — plus a validator for a client-supplied path element (separators, `..`, absolute paths, Windows reserved names, case/NFC folding); (2) it reintroduces a runtime-chosen name used as a path element, the coupling the hash-agnostic core removed (cas-core §4.2); (3) it isolates nothing a separate base does not, because a store's isolation comes from the one-base exclusivity rule, not from a path segment (`List`/`Stats`/`Clean` walk the base recursively and match on the file name, so a prefix changes only where the walk starts — cas-core §4.4); (4) no consumer needs it — the CLI takes one `-store`, the viewer binds one backend, every example uses one store per base. Several stores under one root are already `fs.New(filepath.Join(root, name))`. Revisit only if a root-level *enumeration* need appears (one sweep or one stats view across many namespaces), which would be an app-layer root front-end over directories — not a byte-layer option.
 
 ## 4. Checklist
 

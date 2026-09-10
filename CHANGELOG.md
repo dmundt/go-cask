@@ -30,12 +30,21 @@ algorithm lives with the client), combined with Git's model for a repository
 `cas/hash/sha256` hasher.
 
 **Stored reference payloads changed and are not migrated**: a reference field is
-now one lowercase-hex string (`"ab12…"`) instead of `"sha256:ab12…"`. Object type
-names stay `@1` (no new major), so an object stored before this change FAILS to
-decode — `Digest.UnmarshalText` is strict and rejects the legacy `sha256:`
-prefix, surfacing as `ErrCorrupt` — rather than being silently misread. There is
-no migration tool: a store written by `v1.2.0` must be re-written by the old
-build if its objects are still needed.
+now one lowercase-hex string (`"ab12…"`) instead of `"sha256:ab12…"`, and the
+layout lost its algorithm directory (`<base>/aa/<hex>`, not
+`<base>/sha256/aa/<hex>`). Object type names stay `@1` (no new major), so an
+object stored before this change cannot be read by this build: `Get`/`Verify`
+return `ErrNotFound` for the old addresses (the path moved) while `List`/`Stats`
+still report them, and an object copied to its canonical path fails to decode
+with `ErrCorrupt`, because `Digest.UnmarshalText` is strict and rejects the
+legacy `sha256:` prefix. There is no migration tool: a store written by `v1.2.0`
+must be re-written by the old build if its objects are still needed.
+**The store directory is exclusively its own**: `List`/`Stats` report any
+digest-named file beneath the base at any depth and `Clean` reclaims any `*.tmp`
+beneath it, so a base must not contain another store (an old
+`<base>/<algo>/…` tree included) or an app's scratch temp files. Several stores
+under one root are `fs.New(filepath.Join(root, name))` — there is deliberately no
+`fs.WithNamespace` option (cas-core §4.4, extensions §3).
 
 **Also breaking: `gitlike` names no codec, and object invariants moved into the
 core.** `gitlike.NewRepository` now takes the caller's codec set
@@ -119,17 +128,19 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 ### Docs
 
-`cas-core.md` v41→v43 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v44 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
-`gitlike.Repository` and its migration note), `library-design.md` v20→v23
-(`cas.Validator` in the exported surface; the third ratified exception in §5),
-`coding-guidelines.md` v14→v15,
-`defaults.md` v17→v18, `examples.md` v16→v17, `extensions.md` v7→v8,
-`operations.md` v7→v8, `testing-strategy.md` v13→v15 (the invariant law),
-`versioning.md` v14→v16 (the third exception and the `v1.3.0` release),
-`docs/index.md` v8→v9, `AGENTS.md` v16→v18, `README.md`,
-and the example/`gitlike` READMEs.
+`gitlike.Repository` and its migration note; then the one-base exclusivity rule
+and the "several stores under one root" recipe in §4.4), `library-design.md`
+v20→v23 (`cas.Validator` in the exported surface; the third ratified exception
+in §5), `coding-guidelines.md` v14→v15, `defaults.md` v17→v18,
+`examples.md` v16→v17, `extensions.md` v7→v9 (the rejected `WithNamespace`
+decision in §3), `operations.md` v7→v9 (the legacy store's actual failure
+symptoms in §5), `testing-strategy.md` v13→v15 (the invariant law),
+`versioning.md` v14→v17 (the third exception, the `v1.3.0` release, and the
+layout's part in the break), `docs/index.md` v8→v9, `AGENTS.md` v16→v19 (the
+one-base rule in Constraints), `README.md`, and the example/`gitlike` READMEs.
 
 ## [v1.2.0] - 2026-09-10
 

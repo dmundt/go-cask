@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v18
+version: v19
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -436,6 +436,14 @@ gofmt -l .
   `performance.md` §2); one `sync.Mutex` coordinates
   `Put`/`Delete`; caches use `sync.Map` + `atomic` counters. The core has no
   registry and no other mutable global.
+- **The store base belongs to exactly one store** (cas-core §4.4): `List`/`Stats`
+  report any digest-named file beneath it at any depth, and `Clean` reclaims any
+  `*.tmp` beneath it. So never nest one store inside another's base or its parent
+  (an old `<base>/<algo>/…` tree included), and never keep app scratch `*.tmp`
+  files there — the examples' `HEAD`/`INDEX` refs are safe only because they are
+  neither digest-named nor `.tmp`. Several stores under one root are separate
+  base directories, `fs.New(filepath.Join(root, name))`; there is no
+  `fs.WithNamespace` option (extensions §3).
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` (cas-core §8 decision 1,
   `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side

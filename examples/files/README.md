@@ -19,7 +19,7 @@
 
 ## What it extends
 
-Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additions: the CLI and two ref files (`HEAD` = current commit, `INDEX` = current tree) at the store root, which the store's `List`/`Stats` ignore. The ref files hold the printable `sha256:hexdigest` form (`sha256.Format`; `sha256.Parse` accepts bare hex too).
+Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additions: the CLI and two ref files (`HEAD` = current commit, `INDEX` = current tree) at the store root, which the store's `List`/`Stats` ignore. They are safe there because the walk only claims files whose *name* is a hex digest or a `*.tmp` leftover (cas-core §4.4, one base = one store) — an app that wrote refs as `HEAD.tmp` + rename would have them reclaimed by `Clean`, so this example writes them in place. The ref files hold the printable `sha256:hexdigest` form (`sha256.Format`; `sha256.Parse` accepts bare hex too).
 
 ## Code walkthrough
 
