@@ -11,10 +11,23 @@
       "Use live derived state from one normalized object collection.",
       "When no object is selected, show no inspector values.",
       "Use real button controls for tabs and actions.",
-      "Status is a real table column rendered as a compact semantic pill, not an absent value."
+      "Status is a real table column rendered as a compact semantic pill, not an absent value.",
+      "Identity exposes Type only. The hash function is omitted from the product, so a hash never carries a name, label, or prefix: no algorithm row in Identity and no algorithm token in any displayed hash."
     ]
   },
   "tokens": {
+    "variableMap": {
+      "bg": "--bg",
+      "surface": "--surface",
+      "fg": "--fg",
+      "muted": "--muted",
+      "border": "--border",
+      "accent": "--accent",
+      "reference": "--blue",
+      "referenceSoft": "--blue-soft",
+      "font": "--font",
+      "mono": "--mono"
+    },
     "colors": {
       "bg": "oklch(98% 0.005 250)",
       "surface": "oklch(100% 0 0)",
@@ -31,12 +44,21 @@
       "statusOrphanedBg": "oklch(97% 0.03 78)",
       "statusOrphanedFg": "oklch(50% 0.115 70)",
       "statusCorruptBg": "oklch(97% 0.028 25)",
-      "statusCorruptFg": "oklch(49% 0.15 25)",
+      "statusCorruptFg": "oklch(49% 0.15 25)"
+    },
+    "derivedColors": {
       "rowHover": "color-mix(in oklch, fg 3%, surface)",
-      "rowSelected": "color-mix(in oklch, fg 10%, surface)"
+      "rowSelected": "color-mix(in oklch, fg 10%, surface)",
+      "selectionInset": "color-mix(in oklch, fg 55%, transparent)",
+      "quietHoverBg": "color-mix(in oklch, fg 4%, surface) — tab and reference-row hover",
+      "clearHoverBg": "color-mix(in oklch, fg 6%, surface)",
+      "resetHoverBg": "color-mix(in oklch, accent 12%, surface)",
+      "verifyHoverFill": "color-mix(in oklch, accent 86%, fg) — fill and border",
+      "hexPreviewFg": "color-mix(in oklch, fg 85%, muted)",
+      "note": "Status pill fills are literal oklch values, not tokens, in the reference implementation."
     },
     "fonts": {
-      "body": [
+      "font": [
         "Segoe UI",
         "Helvetica",
         "system-ui",
@@ -48,33 +70,40 @@
         "Consolas",
         "ui-monospace",
         "monospace"
-      ]
+      ],
+      "numeric": "mono with font-variant-numeric tabular-nums"
     },
     "typeScale": {
-      "body": "15.4px/1.45 body",
+      "body": "15.4px/1.45",
       "brand": "17.6px body, 700, -0.02em",
-      "mark": "9.9px mono, 700, centered",
+      "mark": "9.9px mono, 700",
       "verifyButton": "12.1px body, 650",
       "table": "13.2px mono",
       "searchInput": "13.2px mono",
-      "searchIcon": "19.8px body glyph, muted, centered",
+      "searchIcon": "19.8px/1 body glyph",
+      "clearIcon": "17.6px/1 body glyph",
       "control": "13.2px body",
-      "tableHeader": "12.65px/1.2 mono, 0.07em uppercase",
+      "controlSelect": "13.2px body",
+      "tableHeader": "12.65px/1.2 mono, 0.07em, uppercase",
       "sortButton": "9.9px/1 mono",
       "tab": "13.2px/1.25 body, 510 (active 650)",
-      "reset": "12.1px body accent",
+      "reset": "12.1px body",
       "statusTag": "700 10px/1.2 body, letter-spacing 0",
       "pager": "12.65px mono",
       "pagerControl": "12.1px mono",
-      "inspectorHeading": "12.65px/1.2 mono, 700, 0.08em uppercase",
+      "pagerSelect": "12.1px mono",
+      "emptyRow": "13.2px body",
+      "inspectorHeading": "12.65px/1.2 mono, 700, 0.08em, uppercase",
       "historyBack": "11px/1 mono",
       "hash": "13.2px/1.45 mono",
       "copyIcon": "15.4px/1 mono glyph",
-      "section": "12.1px/1.2 mono, 700, 0.08em uppercase",
+      "section": "12.1px/1.2 mono, 700, 0.08em, uppercase",
       "propertyLabel": "12.1px/1.45 body, 450",
       "propertyValue": "13.2px/1.45 mono",
+      "paneEmpty": "13.2px body",
       "reference": "13.2px/1.4 mono",
-      "referenceKind": "9.9px mono, 700, 0.06em uppercase",
+      "referenceKind": "9.9px mono, 700, 0.06em, uppercase",
+      "referenceEmpty": "11px/1.45 body",
       "hex": "12.1px/1.65 mono"
     },
     "geometry": {
@@ -82,10 +111,30 @@
       "filterBarHeight": "47px",
       "controlHeight": "30px",
       "pageInset": "14px",
+      "filterGap": "8px",
       "rowPadding": "8px horizontal and vertical; header row 7px vertical",
       "tableMinWidth": "700px",
       "hashColumnWidth": "30%",
       "otherColumnWidth": "14%",
+      "searchWrapperWidth": "262px",
+      "searchInputWidth": "260px",
+      "clearButtonSize": "30x30 effective (inline override of the 20x20 stylesheet rule), radius 3px, 5px from the right edge",
+      "inspectorHeadPadding": "13px 14px 11px",
+      "panePadding": "15px 14px",
+      "tabsPadding": "6px 8px 0, 2px gap",
+      "tabPadding": "8px 10px 7px",
+      "definitionList": "96px label column, 5px row gap, 10px column gap",
+      "sectionMargin": "20px bottom, 0 on the last section",
+      "refListGap": "6px",
+      "refRowPadding": "2px 3px, 7px gap",
+      "refKindPadding": "2px 5px",
+      "emptyRowPadding": "42px 13px",
+      "pagerPadding": "7px 14px",
+      "pageSizeSelect": "68x27px",
+      "pagerButton": "27x27px minimum",
+      "historyBackHeight": "22px",
+      "copyButton": "25x25px",
+      "statusPill": "min-height 19px, 1px 6px padding",
       "inspectorWidthDefault": "440px",
       "inspectorWidthRange": [
         "280px",
@@ -94,7 +143,7 @@
       "inspectorWidthKeyboardStep": "20px",
       "splitterVisibleWidth": "4px",
       "splitterHitExtend": "5px on both sides",
-      "radius": "5px controls, 4px buttons, 3px pills"
+      "radius": "5px inputs and brand mark, 4px buttons, 3px pills and quiet rows, 4px on the two top corners of tabs (4px 4px 0 0; the bottom border is the active indicator)"
     }
   },
   "layout": {
@@ -105,18 +154,21 @@
           "id": "top-bar",
           "height": "46px",
           "background": "surface",
+          "border": "1px bottom",
           "content": [
-            "20x20 rounded fg square brand mark CA",
+            "20x20 rounded fg square brand mark CA (9.9px mono, surface text)",
             "go-cask brand 17.6px 700",
-            "Verify solid accent button aligned right"
+            "Verify solid accent button pushed right with margin-left auto"
           ]
         },
         {
           "id": "filter-bar",
           "height": "47px",
+          "element": "form, so Reset is a native form reset",
           "background": "surface",
+          "border": "1px bottom",
           "content": [
-            "search",
+            "search wrapper 262px",
             "type filter",
             "size filter",
             "state filter",
@@ -126,18 +178,25 @@
         {
           "id": "workspace",
           "height": "calc(100vh - 93px)",
+          "background": "surface",
           "grid": "minmax(0, 1fr) 4px var(--inspector-width)",
           "columns": [
             "object list flexible",
             "4px draggable splitter",
             "inspector resizable"
           ]
+        },
+        {
+          "id": "object-list",
+          "structure": "flex column; table-wrap flex 1 with min-height 0; pager is a pinned footer",
+          "background": "table-wrap paints bg, table paints surface"
         }
       ],
       "overflow": {
         "document": "hidden",
         "tableWrap": "both axes; sticky header; bg token shows on unused scroll surface",
-        "inspector": "vertical"
+        "inspector": "vertical",
+        "hexdump": "horizontal"
       }
     },
     "mobile": {
@@ -152,17 +211,18 @@
   },
   "components": {
     "search": {
-      "width": "260px",
       "leftIcon": "⌕ glyph, muted, 19.8px, absolutely positioned left 9px, vertically centered, pointer-events none",
       "rightAction": "× clear button appears only when query is non-empty; clears only query, refocuses search, retains other filters",
       "padding": {
         "left": "28px",
         "right": "28px"
       },
-      "matches": "substring against hash or type (case-insensitive)"
+      "matches": "substring against the bare digest or the type, case-insensitive; the reference implementation lowercases the query and compares against the lowercase hash and type",
+      "referenceOverride": "the reference implementation carries inline overrides on the wrapper (262px) and the clear button (30x30), which win over the stylesheet; the effective metrics above are authoritative"
     },
     "filters": {
       "type": {
+        "width": "130px",
         "options": [
           "All types",
           "bytes@1",
@@ -191,8 +251,10 @@
         "source": "point-in-time verification result"
       },
       "reset": {
+        "element": "button type=reset inside the filter form",
         "default": "accent text on transparent",
-        "hover": "12% accent mixed into surface with 4px radius"
+        "hover": "12% accent mixed into surface with 4px radius",
+        "effect": "native form reset restores every filter and the query to its default, hides the clear affordance, and returns to page 1"
       }
     },
     "objectTable": {
@@ -204,7 +266,7 @@
           "width": "30%",
           "alignment": "left",
           "sort": "alphabetical",
-          "display": "full sha256: prefix + first 8 hex chars, then ellipsis"
+          "display": "first 8 hex characters of the digest, then an ellipsis; the digest is shown bare, with nothing prefixed or appended"
         },
         {
           "id": "type",
@@ -212,7 +274,7 @@
           "width": "14%",
           "alignment": "left",
           "sort": "alphabetical",
-          "display": "lowercase, muted"
+          "display": "lowercase, muted; stays muted on a selected row"
         },
         {
           "id": "size",
@@ -234,7 +296,7 @@
           "width": "14%",
           "alignment": "left",
           "sort": "alphabetical status value",
-          "display": "semantic pill, capitalized via text-transform, inserted as a real cell between Refs and Written"
+          "display": "semantic pill, capitalized via text-transform, rendered as a real cell between Refs and Written"
         },
         {
           "id": "written",
@@ -248,28 +310,31 @@
         "sticky": true,
         "top": "0",
         "background": "bg",
+        "initialSort": "Hash ascending: the hash header starts aria-sort=ascending with its active ▲ button aria-pressed=true, and every other header starts aria-sort=none",
         "labels": "micro uppercase mono",
-        "sortControl": "one arrow button immediately right of label; active column shows ▲ ascending or ▼ descending; click toggles direction; selecting a different column starts ascending; aria-sort on the th and aria-pressed on the button"
+        "sortControl": "one 14x14 arrow button immediately right of the label, 4px gap, right-aligned in the numeric columns; active column shows ▲ ascending or ▼ descending; click toggles direction on the same column; selecting a different column starts ascending; aria-sort on the th and aria-pressed on the button"
       },
       "rows": {
         "hover": "rowHover",
-        "selected": "rowSelected with 2px dark leading inset (55% fg)",
+        "selected": "rowSelected with a 2px dark leading inset (55% fg) and full fg text",
         "focus": "accent inset outline",
-        "click": "select object and update inspector; Enter or Space selects the focused row",
-        "hashDisplay": "first 15 characters of full hash followed by ellipsis (keeps full sha256: prefix)",
+        "focusable": "every row is tabbable",
+        "click": "select object and update inspector",
+        "keyboard": "Enter or Space selects the focused row",
+        "hashDisplay": "first 8 hex characters of the digest followed by an ellipsis; shown bare, with no prefix",
         "typeDisplay": "lowercase"
       },
       "empty": "One centered row spanning all six columns: No objects match the current filters."
     },
     "statusLabels": {
-      "shape": "compact borderless 3px-radius pill, min-height 19px, 700 10px text, text-transform capitalize",
+      "shape": "compact borderless 3px-radius pill, min-height 19px, 1px 6px padding, 700 10px text, text-transform capitalize",
       "verified": "light green fill",
       "unverified": "neutral gray fill",
       "orphaned": "light amber fill",
       "corrupt": "light red fill"
     },
     "pagination": {
-      "placement": "bottom of object list, pinned below table scroll area, bg surface, 7px 14px",
+      "placement": "bottom of object list, pinned below table scroll area, bg surface, 7px 14px, 12px gap",
       "leftSummary": {
         "all": "{from}-{to} of {matched} · {matchedBytes}",
         "filtered": "{from}-{to} of {matched} · {matchedBytes} (filtered from {total})",
@@ -277,35 +342,39 @@
       },
       "rightControls": [
         "Rows label",
-        "page size select: 25, 50, 100, 250",
+        "page size select 68x27px: 25, 50, 100, 250",
         "« first",
         "‹ previous",
         "Page {page} of {pages}",
         "next ›",
         "last »"
       ],
-      "control": "27px bordered square, mono 12.1px; disabled unavailable controls at 0.4 opacity and not-allowed cursor"
+      "control": "27px bordered square, mono 12.1px; hover raises the border to fg and the fill to bg; unavailable controls are disabled at 0.4 opacity with a not-allowed cursor",
+      "firstAndPrevious": "disabled on page 1",
+      "nextAndLast": "disabled on the last page",
+      "summaryFormat": "matched count is locale formatted; total bytes use whole MB above 1 MiB, whole KB above 1 KiB, else bytes"
     },
     "verifyButton": {
       "default": "solid accent fill, surface text, height 28px, radius 4px, 12.1px 650",
       "hover": "accent darkened toward fg (86% accent mix) for fill and border",
       "working": "disabled at 0.6 opacity with wait cursor, label Verifying…",
-      "done": "brief Verified state, restores to Verify after 1.2s"
+      "done": "brief Verified state, restores to Verify after 1.2s",
+      "note": "the reference implementation computes all results synchronously, so the working label is never observable; keep the disabled working state for an asynchronous verify"
     },
     "splitter": {
-      "role": "vertical drag separator, role=separator, aria-orientation vertical, min 280 max 560",
-      "drag": "pointer events change inspector width within 280px to 560px; width stored as CSS var --inspector-width and aria-valuenow",
+      "role": "vertical drag separator, role=separator, aria-orientation vertical, aria-valuemin 280, aria-valuemax 560, aria-valuenow current width, tabindex 0",
+      "drag": "pointer capture; width = start width + (start x - current x), clamped to 280px-560px; written to the --inspector-width custom property on the workspace",
       "keyboard": "Left/Right steps 20px; Home sets min; End sets max",
-      "visible": "4px border tone; accent on hover or drag",
-      "hitTarget": "extends 5px on both sides via ::after"
+      "visible": "4px border tone; accent on hover, drag, or focus",
+      "hitTarget": "extends 5px on both sides via ::after; touch-action none"
     },
     "inspector": {
-      "background": "surface",
+      "background": "surface (painted by the workspace)",
       "header": {
-        "label": "Object, micro uppercase mono heading",
-        "hash": "full selected hash in mono, wraps anywhere",
-        "copy": "25px bordered icon button visible only when hash exists; ⧉ default, ✓ for 1.2s on success; aria-label Copy full object hash then Hash copied",
-        "back": "compact button, disabled until an object was opened from a reference; restores the preceding inspector selection"
+        "label": "Object, micro uppercase mono heading, with a compact Back button on the same row",
+        "hash": "full selected digest in mono, shown bare with no prefix, wrapping anywhere",
+        "copy": "25px bordered icon button visible only when a hash exists; ⧉ default, ✓ for 1.2s on success; aria-label Copy full object hash then Hash copied; falls back to a hidden textarea and execCommand when the clipboard API is unavailable",
+        "back": "22px compact button, disabled until an object was opened from a reference; restores the preceding inspector selection"
       },
       "tabs": {
         "controls": [
@@ -313,18 +382,18 @@
           "References",
           "Bytes"
         ],
-        "implementation": "button tablist with arrow-key navigation (Left/Right/Home/End), aria-selected and tabindex roving, exactly one active panel",
+        "implementation": "button tablist with arrow-key navigation (Left/Right wrap, Home/End), aria-selected and roving tabindex, exactly one active panel",
         "active": "foreground text, 650 weight, 2px accent bottom border",
-        "hover": "foreground text, 4% foreground-tinted background"
+        "hover": "foreground text, 4% foreground-tinted background, 4px 4px 0 0 radius"
       },
       "metadata": {
         "sections": [
           {
             "name": "Identity",
             "properties": [
-              "Algorithm",
               "Type"
-            ]
+            ],
+            "rule": "Type is the only Identity property. No hash-function row, label, or prefix exists anywhere in the inspector."
           },
           {
             "name": "Storage",
@@ -342,11 +411,11 @@
             ]
           }
         ],
-        "layout": "two-column definition list, label column 96px, value flexible left aligned; section margin 20px",
+        "layout": "two-column definition list, label column 96px, value flexible left aligned; 5px row gap and 10px column gap; 20px section margin",
         "sectionTitle": "micro uppercase mono",
         "propertyLabel": "body 12.1px muted, normal case, weight 450",
         "propertyValue": "mono 13.2px, wraps anywhere",
-        "timestamp": "RFC 3339 UTC timestamp with milliseconds: YYYY-MM-DDTHH:mm:ss.SSSZ",
+        "timestamp": "RFC 3339 UTC timestamp with milliseconds: YYYY-MM-DDTHH:mm:ss.SSSZ, derived from the stored epoch",
         "status": "current point-in-time verification result rendered as a semantic status pill",
         "empty": "Keep headings and property labels, clear all values"
       },
@@ -355,15 +424,18 @@
           "By",
           "Out"
         ],
-        "row": "direction arrow, uppercase reference-kind pill, shortened hash; mono",
-        "by": "incoming references, arrow ←, kind manifest",
+        "row": "button, 13.2px mono, 7px gap, 2px 3px padding, 3px radius; direction arrow, uppercase reference-kind pill, shortened hash",
+        "kindPill": "reference-soft fill, reference blue text, 2px 5px padding, 3px radius",
+        "by": "incoming references, arrow ←, kind manifest; the row is reachable by keyboard and selects the target object, pushing history",
         "out": "outgoing references, arrow →, kind blob",
         "byEmpty": "No objects reference this object.",
         "outEmpty": "This object references no other objects.",
         "empty": "Show no reference items when no object is selected"
       },
       "bytes": {
-        "content": "first 128 object bytes as eight rows of offset, 16 hex bytes, and ASCII; rendered from a deterministic hex preview",
+        "content": "first 128 object bytes as eight rows of offset, 16 hex bytes, and ASCII; rendered from a deterministic hex preview derived from the digest",
+        "row": "8-digit hex offset, two spaces, 16 space-separated hex pairs, two spaces, ASCII in pipes with non-printables as dots",
+        "color": "hexPreviewFg mixes fg 85% into muted",
         "scroll": "horizontal",
         "empty": "No content when no object is selected"
       }
@@ -371,13 +443,13 @@
   },
   "dataModel": {
     "object": {
-      "hash": "full content address string with sha256: prefix",
+      "hash": "content address digest as 64 lowercase hex characters; shown bare everywhere in the interface, with no hash-function name, label, or prefix in the table, inspector, reference rows, byte view, copy target, or accessible names",
       "type": "envelope type string, lowercase",
       "size": "human byte string (B/KiB/MiB); derive byte count for comparison separately",
       "refsBy": "integer incoming reference count",
       "refsOut": "integer outgoing reference count",
       "writtenAt": "epoch timestamp used for sort and RFC 3339 derivation",
-      "written": "human readable timestamp or age (h ago / d ago)",
+      "written": "human readable age derived from writtenAt: h ago below 24 hours, then d ago",
       "verificationResult": "ephemeral result in a session map, initially unverified; Verify marks refsBy above zero verified and refsBy zero orphaned"
     }
   },
@@ -398,8 +470,9 @@
       "reference navigation history"
     ],
     "rules": [
-      "Filtering or changing page size resets to page 1.",
+      "Filtering, searching, or changing page size resets to page 1.",
       "Filter the normalized object collection, sort it, then take the current page slice.",
+      "Clamp the current page to the available page count on every render, so a shrinking result set never shows an empty page.",
       "Size comparisons use integer bytes parsed from the display string; Written comparisons use writtenAt timestamps; Refs comparisons use integers; Hash, Type, and Status use locale-aware text comparison.",
       "Verify updates the current session verification result for all objects: refsBy above zero becomes verified, refsBy zero becomes orphaned.",
       "Unverified and Corrupt filters are available; no objects match until corresponding verification results exist.",
@@ -407,19 +480,21 @@
       "No matches clears selection and every inspector value, reference list, byte row, and copy action.",
       "When matches exist and the selected object is not in the filtered result set, select the first matching object and update inspector data.",
       "Any selected row visually reflects selection with a leading inset and updates inspector data.",
-      "Status cells are inserted between the Refs and Written columns after initial row build.",
+      "Opening an object from a reference row pushes the previous selection onto a history stack; Back pops it and enables only when the stack is non-empty.",
       "Do not render an unbounded result list; paginate before DOM/server response rendering."
     ]
   },
   "accessibility": {
-    "focus": "2px accent ring on all focusable controls; inputs/selects use 2px offset, compact row controls use 1px offset",
+    "focus": "2px accent ring on all focusable controls; inputs and selects use 2px offset, compact row controls (sort arrows, pager buttons, copy, reference rows, history back) use 1px offset, and table rows use a 2px inset outline",
+    "contrast": "All quiet hover states keep foreground text at or above its resting contrast: muted text moves to fg, and fills move rather than the text color",
     "table": "Expose column headers, aria-sort state, semantic status-label text, and selected row state; rows are keyboard focusable with Enter/Space selection",
     "tabs": "Use button controls with tab role, aria-selected state, associated panels, and arrow-key roving navigation",
-    "splitter": "Expose separator role and vertical orientation with aria-valuenow and keyboard resizing (arrows, Home, End)",
+    "splitter": "Expose separator role and vertical orientation with aria-valuemin, aria-valuemax, aria-valuenow, and keyboard resizing (arrows, Home, End)",
+    "controls": "Sort buttons expose aria-pressed plus a direction-bearing label; pager buttons and the clear button carry aria-labels; the search field and every select carry aria-labels",
     "copy": "Accessible name must state Copy full object hash and change to Hash copied for confirmation"
   },
   "implementationGuidance": {
-    "client": "Use one deterministic 512-object store and derive view state. Avoid duplicate fallback DOM or stale handlers. Treat verification results as session state, not intrinsic object data.",
+    "client": "Use one deterministic 512-object store and derive view state. Avoid duplicate fallback DOM or stale handlers. Treat verification results as session state, not intrinsic object data. The reference implementation builds five data cells per row and then inserts the status cell before the Written cell, and patches the empty row to span six columns; a port should emit all six cells directly.",
     "server": "Represent query, filters, sort, page, page size, selected hash, and active tab in the URL. Return the table and pager as one fragment and inspector as a selected-object fragment.",
     "portability": "This document specifies behavior and styling independently of framework. It can be implemented with SSR templates, htmx, React, native desktop, or another UI technology."
   }
