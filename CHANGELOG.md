@@ -128,6 +128,21 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 ### Internal
 
+- **`gitlike`'s codec-agnosticism is now enforced, not assumed.** A CI gate
+  fails the build if `go list -deps ./gitlike` contains a codec package (the
+  codec is injected through `gitlike.Codecs`), because grepping the directory is
+  misleading: the package's *production* graph contains no codec at all (`cas`,
+  `cas/cache/lru` and stdlib only — `TestRepositoryWithAnotherCodec` runs the
+  whole model over gob), while `_test.go` files must inject one, and the shipped
+  JSON codec is the right one there because the documented wire bytes are JSON
+  and that is what the address pins assert. `cas-core` §4.12 and
+  `gitlike/README.md` state the rule and what the `json:"…"` tags really are:
+  hints for codecs that honor them, carrying the wire field names *and* which
+  references are optional (`omitzero` on `TreeEntry.Hash`/`Commit.Parent`).
+  Those tags stay — optionality is a model fact with no codec-neutral spelling
+  in Go, and inferring it would change `Tag.Target`'s absent shape (new bytes,
+  new addresses, i.e. a MAJOR).
+
 - **Identifiers that hold a digest are now named `…Digest`/`…digest`** where the
   old name was a leftover from the removed `cas.Hash`: `hashPath` → `digestPath`
   (fs), `shortHash` → `shortDigest` and `hashWithType` → `digestWithType`
@@ -173,7 +188,7 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 ### Docs
 
-`cas-core.md` v41→v47 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v48 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule

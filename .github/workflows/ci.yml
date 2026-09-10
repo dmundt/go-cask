@@ -51,6 +51,17 @@ jobs:
             exit 1
           fi
 
+      - name: gitlike stays codec-agnostic
+        if: hashFiles('**/*.go') != ''
+        run: |
+          # The codec is injected at the call site; the library names none. Test
+          # files MAY inject one (cas-core §4.12), so check the package's
+          # production dependency graph rather than grepping the directory.
+          if go list -deps ./gitlike | grep -E 'cas/codec'; then
+            echo "gitlike MUST NOT depend on a codec package: inject it via gitlike.Codecs (cas-core §4.12)"
+            exit 1
+          fi
+
       - name: Test -race + coverage gate (cas/ + gitlike >= 90%)
         if: hashFiles('**/*.go') != ''
         run: |

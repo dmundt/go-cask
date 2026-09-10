@@ -26,6 +26,12 @@
 - **`WalkGraph`, `CachedRepository`, `Preloader`** — whole-graph traversal, per-type LRU caches, and a background commit preloader.
 - **`cas` is untouched** — the canonical *consumer* pattern.
 
+## Codec-agnostic by construction
+
+No file in this package outside `_test.go` imports a codec package, and `go list -deps ./gitlike` contains none (a CI gate fails the build if one appears). The four codecs are injected at the call site (`NewRepository(raw, hasher, Codecs{...})`), and `TestRepositoryWithAnotherCodec` runs the whole model — typed reads, `ResolveAny`, `WalkGraph`, the tree invariant — over **gob**, with no JSON involved.
+
+The `_test.go` files do name a codec (the shipped JSON one) exactly as a client does: a runnable test must inject *some* codec, and the documented wire bytes are JSON, so that is what the address pins in `gitlike_test.go` assert. The `json:"…"` struct tags on the object types are hints for whichever codec honors them — they carry the wire field names *and* which references are optional (`omitzero` on `TreeEntry.Hash`/`Commit.Parent`), and a codec that ignores them (gob) still round-trips every object.
+
 ## Code walkthrough
 
 - `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules, which the store enforces on every `Put` and `Get` (`cas.Validator`) rather than any codec. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
