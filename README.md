@@ -76,11 +76,18 @@ classDiagram
         +Unmarshal(data []byte) (T, error)
     }
     class JsonCodec~T~ {
+        <<codec>>
     }
     class GobCodec~T~ {
+        <<codec>>
+    }
+    class Envelope {
+        +Type() string
+        +Payload() []byte
     }
     Codec~T~ <|.. JsonCodec~T~ : implements
     Codec~T~ <|.. GobCodec~T~ : implements
+    Store~T~ ..> Envelope : wraps codec payload
     class Store~T~ {
         +Put(ctx, obj T) (Hash, error)
         +Get(ctx, h) (T, error)
