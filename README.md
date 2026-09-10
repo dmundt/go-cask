@@ -44,17 +44,51 @@ AGENTS.md  the agent aggregator at the repo root
 
 ```mermaid
 classDiagram
-    direction LR
-    class Hash { +Algorithm() string +String() string +Equal(other Hash) bool }
-    class Backend { <<interface>> +Put(ctx, h, r) error +Get(ctx, h) io.ReadCloser +Exists(ctx, h) (bool, error) +Delete(ctx, h) error +List(ctx, algo) []Hash }
-    class FSBackend { <<backend>> }
-    class MemBackend { <<backend>> }
+    direction TB
+    class Hash { 
+        +Algorithm() string +String() string 
+        +Equal(other Hash) bool
+    }
+    class Backend { 
+        <<interface>>
+        +Put(ctx, h, r) error
+        +Get(ctx, h) io.ReadCloser
+        +Exists(ctx, h) (bool, error)
+        +Delete(ctx, h) error
+        +List(ctx, algo) []Hash
+    }
+    class FSBackend { 
+        <<backend>>
+    }
+    class MemBackend { 
+        <<backend>>
+    }
     Backend <|.. FSBackend : implements
     Backend <|.. MemBackend : implements
-    class Object~T~ { <<interface>> +Type() string +References() []Hash }
-    class Codec~T~ { <<interface>> +Marshal(v T) ([]byte, error) +Unmarshal(data []byte) (T, error) }
-    class Store~T~ { +Put(ctx, obj T) (Hash, error) +Get(ctx, h) (T, error) +Delete(ctx, h) error }
-    class Walker~T~ { +Walk(ctx, h) error }
+    class Object~T~ {
+        <<interface>>
+        +Type() string
+        +References() []Hash
+    }
+    class Codec~T~ {
+        <<interface>>
+        +Marshal(v T) ([]byte, error)
+        +Unmarshal(data []byte) (T, error)
+    }
+    class JsonCodec~T~ {
+    }
+    class GobCodec~T~ {
+    }
+    Codec~T~ <|.. JsonCodec~T~ : implements
+    Codec~T~ <|.. GobCodec~T~ : implements
+    class Store~T~ {
+        +Put(ctx, obj T) (Hash, error)
+        +Get(ctx, h) (T, error)
+        +Delete(ctx, h) error
+    }
+    class Walker~T~ {
+        +Walk(ctx, h) error
+    }
     Store~T~ o-- Backend : raw
     Store~T~ o-- Codec~T~ : codec
     Store~T~ ..> Object~T~ : stores
