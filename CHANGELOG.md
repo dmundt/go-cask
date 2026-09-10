@@ -151,17 +151,38 @@ payloads are unchanged, so addresses are stable *within* this model.
   still describes a FuncMap the viewer does not build. Left as-is (renamed only)
   rather than wired up or deleted, pending a decision.
 - `docs/specs/AGENT.md` §6 now carries the **`hash` vs `digest`** glossary row
-  that makes the surviving `hash` names intentional rather than debt.
+  that makes the surviving `hash` names intentional rather than debt, plus the
+  **`examples/` vs `Example` functions** row (runnable programs vs executable
+  godoc docs) so the eight Example functions are not mistaken for duplicates of
+  the examples tree.
+- **The `gitlike` Examples are consumer-facing now**: the file moved to
+  `package gitlike_test` (external) and each Example spells out its own
+  `gitlike.Codecs{...}` set instead of calling the test-only `jsonCodecs()`
+  helper — a rendered Example that names a private helper is not copy-pasteable,
+  which defeats its purpose. Two Examples were added for the most-copied doc
+  flows: `ExampleWalkGraph` (blob → tree → commit → tag → `ResolveTag`/
+  `ResolveCommit`/`ResolveTree`/`ResolveBlob` → `WalkGraph`) and `ExampleCodec`
+  (a gzip `Codec[T]` wrapper over both the memory and fs backends, pinning that
+  the address is backend-independent).
+- **Writing `ExampleWalkGraph` found a runtime bug in the documented usage
+  snippet**: `AGENTS.md` resolved a *tag* digest with `Resolver.ResolveCommit`,
+  which fails (`tag@1` != `commit@1`) and then dereferenced the nil result. The
+  compile-only check used in the previous cycle could not catch it, because the
+  snippet ignores errors with `_`. AGENTS.md now walks `ResolveTag(tagHash)` →
+  `Target` → `Tree` → entry `Hash`, and states why.
 
 ### Docs
 
-`cas-core.md` v41→v46 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v47 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule
 and the "several stores under one root" recipe in §4.4; then the diagram pass,
 which adds `Validator`/`Codecs` and corrects stale classes and member
-signatures; then `digestPath`/`shortDigest` in §4.4/§4.12), `library-design.md`
+signatures; then `digestPath`/`shortDigest` in §4.4/§4.12; then the Resolver
+type-safety correction in §4.12 — the wrong resolver for a digest is a runtime
+`ErrUnknownType`, not a compile-time error, which is what the broken snippet
+below assumed), `library-design.md`
 v20→v23 (`cas.Validator` in the exported surface; the third ratified exception
 in §5), `coding-guidelines.md` v14→v15, `defaults.md` v17→v18,
 `examples.md` v16→v17, `extensions.md` v7→v9 (the rejected `WithNamespace`
@@ -171,7 +192,8 @@ in the path round-trip law), `versioning.md` v14→v17 (the third exception, the
 `v1.3.0` release, and the layout's part in the break), `docs/index.md` v8→v9,
 `AGENTS.md` v16→v20 (the one-base rule in Constraints; `Validator` in the
 architecture figures), `viewer-design.md` v11→v12 (`shortDigest`/
-`digestWithType`), `AGENT.md` v15→v16 (the `hash` vs `digest` glossary row),
+`digestWithType`), `AGENT.md` v15→v17 (the `hash` vs `digest` row, then the `examples/` vs
+`Example` row),
 `README.md`, and the example/`gitlike` READMEs.
 
 Every Mermaid diagram in the repo (13 blocks across 8 files) was re-checked

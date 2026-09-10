@@ -315,8 +315,12 @@ func main() {
     tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
 
     // 3. Type-safe reads — no casts, no any: the fields ARE the addresses
-    //    (IsZero reports an absent one).
-    commit, _ := resolver.ResolveCommit(ctx, tagHash)
+    //    (IsZero reports an absent one). Each step uses the resolver method
+    //    matching the digest's stored type: resolving a TAG digest through
+    //    ResolveCommit fails (stored type "tag@1" != "commit@1"), so walk the
+    //    chain — tag -> Target -> Tree -> entry Hash.
+    tag, _ := resolver.ResolveTag(ctx, tagHash)
+    commit, _ := resolver.ResolveCommit(ctx, tag.Target)
     tree, _ := resolver.ResolveTree(ctx, commit.Tree)
     blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash)
     fmt.Println(string(blob.Data)) // "Hello, World!"
