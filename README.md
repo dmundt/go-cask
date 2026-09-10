@@ -45,15 +45,16 @@ AGENTS.md  the agent aggregator at the repo root
 ```mermaid
 classDiagram
     direction TB
-    class Digest { 
-        +String() string +Equal(other Digest) bool 
+    class Digest {
+        +String() string
+        +Equal(other Digest) bool
     }
-    class Hasher { 
+    class Hasher {
         <<interface>>
         +Digest(r io.Reader) (Digest, error)
         +Validate(d Digest) error
     }
-    class Backend { 
+    class Backend {
         <<interface>>
         +Put(ctx, d, r) error
         +Get(ctx, d) io.ReadCloser
@@ -62,40 +63,16 @@ classDiagram
         +List(ctx) ([]Digest, error)
         +Stats(ctx) (*Stats, error)
     }
-    class FSBackend { 
-        <<backend>>
-    }
-    class MemBackend { 
-        <<backend>>
-    }
-    Backend <|.. FSBackend : implements
-    Backend <|.. MemBackend : implements
     class Object~T~ {
         <<interface>>
         +Type() string
         +References() []Digest
-    }
-    class Validator {
-        <<interface>>
-        +Validate() error
     }
     class Codec~T~ {
         <<interface>>
         +Marshal(v T) ([]byte, error)
         +Unmarshal(data []byte) (T, error)
     }
-    class JsonCodec["json.Codec~T~ (cas/codec/json)"]
-    <<codec>> JsonCodec
-    class GobCodec["gob.Codec~T~ (cas/codec/gob)"]
-    <<codec>> GobCodec
-    class Envelope {
-        +Type string
-        +Data []byte
-    }
-    Envelope : +EnvelopeFromBytes(data) (Envelope, error)
-    Codec~T~ <|.. JsonCodec : implements
-    Codec~T~ <|.. GobCodec : implements
-    Store~T~ ..> Envelope : wraps codec payload
     class Store~T~ {
         +Put(ctx, obj T) (Digest, error)
         +Get(ctx, d) (T, error)
@@ -108,12 +85,7 @@ classDiagram
     Store~T~ o-- Codec~T~ : codec
     Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
-    Store~T~ ..> Validator : enforces when T declares it
     Walker~T~ ..> Store~T~ : reads via Get
-    class CachedStore~T~
-    class LRUCache~T~
-    CachedStore~T~ o-- Store~T~ : wraps
-    LRUCache~T~ --|> CachedStore~T~ : extends
 ```
 
 ## Quick start
