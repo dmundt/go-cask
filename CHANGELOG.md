@@ -10,6 +10,10 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [v1.2.0] - 2026-09-10
+
 Code audit of the `v1.1.0` tree: a full read of `cas`, the backends, caches,
 codecs, CLI, viewer, the `gitlike` reference model and the examples, with fixes
 for the defects it found, plus a hash-type consolidation described below. The
@@ -81,8 +85,8 @@ every stored object keeps its address.
     with `NewHash`/`ParseHash`/`HashBytes` in a registered `HashFunc`. This
     closes the hole that let an unvalidated address (e.g. a hostile algorithm
     name) reach a backend, so `fs`'s `safeAlgo` path sanitizer is gone.
-  - The absent wrapper type `cas.HashRef` — added earlier in this same
-    unreleased cycle and never released — is deleted; `cas.Hash` covers both
+  - The absent wrapper type `cas.HashRef` — added in this same cycle and never
+    released — is deleted; `cas.Hash` covers both
     roles.
   - `Validate()`-style checks now read `Tree.IsZero()` on the field type.
 - **Stored bytes are unchanged.** `json` output for a present reference is the
