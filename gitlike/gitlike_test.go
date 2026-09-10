@@ -13,6 +13,8 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	gobcodec "github.com/dmundt/go-cask/cas/codec/gob"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -21,9 +23,20 @@ import (
 // goes in a literal).
 func ref(d cas.Digest) cas.Digest { return d }
 
+// jsonCodecs is the Codecs set the tests build repositories with: gitlike names
+// no codec, so every construction passes one explicitly.
+func jsonCodecs() Codecs {
+	return Codecs{
+		Blob:   jsoncodec.New[*Blob](),
+		Tree:   jsoncodec.New[*Tree](),
+		Commit: jsoncodec.New[*Commit](),
+		Tag:    jsoncodec.New[*Tag](),
+	}
+}
+
 func newRepo(t *testing.T, raw cas.Backend) *Repository {
 	t.Helper()
-	return NewRepository(raw, sha256hash.New())
+	return NewRepository(raw, sha256hash.New(), jsonCodecs())
 }
 
 func putBlob(t *testing.T, repo *Repository, data string) cas.Digest {
@@ -609,7 +622,7 @@ func TestLegacyAlgoPrefixedReferenceFailsLoudly(t *testing.T) {
 
 func TestRepositoryErrorPaths(t *testing.T) {
 	raw := mem.New()
-	repo := NewRepository(raw, sha256hash.New())
+	repo := NewRepository(raw, sha256hash.New(), jsonCodecs())
 	if _, err := NewCachedRepository(repo, 0); err == nil {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
 	}
@@ -718,27 +731,45 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 	}
 }
 
-// TestCommitRequiredTreeDecode pins the strictness the required tree keeps:
-// a missing, empty, or null tree is a decode error, not a rootless commit.
+// TestCommitRequiredTreeDecode pins the required-tree rule on the read path: a
+// stored commit whose payload has a missing, empty, or null tree decodes into an
+// object that violates its own invariant, so the store reports ErrCorrupt (the
+// rule is Commit.Validate, enforced by the store, so it holds under any codec).
+// A malformed reference still fails earlier, inside the codec.
 func TestCommitRequiredTreeDecode(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
 	h := mustDigest(t, strings.Repeat("ab", 32))
-	for _, in := range []string{
-		`{"author":"a"}`,                         // missing
-		`{"tree":"","author":"a"}`,               // empty string
-		`{"tree":null,"author":"a"}`,             // null
+
+	// Malformed references fail while decoding (cas.Digest.UnmarshalText).
+	for _, payload := range []string{
 		`{"tree":"nope:zz","author":"a"}`,        // unknown algorithm
 		`{"tree":"sha256:not-hex","author":"a"}`, // malformed digest
 		`{"tree":42,"author":"a"}`,               // wrong type
 	} {
-		var c Commit
-		if err := json.Unmarshal([]byte(in), &c); err == nil {
-			t.Fatalf("commit from %s must fail to decode", in)
+		d := mustStoreEnv(t, repo, TypeCommit, payload)
+		if _, err := repo.Commits.Get(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
+			t.Fatalf("commit from %s = %v, want ErrCorrupt", payload, err)
+		}
+	}
+
+	// A missing, empty or null tree decodes, but the object violates its own
+	// invariant: the store rejects it rather than returning a rootless commit.
+	for _, payload := range []string{
+		`{"author":"a"}`,           // missing
+		`{"tree":"","author":"a"}`, // empty string
+		`{"tree":null,"author":"a"}`,
+	} {
+		d := mustStoreEnv(t, repo, TypeCommit, payload)
+		if _, err := repo.Commits.Get(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
+			t.Fatalf("commit from %s = %v, want ErrCorrupt", payload, err)
 		}
 	}
 
 	// A valid tree decodes; an absent parent stays absent.
-	var c Commit
-	if err := json.Unmarshal([]byte(`{"tree":"`+h.String()+`","parent":null,"author":"a"}`), &c); err != nil {
+	d := mustStoreEnv(t, repo, TypeCommit, `{"tree":"`+h.String()+`","parent":null,"author":"a"}`)
+	c, err := repo.Commits.Get(ctx, d)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Tree.IsZero() || !c.Tree.Equal(h) {
@@ -749,9 +780,8 @@ func TestCommitRequiredTreeDecode(t *testing.T) {
 	}
 }
 
-// TestCommitWithParentRoundTrip exercises the non-nil parent branches of
-// Commit.MarshalJSON (parent serialised) and Commit.UnmarshalJSON (parent
-// re-parsed back to a Hash).
+// TestCommitWithParentRoundTrip exercises the optional-parent path through the
+// store: the parent is serialized by the codec and re-parsed back to a digest.
 func TestCommitWithParentRoundTrip(t *testing.T) {
 	ctx := ctxBackground()
 	repo := newRepo(t, mem.New())
@@ -911,8 +941,62 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// TestPutRejectsCommitWithoutTree keeps the write-side guarantee that used to
-// live in the hand-written Commit.MarshalJSON.
+// TestRepositoryWithAnotherCodec pins that gitlike names no codec: the same
+// object model runs over gob, cross-type resolution and WalkGraph still work
+// (the envelope is codec-agnostic), and the mandatory-tree rule still holds —
+// because it is Commit.Validate enforced by the store, not a codec-specific
+// method.
+func TestRepositoryWithAnotherCodec(t *testing.T) {
+	ctx := context.Background()
+	repo := NewRepository(mem.New(), sha256hash.New(), Codecs{
+		Blob:   gobcodec.New[*Blob](),
+		Tree:   gobcodec.New[*Tree](),
+		Commit: gobcodec.New[*Commit](),
+		Tag:    gobcodec.New[*Tag](),
+	})
+
+	// The invariant is codec-independent: a gob-backed repository refuses a
+	// tree-less commit just like the JSON one.
+	if _, err := repo.Commits.Put(ctx, &Commit{Author: "a"}); err == nil {
+		t.Fatal("a gob-backed repository must still refuse a tree-less commit")
+	}
+
+	hb := putBlob(t, repo, "gob blob")
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: hb, Mode: "m"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ht, Author: "a", Message: "m", Time: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hTag, err := repo.Tags.Put(ctx, &Tag{Name: "v1", Target: hc})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Typed reads and cross-type resolution work over the non-JSON codec.
+	res := NewResolver(repo)
+	commit, err := res.ResolveCommit(ctx, hc)
+	if err != nil || !commit.Tree.Equal(ht) || commit.Message != "m" {
+		t.Fatalf("ResolveCommit over gob = %+v, %v", commit, err)
+	}
+	ro, err := res.ResolveAny(ctx, hTag)
+	if err != nil || ro.Type != "tag" || ro.Tag == nil || !ro.Tag.Target.Equal(hc) {
+		t.Fatalf("ResolveAny(tag) over gob = %+v, %v", ro, err)
+	}
+	visited := 0
+	if err := WalkGraph(ctx, res, hTag, func(*ResolvedObject) error { visited++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if visited != 4 {
+		t.Fatalf("WalkGraph over gob visited %d objects, want 4", visited)
+	}
+}
+
+// TestPutRejectsCommitWithoutTree keeps the write-side guarantee: the store
+// calls Commit.Validate before encoding, so a tree-less commit is never written
+// (this used to live in a hand-written Commit.MarshalJSON).
 func TestPutRejectsCommitWithoutTree(t *testing.T) {
 	repo := newRepo(t, mem.New())
 	if _, err := repo.Commits.Put(context.Background(), &Commit{Author: "a"}); err == nil {

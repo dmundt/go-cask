@@ -3,8 +3,10 @@ package cas
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"reflect"
 )
 
 // Store[T] is the generic, type-safe content-addressable store for objects of
@@ -47,13 +49,60 @@ func (s *Store[T]) check(d Digest, what string) error {
 	return nil
 }
 
+// validateObject applies T's own invariant check, when it declares one, before
+// anything is encoded or written (Validator). A nil object is rejected here:
+// there is nothing to store, and a nil would otherwise encode as a payload that
+// decodes back to nil.
+func validateObject[T any](obj T) error {
+	if isNilValue(obj) {
+		return errors.New("cas: put: nil object")
+	}
+	if v, ok := any(obj).(Validator); ok {
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("cas: put: %w", err)
+		}
+	}
+	return nil
+}
+
+// validateDecoded applies T's own invariant check, when it declares one, to a
+// value a codec produced: a stored object that violates its own invariants is
+// ErrCorrupt rather than handed back in an impossible state. The caller checks
+// for nil first, so this never calls Validate on an absent value.
+func validateDecoded[T any](obj T, typeName string) error {
+	if v, ok := any(obj).(Validator); ok {
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("%w: %s: %w", ErrCorrupt, typeName, err)
+		}
+	}
+	return nil
+}
+
+// isNilValue reports whether v is a nil pointer, interface, map, slice, channel
+// or function. It is the core's only use of reflection, and it decides nothing
+// but "there is no value here" — the callers above need it so that a nil object
+// is rejected instead of panicking inside the object's own Validate.
+func isNilValue[T any](v T) bool {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
 // Put encodes obj with the store codec, prepends the type string, and
 // stores it. The digest covers the type AND the payload, so identical content
 // always produces the identical address (dedup) and a type change produces
-// a new address. The bytes are hashed in a single pass and streamed to the
-// backend without buffering (performance §3).
+// a new address. When T declares Validate() (Validator) it runs first, so an
+// invalid object is never written. The bytes are hashed in a single pass and
+// streamed to the backend without buffering (performance §3).
 func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := validateObject(obj); err != nil {
 		return nil, err
 	}
 	data, err := s.marshal(obj)
@@ -78,6 +127,9 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 // and (d, false, nil) when it was written now.
 func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if err := validateObject(obj); err != nil {
 		return nil, false, err
 	}
 	data, err := s.marshal(obj)
@@ -140,8 +192,16 @@ func (s *Store[T]) Get(ctx context.Context, d Digest) (T, error) {
 	if err != nil {
 		return zero, fmt.Errorf("cas: %w: payload decode: %w", ErrCorrupt, err)
 	}
+	// A payload that decodes to nil (e.g. JSON `null`) is not an object: reject
+	// it before calling any method on it.
+	if isNilValue(v) {
+		return zero, fmt.Errorf("%w: %s: decoded to nil", ErrCorrupt, typeName)
+	}
 	if v.Type() != typeName {
 		return zero, fmt.Errorf("%w: stored type %q != decoded type %q", ErrUnknownType, typeName, v.Type())
+	}
+	if err := validateDecoded(v, typeName); err != nil {
+		return zero, err
 	}
 	return v, nil
 }

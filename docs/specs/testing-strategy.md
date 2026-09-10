@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v14
+version: v15
 ---
 
 # Testing Strategy — go-cask
@@ -21,6 +21,7 @@ CASK's value is its invariants (same bytes ⇒ same digest ⇒ stored once, immu
 | Layout equivalence | same content addressable under every `FanOut`/`FanLevels` combo |
 | Path round-trip | `pathToDigest(hashPath(d))` equals `d` for every layout |
 | Errors | missing object on any read → `ErrNotFound`; `ParseDigest` garbage → `ErrInvalidDigest` |
+| Invariants | a type declaring `Validate()` cannot be written invalid (`Put` rejects) and a stored object violating it is `ErrCorrupt` on `Get`; a nil object is rejected on `Put`, a payload decoding to nil is `ErrCorrupt` |
 
 ### 1.1 Every test is explicit (normative)
 
@@ -41,6 +42,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 | Sentinel errors (five) | one positive `errors.Is` per error |
 | Maintenance ops (`Stats`/`Verify`/`GC`/`Prune`) | one test per op, incl. dry-run + destructive |
 | Object versioning | versioned `Type()` names, coexisting majors, `ErrUnknownType` |
+| Object invariants (`cas.Validator`) | `Put`/`PutDedup` reject an invalid object, `Get` reports `ErrCorrupt`, `GetRaw` does not validate, nil object/payload rejected (`cas/validator_test.go`) |
 | Defaults | each default asserted (fan-out (2,1), the shipped `sha256` hasher, perms) |
 | Branch/CLI/versioning docs | where code exists (`cmd/cask`, `version` output) |
 
@@ -49,6 +51,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 - **Digest/parsing:** absent (zero) `Digest`, empty string, nil vs empty bytes; malformed text (odd-length hex, uppercase, non-hex, a legacy `"sha256:hexdigest"` reference → `ErrInvalidDigest`); `Equal` same/different digests and absent-vs-absent (false); `MarshalText`/`UnmarshalText` round-trip; the client hasher's `Validate` rejecting absent and wrong-width digests (`sha256`: 32 bytes) at the store boundary.
 - **Codec/object model:** empty value, all-zero struct, nested/edge values; `Unmarshal(Marshal(v))==v`; versioned names (`type@1`/`type@2`), legacy unversioned (`@1`), unknown → `ErrUnknownType`.
 - **Store:** empty store (`GetRaw`/`Get`→`ErrNotFound`, `Exists` false, `Delete` no-op); `Put` empty bytes; `PutDedup` first vs repeat; `GetRaw` vs `Get`; type mismatch → `ErrUnknownType`.
+- **Object invariants:** `Put`/`PutDedup` of an invalid value fails with the value's own error (wrapped `cas: put: …`) and stores nothing; the same bytes written around the check read back as `ErrCorrupt`; a type without `Validate()` is unaffected (the contract is optional); a nil object on `Put` and a payload decoding to nil on `Get` are rejected.
 - **Backends (both, table-driven):** missing → `ErrNotFound`; corrupt file (fs); `.tmp` leftovers ignored; fan-out 0/negative/over-deep (`FanLevels×FanOut>64`) rejected; flat/(2,1)/(2,2)/(4,1) equivalence; mem overwrite same digest, delete-missing, `List` returns every digest (no algorithm filter).
 - **Concurrency (`-race`):** concurrent `Put` same digest; `Get` during `Delete` (POSIX open-FD); parallel `List`/`Stats` during writes.
 - **Maintenance:** `Verify` intact / single flip (first/middle/last) / missing; `GC` empty roots (deletes all), all-reachable (deletes none), partial, unknown in reachable set; `Prune` dry-run no delete, `minAge=0`, younger kept, all-older destructive needs explicit flag.

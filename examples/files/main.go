@@ -27,6 +27,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
@@ -57,7 +58,14 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo := gitlike.NewRepository(raw, sha256.New())
+	// gitlike names neither the hash algorithm nor the wire format, so the
+	// example supplies both: the sha256 hasher and one JSON codec per type.
+	repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+		Blob:   jsoncodec.New[*gitlike.Blob](),
+		Tree:   jsoncodec.New[*gitlike.Tree](),
+		Commit: jsoncodec.New[*gitlike.Commit](),
+		Tag:    jsoncodec.New[*gitlike.Tag](),
+	})
 	return &app{raw: raw, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
 }
 

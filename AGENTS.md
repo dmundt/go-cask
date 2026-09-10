@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v17
+version: v18
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -205,6 +205,7 @@ flowchart TB
 | ---------------- | ----------------------------------------------------------- |
 | `Digest`         | Content address: raw digest bytes, rendered as one hex string |
 | `Hasher`         | The client's algorithm: `Digest(io.Reader)` + `Validate(Digest)`; `cas/hash/sha256` ships the default |
+| `Validator`      | Optional object invariant (`Validate() error`): the store calls it on `Put` and `Get`, so it holds under any codec |
 | `Backend`       | Raw byte storage interface (non-generic)                    |
 | `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
 | `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
@@ -279,6 +280,7 @@ import (
     "time"
 
     "github.com/dmundt/go-cask/cas/backend/fs"
+    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
     sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
     "github.com/dmundt/go-cask/gitlike"
 )
@@ -286,11 +288,16 @@ import (
 func main() {
     ctx := context.Background()
 
-    // 1. Filesystem backend + git-like example repository on top, hashed by the
-    //    client's hasher — the core names no algorithm, and cas/hash/sha256 is
-    //    the default go-cask's own clients wire in.
+    // 1. Filesystem backend + git-like example repository on top. gitlike names
+    //    neither the algorithm nor the wire format, so the client supplies both:
+    //    the sha256 hasher and one JSON codec per object type.
     raw, _ := fs.New("./repo")
-    repo := gitlike.NewRepository(raw, sha256.New())
+    repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+        Blob:   jsoncodec.New[*gitlike.Blob](),
+        Tree:   jsoncodec.New[*gitlike.Tree](),
+        Commit: jsoncodec.New[*gitlike.Commit](),
+        Tag:    jsoncodec.New[*gitlike.Tag](),
+    })
     resolver := gitlike.NewResolver(repo)
 
     // 2. Build a Git-like object graph: blob → tree → commit → tag.
@@ -361,11 +368,18 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    historical `""`), and skip `IsZero()` entries in `References()`. Never
    hand-roll `MarshalJSON`/`UnmarshalJSON` for references: `Digest` renders
    itself through `encoding.TextMarshaler` (cas-core §4.2, §4.6).
-4. If you need a repository/resolver for your types (per-type stores,
+4. If the type has an invariant (a required field, two fields that must agree),
+   declare `Validate() error` — the store calls it before encoding on `Put` and
+   after decoding on `Get`, so it holds under any codec (`cas.Validator`,
+   cas-core §4.7/§4.8). Never express an invariant as codec-specific JSON
+   methods: those stop applying the moment a client picks another codec.
+5. If you need a repository/resolver for your types (per-type stores,
    `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
    `gitlike` reference pattern into your own package; do NOT add your types to
-   `cas` or extend `gitlike`.
-5. Never add `any` or reflection to do this — add explicit typed methods.
+   `cas` or extend `gitlike`. `gitlike.NewRepository` takes the caller's
+   `Codecs` set (`gitlike.Codecs{...}`), so the copied pattern must inject its
+   codec too rather than hardcoding one.
+6. Never add `any` or reflection to do this — add explicit typed methods.
 
 **Change the hash algorithm:** the core names no algorithm — it stores whatever
 `Digest` the injected `Hasher` returns. Implement `cas.Hasher`

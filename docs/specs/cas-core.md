@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v42
+version: v43
 ---
 
 # CAS Core — go-cask
@@ -388,6 +388,8 @@ type Object[T any] interface {
 - `Type()` returns a **versioned type name** `<type>@<major>` — the object model is semantically versioned; several majors coexist in one store (object-versioning.md).
 - `References()` is the single source of truth for traversal, preloading, and GC reachability. Its elements are bare digests with no algorithm, so they are meaningful only to a client using the algorithm that produced them (§4.2).
 - Serialization is NOT an object concern: `Store.Put` encodes with the store's `Codec[T]` and builds the envelope (§8 d1) — the codec is the single serialization authority on write AND read.
+- **Invariants ARE an object concern.** A type MAY declare `Validate() error`; `cas` names that contract `Validator` and the store enforces it (§4.8). An invariant is a property of the object model, not of a wire format, so it must not live in a codec: the same rule has to hold for JSON, gob or any other `Codec[T]`. `Validate` MUST be deterministic and pure, and SHOULD be cheap — it runs on every `Put` and every `Get`.
+- The core calls `Validate` on a value; a nil object is rejected before it is encoded or returned (§4.8), so an implementation only ever sees a real value and may dereference its receiver.
 
 ### 4.8 `Store[T]` — the generic typed store
 
@@ -405,16 +407,18 @@ func New[T Object[T]](raw Backend, codec Codec[T], hasher Hasher) *Store[T]
 
 | Method | Behavior |
 |---|---|
-| `Put` | `codec.Marshal(obj)` → TLV envelope → `hasher.Digest` → `raw.Put` → `d` |
-| `PutDedup` | `raw.Exists` first; returns `(d, alreadyStored, err)` |
-| `Get` | `raw.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode → `ErrCorrupt` |
-| `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling |
+| `Put` | reject a nil object → `obj.Validate()` when T declares it → `codec.Marshal(obj)` → TLV envelope → `hasher.Digest` → `raw.Put` → `d` |
+| `PutDedup` | as `Put`, then `raw.Exists` first; returns `(d, alreadyStored, err)` |
+| `Get` | `raw.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
+| `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates |
 | `Exists` | delegates to `raw` |
 | `Delete` | delegates to `raw` |
 
 - **Every key argument is guarded.** `Store.check` applies `CheckDigest` (present) and `hasher.Validate` (well formed for the client's algorithm) to every digest a caller supplies — `Get`, `GetRaw`, `Exists`, `Delete` — and `Put`/`PutDedup` apply it to the digest the hasher just computed. A key that cannot name an object is rejected with `ErrInvalidDigest` (wrapped with the operation name) instead of silently missing.
+- **Object invariants are enforced on both paths** (`Validator`, §4.7). `Put`/`PutDedup` run `Validate` before encoding, so an invalid object is never written and the object's own error is preserved in the chain (`cas: put: <err>`); `Get` runs it after decoding and reports a violation as `ErrCorrupt` (wrapping the object's error), so a hand-crafted or foreign payload cannot come back in an impossible state. `GetRaw` cannot validate what it does not decode — an inspector must be able to read a broken object.
+- **A nil object is rejected**: `Put`/`PutDedup` refuse one (`cas: put: nil object`) instead of encoding a payload that decodes back to nil, and `Get` reports a payload that decodes to nil as `ErrCorrupt` — checked **before** the decoded type is compared and before `Validate` runs, so no method is ever invoked on a nil receiver. The core decides "there is no value here" with an internal nil check (the only use of reflection in `cas`), so an implementation never has to tolerate a nil receiver.
 - Type safety from one store per type: `Store[Blob]` vs `Store[Commit]` distinct — passing a commit digest to a blob store is a **compile-time error**.
-- `Get` returns the **concrete `T`** (type name verified); `GetRaw` returns bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of `any`/type assertions.
+- `Get` returns the **concrete `T`** (type name verified); `GetRaw` returns bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of `any`/type assertions; the `Validator` check is a structural interface assertion on the stored value, applied uniformly to every type rather than dispatch on a concrete type.
 - `Store[T]` is safe for concurrent use if its `Backend` and `Hasher` are.
 
 ### 4.9 `Walker[T]` — generic graph traversal
@@ -461,12 +465,21 @@ A shared **reference object-model library** at `gitlike/`, `package gitlike` —
 - All four versioned from the start (`blob@1`, `tree@1`, `commit@1`, `tag@1`); a future incompatible change becomes `type@2` with the old deserializer registered.
 - **The type names are deliberately NOT bumped** even though the reference payload shape changed from `"sha256:hexdigest"` to bare hex. Consequence, stated plainly: an object stored before this change whose payload contains a reference (i.e. every tree, every commit and every tag; an object with no reference fields, such as a blob, still decodes) **FAILS to decode** — the strict hex parser rejects the `sha256:` prefix with `ErrInvalidDigest`, which `Store.Get` surfaces as `ErrCorrupt`. That is a loud, deliberate break: there is no migration tool and no `@2` type. **Alternative considered:** publish `tree@2`/`commit@2`/`tag@2` with the old deserializer still registered (object-versioning.md), which would keep pre-change objects readable at the cost of two live model versions and a real migration story; rejected for now because the break is loud rather than silent and no store in the wild needs it — revisit if one does (§8 d9).
 - `Parent`/`Target` may be absent — an absent reference marks root/leaf. Cross-type references are plain `Digest`; target type discovered at resolution, not baked in.
-- **Serialization:** every reference field is a plain `cas.Digest` (§4.6) — `omitzero` where absence is legal (`TreeEntry.Hash`, `Commit.Parent`), a plain field where the value is always present (`Commit.Tree`, `Tag.Target`; a tag target may still be absent and keeps its historical `""`). `Tree`, `TreeEntry` and `Tag` therefore carry **no** JSON code at all: every reference renders and validates itself through `Digest`'s text methods. `Commit` keeps two small methods for its one mandatory-field invariant: `MarshalJSON` refuses a tree-less commit on write, and `UnmarshalJSON` turns a missing, empty, or null tree into a decode error.
-- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` is advisory for objects built in code: a `TreeEntry` needs a name, a `Commit` needs a tree (checked with `Tree.IsZero()`), a `Tag` needs a name, and an absent `Digest` is valid wherever absence is legal. `Store.Put` marshals but does not validate, so callers constructing objects by hand SHOULD call `Validate` before `Put`; the nil-tree commit is the one case still rejected at `Put` time.
+- **Serialization:** every reference field is a plain `cas.Digest` (§4.6) — `omitzero` where absence is legal (`TreeEntry.Hash`, `Commit.Parent`), a plain field where the value is always present (`Commit.Tree`, `Tag.Target`; a tag target may still be absent and keeps its historical `""`). All four types therefore carry **no** codec code at all: every reference renders and validates itself through `Digest`'s text methods, and `Commit`'s one mandatory-field invariant is `Commit.Validate()` (§4.7) rather than a hand-written `MarshalJSON`/`UnmarshalJSON`. That is what makes the model codec-agnostic: the same repository works over JSON, gob or any other `Codec[T]`, and the tree rule holds in all of them.
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` states the invariants — a `TreeEntry` needs a name, a `Commit` needs a tree (checked with `Tree.IsZero()`), a `Tag` needs a name, and an absent `Digest` is valid wherever absence is legal. The store enforces them on every `Put` and `Get` (`Validator`, §4.7/§4.8): a tree-less commit cannot be written, and one found in a store (a foreign payload, a hand-crafted one) is `ErrCorrupt`. Calling `Validate` directly still lets a caller check a hand-built object and get the offending entry's index.
 
 **`Repository` and `Resolver` — cross-type access without `any`:**
 
 ```go
+// Codecs is the serialization set a Repository is built with: one Codec[T] per
+// object type. gitlike names no codec — the caller supplies all four.
+type Codecs struct {
+    Blob   cas.Codec[*Blob]
+    Tree   cas.Codec[*Tree]
+    Commit cas.Codec[*Commit]
+    Tag    cas.Codec[*Tag]
+}
+
 type Repository struct {
     raw     cas.Backend
     Blobs   *cas.Store[*Blob]
@@ -475,11 +488,12 @@ type Repository struct {
     Tags    *cas.Store[*Tag]
 }
 
-func NewRepository(raw cas.Backend, hasher cas.Hasher) *Repository
+func NewRepository(raw cas.Backend, hasher cas.Hasher, codecs Codecs) *Repository
 func NewResolver(repo *Repository) *Resolver
 ```
 
-- `Repository` bundles per-type stores over one `Backend`, all sharing the caller's `Hasher`; the repository itself names no algorithm (§4.2).
+- `Repository` bundles per-type stores over one `Backend`, all sharing the caller's `Hasher` and `Codecs`; the repository names neither the algorithm (§4.2) nor the wire format (§4.6). `gitlike` imports no codec package, and the JSON codec is simply the usual choice at the call site:
+  `NewRepository(raw, sha256.New(), Codecs{Blob: json.New[*Blob](), Tree: json.New[*Tree](), Commit: json.New[*Commit](), Tag: json.New[*Tag]()})`.
 - `Resolver` exposes dedicated `ResolveCommit`/`ResolveTree`/`ResolveBlob`/`ResolveTag` (each calls the matching `Get`); calling the wrong one is a compile-time error.
 - **Resolve anything** (unknown type): `ResolveAny(ctx, d)` returns a typed union, not `any`:
 
@@ -534,7 +548,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 |---|---|
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
-| Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
+| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
 | Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Short`, `Name`, `Size` |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` |
@@ -545,7 +559,7 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 
 **Add a storage backend:** implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`) — idempotent `Put`, no-op `Delete` on missing, `List(ctx)` returning every stored digest (there is no algorithm to filter by, §4.2), an absent key rejected with `ErrInvalidDigest`, `Get`→`ErrNotFound` on missing, a `Stats` summary (§4.11). Keep the byte layer non-generic; the `memory` backend is the minimal reference; add durability per operations.md §1 where persistent.
 
-**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `cas.New(raw, json.New[Document](), hasher)`. Declare reference fields as plain `cas.Digest` (§4.6) with `json:"…,omitzero"` when the reference may be absent, so the type needs no JSON code for references; skip `IsZero()` entries in `References()`. Never hand-roll `MarshalJSON`/`UnmarshalJSON` for references: `Digest` renders and validates itself through `encoding.TextMarshaler`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
+**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `cas.New(raw, json.New[Document](), hasher)`. Declare reference fields as plain `cas.Digest` (§4.6) with `json:"…,omitzero"` when the reference may be absent, so the type needs no JSON code for references; skip `IsZero()` entries in `References()`. If the type has an invariant (a required field, a consistent pair of fields), declare `Validate() error` — the store enforces it on every `Put` and `Get` (`Validator`, §4.7/§4.8), so it holds under any codec; never express an invariant as a codec-specific `MarshalJSON`/`UnmarshalJSON`. Never hand-roll those methods for references either: `Digest` renders and validates itself through `encoding.TextMarshaler`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
 
 **Change the hash algorithm:** the core names no algorithm — it stores whatever `Digest` the injected `Hasher` returns. Implement `cas.Hasher` (`Digest(io.Reader) (cas.Digest, error)` + `Validate(cas.Digest) error`), pass it to `cas.New`, and use it for `Verify`. Because a digest carries no algorithm name, a store is single-format (Git's model: one object format per repository): switching algorithms means re-digesting and rewriting every object under the new addresses — list → read → re-hash → write → verify each → delete the source only after verification (operations.md §5). Keeping `cas/hash/sha256` for go-cask's own clients is the default, not a core rule.
 
@@ -577,6 +591,8 @@ Resolved decisions (so implementation never re-litigates them):
 6. **GC reachability — RESOLVED:** mark-and-sweep from application roots with age-based pruning (consistency §4–§5; refcounting rejected).
 7. **Large-file streaming — RESOLVED:** the byte layer streams (`fs.Backend.Put` copies the reader to disk without buffering it in memory, `fs.Verify` hashes the file through the injected `Hasher`; the `mem` backend buffers by design); `Store.Put` builds the envelope in one pre-sized allocation and hashes that buffer in a single pass — the payload is never grown twice or read twice (performance contract for `Store.Put`).
 9. **Reference wire shape — RESOLVED: bare lowercase hex; type majors NOT bumped.** A `cas.Digest` field serializes as one hex string through `encoding.TextMarshaler`; the old `"sha256:hexdigest"` payload shape is not reinterpreted, so a pre-change tree/commit/tag fails to decode as `ErrCorrupt` (§4.12). A `@2` major with the old deserializer registered was considered and rejected for now (two live model versions, a migration story, no store that needs it); the break is loud and additive-compatible otherwise.
+10. **Object invariants — RESOLVED: a core contract (`Validator`), not codec code.** An object type declares `Validate() error` and the store calls it: before encoding on `Put`/`PutDedup` (an invalid object is never written; the object's own error is preserved) and after decoding on `Get` (a violation is `ErrCorrupt`). The alternative — leaving the check in per-codec methods, as `gitlike.Commit` did with `MarshalJSON`/`UnmarshalJSON` — was rejected because it silently stops applying the moment a client picks another codec: a gob-backed repository would have accepted a tree-less commit and returned a rootless one. The store therefore decides nil-ness itself (an internal nil check, the only reflection in `cas`) and then asserts the structural interface, so `Validate` never sees a nil receiver. `GetRaw` does not decode, so it does not validate: an inspector must be able to read a broken object.
+11. **Repository codecs — RESOLVED: injected (`gitlike.Codecs`), so the reference model names no wire format.** `NewRepository(raw, hasher, codecs)` takes one `Codec[T]` per object type; `package gitlike` imports no codec package and the JSON codec is just the usual choice at the call site. `TestRepositoryWithAnotherCodec` runs the whole model (typed reads, `ResolveAny`, `WalkGraph`, and the tree invariant) over gob, which is the point of decisions 10 and 11 together: the object model is codec-independent end to end.
 
 Open follow-ups (future extensions, not blocking):
 4. **Packfiles** — Git-style packing of small objects into `pack-<ts>.pack`; design/acceptance in performance §9.

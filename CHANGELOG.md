@@ -27,6 +27,18 @@ prefix, surfacing as `ErrCorrupt` — rather than being silently misread. There 
 no migration tool: a store written by `v1.2.0` must be re-written by the old
 build if its objects are still needed.
 
+**Also breaking: `gitlike` names no codec, and object invariants moved into the
+core.** `gitlike.NewRepository` now takes the caller's codec set
+(`gitlike.Codecs{...}`), so the package imports no codec package at all and a
+repository works over any format — JSON, gob, gzip-wrapped, or a
+caller-supplied codec. Object invariants are no longer expressed as codec
+methods: a type declares `Validate() error` (`cas.Validator`) and the store
+calls it before encoding on `Put` and after decoding on `Get`, so the invariant
+holds under every codec. This fixes a latent bug: `gitlike.Commit`'s
+required-tree rule lived in `MarshalJSON`/`UnmarshalJSON`, which silently
+stopped applying the moment a client picked a non-JSON codec. Stored JSON
+payloads are unchanged, so addresses are stable *within* this model.
+
 ### Changed
 
 - **`cas.Digest` replaces `cas.Hash`.** A `Digest` is `[]byte` holding the raw
@@ -51,8 +63,20 @@ build if its objects are still needed.
   the injected hasher.
 - **The filesystem layout lost the algorithm directory**:
   `<base>/<fan-out dirs>/<full hex digest>` instead of `<base>/<algo>/…`.
-- **`gitlike.NewRepository(raw, hasher)`**, and its reference fields are
-  `cas.Digest`.
+- **`gitlike.NewRepository(raw, hasher)`** became
+  **`gitlike.NewRepository(raw, hasher, codecs)`**, and its reference fields are
+  `cas.Digest`. The injected `gitlike.Codecs{Blob, Tree, Commit, Tag}` set means
+  `package gitlike` imports no codec package and the object model is
+  format-agnostic; call sites wire the JSON codecs explicitly
+  (`gitlike.Codecs{Blob: jsoncodec.New[*gitlike.Blob](), …}`), since no
+  convenience package hides the choice.
+- **`cas.Validator` is the invariant contract**: a type with `Validate() error`
+  is checked by `Store.Put`/`Store.PutDedup` before encoding (failing as
+  `cas: put: <err>`) and by `Store.Get` after decoding (failing as
+  `ErrCorrupt`). `GetRaw` never validates. A nil object is rejected on `Put`,
+  and a payload that decodes to a nil object is `ErrCorrupt`.
+- `gitlike.Commit` implements `Validate()` (a commit must name a tree) instead
+  of relying on JSON methods, so the rule holds under any codec.
 - Sentinels: `ErrInvalidDigest` and `ErrDigestMismatch` replace `ErrInvalidHash`
   and `ErrHashMismatch`; `ErrUnknownAlgorithm` is gone.
 - The viewer reports the addressing model instead of a per-algorithm table, and
@@ -74,6 +98,9 @@ build if its objects are still needed.
   init-order coupling, and no one-shot/streaming duality. (These were removed
   earlier in this same unreleased cycle; they are listed here because the whole
   change ships together.)
+- **`gitlike.Commit.MarshalJSON`/`gitlike.Commit.UnmarshalJSON`** — the
+  required-tree rule is now `Commit.Validate()`, enforced by the core, so it
+  survives a codec change instead of disappearing with the JSON codec.
 - **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
   The example keeps its custom `Codec[T]` (gzip) seam and now stores under
   `sha256`.
@@ -82,13 +109,15 @@ build if its objects are still needed.
 
 ### Docs
 
-`cas-core.md` v41→v42 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v43 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
-§8 decisions), `library-design.md` v20→v21, `coding-guidelines.md` v14→v15,
+§8 decisions; then the `Validator` contract and the codec-injected
+`gitlike.Repository`), `library-design.md` v20→v22 (`cas.Validator` in the
+exported surface), `coding-guidelines.md` v14→v15,
 `defaults.md` v17→v18, `examples.md` v16→v17, `extensions.md` v7→v8,
-`operations.md` v7→v8, `testing-strategy.md` v13→v14, `versioning.md`
-v14→v15, `docs/index.md` v8→v9, `AGENTS.md` v16→v17, `README.md`, and the
-example/`gitlike` READMEs.
+`operations.md` v7→v8, `testing-strategy.md` v13→v15 (the invariant law),
+`versioning.md` v14→v15, `docs/index.md` v8→v9, `AGENTS.md` v16→v18, `README.md`,
+and the example/`gitlike` READMEs.
 
 ## [v1.2.0] - 2026-09-10
 

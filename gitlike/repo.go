@@ -6,12 +6,27 @@ import (
 	"io"
 
 	"github.com/dmundt/go-cask/cas"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
+// Codecs is the serialization set a Repository is built with: one Codec[T] per
+// object type. gitlike names no codec — a repository is codec-agnostic, and the
+// caller supplies the four codecs (the JSON codec is the usual choice:
+// Codecs{Blob: json.New[*Blob](), Tree: json.New[*Tree](), …}).
+//
+// The set is a struct rather than four constructor parameters so a caller can
+// build it once, name it and reuse it, and so adding an object type stays a
+// compile-time change at every construction site.
+type Codecs struct {
+	Blob   cas.Codec[*Blob]
+	Tree   cas.Codec[*Tree]
+	Commit cas.Codec[*Commit]
+	Tag    cas.Codec[*Tag]
+}
+
 // Repository bundles the per-type stores (blob, tree, commit, tag) over one
-// Backend and the caller's Hasher — cross-type access without any: each
-// store is typed, so calling the wrong store is a compile-time error.
+// Backend, the caller's Hasher and the caller's Codecs — cross-type access
+// without any: each store is typed, so calling the wrong store is a
+// compile-time error.
 type Repository struct {
 	raw     cas.Backend
 	Blobs   *cas.Store[*Blob]
@@ -20,15 +35,16 @@ type Repository struct {
 	Tags    *cas.Store[*Tag]
 }
 
-// NewRepository builds a Repository over raw with the caller's hasher. The
-// repository names no algorithm: the client decides (cas-core §4.2).
-func NewRepository(raw cas.Backend, hasher cas.Hasher) *Repository {
+// NewRepository builds a Repository over raw with the caller's hasher and
+// codecs. The repository names neither the hash algorithm nor the wire format:
+// both are client seams (cas-core §4.2, §4.6).
+func NewRepository(raw cas.Backend, hasher cas.Hasher, codecs Codecs) *Repository {
 	return &Repository{
 		raw:     raw,
-		Blobs:   cas.New(raw, jsoncodec.New[*Blob](), hasher),
-		Trees:   cas.New(raw, jsoncodec.New[*Tree](), hasher),
-		Commits: cas.New(raw, jsoncodec.New[*Commit](), hasher),
-		Tags:    cas.New(raw, jsoncodec.New[*Tag](), hasher),
+		Blobs:   cas.New(raw, codecs.Blob, hasher),
+		Trees:   cas.New(raw, codecs.Tree, hasher),
+		Commits: cas.New(raw, codecs.Commit, hasher),
+		Tags:    cas.New(raw, codecs.Tag, hasher),
 	}
 }
 

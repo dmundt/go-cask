@@ -117,12 +117,20 @@ classDiagram
 import (
     fs "github.com/dmundt/go-cask/cas/backend/fs" // or use the mem backend
     "github.com/dmundt/go-cask/cas"
+    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
     sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
     "github.com/dmundt/go-cask/gitlike"
 )
 
-raw, _ := fs.New("./objects")                     // backend
-repo := gitlike.NewRepository(raw, sha256.New())  // typed layer + the client's hasher
+raw, _ := fs.New("./objects")  // backend
+// typed layer: the client supplies both the hasher and the codecs, so the
+// repository names neither the algorithm nor the wire format.
+repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+    Blob:   jsoncodec.New[*gitlike.Blob](),
+    Tree:   jsoncodec.New[*gitlike.Tree](),
+    Commit: jsoncodec.New[*gitlike.Commit](),
+    Tag:    jsoncodec.New[*gitlike.Tag](),
+})
 d, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
 blob, _ := repo.Blobs.Get(ctx, d)                 // *gitlike.Blob
 ```

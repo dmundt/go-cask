@@ -17,7 +17,6 @@
 package gitlike
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -54,8 +53,9 @@ type TreeEntry struct {
 
 // Validate reports whether the entry can be stored and read back: a tree entry
 // must be named. An absent Hash is valid — an entry without a reference is
-// representable and round-trips as absent. Validation is advisory;
-// Tree.Validate runs it over a whole tree.
+// representable and round-trips as absent. The store enforces this on every Put
+// and Get (cas.Validator), so a nameless entry can neither be written nor read
+// back; Tree.Validate runs the check over a whole tree in one call.
 func (e TreeEntry) Validate() error {
 	if e.Name == "" {
 		return fmt.Errorf("gitlike: tree entry has no name")
@@ -71,9 +71,9 @@ type Tree struct {
 // Type returns the versioned type name "tree@1".
 func (t *Tree) Type() string { return TypeTree }
 
-// Validate reports whether every entry can be stored and read back. It is
-// advisory: Store.Put marshals an object, it does not validate one, so callers
-// building a tree by hand SHOULD call Validate before Put.
+// Validate reports whether every entry can be stored and read back. The store
+// enforces it on Put and Get (cas.Validator); calling it directly lets a caller
+// check a hand-built tree before Put and get the offending entry's index.
 func (t *Tree) Validate() error {
 	for i, e := range t.Entries {
 		if err := e.Validate(); err != nil {
@@ -105,42 +105,17 @@ type Commit struct {
 }
 
 // Validate reports whether the commit can be stored and read back: a commit
-// must name a tree. Store.Put enforces this through MarshalJSON, so an
-// unreadable commit cannot be written; calling Validate directly lets a caller
-// check a hand-built object before Put.
+// must name a tree. The store enforces it on every Put and Get (cas.Validator),
+// so a tree-less commit cannot be written and a stored one is reported as
+// ErrCorrupt rather than coming back as a rootless commit; calling Validate
+// directly lets a caller check a hand-built object before Put.
+//
+// This rule lives here, not in a codec, so it holds whichever Codec[*Commit] a
+// repository is built with.
 func (c *Commit) Validate() error {
 	if c.Tree.IsZero() {
 		return fmt.Errorf("gitlike: commit has no tree")
 	}
-	return nil
-}
-
-// MarshalJSON implements json.Marshaler. It only enforces the mandatory tree;
-// the reference fields are cas.Digest, which renders itself as one hex string
-// through encoding.TextMarshaler, so no hand-written digest rendering is
-// involved.
-func (c Commit) MarshalJSON() ([]byte, error) {
-	if err := c.Validate(); err != nil {
-		return nil, err
-	}
-	type plain Commit // no methods: marshals by field, no recursion
-	return json.Marshal(plain(c))
-}
-
-// UnmarshalJSON implements json.Unmarshaler. The reference fields decode
-// themselves (cas.Digest.UnmarshalText), so this method only exists to keep the
-// required tree strict: a missing, empty, or null tree is a decode error rather
-// than a silently rootless commit. An absent parent decodes as absent.
-func (c *Commit) UnmarshalJSON(data []byte) error {
-	type plain Commit // no methods: decodes by field, no recursion
-	var p plain
-	if err := json.Unmarshal(data, &p); err != nil {
-		return err
-	}
-	if p.Tree.IsZero() {
-		return fmt.Errorf("gitlike: commit has no tree")
-	}
-	*c = Commit(p)
 	return nil
 }
 
@@ -169,8 +144,7 @@ type Tag struct {
 
 // Validate reports whether the tag can be stored and read back: a tag must be
 // named. An absent Target is valid (a tag may be created before its target) and
-// round-trips as absent. Validation is advisory — Store.Put marshals, it does
-// not validate.
+// round-trips as absent. The store enforces it on Put and Get (cas.Validator).
 func (g *Tag) Validate() error {
 	if g.Name == "" {
 		return fmt.Errorf("gitlike: tag has no name")

@@ -8,12 +8,14 @@
 |---|---|
 | `fs.Backend` (default fan-out 2/1) | `newApp` — the on-disk backend |
 | `gitlike.Repository` (per-type `Store[T]` over one `cas.Backend`) | `app.repo` |
-| `gitlike.Blob`/`Tree`/`Commit` — `Object[T]` with the JSON codec (`json.New[T]()`) | `add`, `commit` |
+| `gitlike.Codecs` (the JSON codec per type: `json.New[gitlike.Blob]()` …) | `newApp` |
+| `gitlike.Blob`/`Tree`/`Commit` — `Object[T]`; `Commit.Validate` (a commit must name a tree) | `add`, `commit` |
 | `Repository.Blobs/Trees/Commits.Put`, `Get` | store/read objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph`, `audit` reachability |
 | `fs.Backend.Verify` / `List` / `Stats` (`cas.Stats`) | `verify`, `audit`, `stats` |
 | `cas.Digest` / `sha256.Parse` / `sha256.Format` | ref files (`HEAD`, `INDEX`) and digest args |
 | `sha256.New()` (the client's `cas.Hasher`) | the `gitlike.Repository` and every `Verify` call |
+| `cas.Validator` (`Commit.Validate`, enforced by `Store.Put`/`Get`) | writing and reading commits |
 
 ## What it extends
 
@@ -21,7 +23,7 @@ Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additio
 
 ## Code walkthrough
 
-- `main.go` — the `app` struct (`newApp` wires `fs.Backend` + `gitlike.Repository` over `sha256.New()`; `readRef`/`writeRef` persist digests; `currentTree`/`headCommit` read `INDEX`/`HEAD`) and the argument-parsing CLI:
+- `main.go` — the `app` struct (`newApp` wires `fs.Backend` + `gitlike.Repository` over `sha256.New()` and a `gitlike.Codecs` set built from `json.New[*gitlike.…]()` per type; `readRef`/`writeRef` persist digests; `currentTree`/`headCommit` read `INDEX`/`HEAD`) and the argument-parsing CLI:
   - `add <file...>` — `repo.Blobs.Put` (dedup by content digest), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
   - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old `HEAD`), `Commits.Put`, advances `HEAD`;
   - `log` — walks the `Commit.Parent` chain; `cat <hash>` — `ResolveAny` → `Blob.Data`; `graph` — `WalkGraph` from `HEAD`;
