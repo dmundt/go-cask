@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v8
+version: v9
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -40,7 +40,7 @@ Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-leve
 - Eliminate cross-document duplication: each fact lives in one place (`defaults.md` or its owning spec), referenced not restated.
 - **Mermaid diagrams are exempt** from trimming (they visualize complex relationships; kept even when large).
 - Dead code-style sections (deferred-feature sketches, historical rationales, single-run benchmark samples) → remove, replace with a pointer to the deferral record.
-- Keep the three-directory structure: `docs/specs/` (normative, 20 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
+- Keep the three-directory structure: `docs/specs/` (normative, 21 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
 
 ## 3. Adding a file
 
@@ -56,7 +56,7 @@ Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-leve
 
 ## 6. Constructor naming (in example code)
 
-Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewHash`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When the codebase diverges, the code wins — update the example (a non-compiling doc example is a defect).
+Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When the codebase diverges, the code wins — update the example (a non-compiling doc example is a defect).
 
 ## 7. Diagram & formatting rules
 

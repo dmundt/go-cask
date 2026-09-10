@@ -10,7 +10,7 @@
 | `cas.Digest` + `sha256.New()` (the injected `cas.Hasher`) | artifact + manifest stores, `get`/`monitor` args |
 | `Store[T]` / `PutDedup` | artifact + manifest storage, dedup reporting |
 | `Object[T]` (self-describing envelope) | `Artifact`, `Manifest` |
-| `LRUCache[T]` | the bounded artifact cache (`get`) |
+| `lru.Cache[T]` | the bounded artifact cache (`get`) |
 | periodic cache snapshots (own `CacheMonitor` recipe) | emits `CacheStats` |
 | `fs.Backend.GC` / `Stats` | mark-and-sweep / store totals |
 | `sha256.Parse` | manifest references and CLI digest args |
@@ -26,7 +26,7 @@
 - `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's output; `Unmarshal` = gunzip then inner decode (pinned gzip mtime).
 - `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact digests as `[]cas.Digest`, which render as one lowercase-hex string each and validate on decode, with no JSON code here), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
   - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's manifest** (delete the previous), so the replaced artifact becomes garbage;
-  - `get <hash>` — through the `LRUCache`, `CacheMonitor` printing snapshots;
+  - `get <hash>` — through the `lru.Cache`, `CacheMonitor` printing snapshots;
   - `gc` — reachable = all manifests + referenced artifacts → `fs.Backend.GC`;
   - `stats` / `monitor`.
 
@@ -37,7 +37,7 @@ flowchart TB
     M -->|"previous manifest deleted"| G1["old artifact unreferenced"]
     G["gc"] --> R["reachable = manifests + referenced artifacts"]
     R --> S["fs.Backend.GC sweep"]
-    G2["get hash"] --> C["LRUCache + CacheMonitor"]
+    G2["get hash"] --> C["lru.Cache + CacheMonitor"]
 ```
 
 ## How to run

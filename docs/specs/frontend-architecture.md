@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
-version: v4
+version: v5
 ---
 
 # Frontend Architecture — go-cask
@@ -32,17 +32,17 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 
 | Concern | Mechanism |
 |---|---|
-| Navigation | real links + optional `hx-boost`; `hx-push-url` keeps URLs as state |
-| Search/filter | active search: `hx-get`, `hx-trigger="input changed delay:300ms"`, `hx-target="#table"` |
+| Navigation | real links; `hx-push-url` keeps URLs as state when a fragment is loaded |
+| Search/filter | active search: `hx-get="/viewer/objects"`, `hx-trigger="input changed delay:300ms"`, `hx-target="#object-list"` |
 | Partial updates | `hx-get`/`hx-post` + `hx-target` + `hx-swap` into semantic containers |
-| Lazy loading | `hx-trigger="revealed"` (e.g. hexdump `<pre>`) |
-| Paging | click-to-load: next-page button appends rows |
-| Long-running ops | polling: `hx-trigger="every 2s"` until done |
-| Cross-panel update | out-of-band swaps (`hx-swap-oob`) for the stats panel |
+| Lazy loading | `hx-trigger="revealed"` loads the hexdump table into `#hexdump` |
+| Paging | none in the viewer: the dashboard shows a fixed 10-object sample and the objects page lists all (filtered) digests |
+| Long-running ops | no polling: verify/delete/gc answer with a `result` fragment |
+| Cross-panel update | none: every swap targets the panel that asked for it |
 | Destructive actions | POST forms + `hx-confirm` + CSRF token |
 
 - GET endpoints are side-effect free; every mutation is a POST form with CSRF (viewer-security).
-- `hx-target`/`hx-swap` always target a semantic container (`#content`, `#object-table`, `#hexdump`, `#stats-panel`) — never the whole page unless intended.
+- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (search), `#object-table`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
 - No custom events, no `_hyperscript`, no Alpine, no hand-written JS — htmx attributes only (coding-guidelines §4).
 
 ## 5. Navigation & state

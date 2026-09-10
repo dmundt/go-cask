@@ -21,11 +21,11 @@ repository.
 | Path                 | What it is                                                  |
 | -------------------- | ----------------------------------------------------------- |
 | `cas/`               | The public core library (package `cas`) — see `cas-core`    |
-| `internal/`          | Implementation detail: `web` (the viewer), `index` — not importable outside the module |
+| `internal/`          | Implementation detail: `web` (the viewer), `index`, `test` — not importable outside the module |
 | `gitlike/`  | Shared reference object-model library, copy-source (package `gitlike`) |
 | `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
 | `examples/`          | Runnable example programs (`examples.md`)                   |
-| `docs/specs/` | The specification set (19 spec files + AGENT.md)            |
+| `docs/specs/` | The specification set (21 files: 19 spec files + AGENT.md + index.md) |
 
 ### Design decisions & constraints
 
@@ -46,7 +46,6 @@ every change:
 - **Policy-free byte layer**: GC/prune take app-supplied roots; roots are
   pins — there is no per-object pinned property (consistency §4).
 - **Examples teach; gitlike is the shared reference**: runnable examples teach seams; `gitlike/` is a reference/copy-source object model the product never imports.
-  the product never imports examples.
 
 ### The dev loop
 
@@ -87,9 +86,10 @@ Rules from the specs that always apply:
 
 ### Changing a spec
 
-Spec changes follow the same flow, plus AGENT.md's maintenance checklist
-(§11): frontmatter rules, terminology (§6), cross-reference updates, version
-bumps, and registration in AGENT.md §10 + `AGENTS.md`'s related
+Spec changes follow the same flow, plus `docs/specs/AGENT.md`'s maintenance
+checklist (§10 "Editing & maintenance checklist"): frontmatter rules,
+terminology (§6), cross-reference updates, version bumps, and registration of
+new files in the file inventory `docs/specs/index.md` + `AGENTS.md`'s related
 specs. Run the folder audit (frontmatter, file refs, diagram balance) before
 opening the PR.
 

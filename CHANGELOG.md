@@ -4,14 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-The project is pre-release; the first public tag is `v0.1.0-alpha.1`
-(pre-release), heading toward `v1.0.0` once the stable surface is frozen
-(`versioning.md` §1).
+Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.0`. The stable
+`cas` surface is frozen; the `v1.x` line carries the three ratified
+first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
-This cycle ships as **`v1.3.0`**: a MINOR that carries the library's recorded
-first-cycle breaking changes (versioning §1). The breaks below were ratified
+## [v1.3.0] - 2026-09-10
+
+This release is a MINOR that carries the library's recorded first-cycle breaking
+changes (versioning §1). The breaks below were ratified
 individually — dropping the runtime algorithm registry, the digest change on the
 first-cycle grounds (`cas.Hash` → the hash-agnostic `cas.Digest` +
 client-injected `cas.Hasher`, which the registry removal belongs to), and the
@@ -33,11 +35,12 @@ algorithm lives with the client), combined with Git's model for a repository
 now one lowercase-hex string (`"ab12…"`) instead of `"sha256:ab12…"`, and the
 layout lost its algorithm directory (`<base>/aa/<hex>`, not
 `<base>/sha256/aa/<hex>`). Object type names stay `@1` (no new major), so an
-object stored before this change cannot be read by this build: `Get`/`Verify`
-return `ErrNotFound` for the old addresses (the path moved) while `List`/`Stats`
-still report them, and an object copied to its canonical path fails to decode
-with `ErrCorrupt`, because `Digest.UnmarshalText` is strict and rejects the
-legacy `sha256:` prefix. There is no migration tool: a store written by `v1.2.0`
+reference-bearing object stored before this change (every tree, commit and
+tag) cannot be read by this build: `Get`/`Verify` return `ErrNotFound` for
+the old addresses (the path moved) while `List`/`Stats` still report them,
+and one copied to its canonical path fails to decode with `ErrCorrupt`, because
+`Digest.UnmarshalText` is strict and rejects the legacy `sha256:` prefix. An
+object with no reference fields — a blob — still decodes (cas-core §4.12). There is no migration tool: a store written by `v1.2.0`
 must be re-written by the old build if its objects are still needed.
 **The store directory is exclusively its own**: `List`/`Stats` report any
 digest-named file beneath the base at any depth and `Clean` reclaims any `*.tmp`
@@ -57,6 +60,28 @@ holds under every codec. This fixes a latent bug: `gitlike.Commit`'s
 required-tree rule lived in `MarshalJSON`/`UnmarshalJSON`, which silently
 stopped applying the moment a client picked a non-JSON codec. Stored JSON
 payloads are unchanged, so addresses are stable *within* this model.
+
+### Added
+
+- **`cas.Digest`** — the content address as raw digest bytes (zero value = the
+  absent reference), with `NewDigest`, `ParseDigest`, `CheckDigest`, `IsZero`,
+  `Equal`, `Bytes`, `String` and `MarshalText`/`UnmarshalText`.
+- **`cas.Hasher`** — the client-supplied algorithm seam
+  (`Digest(io.Reader) (Digest, error)` + `Validate(Digest) error`), injected into
+  `cas.New`; the core names no algorithm.
+- **`cas.Validator`** — the optional object-invariant contract
+  (`Validate() error`), enforced by `Store.Put`/`PutDedup` (before encoding) and
+  `Store.Get` (after decoding).
+- **`cas/hash/sha256`** — the shipped client hasher (`New`, `NewHasher`, `Of`,
+  `Parse`, `Format`, `Short`, `Name`, `Size`), in its own package so `cas` never
+  imports an algorithm.
+- **`gitlike.Codecs`** — the injected per-type codec set
+  (`NewRepository(raw, hasher, codecs)`), so the reference model names no wire
+  format and `package gitlike` imports no codec package (CI-enforced).
+- **`Commit.Validate`/`Tree.Validate`/`TreeEntry.Validate`/`Tag.Validate`** — the
+  per-type invariants, now enforced by the core instead of by JSON methods.
+- **Ten runnable `Example` functions** (executable documentation with pinned
+  output), including `ExampleWalkGraph` and `ExampleCodec`.
 
 ### Changed
 
@@ -115,8 +140,13 @@ payloads are unchanged, so addresses are stable *within* this model.
 - **`cas.RegisterHash`, `cas.LookupHash`, `cas.LookupStreamHash` and the
   `cas.HashFunc` type** — there is no algorithm registry, no mutexed map, no
   init-order coupling, and no one-shot/streaming duality. (These were removed
-  earlier in this same unreleased cycle; they are listed here because the whole
-  change ships together.)
+  earlier in the v1.3.0 cycle; they are listed here because the whole change
+  ships together.) **Migration:** a `RegisterHash`/`HashFunc` call site, the
+  CLI's `put -algo`/`list --algo` and the API's `POST ?algo=` are gone because
+  the algorithm is no longer a runtime choice at all — it is the injected
+  `cas.Hasher`, so those call sites move to `cas.New(raw, codec, sha256.New())`
+  (see the digest change above; the fixed-algorithm API that briefly replaced
+  the registry in this cycle was itself removed by it).
 - **`gitlike.Commit.MarshalJSON`/`gitlike.Commit.UnmarshalJSON`** — the
   required-tree rule is now `Commit.Validate()`, enforced by the core, so it
   survives a codec change instead of disappearing with the JSON codec.
@@ -168,7 +198,7 @@ payloads are unchanged, so addresses are stable *within* this model.
 - `docs/specs/AGENT.md` §6 now carries the **`hash` vs `digest`** glossary row
   that makes the surviving `hash` names intentional rather than debt, plus the
   **`examples/` vs `Example` functions** row (runnable programs vs executable
-  godoc docs) so the eight Example functions are not mistaken for duplicates of
+  godoc docs) so the ten Example functions are not mistaken for duplicates of
   the examples tree.
 - **The `gitlike` Examples are consumer-facing now**: the file moved to
   `package gitlike_test` (external) and each Example spells out its own
@@ -186,30 +216,99 @@ payloads are unchanged, so addresses are stable *within* this model.
   snippet ignores errors with `_`. AGENTS.md now walks `ResolveTag(tagHash)` →
   `Target` → `Tree` → entry `Hash`, and states why.
 
+### Fixed
+
+Pre-tag audit of the cycle above; every item was reproduced with a test before
+being fixed and now has one.
+
+- **`fs.Backend` panicked on a key shorter than the layout.** `digestPath` sliced
+  the digest's hex form with no bound, so a key with fewer than
+  `FanOut × FanLevels` hex chars — legal for a *client* hasher, since the core
+  names no algorithm — crashed `Put`/`Get`/`Exists`/`Delete`/`Size` with
+  `slice bounds out of range`. v1.2.0 clamped it; the clamp was dropped on the
+  (now false) assumption of a fixed 32-byte digest. Every key-taking method now
+  runs `checkKey` (present + long enough for the layout) and reports
+  `ErrInvalidDigest`, and `GC`/`Prune` skip names the layout cannot address, so a
+  stray short digest-named file can no longer crash `cask gc`/`prune`.
+- **`Store.Put(nil)` panicked when `T` was an interface type.** `isNilValue`
+  inspected only non-invalid reflections, so a nil interface value fell through
+  to "not nil" and the core dereferenced it; it now treats `reflect.Invalid` as
+  absent.
+- **`Store.Put` accepted an unversioned `Type()`.** The envelope reader appends
+  `@1` to a legacy unversioned name, so the write succeeded and every read then
+  failed the type check (`"legacy@1" != "legacy"`) — a write-only object. `Put`
+  now rejects a name without `@`, alongside the empty-name case.
+- **`gitlike.WalkGraph` revisited shared subgraphs exponentially and could not
+  terminate on a crafted store.** It now carries a visited set and an explicit
+  stack like `cas.Walker[T]`: a 12-level diamond costs 13 visits instead of
+  8191, and two hand-written trees that reference each other terminate.
+- **Short digests panicked the display helpers.** `sha256.Short` and `gitlike`'s
+  `shortDigest` sliced `[:8]`; both now render a shorter digest whole.
+- **`mem.Backend.Put` ignored cancellation during the read** — a canceled `Put`
+  still buffered and stored the whole object. It now reads through a
+  context-checking reader, matching `fs`.
+- **`memory.CachedStore` error handling.** `PreloadRecursive` aborted on the
+  first reference it could not decode (a commit's tree is another store's type),
+  so a `Preloader` never reached a parent commit; foreign-type and dangling
+  references are now skipped. `Warmup` swallowed every error including
+  `context.Canceled`; it still tolerates missing objects and now reports the
+  rest.
+- **`cas.Walker[T].Walk` failed on an absent reference.** A zero `Digest` in
+  `References()` (documented as "no reference") was looked up and returned
+  `ErrInvalidDigest`, failing the whole walk; it is now skipped.
+- **`cask list` failed on a stray digest-named file.** `List` reports such a file
+  but `Size` on it returns `ErrNotFound`, which aborted the command; the entry is
+  now skipped with a stderr warning (`ErrInvalidDigest` likewise).
+- **`internal/web` did not audit-log `verify`** while `delete`/`gc` did,
+  contradicting `viewer-security` ("all admin actions audit-logged"); every admin
+  fragment now logs its outcome. The two unreferenced viewer helpers
+  (`digestWithType`, `parseDigestOrNil`) were deleted, and `cask web`'s usage
+  line now lists the `-no-open` flag it defines.
+- **Documentation corrections** (details in the Docs paragraph below): the
+  release notes overstated the break (blobs still decode), the `cas-core` claim
+  that the wrong resolver is a *compile-time* error was wrong (it is a runtime
+  `ErrUnknownType`), the `viewer-design`/`frontend-architecture` helper, template
+  and htmx lists described a viewer that does not exist, `object-versioning`
+  described a `RegisterType` registry that does not exist, `consistency` claimed
+  the viewer exposes prune, `docs/index.md` pointed at three non-existent files,
+  `AGENT.md` named the removed `cas.NewHash` and the wrong frontmatter contract,
+  and the coverage gate omitted `cas/hash/sha256`.
+
 ### Docs
 
-`cas-core.md` v41→v48 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v40→v49 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule
 and the "several stores under one root" recipe in §4.4; then the diagram pass,
 which adds `Validator`/`Codecs` and corrects stale classes and member
-signatures; then `digestPath`/`shortDigest` in §4.4/§4.12; then the Resolver
-type-safety correction in §4.12 — the wrong resolver for a digest is a runtime
-`ErrUnknownType`, not a compile-time error, which is what the broken snippet
-below assumed), `library-design.md`
-v20→v23 (`cas.Validator` in the exported surface; the third ratified exception
-in §5), `coding-guidelines.md` v14→v15, `defaults.md` v17→v18,
-`examples.md` v16→v17, `extensions.md` v7→v9 (the rejected `WithNamespace`
-decision in §3), `operations.md` v7→v9 (the legacy store's actual failure
-symptoms in §5), `testing-strategy.md` v13→v16 (the invariant law; `digestPath`
-in the path round-trip law), `versioning.md` v14→v17 (the third exception, the
-`v1.3.0` release, and the layout's part in the break), `docs/index.md` v8→v9,
-`AGENTS.md` v16→v20 (the one-base rule in Constraints; `Validator` in the
-architecture figures), `viewer-design.md` v11→v12 (`shortDigest`/
-`digestWithType`), `AGENT.md` v15→v17 (the `hash` vs `digest` row, then the `examples/` vs
-`Example` row),
-`README.md`, and the example/`gitlike` READMEs.
+signatures; then `digestPath`/`shortDigest`; then the Resolver type-safety
+correction in §4.12 — the wrong resolver for a digest is a runtime
+`ErrUnknownType`, not a compile-time error — and the pre-tag hardening in
+§4.4/§4.5/§4.8/§4.9/§4.10/§4.12), `library-design.md` v19→v24 (`cas.Validator`
+in the exported surface; the third ratified exception in §5; the released-cycle
+wording), `coding-guidelines.md` v13→v16, `defaults.md` v16→v19 (the byte-layer
+allocation target and its measured numbers), `examples.md` v15→v17,
+`extensions.md` v6→v9 (the rejected `WithNamespace` decision in §3),
+`operations.md` v6→v10 (the legacy store's actual failure symptoms in §5),
+`testing-strategy.md` v12→v17 (the invariant law; `digestPath` in the
+round-trip law; the fuzz-corpus and coverage claims), `versioning.md` v13→v18
+(the third exception, the `v1.3.0` release, the released-state intro, the
+registry exception's migration note, and the benchstat-gate correction),
+`viewer-design.md` v10→v13 (§4/§5 rewritten against the real templates, ids and
+htmx attributes), `frontend-architecture.md` v4→v5 (same corrections; it carried
+the same fictional htmx map), `docs/index.md` v7→v10 (three path rows pointed at
+files that do not exist), `AGENTS.md` v15→v21, `docs/AGENT.md` v8→v9
+(`cas.NewHash` → `cas.NewDigest`), `docs/design/AGENT.md` v2→v3 (the frontmatter
+contract), `AGENT.md` v14→v20 (the `hash` vs `digest` row, the `examples/` vs
+`Example` row, the real four-key frontmatter contract),
+`object-versioning.md` v4→v6 (no runtime registry — the envelope carries the
+type), `consistency.md` v9→v11 (the viewer exposes verify/delete/GC, not prune),
+`api-design.md` v5→v6, `backend-architecture.md` v15→v16, `cli.md` v13→v16
+(`-no-open`; `list` tolerance), `performance.md` v13→v15,
+`benchmarks/README.md` v7→v8, `docs/design/viewer-brief.md` v4→v5,
+`README.md` (an Upgrading section and the seven-concept class diagram),
+`CONTRIBUTING.md`, and the example/`gitlike` READMEs.
 
 Every Mermaid diagram in the repo (13 blocks across 8 files) was re-checked
 against the code: `Validator` added to the layer/overview/typed-layer figures,

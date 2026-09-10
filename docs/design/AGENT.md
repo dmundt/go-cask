@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/design/)
 description: This file governs docs/design/ — non-normative design docs (core-overview pointer, viewer-brief, mockups). Follows the conventions in docs/AGENT.md.
-version: v2
+version: v3
 tags: [go-cask]
 status: stable
 ---
@@ -19,10 +19,11 @@ Governs `docs/design/` — non-normative design artifacts (core-overview pointer
 
 ## 2. Frontmatter (required)
 
-Every `.md` file MUST begin with exactly three YAML keys:
+Every `.md` file MUST begin with the four YAML keys the spec folder uses (`type`, `title`, `description`, `version`):
 
 ```yaml
 ---
+type: Design
 title: <Title> — go-cask
 description: One sentence stating the document's purpose.
 version: v1
@@ -38,6 +39,6 @@ version: v1
 
 ## 4. Maintenance
 
-- These docs are **non-normative** — they inform but never override the instruction specs; on conflict the instruction spec wins (AGENTS.md §8).
+- These docs are **non-normative** — they inform but never override the instruction specs; on conflict the instruction spec wins (`docs/specs/AGENT.md` §8).
 - When the viewer-brief's outcomes are folded back into the viewer specs, delete the brief (prefer extending an existing file over a parallel one).
 - `docs/design/` entries are listed in the design docs; no section-10-style inventory needed.

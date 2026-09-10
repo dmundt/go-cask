@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v10
+version: v11
 ---
 
 # Consistency — go-cask
@@ -91,7 +91,7 @@ The entire consistency surface is **five operations**: `Verify(ctx, d, hasher)` 
 
 - **Core (cas-core §4.11):** fs backend `Verify`/`GC`/`Stats`/`Prune`; retention policy in §5.
 - **CLI (cli §2):** `verify`, `gc`, `prune`, `clean` in-process over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan `*.tmp` older than a threshold (operations §2).
-- **Viewer (viewer-design.md):** integrity diagnostics (`Verify`); admin actions for verify/GC/prune with confirm. Byte-layer tool; does not surface typed references (viewer-design §7).
+- **Viewer (viewer-design.md):** integrity diagnostics (`Verify`) and admin actions for verify/delete/GC (`POST /viewer/objects/{hash}/verify`, `POST /viewer/objects/{hash}/delete`, `POST /viewer/gc`). There is **no** prune route in `internal/web/web.go` — prune stays CLI-only (`cask prune`) because its dry-run semantics and root-list interface don't fit the hypermedia surface. Byte-layer tool; does not surface typed references (viewer-design §7).
 
 ## 10. Checklist
 
@@ -103,4 +103,4 @@ The entire consistency surface is **five operations**: `Verify(ctx, d, hasher)` 
 - [x] Sweeps racing live writers grace-gated (`--min-age`); forced `--min-age 0` is the dangerous variant (cas-core §6)
 - [x] Dangerous all-objects prune is admin + dry-run + confirm
 - [x] No refcounts, no automatic GC, no GC transactions (§8)
-- [x] CLI + viewer expose verify/GC/prune per cli §2
+- [x] Viewer exposes verify/delete/GC only; prune is CLI-only (`cask prune`) per cli §2

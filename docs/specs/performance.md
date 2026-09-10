@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v14
+version: v15
 ---
 
 # Performance — go-cask
@@ -45,7 +45,7 @@ Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet`
 
 - Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
 - Store-logic benchmarks run against the in-memory `memory` backend (deterministic, no disk noise); disk behavior is covered by the `fs`-backend cases.
-- No committed baseline and no CI gate (shared CI runners too noisy; allocation regressions caught by P-03 and review). Run on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
+- No committed baseline and **no CI gate** (shared CI runners are too noisy; allocation regressions are caught by P-03 and review). No other document may promise a "benchstat gate" — `nightly.yml` only records `-bench` output. Run on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
 - **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`) prefill a store to N, time the op at that size, and log a projection for 10^10 objects. Not part of CI twice over (CI runs no `-bench`, and each skips unless `CASK_SCALE_OBJECTS` is set), e.g. `CASK_SCALE_OBJECTS=1000000 go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v`.
 - The lock-free claim is exercised by `-race` tests and `BenchmarkParallelPutGet`.
 

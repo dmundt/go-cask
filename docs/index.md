@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v9
+version: v10
 ---
 
 # go-cask Rules Index
@@ -16,8 +16,8 @@ version: v9
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |
 | `cas/codec/json/`, `cas/codec/gob/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |
-| `cas/cached.go`, `lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
-| `cas/maintenance.go`; `backend.go` `GC`/`Prune`/`Clean` | [`consistency.md`](specs/consistency.md) |
+| `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
+| `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) |

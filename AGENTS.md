@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v20
+version: v21
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -40,14 +40,14 @@ The repo layout is:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it
-internal/  implementation detail (web — the viewer —, storage, index);
+internal/  implementation detail (web — the viewer —, index, test);
            not importable outside this module
 gitlike/  shared reference library (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
                  WalkGraph
 examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
-docs/specs/  the specification set (20 files: 19 specs + AGENT.md)
+docs/specs/  the specification set (21 files: 19 specs + AGENT.md + index.md)
 docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
 docs/index.md  rule file index — read this first, then the matching spec
 AGENTS.md  this file — the repo-root agent aggregator; points at the
@@ -173,7 +173,7 @@ below is consolidated from the last converged state of the conversation.
 ├─────────────────────────────────────────────────────────────┤
 │ Typed layer (generic, no any)                               │
 │   Object[T] · Validator · Codec[T] · Store[T] · Walker[T]   │
-│   CachedStore[T] / CachedObject[T] / LRUCache[T]            │
+│   CachedStore[T] / CachedObject[T] / lru.Cache[T]           │
 ├─────────────────────────────────────────────────────────────┤
 │ Byte layer (non-generic)                                    │
 │   Digest (raw bytes) · Backend interface                    │
@@ -190,7 +190,7 @@ flowchart TB
     end
     subgraph CORE["Generic core (package cas)"]
         TYPED["Typed layer: Object[T] · Validator · Codec[T] · Store[T] · Walker[T]"]
-        CACHE["Caching: CachedStore[T] · CachedObject[T] · LRUCache[T]"]
+        CACHE["Caching: CachedStore[T] · CachedObject[T] · lru.Cache[T]"]
         BYTE["Byte layer: Digest · Backend · fs/mem backends"]
     end
     APP1 --> TYPED
@@ -214,7 +214,7 @@ flowchart TB
 | `Store[T]`       | Generic store: Put/PutDedup/Get/GetRaw/Exists/Delete          |
 | `Walker[T]`      | Generic graph traversal over `References()`                 |
 | `CachedStore[T]` | Lazy loading + caching wrapper around `Store[T]`            |
-| `LRUCache[T]`    | Size-bounded cache with LRU eviction                        |
+| `lru.Cache[T]`   | Size-bounded cache with LRU eviction                        |
 | *(gitlike)* `Blob`/`Tree`/`Commit`/`Tag` | Reference `Object[T]` types (application layer)   |
 | *(gitlike)* `Repository`/`Resolver`/`ResolvedObject`/`WalkGraph` | Reference per-type stores + type-safe resolution (application layer) |
 | *(gitlike)* `CachedRepository`/`Preloader` | Reference repository-bound caches (application layer) |

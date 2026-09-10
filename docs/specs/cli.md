@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v14
+version: v16
 ---
 
 # CLI — go-cask
@@ -27,14 +27,14 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 |---|---|
 | `put <file>\|- [-json]` | store bytes (or stdin); prints the hash (`sha256:hexdigest`) |
 | `get <hash> [-o <file>]` | retrieve to a file or stdout (no `-o` → stdout) |
-| `list [-limit <n>] [-offset <n>] [-json]` | list objects (`{total, objects}` shape) |
+| `list [-limit <n>] [-offset <n>] [-json]` | list objects (`{total, objects}` shape); a digest-named file that is not a readable object (a stray file in the store directory) is skipped with a stderr warning instead of failing the command (cas-core §4.4) |
 | `meta <hash> [-json]` | metadata of one object (size, type, algorithm) |
 | `stats` | storage statistics (`N objects, M bytes`) |
 | `verify <hash>\|--all` | integrity check (single object or full scan) |
 | `gc --min-age <dur> <roots...>` | reclaim objects not reachable from roots AND older than `--min-age` (grace default 1h; `--min-age 0` = immediate, dangerous) |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default) |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
-| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token; refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).
@@ -57,7 +57,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-bind`, `-tokens`, `-allow-insecure-bind`, `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-bind`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
 - No secrets in output: tokens are never echoed; errors never include the token.
 - Std-lib only (`flag` package); documented per coding-guidelines §7.
@@ -65,7 +65,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 ## 5. Checklist
 
 - [x] Local-only: `-store` mode; no `-algo` flag (the CLI digests with the client's sha256); no remote flags
-- [x] `web` starts the embedded viewer per backend-architecture §3; no separate server binary
+- [x] `web` starts the embedded viewer per backend-architecture §3; no separate server binary; `-no-open` skips the browser launch
 - [x] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second sweep refused with the holder's PID (exit 1); writers (`put`) and reads never lock
 - [x] `gc`/`prune` grace-gated by `--min-age` (default 1h); forced `--min-age 0` warns
 - [x] All subcommands map to core operations or the viewer server composition — no new CLI logic

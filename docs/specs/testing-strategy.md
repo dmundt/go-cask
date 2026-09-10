@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v16
+version: v17
 ---
 
 # Testing Strategy — go-cask
@@ -38,7 +38,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 | Source | Exercised by |
 |---|---|
 | `examples/api` HTTP pattern (`server_test.go`) | httptest round-trip, roles, streaming, 429 |
-| `performance` P-01…P-05 | a benchmark/test per P-ID |
+| `performance` P-01…P-05 | the benchmark suite in `benchmarks/` covers each P-ID's subject (one-pass hashing/serialization, lock-free reads, bounded allocations, streaming); the benchmarks carry `ReportAllocs` and the P-IDs live in the spec, not in test names |
 | Sentinel errors (five) | one positive `errors.Is` per error |
 | Maintenance ops (`Stats`/`Verify`/`GC`/`Prune`) | one test per op, incl. dry-run + destructive |
 | Object versioning | versioned `Type()` names, coexisting majors, `ErrUnknownType` |
@@ -73,14 +73,14 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
 - **Coverage as high as practical:** `cas/` core and `gitlike/` ≥ **90%** statement coverage (excluding generated); every exported identifier exercised; any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
-- CI runs `go test -coverprofile` and fails below the bar; report attached to core PRs. Fuzz corpora committed.
+- CI runs `go test -coverprofile` per gated package (the list in `.github/workflows/ci.yml`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Fuzz seeds are in-code `f.Add` calls (there is no committed corpus directory) and the four targets run in CI.
 
 ## 6. Checklist
 
 - [x] all CAS laws in §1 covered
-- [x] every requirement ID (P-01…P-05, sentinel errors, ops, defaults, example-API) tested, named with the ID
+- [x] every requirement ID (P-01…P-05, sentinel errors, ops, defaults, example-API) tested; the P-IDs are covered by the `benchmarks/` suite (they are spec IDs, not test names — `Test<Component>_P0x_…` naming applies where a test *is* the requirement, e.g. sentinels and ops)
 - [x] §3 corner/error inventory covered per component
-- [x] fuzz targets present, corpora committed, run in CI
+- [x] fuzz targets present with in-code seed corpora, run in CI
 - [x] `-race` concurrent test green
 - [x] corruption test proves `Verify` fails on a flipped byte
 - [x] golden vectors assert exact digests

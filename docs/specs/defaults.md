@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v18
+version: v19
 ---
 
 # Defaults & Behavior — go-cask
@@ -88,7 +88,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 | Metric | Default target | Defined in |
 |---|---|---|
-| Memory-backend small Put/Get | ≥100k obj/s; p99 ≤1 ms; ≤5 allocs/op | performance §11 |
+| Memory-backend small (64 B) **byte-layer** Put/Get | ≥100k obj/s; p99 ≤1 ms; ≤5 allocs/op — measured by `BenchmarkMemBackendPut/Get` (2026-09: Put/64 B ≈ 5 allocs, Get ≈ 2 allocs; the Store-level path adds codec + envelope + hashing and is not held to this number) | performance §11 |
 | FS-backend small Put/Get (warm) | ≥10k obj/s; p99 ≤5 ms | performance §11 |
 | Large-object streaming (1 GiB) | RSS ≤64 MiB above baseline | performance §11 |
 | `List` at 1M objects (fs, (2,2)) | ≤30 s | performance §11 |
