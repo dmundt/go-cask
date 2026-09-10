@@ -10,6 +10,16 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+This cycle ships as **`v1.3.0`**: a MINOR that carries the library's recorded
+first-cycle breaking changes (versioning §1). The breaks below were ratified
+individually — dropping the runtime algorithm registry, the digest change on the
+first-cycle grounds (`cas.Hash` → the hash-agnostic `cas.Digest` +
+client-injected `cas.Hasher`, which the registry removal belongs to), and the
+gitlike change because it is confined to the `gitlike` reference layer, which is
+NOT part of the stable `cas` surface (`library-design` §1). They are the last:
+any further breaking change takes the ordinary MAJOR route with the `/v2` module
+mechanics.
+
 **BREAKING: the core is now hash-agnostic — `cas.Hash` is gone, replaced by
 `cas.Digest` (raw digest bytes), and the client owns the algorithm.** The core
 names no algorithm, implements none, and cannot tell one digest width from
@@ -111,12 +121,14 @@ payloads are unchanged, so addresses are stable *within* this model.
 
 `cas-core.md` v41→v43 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
-§8 decisions; then the `Validator` contract and the codec-injected
-`gitlike.Repository`), `library-design.md` v20→v22 (`cas.Validator` in the
-exported surface), `coding-guidelines.md` v14→v15,
+§8 decisions; then the `Validator` contract, the codec-injected
+`gitlike.Repository` and its migration note), `library-design.md` v20→v23
+(`cas.Validator` in the exported surface; the third ratified exception in §5),
+`coding-guidelines.md` v14→v15,
 `defaults.md` v17→v18, `examples.md` v16→v17, `extensions.md` v7→v8,
 `operations.md` v7→v8, `testing-strategy.md` v13→v15 (the invariant law),
-`versioning.md` v14→v15, `docs/index.md` v8→v9, `AGENTS.md` v16→v18, `README.md`,
+`versioning.md` v14→v16 (the third exception and the `v1.3.0` release),
+`docs/index.md` v8→v9, `AGENTS.md` v16→v18, `README.md`,
 and the example/`gitlike` READMEs.
 
 ## [v1.2.0] - 2026-09-10

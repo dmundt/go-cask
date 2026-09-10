@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v22
+version: v23
 ---
 
 # Library Design — go-cask
@@ -58,7 +58,7 @@ var (
 ## 5. Compatibility policy
 
 - Library baseline **Go 1.24+** (generics, enhanced routing, `omitzero` JSON tags, stdlib-only); built/tested with the repo toolchain (1.27).
-- Only additive, non-breaking changes inside the current major; breaking changes require a major version and a migration note — **except** for changes explicitly ratified while the surface is in its first release cycle and adoption is negligible, each shipped as a documented `BREAKING CHANGE` with a migration note (versioning §4) rather than waiting for a `/v2` mirror: `cas.Hash` became a concrete value type (giving up its JSON marshalling to the then-`jsoncodec.Hash` field type) in `v1.2.0`, and the address type became the hash-agnostic `cas.Digest` with a client-injected `cas.Hasher` in the unreleased cycle after it. Both are recorded in `versioning.md` §1; the digest change is a loud, un-migrated break (object type names stay `@1`, previously stored reference payloads fail to decode — operations §5, cas-core §4.2). Any further breaking change follows the ordinary rule again.
+- Only additive, non-breaking changes inside the current major; breaking changes require a major version and a migration note — **except** for changes explicitly ratified while the surface is in its first release cycle and adoption is negligible, each shipped as a documented `BREAKING CHANGE` with a migration note (versioning §4) rather than waiting for a `/v2` mirror: `cas.Hash` became a concrete value type (giving up its JSON marshalling to the then-`jsoncodec.Hash` field type) in `v1.2.0`; the address type became the hash-agnostic `cas.Digest` with a client-injected `cas.Hasher` in the unreleased cycle after it; and in that same cycle `gitlike.NewRepository` takes the caller's `gitlike.Codecs` set, with `Commit`'s required-tree rule moved out of its JSON methods into `Commit.Validate()` enforced by the core (`cas.Validator`). All three are recorded in `versioning.md` §1; the digest change is a loud, un-migrated break (object type names stay `@1`, previously stored reference payloads fail to decode — operations §5, cas-core §4.2), and the gitlike change is confined to the reference layer, which is NOT part of the stable `cas` surface (§1). The third exception is the last: any further breaking change follows the ordinary rule again.
 - Example HTTP surfaces version independently (`/api/cas/v1` → `/api/cas/v2`, api-design §12).
 - Deprecations: keep deprecated symbols ≥ one minor release with a doc-comment pointer to the replacement.
 
