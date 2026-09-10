@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v7
+version: v8
 ---
 
 # go-cask Rules Index
@@ -14,6 +14,7 @@ version: v7
 | `cas/hash.go`; `TestHash*` / `BenchmarkHash*` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |
+| `cas/codec/json/` (codec + the `jsoncodec.Hash` field type), `cas/codec/gob/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |
 | `cas/cached.go`, `lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/maintenance.go`; `backend.go` `GC`/`Prune`/`Clean` | [`consistency.md`](specs/consistency.md) |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) |
