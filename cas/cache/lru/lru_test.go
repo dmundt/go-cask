@@ -19,11 +19,7 @@ func (item) References() []cas.Hash { return nil }
 
 func newStore(t *testing.T) *cas.Store[item] {
 	t.Helper()
-	s, err := cas.New(mem.New(), jsoncodec.New[item](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return cas.New(mem.New(), jsoncodec.New[item]())
 }
 
 func putItem(t *testing.T, s *cas.Store[item], id string) cas.Hash {
@@ -99,10 +95,7 @@ func TestGetMissingReturnsError(t *testing.T) {
 	}
 	// A valid hash whose content was never stored must surface an error from
 	// Proxy (and Get) rather than panicking.
-	ghost, err := cas.HashBytes("sha256", []byte("never-stored-object"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ghost := cas.HashBytes([]byte("never-stored-object"))
 	if _, err := c.Get(ctx, ghost); err == nil {
 		t.Fatal("Get on an absent object must error")
 	}

@@ -28,10 +28,7 @@ func (untypedObj) References() []cas.Hash { return nil }
 
 func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), jsoncodec.New[untypedObj](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := cas.New(mem.New(), jsoncodec.New[untypedObj]())
 	if _, err := s.Put(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("Put(empty type) = %v, want ErrUnknownType", err)
 	}
@@ -54,7 +51,7 @@ func memFactory(t *testing.T) cas.Backend { return mem.New() }
 // against any backend implementation.
 func testBackendContract(t *testing.T, raw cas.Backend) {
 	ctx := context.Background()
-	h, _ := test.HashData("sha256", []byte("contract"))
+	h := test.HashData([]byte("contract"))
 	if err := raw.Put(ctx, h, strings.NewReader("contract")); err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +70,7 @@ func testBackendContract(t *testing.T, raw cas.Backend) {
 
 func newTestStore(t *testing.T, raw cas.Backend) *cas.Store[test.Note] {
 	t.Helper()
-	s, err := cas.New(raw, jsoncodec.New[test.Note](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return cas.New(raw, jsoncodec.New[test.Note]())
 }
 
 func TestBackendContract(t *testing.T) {
@@ -230,51 +223,9 @@ func TestStoreTypeSafety(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, err := cas.New(raw, jsoncodec.New[test.Node](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	nodes := cas.New(raw, jsoncodec.New[test.Node]())
 	if _, err := nodes.Get(ctx, h); err == nil {
 		t.Fatal("decoding a note as a node must fail")
-	}
-}
-
-func TestNewStoreUnknownAlgorithm(t *testing.T) {
-	_, err := cas.New[test.Note](mem.New(), jsoncodec.New[test.Note](), "nope")
-	if !errors.Is(err, cas.ErrUnknownAlgorithm) {
-		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
-	}
-}
-
-func TestStoreWithCustomHasher(t *testing.T) {
-	// Custom algorithm via the documented recipe: RegisterHash then NewStore
-	// (cas-core §4.2). The address must round-trip through ParseHash.
-	cas.RegisterHash("testblob", func([]byte) cas.Hash {
-		h, _ := cas.NewHash("testblob", []byte{0xde, 0xad})
-		return h
-	})
-	raw := mem.New()
-	ctx := context.Background()
-	s, err := cas.New(raw, jsoncodec.New[test.Note](), "testblob")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, err := s.Put(ctx, test.Note{Title: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.String() != "testblob:dead" {
-		t.Fatalf("custom hasher address = %q", h.String())
-	}
-	if _, err := cas.ParseHash(h.String()); err != nil {
-		t.Fatalf("custom address must round-trip through ParseHash: %v", err)
-	}
-	note, err := s.Get(ctx, h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if note.Title != "t" {
-		t.Fatalf("Get = %+v", note)
 	}
 }
 
@@ -323,10 +274,7 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), jsoncodec.New[test.Note](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := cas.New(mem.New(), jsoncodec.New[test.Note]())
 	h, dedup, err := s.PutDedup(ctx, test.Note{Title: "dedup"})
 	if err != nil {
 		t.Fatal(err)
@@ -349,10 +297,7 @@ func TestStorePutDedup(t *testing.T) {
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
-	st, err := cas.New(raw, jsoncodec.New[test.Note](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := cas.New(raw, jsoncodec.New[test.Note]())
 	payload, err := (jsoncodec.New[test.Note]()).Marshal(test.Note{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
@@ -369,10 +314,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	env := buf.Bytes()
-	h, err := test.HashData("sha256", env)
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := test.HashData(env)
 	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
@@ -388,13 +330,10 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
 func TestStoreCanceledOps(t *testing.T) {
-	st, err := cas.New(mem.New(), jsoncodec.New[test.Note](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := cas.New(mem.New(), jsoncodec.New[test.Note]())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, _ := test.HashData("sha256", []byte("x"))
+	h := test.HashData([]byte("x"))
 	for _, tc := range []struct {
 		name string
 		run  func() error

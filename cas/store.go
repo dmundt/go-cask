@@ -7,14 +7,11 @@ import (
 	"io"
 )
 
-// SHA256 is the default hash algorithm identifier for the cas core.
-const SHA256 = "sha256"
-
 // Store[T] is the generic, type-safe content-addressable store for objects of
-// type T, over a Backend backend, a Codec[T] and a hash algorithm. Type
-// safety comes from one store per type: Store[Blob] and Store[Commit] are
-// distinct, so passing a commit hash to a blob store is a compile-time
-// error. Store[T] is safe for concurrent use if its Backend is.
+// type T, over a Backend backend and a Codec[T]. Type safety comes from one
+// store per type: Store[Blob] and Store[Commit] are distinct, so passing a
+// commit hash to a blob store is a compile-time error. Store[T] is safe for
+// concurrent use if its Backend is.
 //
 // Stored objects are self-describing: the codec payload is wrapped in the TLV
 // envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
@@ -26,21 +23,15 @@ const SHA256 = "sha256"
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
 // type assertions exist anywhere in the typed layer.
 type Store[T Object[T]] struct {
-	raw    Backend
-	codec  Codec[T]
-	hasher HashFunc
+	raw   Backend
+	codec Codec[T]
 }
 
-// New creates a Store[T] over raw, resolving the hash algorithm from
-// the registry at construction (no global dependence in the hot path). It
-// returns ErrUnknownAlgorithm if algo is not registered. Custom algorithms
-// are registered with RegisterHash before calling New (cas-core §4.2).
-func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error) {
-	fn, ok := LookupHash(algo)
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
-	}
-	return &Store[T]{raw: raw, codec: codec, hasher: fn}, nil
+// New creates a Store[T] over raw with codec. It cannot fail: the core has one
+// hash algorithm and no registry, so there is nothing to resolve (cas-core
+// §4.2).
+func New[T Object[T]](raw Backend, codec Codec[T]) *Store[T] {
+	return &Store[T]{raw: raw, codec: codec}
 }
 
 // Put encodes obj with the store codec, prepends the type string, and
@@ -56,7 +47,7 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Hash, error) {
 	if err != nil {
 		return Hash{}, err
 	}
-	h := s.hasher(data)
+	h := HashBytes(data)
 	if err := CheckHash(h, "store: put"); err != nil {
 		return Hash{}, err
 	}
@@ -77,7 +68,7 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 	if err != nil {
 		return Hash{}, false, err
 	}
-	h := s.hasher(data)
+	h := HashBytes(data)
 	if err := CheckHash(h, "store: put"); err != nil {
 		return Hash{}, false, err
 	}

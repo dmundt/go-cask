@@ -19,11 +19,7 @@ func (note) References() []cas.Hash { return nil }
 // the JSON codec, Put a value, and Get it back as the concrete type.
 func Example() {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[note](), cas.SHA256)
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	s := cas.New(backmem.New(), jsoncodec.New[note]())
 	h, err := s.Put(ctx, note{Body: "hi"})
 	if err != nil {
 		fmt.Println("error:", err)
@@ -39,14 +35,10 @@ func Example() {
 	// hi
 }
 
-// ExampleHashBytes shows hashing bytes with a registered algorithm (cas-core
-// §4.2); the returned Hash carries its algorithm and digest.
+// ExampleHashBytes shows hashing bytes with the core's one algorithm (cas-core
+// §4.2); the returned Hash carries the algorithm and the digest.
 func ExampleHashBytes() {
-	h, err := cas.HashBytes("sha256", []byte("hi"))
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	h := cas.HashBytes([]byte("hi"))
 	fmt.Println(h.Algorithm())
 	// Output:
 	// sha256

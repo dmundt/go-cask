@@ -1,7 +1,6 @@
 // Package main implements the artifacts example: a content-addressable
-// build-artifact cache with a custom gzip codec, a custom registered hash
-// algorithm (sha256double), bounded LRU caching with a monitor, and
-// mark-and-sweep GC from manifests (examples spec §3.2).
+// build-artifact cache with a custom gzip codec, bounded LRU caching with a
+// monitor, and mark-and-sweep GC from manifests (examples spec §3.2).
 //
 // Usage:
 //
@@ -48,8 +47,8 @@ commands:
   stats                print store statistics
   monitor <hash...>    warm the cache and print cache metrics`
 
-// Artifact is a cached build output. Its address is the sha256double hash
-// of its gzip-compressed envelope, so identical bytes always deduplicate.
+// Artifact is a cached build output. Its address is the hash of its
+// gzip-compressed envelope, so identical bytes always deduplicate.
 type Artifact struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`
@@ -137,14 +136,8 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts, err := cas.New(raw, newGzipCodec[*Artifact](), "sha256double")
-	if err != nil {
-		return nil, err
-	}
-	manifests, err := cas.New(raw, newGzipCodec[*Manifest](), "sha256double")
-	if err != nil {
-		return nil, err
-	}
+	artifacts := cas.New(raw, newGzipCodec[*Artifact]())
+	manifests := cas.New(raw, newGzipCodec[*Manifest]())
 	cache, err := lru.New(artifacts, 100)
 	if err != nil {
 		return nil, err

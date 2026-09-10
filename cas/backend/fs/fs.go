@@ -25,8 +25,10 @@ import (
 const (
 	DefaultFanOut    = 2
 	DefaultFanLevels = 1
-	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed
-	// the hex digest length.
+	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed the
+	// hex digest width. With the core's one algorithm (sha256, 64 hex chars)
+	// this makes a configured layout exactly cover the digest, so hashPath
+	// never runs past its end.
 	MaxFanDepth = 64
 )
 
@@ -118,21 +120,15 @@ func syncParentDir(path string) error {
 // hashPath returns the on-disk path for h. Every caller has already rejected
 // the absent hash (cas.CheckHash), and a present one carries a validated
 // lowercase-alphanumeric algorithm name (cas.ParseHash/NewHash), so the
-// algorithm is a single safe path element.
+// algorithm is a single safe path element. WithFanOut/WithFanLevels bound
+// FanOut × FanLevels to the digest width (MaxFanDepth), so every chunk is in
+// range.
 func (s *Backend) hashPath(h cas.Hash) string {
 	hexDigest := hex.EncodeToString(h.Bytes())
 	p := filepath.Join(s.base, h.Algorithm())
 	if s.fanOut > 0 && s.fanLevels > 0 {
 		for i := 0; i < s.fanLevels; i++ {
-			start := i * s.fanOut
-			if start >= len(hexDigest) {
-				break
-			}
-			end := start + s.fanOut
-			if end > len(hexDigest) {
-				end = len(hexDigest)
-			}
-			p = filepath.Join(p, hexDigest[start:end])
+			p = filepath.Join(p, hexDigest[i*s.fanOut:(i+1)*s.fanOut])
 		}
 	}
 	return filepath.Join(p, hexDigest)
@@ -411,11 +407,9 @@ func isTempFile(name string) bool {
 }
 
 // List returns every stored hash, filtered by algorithm when algo != "".
-// Hashes are rebuilt from their on-disk paths, which requires the algorithm to
-// be registered in this process (cas.ParseHash, cas-core §4.2): object files
-// written by another process under a custom, unregistered algorithm are
-// skipped rather than reported. Register the algorithm with cas.RegisterHash
-// before listing such a store.
+// Hashes are rebuilt from their on-disk paths; a path whose algorithm this
+// build does not implement (a store written by a build with another algorithm)
+// cannot be parsed back into a Hash, so it is skipped rather than reported.
 func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -449,9 +443,9 @@ func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	return hashes, nil
 }
 
-// Stats walks the tree and returns per-algorithm counts and total size.
-// Like List, it can only account for objects whose algorithm is registered in
-// this process (cas.ParseHash); others are skipped.
+// Stats walks the tree and returns per-algorithm counts and total size. Like
+// List, it can only account for objects whose algorithm this build implements;
+// others are skipped.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -487,7 +481,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	return st, nil
 }
 
-// Verify re-reads the object and recomputes its hash.
+// Verify re-reads the object and recomputes its address, streaming so a large
+// object is never buffered. It reports ErrHashMismatch when the stored bytes no
+// longer hash to h.
 func (s *Backend) Verify(ctx context.Context, h cas.Hash) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -501,29 +497,15 @@ func (s *Backend) Verify(ctx context.Context, h cas.Hash) error {
 	}
 	defer rc.Close()
 
-	if newStream, ok := cas.LookupStreamHash(h.Algorithm()); ok {
-		hasher := newStream()
-		if _, err := io.Copy(hasher, rc); err != nil {
-			return fmt.Errorf("cas: verify read: %w", err)
-		}
-		actual, err := cas.NewHash(h.Algorithm(), hasher.Sum(nil))
-		if err != nil {
-			return err
-		}
-		if !actual.Equal(h) {
-			return fmt.Errorf("%w: %s", cas.ErrHashMismatch, h)
-		}
-		return nil
-	}
-	hashFn, ok := cas.LookupHash(h.Algorithm())
-	if !ok {
-		return fmt.Errorf("%w: %q", cas.ErrUnknownAlgorithm, h.Algorithm())
-	}
-	data, err := io.ReadAll(rc)
-	if err != nil {
+	hasher := cas.NewHasher()
+	if _, err := io.Copy(hasher, rc); err != nil {
 		return fmt.Errorf("cas: verify read: %w", err)
 	}
-	if !hashFn(data).Equal(h) {
+	actual, err := cas.NewHash(hasher.Sum(nil))
+	if err != nil {
+		return err // unreachable: a sha256 sum always has sha256.Size bytes
+	}
+	if !actual.Equal(h) {
 		return fmt.Errorf("%w: %s", cas.ErrHashMismatch, h)
 	}
 	return nil

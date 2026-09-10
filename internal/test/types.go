@@ -57,8 +57,8 @@ func (FailingCodec[T]) Marshal(T) ([]byte, error)   { return nil, errors.New("ma
 func (FailingCodec[T]) Unmarshal([]byte) (T, error) { var z T; return z, nil }
 
 // HashData is a test helper for hashing data.
-func HashData(algo string, data []byte) (cas.Hash, error) {
-	return cas.HashBytes(algo, data)
+func HashData(data []byte) cas.Hash {
+	return cas.HashBytes(data)
 }
 
 // ReadAllAndClose reads all bytes from rc and closes it.

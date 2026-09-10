@@ -29,9 +29,9 @@ type testNote struct {
 func (testNote) Type() string           { return "note@1" }
 func (testNote) References() []cas.Hash { return nil }
 
-// hashData computes the content address of data with the named algorithm.
-func hashData(algo string, data []byte) (cas.Hash, error) {
-	return cas.HashBytes(algo, data)
+// hashData computes the content address of data.
+func hashData(data []byte) cas.Hash {
+	return cas.HashBytes(data)
 }
 
 func benchNote(size int) testNote {
@@ -51,10 +51,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
-			if err != nil {
-				b.Fatal(err)
-			}
+			s := cas.New(mem.New(), jsoncodec.New[testNote]())
 			note := benchNote(sz.size)
 			b.SetBytes(int64(sz.size))
 			b.ReportAllocs()
@@ -72,10 +69,7 @@ func BenchmarkStoreGet(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(sz.name, func(b *testing.B) {
 			ctx := context.Background()
-			s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
-			if err != nil {
-				b.Fatal(err)
-			}
+			s := cas.New(mem.New(), jsoncodec.New[testNote]())
 			h, err := s.Put(ctx, benchNote(sz.size))
 			if err != nil {
 				b.Fatal(err)
@@ -123,7 +117,7 @@ func BenchmarkFSBackendPut(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					binary.BigEndian.PutUint64(data, uint64(i))
-					h, _ := hashData("sha256", data)
+					h := hashData(data)
 					if err := s.Put(ctx, h, bytes.NewReader(data)); err != nil {
 						b.Fatal(err)
 					}
@@ -154,7 +148,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				h, _ := hashData("sha256", make([]byte, sz.size))
+				h := hashData(make([]byte, sz.size))
 				data := strings.Repeat("x", sz.size)
 				if err := s.Put(ctx, h, strings.NewReader(data)); err != nil {
 					b.Fatal(err)
@@ -179,10 +173,7 @@ func BenchmarkFSBackendGet(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
-	if err != nil {
-		b.Fatal(err)
-	}
+	s := cas.New(mem.New(), jsoncodec.New[testNote]())
 	note := benchNote(1024)
 	b.SetBytes(1024)
 	b.ReportAllocs()
@@ -205,7 +196,7 @@ func BenchmarkVerify(b *testing.B) {
 		b.Fatal(err)
 	}
 	data := strings.Repeat("verify", 1024)
-	h, _ := hashData("sha256", []byte(data))
+	h := hashData([]byte(data))
 	if err := s.Put(ctx, h, strings.NewReader(data)); err != nil {
 		b.Fatal(err)
 	}
@@ -242,10 +233,7 @@ func BenchmarkParseHash(b *testing.B) {
 // concurrency (performance §2).
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), jsoncodec.New[testNote](), "sha256")
-	if err != nil {
-		b.Fatal(err)
-	}
+	s := cas.New(mem.New(), jsoncodec.New[testNote]())
 	const objects = 64
 	var hashes []cas.Hash
 	for i := 0; i < objects; i++ {

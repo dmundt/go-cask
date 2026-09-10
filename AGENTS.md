@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v15
+version: v16
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -10,7 +10,7 @@ version: v15
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
 > content-addressable object store component written in Go, fully type-safe via
-> generics (no `any` in the public API), with pluggable hash algorithms, a
+> generics (no `any` in the public API), one fixed hash algorithm (`sha256`), a
 > filesystem backend, typed object layers, lazy loading and caching.
 >
 > Use this file as the authoritative design contract for all agent-assisted
@@ -75,7 +75,7 @@ Related specs that also constrain work in this repo:
   cas model.
 - `docs/specs/examples.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
-  the implementation (gitlike, custom codecs/hashes, caching, HTTP-exposure pattern, viewer).
+  the implementation (gitlike, custom codecs, caching, HTTP-exposure pattern, viewer).
 - `docs/specs/extensions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
@@ -201,7 +201,7 @@ flowchart TB
 | Concept          | Responsibility                                              |
 | ---------------- | ----------------------------------------------------------- |
 | `Hash`           | Content address; carries algorithm + digest (`sha256:ab..`) |
-| `HashFunc`       | Computes a `Hash` from bytes; runtime-registerable          |
+| `HashBytes` / `NewHasher` | The core's one hasher (sha256): one-shot / streaming |
 | `Backend`       | Raw byte storage interface (non-generic)                    |
 | `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
 | `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
@@ -227,8 +227,9 @@ build their own equivalents for their own types.
    are never mutated in place. Same content ⇒ same hash ⇒ stored once
    (deduplication is automatic).
 2. **Hash carries its algorithm.** `Hash` is `"algo:hexdigest"`. References are
-   self-describing, algorithms can be mixed in one object graph, and stores can
-   read objects hashed with any registered algorithm.
+   self-describing, so a store written by a build with another algorithm is
+   recognized rather than misread. The core implements exactly one algorithm
+   (`sha256`), fixed at compile time — there is no registry.
 3. **Core storage is non-generic.** `Backend` deals in `Hash` + `io.Reader`
    only. All generics live in the typed layer on top.
 4. **Fully type-safe — no `any` in the public API.** No `interface{}` in
@@ -282,7 +283,7 @@ func main() {
 
     // 1. Filesystem backend + git-like example repository on top.
     raw, _ := fs.New("./repo")
-    repo, _ := gitlike.NewRepository(raw, "sha256")
+    repo := gitlike.NewRepository(raw)
     resolver := gitlike.NewResolver(repo)
 
     // 2. Build a Git-like object graph: blob → tree → commit → tag.
@@ -360,12 +361,12 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    `cas` or extend `gitlike`.
 5. Never add `any` or reflection to do this — add explicit typed methods.
 
-**Add a hash algorithm** (e.g. `blake3`):
-```go
-cas.RegisterHash("blake3", func(data []byte) cas.Hash { ... })
-```
-Then `cas.New(raw, codec, "blake3")` works; existing objects under other
-algorithms remain readable (the algorithm lives in the address).
+**Change the hash algorithm:** there is no registry — `sha256` is the core's one
+algorithm, fixed at compile time (cas-core §4.2), and `cas.New(raw, codec)` takes
+no algorithm argument. Adding another means changing `cas` (and each codec that
+renders an address); the address keeps the algorithm name, so a store written
+under another algorithm is recognized (`ErrUnknownAlgorithm`) rather than
+misread.
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
 Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
@@ -410,9 +411,8 @@ gofmt -l .
   change content (which yields a new hash).
 - Concurrency: backend reads are lock-free (atomic rename; see
   `performance.md` §2); one `sync.Mutex` coordinates
-  `Put`/`Delete`; caches use `sync.Map` + `atomic` counters; `hashRegistry`
-  must be guarded by a `sync.RWMutex` once hash registration can happen after
-  startup.
+  `Put`/`Delete`; caches use `sync.Map` + `atomic` counters. The core has no
+  hash registry and no other mutable global.
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` (cas-core §8 decision 1,
   `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side

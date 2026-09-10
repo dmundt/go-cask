@@ -11,11 +11,7 @@ import (
 // Repository over a backend, store a Blob, and read it back.
 func Example() {
 	ctx := context.Background()
-	repo, err := NewRepository(backmem.New(), "sha256")
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	repo := NewRepository(backmem.New())
 	h, err := repo.Blobs.Put(ctx, &Blob{Data: []byte("hi")})
 	if err != nil {
 		fmt.Println("error:", err)
@@ -35,11 +31,7 @@ func Example() {
 // envelope and returns a typed union whose Type names the object.
 func ExampleRepository() {
 	ctx := context.Background()
-	repo, err := NewRepository(backmem.New(), "sha256")
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	repo := NewRepository(backmem.New())
 	h, err := repo.Blobs.Put(ctx, &Blob{Data: []byte("hi")})
 	if err != nil {
 		fmt.Println("error:", err)

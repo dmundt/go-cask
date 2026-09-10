@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v12
+version: v13
 ---
 
 # Testing Strategy — go-cask
@@ -26,7 +26,7 @@ CASK's value is its invariants (same bytes ⇒ same hash ⇒ stored once, immuta
 
 - Every behavior/edge case MUST have a **named, deterministic test** stating the case (a table row or `t.Run` describes what it asserts; never anonymous branches).
 - Fuzz/race/golden/benchmark runs are **supplements, never the only guard** — a fuzz seed or corpus entry without an explicit test for the behavior is a gap (e.g. JSON codec's invalid-UTF-8 lossiness is pinned by an explicit test).
-- Tests MUST NOT depend on execution order or shared mutable state: each builds its own fixture (`t.TempDir`); registry mutation (e.g. `RegisterHash`) uses unique names.
+- Tests MUST NOT depend on execution order or shared mutable state: each builds its own fixture (`t.TempDir`); the core has no registry or other mutable global to share.
 - Assertions are direct (`errors.Is`, exact values/digests); a test passing only by printing or by another test's side effect is a defect.
 - When fuzzing surfaces a real constraint/skipped branch, pin it with an explicit test in the same change.
 

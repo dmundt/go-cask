@@ -31,16 +31,10 @@ func mustFS(t *testing.T, opts ...backend.Option) *fs.Backend {
 // TestFSListIgnoresRootStray, TestFSHashPathDigestClamp) moved into
 // cas/backend/fs/fs_test.go where they can reach the unexported layout.
 
-func TestHashDataUnknownAlgorithm(t *testing.T) {
-	if _, err := test.HashData("nope", []byte("x")); !errors.Is(err, cas.ErrUnknownAlgorithm) {
-		t.Fatalf("err = %v, want ErrUnknownAlgorithm", err)
-	}
-}
-
 func TestBackendCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, _ := test.HashData("sha256", []byte("x"))
+	h := test.HashData([]byte("x"))
 
 	for _, bf := range []struct {
 		name string
@@ -72,10 +66,7 @@ func TestBackendCancelledContext(t *testing.T) {
 
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s, err := cas.New(mem.New(), test.FailingCodec[test.ErrorObj]{}, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := cas.New(mem.New(), test.FailingCodec[test.ErrorObj]{})
 	if _, err := s.Put(ctx, test.ErrorObj{}); err == nil {
 		t.Fatal("Put with failing codec must error")
 	}
@@ -98,10 +89,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
-	store, err := cas.New(raw, jsoncodec.New[test.Note](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := cas.New(raw, jsoncodec.New[test.Note]())
 	// TLV envelope: [version][uvarint typeLen][type][uvarint payloadLen][payload].
 	// A payload that is not valid JSON for test.Note will cause the codec
 	// Decode to fail, surfacing as ErrCorrupt.
@@ -116,7 +104,7 @@ func TestGetCorruptPayload(t *testing.T) {
 	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	stored := buf.Bytes()
-	h, _ := test.HashData("sha256", stored)
+	h := test.HashData(stored)
 	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
@@ -137,10 +125,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 		"\npayload",       // version byte is '\n' (0x0A) ≠ 1
 		"note@1",          // version byte is 'n' (0x6E) ≠ 1
 	} {
-		h, err := test.HashData("sha256", []byte(garbage))
-		if err != nil {
-			t.Fatal(err)
-		}
+		h := test.HashData([]byte(garbage))
 		if err := raw.Put(ctx, h, strings.NewReader(garbage)); err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +137,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 
 func TestVerifyCancelled(t *testing.T) {
 	s := mustFS(t)
-	h, _ := test.HashData("sha256", []byte("x"))
+	h := test.HashData([]byte("x"))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := s.Verify(ctx, h); err == nil {

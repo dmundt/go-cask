@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v40
+version: v41
 ---
 
 # CAS Core — go-cask
@@ -45,7 +45,7 @@ flowchart TB
         CACHE -. "wraps" .-> STORE
     end
     subgraph BYTE["Byte layer (non-generic, package cas)"]
-        HASH["Hash (algo:digest) · HashFunc registry · ParseHash"]
+        HASH["Hash (sha256:digest) · ParseHash · HashBytes"]
         RAW["Backend interface"]
         BACKENDS["fs.Backend (reference), memory.Backend (tests),<br/>S3, BadgerDB, PostgreSQL"]
     end
@@ -57,7 +57,7 @@ Dependency rule: byte depends on nothing; typed depends on byte; application dep
 
 ### 3.2 How the core fits together
 
-**Storing an object.** An app defines `Note` implementing `Object[Note]` (knows its versioned type name and referenced hashes), then a `Store[Note]` over a `Backend` with a `Codec[Note]` and a hash algorithm. `Store.Put(ctx, note)`: (1) serializes via `Codec.Marshal` and wraps in the TLV envelope built by `Store.Put` itself — the codec is the single serialization authority (objects never serialize themselves); (2) hashes with the store's `HashFunc` → content address; (3) streams via `Backend.Put(ctx, h, r)`; (4) returns the `Hash` (stored inside other objects to build a graph). Identical bytes ⇒ identical hash ⇒ dedup.
+**Storing an object.** An app defines `Note` implementing `Object[Note]` (knows its versioned type name and referenced hashes), then a `Store[Note]` over a `Backend` with a `Codec[Note]`. `Store.Put(ctx, note)`: (1) serializes via `Codec.Marshal` and wraps in the TLV envelope built by `Store.Put` itself — the codec is the single serialization authority (objects never serialize themselves); (2) hashes with `cas.HashBytes` → content address; (3) streams via `Backend.Put(ctx, h, r)`; (4) returns the `Hash` (stored inside other objects to build a graph). Identical bytes ⇒ identical hash ⇒ dedup.
 
 **Reading an object.** `Store.Get(ctx, h)`: `Backend.Get` streams bytes, `Codec.Unmarshal` reconstructs the value, and the decoded `Type()` MUST match the envelope's type name (`ErrUnknownType` otherwise). Result is the concrete `T` — no casts.
 
@@ -156,7 +156,6 @@ classDiagram
     class Store~T~ {
         +raw Backend
         +codec Codec~T~
-        +hasher HashFunc
         +Put(ctx, obj) Hash
         +Get(ctx, h) T
         +GetRaw(ctx, h) []byte
@@ -232,34 +231,29 @@ func (h Hash) Equal(other Hash) bool
 - The byte layer carries **no serialization**: `Hash` has no `MarshalJSON`/`UnmarshalJSON`, and `cas` does not import `encoding/json`. Rendering a hash as text and parsing it back belongs to whichever codec defines a wire format — the JSON codec's `jsoncodec.Hash` field type (§4.6) is the one for JSON.
 - Hashes are immutable value carriers AND the **universal reference type**: any field pointing to another object holds a full `Hash` (`algo:digest`); a bare digest is never a valid reference.
 
-### 4.2 `HashFunc` and the algorithm registry
+### 4.2 Hashing — one algorithm, fixed at compile time
 
 ```go
-type HashFunc func(data []byte) Hash
-
-func RegisterHash(algo string, fn HashFunc) // runtime pluggable
-func ParseHash(s string) (Hash, error)
-func NewHasher(algo string) (hash.Hash, error) // streaming, built-ins only
-func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
+func ParseHash(s string) (Hash, error)     // "sha256:hexdigest"
+func NewHash(digest []byte) (Hash, error)  // exactly sha256.Size bytes
+func HashBytes(data []byte) Hash           // one-shot
+func NewHasher() hash.Hash                 // streaming
 ```
 
-- Built-in algorithm: `sha256` (others registered at runtime, e.g. `blake3`).
-- `RegisterHash` rejects (panics on) a name outside `^[a-z0-9]+$` or a nil function: such a name can never be parsed back out of a hash string and is unsafe as a store path element (§4.4 derives the algorithm directory from it). Re-registering a name **drops any streaming hasher** registered for it, so `HashBytes`, `Store` and `Verify` always agree on one algorithm name's address.
-- `cas.New(raw, codec, algo)` resolves the algorithm at construction; `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot path (library-design §3).
-- `NewHasher` returns a streaming hasher for a registered algorithm (built-ins register `hash.Hash` constructors); one-shot-only algorithms cannot stream — use `HashBytes`. `HashBytes` uses the streaming hasher when available, else the one-shot `HashFunc`. These helpers serve HTTP/CLI (hash-on-write, verify) without duplicating the algorithm switch.
-- Registry populated at init; guarded by a `sync.RWMutex` so registration after startup is race-free.
+- **One algorithm: `sha256`** (`cas.SHA256`). There is no registry and no `RegisterHash`: the set of algorithms is a property of this package's build, not of a process's initialization order. Adding an algorithm is a change to `cas`, never a runtime registration — which removes the registry's failure modes outright: no mutex, no init-order coupling, no one-shot-vs-streaming duality (each path has exactly one hasher), and no runtime-chosen string that must double as a path element.
+- The **name stays in the address** (`"sha256:hexdigest"`) and in the backend layout (`<base>/sha256/…`), so the stored format stays self-describing and byte-for-byte unchanged. A store written by a build with another algorithm is *recognized* (`ErrUnknownAlgorithm`) rather than misread; the cost is a redundant prefix on each reference.
+- `HashBytes(data)` cannot fail and wraps the sha256 digest as a `Hash`. `NewHasher()` returns a streaming `hash.Hash` for the same algorithm — `Store.Put` hashes the envelope in one pass and the backend `Verify` streams through it, so a large object is never buffered.
+- `NewHash(digest)` returns `ErrInvalidHash` unless digest is exactly `sha256.Size` bytes: with one algorithm the digest width is fixed, so an address of any other width cannot name a stored object. `ParseHash` applies the same rule to the 64-hex-digit form and returns `ErrUnknownAlgorithm` for a well-formed address naming another algorithm (e.g. `sha1:…`).
 - **JSON form lives in the JSON codec, not in `Hash`** (§4.6): the field type `jsoncodec.Hash` renders a present address as its canonical `"algo:hexdigest"` string, the zero value as `""`, and decoding `""`/`null` yields the zero value while every other value must parse (`ErrInvalidHash` / `ErrUnknownAlgorithm`). A decoded object can therefore never hold an unparsable reference that would later vanish from `References()`, and an object type declares `jsoncodec.Hash` fields with **no** JSON code of its own.
 - **One spelling of "no hash".** The zero value IS the absent address: `IsZero()` reports it, `String()` renders it as `""` rather than a bare `":"`, `Equal` treats it as equal to nothing, and the JSON codec's field type renders it as `""`. Object fields use that field type — an optional reference is tagged **`omitzero`** (Go 1.24+), which omits the field when `IsZero()` reports absent, while a field that is always present keeps its historical `""`. The module declares `go 1.24` for `omitzero`: an older standard library ignores the unknown tag option, which would silently change the stored bytes and the object's address.
 - **An absent address is not a store key.** The byte layer must receive a present address: `Store` and both backends reject the zero value with `ErrInvalidHash` (via `CheckHash`) instead of addressing an object that cannot exist.
 - **Validation belongs to the codec's field type.** Because decoding is its job, a reference whose absence is illegal *and* must fail at decode time needs only a small per-type guard on presence — never a hand-written `UnmarshalJSON` for rendering (gitlike's `Commit`, §4.12, is the reference implementation).
 
-**Algorithm coexistence & migration:**
-- Several algorithms coexist (supported): the byte layer namespaces per algorithm (`<base>/<algo>/...`), so one store holds many algorithms; `List(algo)` filters; `Stats` reports per-algorithm counts. Different `Store[T]` over one `Backend` may write with different algorithms.
-- A store's algorithm is a write-default, not a read constraint: `Get`/`GetRaw`, `Backend.Get`, and `ParseHash` resolve ANY registered algorithm; earlier-written objects remain readable forever — re-hashing is never required to read.
-- Unknown algorithm on read → `ErrUnknownAlgorithm` (graceful, detectable).
-- Migration is optional: `MigrateStore` re-hashes under a target algorithm (list → read → re-hash → write → VERIFY each → delete source only after verification); both coexist during the transition (operations.md §5).
+**Algorithm change & legacy stores:**
+- Objects in this build's store are all written under sha256. A tree written under another algorithm (a legacy or foreign store) is still *enumerable* per algorithm — `List(algo)` filters, `Stats` reports per-algorithm counts from the layout — but its objects cannot be read or verified here: their addresses fail `ParseHash` (`ErrUnknownAlgorithm`), so `List` skips those paths.
+- Changing the algorithm is therefore a **format transition, not a configuration change**: every object is rewritten under new addresses, exactly as Git's object-format transition works. `operations.md` §5 records the procedure (list → read → re-hash → write → VERIFY each → delete the source only after verification).
 
-> **Decision (2026-09): keep pluggable algorithms** — not for current need, but because the *migration path* distinguishes this store from fixed-algorithm systems (Git, restic). Triggers: SHA-256 deprecation; regulatory FIPS SHA-384/512; performance (Blake3 ~6× faster). Cost ~100 LOC + one mutex. The dual verification path (streaming vs one-shot) exists because they are separate guarantees; removing one-shot registration would break the `artifacts` demo's custom-hash seam.
+> **Decision (2026-09, revised): one algorithm, no registry.** The earlier decision kept runtime-pluggable algorithms "not for current need, but because the migration path distinguishes this store from fixed-algorithm systems". On review the migration path that matters — *reading* what a differently-configured build wrote — is carried by the address itself (the algorithm name stays in the string and the layout), while the registry only ever added process-global mutable state: a mutexed map, init-order coupling, a one-shot/streaming split inside `Verify`, and a runtime-chosen name used as a filesystem path element. Git's model — one object format per repository, with an explicit translation/migration if it ever changes — is the model here. Adding an algorithm later is format-additive (the name is already in the address) but is a code change in `cas` plus one in each codec that renders an address.
 
 ### 4.3 `Backend` — the byte storage contract (non-generic)
 
@@ -371,17 +365,16 @@ type Object[T any] interface {
 
 ```go
 type Store[T Object[T]] struct {
-    raw    Backend
-    codec  Codec[T]
-    hasher HashFunc
+    raw   Backend
+    codec Codec[T]
 }
 
-func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], error)
+func New[T Object[T]](raw Backend, codec Codec[T]) *Store[T]
 ```
 
 | Method | Behavior |
 |---|---|
-| `Put` | `codec.Marshal(obj)` → TLV envelope → `hasher(data)` → `raw.Put` → h |
+| `Put` | `codec.Marshal(obj)` → TLV envelope → `HashBytes(data)` → `raw.Put` → h |
 | `PutDedup` | `raw.Exists` first; returns `(h, alreadyStored, err)` |
 | `Get` | `raw.Get` → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`) |
 | `GetRaw` | returns the serialized bytes for inspection/tooling |
@@ -400,7 +393,7 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 ```
 
 - `visit` receives every reached object as the concrete `T`; reads via `Store[T].Get`.
-- Traversal is **iterative with an explicit stack and a visited set** keyed by `h.String()`: each hash is visited at most once, a shared subgraph is not visited twice, and a cyclic or very deep graph terminates instead of exhausting the goroutine stack. A registered `HashFunc` need not be injective, so a cycle is constructible through the public API even though `sha256` content addressing makes one impossible.
+- Traversal is **iterative with an explicit stack and a visited set** keyed by `h.String()`: each hash is visited at most once, a shared subgraph is visited once rather than once per path, and a very deep graph terminates instead of exhausting the goroutine stack. A cycle is not constructible through the public API — the core has one strong hash, so an object's address depends on the bytes that would have to contain it.
 - Mixed-type traversal is the app's job (`gitlike` resolver, §4.12).
 
 ### 4.10 Caching & lazy loading
@@ -472,7 +465,7 @@ type ResolvedObject struct {
 
 ## 5. Data flows
 
-- **Write path:** `codec.Marshal(obj)` → TLV envelope (built by `Store.Put`) → `hash := hasher(data)` (algorithm from store config) → `raw.Put(ctx, hash, reader)` (atomic fs, idempotent) → return hash. Optional `PutDedup`: check `raw.Exists(hash)` first, skip the write.
+- **Write path:** `codec.Marshal(obj)` → TLV envelope (built by `Store.Put`) → `hash := HashBytes(data)` → `raw.Put(ctx, hash, reader)` (atomic fs, idempotent) → return hash. Optional `PutDedup`: check `raw.Exists(hash)` first, skip the write.
 - **Typed read path:** `raw.Get(ctx, h)` → `io.ReadAll` → `codec.Unmarshal(data)` → `T`; decoded `Type()` matches stored type.
 - **Lazy/cached read path:** `CachedStore.Proxy(ctx, h)` → not-yet-loaded `*CachedObject[T]`; on first access `Load(ctx)` → `store.Get` → memoize `(obj, err)`; later access returns the memoized value (double-checked locking).
 - **Cross-type resolution path (gitlike):** `ResolveAny(ctx, h)` → raw bytes → `parseType(data)` → dispatch to `ResolveBlob`/`ResolveTree`/`ResolveCommit`/`ResolveTag` → `ResolvedObject{...}`. The generic core has no equivalent.
@@ -488,7 +481,7 @@ type ResolvedObject struct {
 | Metrics | `atomic.Uint64` counters |
 | Parallel preload | worker goroutines + buffered error channel + `WaitGroup` |
 | Background preloader | worker pool with `context.WithCancel`; non-blocking enqueue |
-| Hash registry | map + mutex (registration once at startup) |
+| Hashing | none — one algorithm (`sha256`), no registry, no global state |
 | Smart prefetch | detached goroutine with 5 s `context.WithTimeout` |
 
 - `Store[T]` is safe for concurrent use if its `Backend` is. **Concurrency safety is per-process** (mutexes/`sync.Map`/double-checked locking coordinate one process); the core has no inter-process locking. Serve many clients from one process.
@@ -503,7 +496,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 
 | Area | Exported identifiers |
 |---|---|
-| Addressing | `Hash`, `CheckHash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
+| Addressing | `Hash`, `CheckHash`, `ParseHash`, `NewHash`, `NewHasher`, `HashBytes`, `SHA256` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
 | Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`); JSON hash field type `jsoncodec.Hash` (`jsoncodec.NewHash`, `.Hash()`, `.IsZero()`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
@@ -517,7 +510,7 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 
 **Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. Declare reference fields as `jsoncodec.Hash` — the JSON codec's field type (§4.6) — with `json:"…,omitzero"` when the reference may be absent, so the type needs no JSON code for hashes; wrap literals with `jsoncodec.NewHash(h)`, unwrap with `.Hash()` where a `Hash` is expected, and skip `IsZero()` entries in `References()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
 
-**Add a hash algorithm:** `cas.RegisterHash("blake3", func(data []byte) cas.Hash {...})`; then `cas.New(raw, codec, "blake3")` works; existing objects under other algorithms remain readable.
+**Change the hash algorithm:** there is no registry — the algorithm is `sha256` and the set of algorithms is fixed at compile time. Adding one means (1) implementing it in `cas` alongside sha256, with its digest width validated in `NewHash`/`ParseHash`, and (2) updating every codec that renders an address. Existing objects stay readable because the algorithm name travels in the address and the layout; objects written under an algorithm a build does not implement are refused with `ErrUnknownAlgorithm` rather than misread.
 
 **Add a codec:** implement `Codec[T]` (e.g. wrap `json.New[T]` with compression/encryption) and pass it to `cas.New`; do not change the byte layer.
 

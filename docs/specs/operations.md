@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, hash/layout migration, and backup guidance.
-version: v6
+version: v7
 ---
 
 # Operations — go-cask
@@ -33,8 +33,8 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 
 ## 5. Migration
 
-- **Optional and never required for reads.** The hash type is part of every reference (cas-core §2/§4.2): each object stays addressable under its own algorithm, so changing the write algorithm never breaks reads; several algorithms coexist in one store.
-- **Algorithm migration** (e.g. `sha1` → `sha256`): list objects, re-hash each with the target algorithm, write, `Verify` **each** target object, and only then delete the source. Never delete the source before the target verifies. Reads keep working throughout.
+- **One algorithm per build, and it is in every address.** The core implements exactly one hash algorithm (`sha256`, cas-core §4.2). A reference carries that name, so an object written by a build with another algorithm is *recognized* rather than misread (`ErrUnknownAlgorithm`) — but this build cannot read or verify it.
+- **Algorithm migration** (e.g. `sha1` → `sha256`, or a future `sha256` → `blake3`): list objects with the source build, re-hash each under the target, write, `Verify` **each** target object, and only then delete the source. Never delete the source before the target verifies. This is a format transition with a maintenance window, not a configuration switch.
 - **Layout migration** (change `FanOut`/`FanLevels`): same procedure — copy under the new layout, verify, then remove the old (or keep both during a transition, with reads falling back to the old layout).
 - Both are offline or low-write operations; document the maintenance window.
 

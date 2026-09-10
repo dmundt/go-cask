@@ -26,10 +26,7 @@ func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 // hand-written marshaller used to emit, so moving the hash JSON shape into the
 // codec's field type (jsoncodec.Hash) does not re-address stored notes.
 func TestNoteJSONPayloadPinned(t *testing.T) {
-	h, err := cas.HashBytes("sha256", []byte("tag payload"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := cas.HashBytes([]byte("tag payload"))
 	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: refs(h)})
 	if err != nil {
 		t.Fatal(err)

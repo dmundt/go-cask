@@ -4,10 +4,12 @@ import "context"
 
 // Walker[T] traverses a single-type object graph via References() — the
 // generic core's only graph primitive. It works for any object type with no
-// knowledge of the domain model. Content addressing makes cycles impossible
-// for a well-behaved hasher, but a registered HashFunc need not be injective,
-// so traversal tracks visited hashes and uses an explicit stack instead of
-// recursion: a cyclic or very deep graph terminates instead of exhausting the
+// knowledge of the domain model. Content addressing (sha256, the core's one
+// algorithm) makes a cycle impossible: an object's address is derived from its
+// bytes, so no object can reference itself directly or transitively.
+// Traversal nevertheless tracks the hashes it has visited — a shared subgraph
+// is walked once, not once per path — and uses an explicit stack instead of
+// recursion, so a very deep graph terminates instead of exhausting the
 // goroutine stack.
 type Walker[T Object[T]] struct {
 	store *Store[T]

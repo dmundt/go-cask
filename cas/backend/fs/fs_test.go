@@ -3,7 +3,6 @@ package fs
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -20,8 +19,8 @@ import (
 )
 
 // hashData computes a content address for the backend tests.
-func hashData(algo string, data []byte) (cas.Hash, error) {
-	return cas.HashBytes(algo, data)
+func hashData(data []byte) cas.Hash {
+	return cas.HashBytes(data)
 }
 
 func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
@@ -84,7 +83,7 @@ func TestFanOutBounds(t *testing.T) {
 func TestLayoutEquivalence(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("the same bytes")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	layouts := [][]backend.Option{
 		nil,
 		{WithFanOut(0), WithFanLevels(0)},
@@ -109,24 +108,22 @@ func TestLayoutEquivalence(t *testing.T) {
 
 func TestPathRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	for _, algo := range []string{"sha256"} {
-		h, _ := hashData(algo, []byte("path round trip"))
-		for _, opts := range [][]backend.Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
-			s := mustFS(t, opts...)
-			if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
-				t.Fatal(err)
-			}
-			rel, err := filepath.Rel(s.base, s.hashPath(h))
-			if err != nil {
-				t.Fatal(err)
-			}
-			back, err := pathToHash(rel)
-			if err != nil {
-				t.Fatalf("pathToHash(%q): %v", rel, err)
-			}
-			if !back.Equal(h) {
-				t.Fatalf("pathToHash(hashPath(h)) != h: %s vs %s", back, h)
-			}
+	h := hashData([]byte("path round trip"))
+	for _, opts := range [][]backend.Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
+		s := mustFS(t, opts...)
+		if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
+			t.Fatal(err)
+		}
+		rel, err := filepath.Rel(s.base, s.hashPath(h))
+		if err != nil {
+			t.Fatal(err)
+		}
+		back, err := pathToHash(rel)
+		if err != nil {
+			t.Fatalf("pathToHash(%q): %v", rel, err)
+		}
+		if !back.Equal(h) {
+			t.Fatalf("pathToHash(hashPath(h)) != h: %s vs %s", back, h)
 		}
 	}
 }
@@ -159,7 +156,7 @@ func TestFSPutMkdirError(t *testing.T) {
 	// Make the algorithm directory unusable: create a FILE where the
 	// algorithm dir would go, so MkdirAll fails.
 	s := mustFS(t)
-	h, _ := hashData("sha256", []byte("x"))
+	h := hashData([]byte("x"))
 	blocker := filepath.Join(s.base, "sha256")
 	if err := os.WriteFile(blocker, []byte("i am a file"), 0o644); err != nil {
 		t.Fatal(err)
@@ -171,7 +168,7 @@ func TestFSPutMkdirError(t *testing.T) {
 
 func TestFSPutReaderError(t *testing.T) {
 	s := mustFS(t)
-	h, _ := hashData("sha256", []byte("x"))
+	h := hashData([]byte("x"))
 	err := s.Put(context.Background(), h, &failingReader{data: []byte("partial")})
 	if err == nil {
 		t.Fatal("Put with failing reader must error")
@@ -208,7 +205,7 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	// Layouts that exceed the digest length must clamp (end > len) or
 	// stop (start >= len) rather than overrun. SHA-256 (64 hex) with
 	// deep fan-out exercises this.
-	h, _ := hashData("sha256", []byte("clamp"))
+	h := hashData([]byte("clamp"))
 	cases := []struct {
 		opts []backend.Option
 	}{
@@ -236,44 +233,6 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	}
 }
 
-// TestVerifyCustomOneShot exercises Verify's buffered fallback for hash
-// algorithms registered only as one-shot HashFunc, plus the unknown-algo
-// error path.
-func TestVerifyCustomOneShot(t *testing.T) {
-	cas.RegisterHash("obvfy", func(data []byte) cas.Hash {
-		sum := sha256.Sum256(data)
-		h, _ := cas.NewHash("obvfy", sum[:])
-		return h
-	})
-	ctx := context.Background()
-	s, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := []byte("verify me with a one-shot algorithm")
-	sum := sha256.Sum256(data)
-	h, _ := cas.NewHash("obvfy", sum[:])
-	if err := s.Put(ctx, h, bytes.NewReader(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(ctx, h); err != nil {
-		t.Fatalf("Verify (buffered fallback) = %v", err)
-	}
-	// Corrupt the stored bytes: mismatch via the fallback path.
-	if err := os.WriteFile(s.hashPath(h), []byte("corrupt"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(ctx, h); !errors.Is(err, cas.ErrHashMismatch) {
-		t.Fatalf("Verify corrupt = %v, want ErrHashMismatch", err)
-	}
-	// The unregistered-algorithm error path (Verify returning
-	// ErrUnknownAlgorithm for a hash of an algorithm not in the registry) is
-	// covered by the cas package tests (TestHashDataUnknownAlgorithm,
-	// TestNewStoreUnknownAlgorithm): from outside package cas we cannot
-	// construct a hash of an unregistered algorithm because the public
-	// constructors (ParseHash/NewHash) reject it.
-}
-
 type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
@@ -287,10 +246,7 @@ func TestContextCancellationFS(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h, err := hashData("sha256", []byte("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := hashData([]byte("x"))
 	ops := []struct {
 		name string
 		run  func() error
@@ -332,7 +288,7 @@ func TestFSBackendErrorPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, _ := hashData("sha256", []byte("data"))
+	h := hashData([]byte("data"))
 	if err := s.Put(ctx, h, errReader{err: io.ErrClosedPipe}); err == nil {
 		t.Fatal("Put with failing reader must error")
 	}
@@ -343,8 +299,8 @@ func TestFSBackendErrorPaths(t *testing.T) {
 		t.Fatal("object exists after failed Put")
 	}
 
-	a, _ := hashData("sha256", []byte("keep"))
-	b, _ := hashData("sha256", []byte("drop"))
+	a := hashData([]byte("keep"))
+	b := hashData([]byte("drop"))
 	for _, x := range []struct {
 		h cas.Hash
 		d string
@@ -374,7 +330,7 @@ func TestPutIdempotent(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("idempotent content bytes")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	for i := 0; i < 2; i++ {
 		if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 			t.Fatalf("Put pass %d: %v", i, err)
@@ -399,7 +355,7 @@ func TestPutPublishError(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("rename over a directory must fail")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	path := s.hashPath(h)
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)
@@ -416,7 +372,7 @@ func TestPutPublishError(t *testing.T) {
 func TestGetNotFound(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
-	h, _ := hashData("sha256", []byte("never stored"))
+	h := hashData([]byte("never stored"))
 	rc, err := s.Get(ctx, h)
 	if !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Get missing = %v, %v; want ErrNotFound", rc, err)
@@ -431,7 +387,7 @@ func TestExistsPresentAndMissing(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("exists check")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if ok, err := s.Exists(ctx, h); err != nil || ok {
 		t.Fatalf("Exists before Put = %v, %v; want false,nil", ok, err)
 	}
@@ -449,7 +405,7 @@ func TestDeletePresentAndMissing(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("delete me")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +419,7 @@ func TestDeletePresentAndMissing(t *testing.T) {
 	if err := s.Delete(ctx, h); err != nil {
 		t.Fatalf("Delete missing (no-op): %v", err)
 	}
-	missing, _ := hashData("sha256", []byte("never put"))
+	missing := hashData([]byte("never put"))
 	if err := s.Delete(ctx, missing); err != nil {
 		t.Fatalf("Delete never-stored (no-op): %v", err)
 	}
@@ -475,14 +431,14 @@ func TestSize(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("sized content: 1234567890")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := s.Size(ctx, h); err != nil || n != int64(len(content)) {
 		t.Fatalf("Size = %d, %v; want %d,nil", n, err, len(content))
 	}
-	missing, _ := hashData("sha256", []byte("missing"))
+	missing := hashData([]byte("missing"))
 	if _, err := s.Size(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Size missing = %v; want ErrNotFound", err)
 	}
@@ -512,7 +468,7 @@ func TestCleanTmpRemoval(t *testing.T) {
 
 	// A real stored object (not a .tmp file) must survive any sweep.
 	content := []byte("keep me")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +511,7 @@ func TestCleanTmpRemoval(t *testing.T) {
 func TestCleanRemovesTempFallbacks(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
-	h, _ := hashData("sha256", []byte("payload"))
+	h := hashData([]byte("payload"))
 	objPath := s.hashPath(h)
 	if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -691,7 +647,7 @@ func TestPutCanceledMidStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	content := bytes.Repeat([]byte("x"), 3<<20) // several io.Copy buffers
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	r := &cancelAfterReader{cancel: cancel, data: content}
 	if err := s.Put(ctx, h, r); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Put canceled mid-stream = %v, want context.Canceled", err)
@@ -712,10 +668,7 @@ func TestConcurrentPutGetDelete(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	shared := []byte("shared object")
-	sharedHash, err := hashData("sha256", shared)
-	if err != nil {
-		t.Fatal(err)
-	}
+	sharedHash := hashData(shared)
 
 	const workers, perWorker = 8, 25
 	errs := make(chan error, workers*perWorker)
@@ -731,11 +684,7 @@ func TestConcurrentPutGetDelete(t *testing.T) {
 					return
 				}
 				content := []byte(fmt.Sprintf("obj-%d-%d", w, i))
-				h, err := hashData("sha256", content)
-				if err != nil {
-					errs <- err
-					return
-				}
+				h := hashData(content)
 				if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 					errs <- err
 					return
@@ -791,8 +740,8 @@ func TestStats(t *testing.T) {
 	ctx := context.Background()
 	a := []byte("stats-content-a")
 	b := []byte("stats-content-b-longer")
-	ha, _ := hashData("sha256", a)
-	hb, _ := hashData("sha256", b)
+	ha := hashData(a)
+	hb := hashData(b)
 	for _, x := range []struct {
 		h cas.Hash
 		d []byte
@@ -830,7 +779,7 @@ func TestWithDirSync(t *testing.T) {
 	}
 	ctx := context.Background()
 	content := []byte("dir-synced object")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatalf("Put with dirSync: %v", err)
 	}
@@ -850,7 +799,7 @@ func TestVerifyStreaming(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("verify streaming content")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
@@ -864,7 +813,7 @@ func TestVerifyStreaming(t *testing.T) {
 	if err := s.Verify(ctx, h); !errors.Is(err, cas.ErrHashMismatch) {
 		t.Fatalf("Verify corrupt = %v, want ErrHashMismatch", err)
 	}
-	missing, _ := hashData("sha256", []byte("absent"))
+	missing := hashData([]byte("absent"))
 	if err := s.Verify(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("Verify missing = %v, want ErrNotFound", err)
 	}
@@ -876,8 +825,8 @@ func TestGC(t *testing.T) {
 	ctx := context.Background()
 	keep := []byte("gc keep")
 	drop := []byte("gc drop")
-	hk, _ := hashData("sha256", keep)
-	hd, _ := hashData("sha256", drop)
+	hk := hashData(keep)
+	hd := hashData(drop)
 	for _, x := range []struct {
 		h cas.Hash
 		d string
@@ -904,7 +853,7 @@ func TestPruneAgeRetention(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("young but unreachable")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
@@ -948,7 +897,7 @@ func TestListAlgorithmFilter(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	for _, content := range []string{"list-a", "list-b", "list-c"} {
-		h, _ := hashData("sha256", []byte(content))
+		h := hashData([]byte(content))
 		if err := s.Put(ctx, h, strings.NewReader(content)); err != nil {
 			t.Fatal(err)
 		}
@@ -1000,29 +949,27 @@ func TestCreateTempExclNoParent(t *testing.T) {
 	}
 }
 
-// TestHashPathShortDigestClamp exercises hashPath's digest clamping for an
-// algorithm whose hex digest is shorter than the configured fan-out depth.
-func TestHashPathShortDigestClamp(t *testing.T) {
-	cas.RegisterHash("obvhc", func(data []byte) cas.Hash {
-		sum := sha256.Sum256(data)
-		h, _ := cas.NewHash("obvhc", sum[:3]) // 6 hex chars
-		return h
-	})
-	sum := sha256.Sum256([]byte("clamp me"))
-	h, err := cas.NewHash("obvhc", sum[:3])
-	if err != nil {
-		t.Fatal(err)
+// TestHashPathDepthBound pins the layout invariant that makes the chunking in
+// hashPath total: FanOut × FanLevels never exceeds the sha256 digest width, so
+// a configured layout covers the digest exactly and cannot run past its end.
+func TestHashPathDepthBound(t *testing.T) {
+	if _, err := New(t.TempDir(), WithFanOut(3), WithFanLevels(22)); err == nil {
+		t.Fatal("fan-out beyond MaxFanDepth must be rejected")
 	}
-	digest := h.String()[strings.IndexByte(h.String(), ':')+1:] // 6 hex chars
+	h := hashData([]byte("clamp me"))
+	s := h.String()
+	digest := s[strings.IndexByte(s, ':')+1:] // 64 hex chars
 	for _, opts := range [][]backend.Option{
-		{WithFanOut(4), WithFanLevels(2)}, // 2nd chunk clamps end: 8 > 6
-		{WithFanOut(4), WithFanLevels(3)}, // 3rd level breaks: start 8 >= 6
+		{WithFanOut(2), WithFanLevels(1)},
+		{WithFanOut(4), WithFanLevels(16)}, // 4 × 16 == MaxFanDepth exactly
+		{WithFanOut(64), WithFanLevels(1)},
+		{WithFanOut(0), WithFanLevels(0)}, // flat
 	} {
-		s := mustFS(t, opts...)
-		if err := s.Put(context.Background(), h, strings.NewReader("x")); err != nil {
+		b := mustFS(t, opts...)
+		if err := b.Put(context.Background(), h, strings.NewReader("x")); err != nil {
 			t.Fatalf("opts %v: Put: %v", opts, err)
 		}
-		if p := s.hashPath(h); filepath.Base(p) != digest {
+		if p := b.hashPath(h); filepath.Base(p) != digest {
 			t.Errorf("opts %v: basename = %q, want %q", opts, filepath.Base(p), digest)
 		}
 	}
@@ -1032,7 +979,7 @@ func TestHashPathShortDigestClamp(t *testing.T) {
 // pointing it at a non-empty directory (os.Remove cannot remove it).
 func TestDeleteDirectoryError(t *testing.T) {
 	s := mustFS(t)
-	h, _ := hashData("sha256", []byte("dir-as-object"))
+	h := hashData([]byte("dir-as-object"))
 	dir := s.hashPath(h)
 	if err := os.MkdirAll(filepath.Join(dir, "child"), 0o755); err != nil {
 		t.Fatal(err)
@@ -1049,7 +996,7 @@ func TestStatsRootStray(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("counted object")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
 		t.Fatal(err)
 	}
@@ -1071,7 +1018,7 @@ func TestWalkOnMissingBase(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	obj := []byte("walk base content")
-	h, _ := hashData("sha256", obj)
+	h := hashData(obj)
 	if err := s.Put(ctx, h, strings.NewReader(string(obj))); err != nil {
 		t.Fatal(err)
 	}
@@ -1097,35 +1044,12 @@ func TestWalkOnMissingBase(t *testing.T) {
 func TestVerifyReadOnDirectory(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
-	h, _ := hashData("sha256", []byte("dir not an object"))
+	h := hashData([]byte("dir not an object"))
 	if err := os.MkdirAll(s.hashPath(h), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Verify(ctx, h); err == nil {
 		t.Fatal("Verify over a directory-as-object must error")
-	}
-}
-
-// TestVerifyFallbackReadOnDirectory drives the buffered-fallback read path
-// (io.ReadAll) of Verify for a one-shot-only algorithm whose object path is a
-// directory, so the read must fail.
-func TestVerifyFallbackReadOnDirectory(t *testing.T) {
-	cas.RegisterHash("obvd", func(data []byte) cas.Hash {
-		sum := sha256.Sum256(data)
-		h, _ := cas.NewHash("obvd", sum[:])
-		return h
-	})
-	sum := sha256.Sum256([]byte("dir not an object"))
-	h, err := cas.NewHash("obvd", sum[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := mustFS(t)
-	if err := os.MkdirAll(s.hashPath(h), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Verify(context.Background(), h); err == nil {
-		t.Fatal("Verify (fallback) over a directory-as-object must error")
 	}
 }
 
@@ -1136,7 +1060,7 @@ func TestPutCreateTempExhausted(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	content := []byte("temp namespace exhausted")
-	h, _ := hashData("sha256", content)
+	h := hashData(content)
 	dir := filepath.Dir(s.hashPath(h))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

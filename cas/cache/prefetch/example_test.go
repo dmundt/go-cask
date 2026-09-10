@@ -16,11 +16,7 @@ import (
 // references.
 func Example() {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testObject](), "sha256")
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	s := cas.New(backmem.New(), jsoncodec.New[testObject]())
 	h, err := s.Put(ctx, testObject{Name: "root"})
 	if err != nil {
 		fmt.Println("error:", err)

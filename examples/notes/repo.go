@@ -19,19 +19,12 @@ type Repository struct {
 }
 
 func newRepository(raw cas.Backend) (*Repository, error) {
-	notes, err := cas.New(raw, jsoncodec.New[*Note](), "sha256")
-	if err != nil {
-		return nil, err
-	}
-	tags, err := cas.New(raw, jsoncodec.New[*Tag](), "sha256")
-	if err != nil {
-		return nil, err
-	}
-	attachments, err := cas.New(raw, jsoncodec.New[*Attachment](), "sha256")
-	if err != nil {
-		return nil, err
-	}
-	return &Repository{raw: raw, Notes: notes, Tags: tags, Attachments: attachments}, nil
+	return &Repository{
+		raw:         raw,
+		Notes:       cas.New(raw, jsoncodec.New[*Note]()),
+		Tags:        cas.New(raw, jsoncodec.New[*Tag]()),
+		Attachments: cas.New(raw, jsoncodec.New[*Attachment]()),
+	}, nil
 }
 
 // ResolvedObject is the typed union returned by ResolveAny — no any.

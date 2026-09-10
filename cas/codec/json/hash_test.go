@@ -117,10 +117,7 @@ func ExampleHash() {
 		Parent jsoncodec.Hash `json:"parent,omitzero"` // absent -> omitted
 	}
 
-	tree, err := cas.HashBytes("sha256", []byte("tree"))
-	if err != nil {
-		panic(err)
-	}
+	tree := cas.HashBytes([]byte("tree"))
 	encoded, err := json.Marshal(Commit{Tree: jsoncodec.NewHash(tree)})
 	if err != nil {
 		panic(err)

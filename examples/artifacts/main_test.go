@@ -18,10 +18,7 @@ import (
 // the codec's field type (jsoncodec.Hash) does not re-address stored manifests
 // (the manifest hash is part of the GC reachability set).
 func TestManifestJSONPayloadPinned(t *testing.T) {
-	h, err := cas.HashBytes("sha256", []byte("artifact payload"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := cas.HashBytes([]byte("artifact payload"))
 	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: refs(h)})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +150,7 @@ func TestGC(t *testing.T) {
 // A get of a missing hash fails with ErrNotFound.
 func TestGetMissing(t *testing.T) {
 	a := newTestApp(t)
-	missing, err := cas.ParseHash("sha256double:0000000000000000000000000000000000000000000000000000000000000000")
+	missing, err := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}

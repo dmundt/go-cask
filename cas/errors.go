@@ -14,8 +14,9 @@ package cas
 import "errors"
 
 // Sentinel errors. Backends map their "not found" condition to ErrNotFound
-// via %w; integrity checks return ErrHashMismatch; hash parsing returns
-// ErrInvalidHash / ErrUnknownAlgorithm; an envelope with an unknown type
+// via %w; integrity checks return ErrHashMismatch; parsing an address returns
+// ErrInvalidHash (malformed) or ErrUnknownAlgorithm (an address naming an
+// algorithm this build does not implement); an envelope with an unknown type
 // name or major version returns ErrUnknownType; a stored payload that the
 // store codec cannot decode returns ErrCorrupt. Compare with errors.Is,
 // never by string.

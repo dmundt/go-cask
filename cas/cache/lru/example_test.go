@@ -14,11 +14,7 @@ import (
 // Store with an eviction policy and Get serves cached objects.
 func Example() {
 	ctx := context.Background()
-	s, err := cas.New(backmem.New(), jsoncodec.New[item](), "sha256")
-	if err != nil {
-		fmt.Println("error:", err)
-		return
-	}
+	s := cas.New(backmem.New(), jsoncodec.New[item]())
 	h, err := s.Put(ctx, item{ID: "one"})
 	if err != nil {
 		fmt.Println("error:", err)

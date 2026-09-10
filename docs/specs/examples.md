@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v15
+version: v16
 ---
 
 # Examples — go-cask
@@ -17,12 +17,12 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 1. **Location:** `examples/<name>/` inside the main module (no separate `go.mod` unless genuinely required). Runnable demo = `package main`; reusable pieces = subpackages. **`gitlike/` is the shared reference support library** — the one designated cross-example dependency (rule 11): an importable package (`package gitlike`), not a runnable `main`; the documented exception to the runnable rule. It is the reference object model apps (and `files`) build on; it is NOT part of `cas`.
 2. **Runnable:** `go build ./...`, `go run ./examples/<name>`, and `go test ./examples/...` MUST pass (except `gitlike`, a library). The demo prints meaningful output (hashes, stats, traversal results).
-3. **Std-lib only:** no external deps (coding-guidelines §3). Custom hashes via `RegisterHash` with std-lib primitives (e.g. sha256-of-sha256); compression via `compress/gzip`.
+3. **Std-lib only:** no external deps (coding-guidelines §3). Compression via `compress/gzip`; hashing uses the core's fixed `sha256` (`cas.HashBytes`/`cas.NewHasher`) — there is no algorithm registry to extend.
 4. **Public APIs only:** documented exported API of `cas`/`gitlike`; never reach into unexported internals.
 5. **No `any` in example APIs:** define own typed objects/repositories/resolvers (copy the `gitlike` pattern; never extend `cas`/`gitlike`).
 6. **One focus per example, real-world shape:** clear primary aspect (§4), small believable program — not a kitchen sink, not a toy.
 7. **Idiomatic Go:** `gofmt`, doc comments on exports, `context.Context` first, wrapped errors, table-driven tests (coding-guidelines §2, §7).
-8. **`README.md` is REQUIRED** in the example folder (in addition to the package comment) teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `memory.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (custom `Codec[T]`, `RegisterHash`, own `Object[T]`/repo/resolver, HTTP surface) and explicitly what it does NOT modify (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused and concrete — docs for app authors.
+8. **`README.md` is REQUIRED** in the example folder (in addition to the package comment) teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `memory.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (custom `Codec[T]`, own `Object[T]`/repo/resolver, HTTP surface) and explicitly what it does NOT modify (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused and concrete — docs for app authors.
 9. **Coverage:** the example set MUST keep covering the aspect matrix (§4); a duplicate-aspect example is discouraged unless a better teaching vehicle.
 10. **Never modify the libraries for an example's sake:** a missing feature is a spec/library change — raise it separately; do not hack around it in the example.
 11. **Self-contained:** an example MUST NOT import another example's package, except `gitlike` (which `files` imports). Examples never depend on `files`/`artifacts`/`notes`/`api`, and those never on each other.
@@ -42,8 +42,8 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 ### 3.2 `examples/artifacts` — content-addressable build artifact cache
 
 **Goal:** cache build outputs under their content hash with a custom codec (gzip), a custom registered hash, bounded caching, metrics, mark-and-sweep GC.
-**Aspects:** custom `Codec[T]` (gzip-wrapped JSON), `RegisterHash` std-lib-only custom algo (e.g. `sha256double`; the name MUST obey the hash-string validation pattern of defaults §2, so `sha256-double` is not used), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
-**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (gzipCodec[T]), `hasher.go` (`RegisterHash("sha256double",…)`), `main_test.go`, `README.md`.
+**Aspects:** custom `Codec[T]` (gzip-wrapped JSON), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
+**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (gzipCodec[T]), `main_test.go`, `README.md`.
 **Behaviors:** `put` computes the custom hash, stores via `PutDedup`, prints `deduplicated: true/false`; manifests reference artifact hashes. `get` serves from `lru.Cache`, `CacheMonitor` prints hit rate on exit. `gc` mark-and-sweeps (unreferenced-from-any-manifest objects deleted); `stats` before/after shows it.
 **Acceptance:** same bytes → same hash → `deduplicated: true`; second `get` hits cache (hit rate > 0); `gc` deletes only unreferenced artifacts, leaves manifest-referenced intact.
 
@@ -71,7 +71,7 @@ Covered by the **product viewer** in `internal/web/` (nested Go templates + htmx
 
 | Aspect | files | artifacts | notes | api | viewer |
 |---|---|:--:|:--:|:--:|:--:|
-| `Hash`/pluggable algorithms | ✓ sha256 | ✓ custom | ✓ | ✓ algo | product |
+| `Hash` (`sha256`) | ✓ | ✓ | ✓ | ✓ | product |
 | `fs` fan-out (`WithFanOut`/`WithFanLevels`) | ✓ | ✓ | ✓ | ✓ | product |
 | `Codec[T]` (custom) | ✓ JSON | ✓ gzip | ✓ | ✓ JSON | product |
 | `Object[T]`/`Store[T]` | ✓ | ✓ | ✓ | ✓ | product |

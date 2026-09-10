@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v13
+version: v14
 ---
 
 # Go Coding Guidelines — go-cask
@@ -42,7 +42,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 | Data/strings | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast`/`bytes.CutLast` (1.27) |
 
 Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution); any external dependency MUST be (1) justified in the commit/PR and (2) vendored (`go mod vendor`).
-Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; extra hash algorithms only via `RegisterHash` if genuinely required (std-lib `sha256` default); the only frontend exception is **htmx** (§5).
+Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing uses the core's fixed std-lib `sha256` (no registry since the 2026-09 revision, cas-core §4.2); the only frontend exception is **htmx** (§5).
 
 ## 4. No CSS, no JavaScript
 

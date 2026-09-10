@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"crypto/sha1"
 	"io"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 func TestMemoryBackend(t *testing.T) {
 	ctx := context.Background()
 	b := New()
-	h, _ := cas.HashBytes("sha256", []byte("hello"))
+	h := cas.HashBytes([]byte("hello"))
 	if err := b.Put(ctx, h, strings.NewReader("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +44,7 @@ func TestMemoryBackend(t *testing.T) {
 func TestMemoryBackendMissing(t *testing.T) {
 	ctx := context.Background()
 	b := New()
-	h, _ := cas.HashBytes("sha256", []byte("missing"))
+	h := cas.HashBytes([]byte("missing"))
 	_, err := b.Get(ctx, h)
 	if err == nil {
 		t.Fatal("Get(missing) must error")
@@ -64,8 +63,8 @@ func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 func TestMemoryBackendSuite(t *testing.T) {
 	m := New()
 	ctx := context.Background()
-	h1, _ := cas.HashBytes("sha256", []byte("alpha"))
-	h2, _ := cas.HashBytes("sha256", []byte("beta"))
+	h1 := cas.HashBytes([]byte("alpha"))
+	h2 := cas.HashBytes([]byte("beta"))
 
 	if err := m.Put(ctx, h1, strings.NewReader("alpha")); err != nil {
 		t.Fatal(err)
@@ -84,7 +83,7 @@ func TestMemoryBackendSuite(t *testing.T) {
 	if err != nil || string(data) != "alpha" {
 		t.Fatalf("Get = %q, %v", data, err)
 	}
-	missing, _ := cas.HashBytes("sha256", []byte("missing"))
+	missing := cas.HashBytes([]byte("missing"))
 	if _, err := m.Get(ctx, missing); err == nil {
 		t.Fatal("Get(missing) must error")
 	}
@@ -141,13 +140,13 @@ func TestMemoryBackendSuite(t *testing.T) {
 
 func TestMemoryBackendWithMaxSize(t *testing.T) {
 	ctx := context.Background()
-	b := New(WithMaxSize(5))                          // cap of 5 bytes
-	h1, _ := cas.HashBytes("sha256", []byte("hello")) // 5 bytes fits
+	b := New(WithMaxSize(5))             // cap of 5 bytes
+	h1 := cas.HashBytes([]byte("hello")) // 5 bytes fits
 	if err := b.Put(ctx, h1, strings.NewReader("hello")); err != nil {
 		t.Fatalf("Put within cap = %v", err)
 	}
 	// A second distinct object pushes over the cap -> rejected.
-	h2, _ := cas.HashBytes("sha256", []byte("world")) // another 5 bytes
+	h2 := cas.HashBytes([]byte("world")) // another 5 bytes
 	if err := b.Put(ctx, h2, strings.NewReader("world")); err == nil {
 		t.Fatal("Put over cap must error")
 	}
@@ -189,7 +188,7 @@ func TestMemoryBackendMaxSizeBoundsBuffering(t *testing.T) {
 	ctx := context.Background()
 	const capBytes = 16
 	b := New(WithMaxSize(capBytes))
-	h, _ := cas.HashBytes("sha256", []byte("whatever"))
+	h := cas.HashBytes([]byte("whatever"))
 	src := &countingReader{n: 1 << 20}
 	if err := b.Put(ctx, h, src); err == nil {
 		t.Fatal("Put over cap must error")
@@ -205,19 +204,12 @@ func TestMemoryBackendMaxSizeBoundsBuffering(t *testing.T) {
 // TestMemoryBackendStats verifies Stats recomputes per-algorithm counts, the
 // total stored byte size, and the object count from the live map.
 func TestMemoryBackendStats(t *testing.T) {
-	// sha1 is not a built-in one-shot algorithm; register it via the documented
-	// recipe so the test can exercise per-algorithm counting.
-	cas.RegisterHash("sha1", func(data []byte) cas.Hash {
-		sum := sha1.Sum(data)
-		h, _ := cas.NewHash("sha1", sum[:])
-		return h
-	})
 	ctx := context.Background()
 	b := New()
-	// Two objects under sha256 (different sizes), one under sha1.
-	h1, _ := cas.HashBytes("sha256", []byte("alpha"))
-	h2, _ := cas.HashBytes("sha256", []byte("a-longer-beta-payload"))
-	h3, _ := cas.HashBytes("sha1", []byte("gamma"))
+	// Three objects of different sizes under the core's one algorithm.
+	h1 := cas.HashBytes([]byte("alpha"))
+	h2 := cas.HashBytes([]byte("a-longer-beta-payload"))
+	h3 := cas.HashBytes([]byte("gamma"))
 	for _, put := range []struct {
 		h  cas.Hash
 		in string
@@ -241,14 +233,11 @@ func TestMemoryBackendStats(t *testing.T) {
 	if want := int64(len("alpha") + len("a-longer-beta-payload") + len("gamma")); st.TotalSize != want {
 		t.Errorf("TotalSize = %d, want %d", st.TotalSize, want)
 	}
-	if len(st.AlgorithmCounts) != 2 {
-		t.Errorf("AlgorithmCounts covers %d algorithms, want 2", len(st.AlgorithmCounts))
+	if len(st.AlgorithmCounts) != 1 {
+		t.Errorf("AlgorithmCounts covers %d algorithms, want 1", len(st.AlgorithmCounts))
 	}
-	if got := st.AlgorithmCounts["sha256"]; got != 2 {
-		t.Errorf("sha256 count = %d, want 2", got)
-	}
-	if got := st.AlgorithmCounts["sha1"]; got != 1 {
-		t.Errorf("sha1 count = %d, want 1", got)
+	if got := st.AlgorithmCounts["sha256"]; got != 3 {
+		t.Errorf("sha256 count = %d, want 3", got)
 	}
 
 	// Delete updates Stats.
@@ -262,15 +251,15 @@ func TestMemoryBackendStats(t *testing.T) {
 	if want := int64(len("a-longer-beta-payload") + len("gamma")); st.TotalSize != want {
 		t.Errorf("TotalSize after delete = %d, want %d", st.TotalSize, want)
 	}
-	if got := st.AlgorithmCounts["sha256"]; got != 1 {
-		t.Errorf("sha256 count after delete = %d, want 1", got)
+	if got := st.AlgorithmCounts["sha256"]; got != 2 {
+		t.Errorf("sha256 count after delete = %d, want 2", got)
 	}
 }
 
 // TestMemoryBackendStatsCanceled checks Stats honors a canceled context.
 func TestMemoryBackendStatsCanceled(t *testing.T) {
 	b := New()
-	h, _ := cas.HashBytes("sha256", []byte("alpha"))
+	h := cas.HashBytes([]byte("alpha"))
 	if err := b.Put(context.Background(), h, strings.NewReader("alpha")); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +276,7 @@ func TestMemoryBackendUnboundedDefault(t *testing.T) {
 	var h cas.Hash
 	for i := 0; i < 100; i++ {
 		payload := strings.Repeat("x", 1024)
-		nh, _ := cas.HashBytes("sha256", []byte(payload))
+		nh := cas.HashBytes([]byte(payload))
 		if err := b.Put(ctx, nh, strings.NewReader(payload)); err != nil {
 			t.Fatalf("Put[%d] on unbounded backend = %v", i, err)
 		}

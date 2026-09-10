@@ -60,11 +60,7 @@ func newRefs(refs []cas.Hash) []jsoncodec.Hash {
 
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	s, err := cas.New(mem.New(), jsoncodec.New[testObject](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return cas.New(mem.New(), jsoncodec.New[testObject]())
 }
 
 func TestCachedObjectLazyLoad(t *testing.T) {

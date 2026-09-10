@@ -24,11 +24,8 @@ import (
 func ref(h cas.Hash) jsoncodec.Hash { return jsoncodec.NewHash(h) }
 
 func newRepo(t *testing.T, raw cas.Backend) *Repository {
-	repo, err := NewRepository(raw, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return repo
+	t.Helper()
+	return NewRepository(raw)
 }
 
 func putBlob(t *testing.T, repo *Repository, data string) cas.Hash {
@@ -188,12 +185,6 @@ func TestResolverResolveAnyMissing(t *testing.T) {
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveAny(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
-	}
-}
-
-func TestNewRepositoryUnknownAlgorithm(t *testing.T) {
-	if _, err := NewRepository(mem.New(), "nope"); !errors.Is(err, cas.ErrUnknownAlgorithm) {
-		t.Fatalf("NewRepository err = %v, want ErrUnknownAlgorithm", err)
 	}
 }
 
@@ -603,13 +594,7 @@ func TestGetRejectsInvalidHashPayloads(t *testing.T) {
 
 func TestRepositoryErrorPaths(t *testing.T) {
 	raw := mem.New()
-	if _, err := NewRepository(raw, "bogusalgo"); err == nil {
-		t.Fatal("NewRepository with unknown algo must error")
-	}
-	repo, err := NewRepository(raw, "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	repo := NewRepository(raw)
 	if _, err := NewCachedRepository(repo, 0); err == nil {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
 	}
@@ -868,10 +853,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			want, err := cas.HashBytes("sha256", marshalEnvelope(tc.typeName, []byte(tc.payload)))
-			if err != nil {
-				t.Fatal(err)
-			}
+			want := cas.HashBytes(marshalEnvelope(tc.typeName, []byte(tc.payload)))
 			got, err := tc.put()
 			if err != nil {
 				t.Fatal(err)
@@ -1013,18 +995,5 @@ func TestWalkGraphDanglingReference(t *testing.T) {
 	}
 	if len(visited) != 1 || visited[0] != "commit" {
 		t.Fatalf("visited before failure = %v, want only the commit", visited)
-	}
-}
-
-// TestPrintObjectShortHash exercises the shortHash non-truncation branch
-// (digest hex of 8 chars or fewer) via a tag target.
-func TestPrintObjectShortHash(t *testing.T) {
-	h, err := cas.NewHash("sha256", []byte{0xde, 0xad, 0xbe, 0xef}) // 8 hex chars
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(h)}})
-	if !strings.Contains(got, "deadbeef") {
-		t.Fatalf("PrintObject short hash = %q", got)
 	}
 }

@@ -7,17 +7,23 @@ import (
 	"fmt"
 	hashtype "hash"
 	"regexp"
-	"strconv"
 	"strings"
-	"sync"
 )
 
-// Hash is a content address: "algo:hexdigest" (e.g. "sha256:a1b2…"). Every
-// reference between objects holds a full Hash — algorithm AND digest — never a
-// bare digest, so one object graph may mix algorithms freely and a store can
-// read any object whose algorithm is registered. Hashes are immutable value
-// carriers: the fields are unexported, so the only ways to obtain one are
-// ParseHash, NewHash and HashBytes, all of which validate.
+// SHA256 is the hash algorithm of the cas core. The core implements exactly one
+// algorithm and has no registry (cas-core §4.2): the set of algorithms is fixed
+// at compile time, so adding another one is a change to this package rather
+// than a runtime registration. The name stays part of an address and of the
+// backend layout, so the stored format remains self-describing and a store
+// written by another build is still recognizable.
+const SHA256 = "sha256"
+
+// Hash is a content address: "sha256:hexdigest". Every reference between
+// objects holds a full Hash — algorithm AND digest — never a bare digest, so an
+// address is self-describing: a store written by a build with a different
+// algorithm parses into ErrUnknownAlgorithm instead of being misread. Hashes
+// are immutable value carriers: the fields are unexported, so the only ways to
+// obtain one are ParseHash, NewHash and HashBytes, all of which validate.
 //
 // The zero value is the ABSENT hash — the one spelling of "no hash" in the
 // library (cas-core §4.2). IsZero reports it, String renders it as "", and
@@ -35,8 +41,8 @@ type Hash struct {
 	bytes []byte
 }
 
-// Algorithm returns the algorithm name ("sha256", or a registered custom
-// algorithm); "" for the zero value.
+// Algorithm returns the algorithm name, always SHA256 for a present address and
+// "" for the zero value.
 func (h Hash) Algorithm() string { return h.algo }
 
 // Bytes returns a copy of the raw digest; nil for the zero value. The copy
@@ -72,74 +78,46 @@ func (h Hash) Equal(other Hash) bool {
 	return h.algo == other.algo && bytes.Equal(h.bytes, other.bytes)
 }
 
-// HashBytes computes the content address of data with a registered
-// algorithm: it streams through the built-in hasher when available, or uses
-// a one-shot registered HashFunc otherwise. It returns ErrUnknownAlgorithm
-// for an unregistered algorithm.
-func HashBytes(algo string, data []byte) (Hash, error) {
-	if newFn, ok := LookupStreamHash(algo); ok {
-		h := newFn()
-		h.Write(data)
-		return NewHash(algo, h.Sum(nil))
-	}
-	if fn, ok := LookupHash(algo); ok {
-		return fn(data), nil
-	}
-	return Hash{}, fmt.Errorf("cas: %w: %q", ErrUnknownAlgorithm, algo)
+// HashBytes computes the content address of data: the sha256 digest of data,
+// wrapped as a Hash. It cannot fail — the core's one algorithm is always
+// available.
+func HashBytes(data []byte) Hash {
+	sum := sha256.Sum256(data)
+	return Hash{algo: SHA256, bytes: sum[:]}
 }
 
-// NewHasher returns a streaming hasher for a registered algorithm (the
-// built-in sha256) as the standard library hash.Hash, so callers can
-// stream bytes into it. It returns ErrUnknownAlgorithm for algorithms
-// registered only as one-shot HashFunc, which cannot stream — use HashBytes
-// for those.
-func NewHasher(algo string) (hashtype.Hash, error) {
-	newFn, ok := LookupStreamHash(algo)
-	if !ok {
-		return nil, fmt.Errorf("cas: %w: %q does not support streaming", ErrUnknownAlgorithm, algo)
-	}
-	return newFn(), nil
-}
+// NewHasher returns a streaming sha256 hasher as the standard library
+// hash.Hash, so a caller can hash without buffering the whole object (Store.Put
+// and the backend Verify paths stream through it).
+func NewHasher() hashtype.Hash { return sha256.New() }
 
-// HashFunc computes the content address of data. Implementations MUST be
-// deterministic and pure: identical input, identical Hash, no side effects.
-// Build the result with NewHash rather than a struct literal, so the address
-// stays validated.
-type HashFunc func(data []byte) Hash
-
-// NewHash builds a Hash from a registered algorithm name and raw digest
-// bytes. It returns ErrUnknownAlgorithm if algo is not registered and
-// ErrInvalidHash if digest is empty. RegisterHash must be called before
-// NewHash for a custom algorithm.
-func NewHash(algo string, digest []byte) (Hash, error) {
-	if _, ok := LookupHash(algo); !ok {
-		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
-	}
-	if len(digest) == 0 {
-		return Hash{}, fmt.Errorf("%w: empty digest for %q", ErrInvalidHash, algo)
+// NewHash builds a Hash from raw digest bytes. It returns ErrInvalidHash unless
+// digest is exactly sha256.Size bytes: with one algorithm the digest width is
+// fixed, so an address of any other width cannot name a stored object. The
+// digest is copied, so the caller keeps ownership of its slice.
+func NewHash(digest []byte) (Hash, error) {
+	if len(digest) != sha256.Size {
+		return Hash{}, fmt.Errorf("%w: digest is %d bytes, want %d", ErrInvalidHash, len(digest), sha256.Size)
 	}
 	b := make([]byte, len(digest))
 	copy(b, digest)
-	return Hash{algo: algo, bytes: b}, nil
+	return Hash{algo: SHA256, bytes: b}, nil
 }
 
-// ParseHash reconstructs a Hash from its string form "algo:hexdigest". It
-// rejects unknown algorithms (ErrUnknownAlgorithm) and malformed digests
-// (ErrInvalidHash): empty algorithm or digest, non-lowercase or odd-length
-// hex. The digest length is not validated against the algorithm — a custom
-// registered algorithm may produce any digest width.
+// ParseHash reconstructs a Hash from its string form "sha256:hexdigest". It
+// rejects malformed input with ErrInvalidHash (no colon, malformed algorithm
+// name, wrong digest width, non-lowercase or non-hex digest) and an address
+// naming an algorithm this build does not implement with ErrUnknownAlgorithm —
+// the form a store written by another build parses into.
 func ParseHash(s string) (Hash, error) {
 	algo, hexPart, ok := strings.Cut(s, ":")
-	if !ok {
+	if !ok || !algoRe.MatchString(algo) {
 		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
-	if !algoRe.MatchString(algo) {
-		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
-	}
-	if _, known := LookupHash(algo); !known {
+	if algo != SHA256 {
 		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, s)
 	}
-	if len(hexPart) == 0 || len(hexPart)%2 != 0 || !hexRe.MatchString(hexPart) {
+	if len(hexPart) != hex.EncodedLen(sha256.Size) || !hexRe.MatchString(hexPart) {
 		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
 	digest, err := hex.DecodeString(hexPart)
@@ -161,77 +139,10 @@ func CheckHash(h Hash, what string) error {
 }
 
 var (
-	// algoRe is the valid algorithm-name shape: lowercase alphanumerics.
+	// algoRe is the valid algorithm-name shape: lowercase alphanumerics. It
+	// keeps a malformed name out of the "unknown algorithm" bucket, and out of
+	// a backend path derived from it.
 	algoRe = regexp.MustCompile(`^[a-z0-9]+$`)
 	// hexRe is the valid digest shape: lowercase hex only.
 	hexRe = regexp.MustCompile(`^[0-9a-f]+$`)
 )
-
-// registry of hash algorithms, populated at init with the built-ins. Reads
-// are safe concurrently; runtime registration via RegisterHash is guarded by
-// a mutex (registration is expected once at startup).
-var (
-	hashRegistry   = map[string]HashFunc{}
-	hashStreams    = map[string]func() hashtype.Hash{}
-	hashRegistryMu sync.RWMutex
-)
-
-func init() {
-	RegisterHash("sha256", func(data []byte) Hash {
-		sum := sha256.Sum256(data)
-		return Hash{algo: "sha256", bytes: sum[:]}
-	})
-	registerStreamHash("sha256", sha256.New)
-}
-
-// registerStreamHash registers an incremental (streaming) hasher for algo,
-// used by Verify to check integrity without buffering the object. Custom
-// algorithms registered only via RegisterHash fall back to buffering in
-// Verify.
-func registerStreamHash(algo string, newFn func() hashtype.Hash) {
-	hashRegistryMu.Lock()
-	defer hashRegistryMu.Unlock()
-	hashStreams[algo] = newFn
-}
-
-// LookupStreamHash returns the registered streaming hash constructor for the
-// given algorithm, or nil if none is registered.
-func LookupStreamHash(algo string) (func() hashtype.Hash, bool) {
-	hashRegistryMu.RLock()
-	defer hashRegistryMu.RUnlock()
-	fn, ok := hashStreams[algo]
-	return fn, ok
-}
-
-// RegisterHash registers a hash algorithm under name, making it usable by
-// ParseHash, NewHash and NewStore. It replaces any previous function under the
-// same name and drops a previously registered streaming hasher for it, so the
-// one-shot function is authoritative everywhere — HashBytes, Store and Verify
-// keep agreeing on the address of the same algorithm name. Call it before
-// constructing stores that use the algorithm.
-//
-// It panics on an invalid name (lowercase alphanumerics only) or a nil
-// function: such a name can never be parsed back out of a hash string, and it
-// would be unsafe as a store path element (fs backends derive directories from
-// it).
-func RegisterHash(algo string, fn HashFunc) {
-	if !algoRe.MatchString(algo) {
-		panic("cas: invalid algorithm name " + strconv.Quote(algo) + ` (must match ^[a-z0-9]+$)`)
-	}
-	if fn == nil {
-		panic("cas: nil HashFunc for algorithm " + strconv.Quote(algo))
-	}
-	hashRegistryMu.Lock()
-	defer hashRegistryMu.Unlock()
-	hashRegistry[algo] = fn
-	delete(hashStreams, algo)
-}
-
-// LookupHash returns the registered one-shot hash function for the given
-// algorithm, or nil if none is registered.
-func LookupHash(algo string) (HashFunc, bool) {
-	hashRegistryMu.RLock()
-	defer hashRegistryMu.RUnlock()
-	fn, ok := hashRegistry[algo]
-	return fn, ok
-}

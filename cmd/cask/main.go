@@ -18,7 +18,7 @@ flags:
   -store <path>   the store directory (the library in-process, FSBackend)
 
 commands:
-  put <file|-> [-algo <name>] [-json]   store bytes (or stdin); prints the hash
+  put <file|-> [-json]       store bytes (or stdin); prints the hash
   get <hash> [-o <file>]     (no -o prints to stdout)
   list [--algo] [--limit] [--offset]
   meta <hash>

@@ -8,7 +8,7 @@
 |---|---|
 | `fs.Backend` (`Put`/`Get`/`Exists`/`Delete`/`List`/`GC`/`Stats`) | all routes |
 | `Hash` / `ParseHash` | `{hash}` validation (→ 400), addresses |
-| built-in `sha256` (others via `RegisterHash`) | `hash.go` — `newHasher` |
+| `sha256` (fixed; no registry) | `hash.go` — `newHasher` |
 | `cas.Stats` | `/stats` |
 
 ## What it extends

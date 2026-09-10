@@ -57,10 +57,7 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo, err := gitlike.NewRepository(raw, "sha256")
-	if err != nil {
-		return nil, err
-	}
+	repo := gitlike.NewRepository(raw)
 	return &app{raw: raw, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
 }
 

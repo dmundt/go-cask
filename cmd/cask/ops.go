@@ -53,18 +53,12 @@ func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Hash, minAge t
 // --- put ---
 
 func opPut(ctx context.Context, t *target, args []string) error {
-	// Flags may follow the positional (spec order: put <file> [-algo]), so
+	// Flags may follow the positional (spec order: put <file> [-json]), so
 	// std flag parsing is not used here.
-	algo := "sha256"
 	jsonOut := false
 	var files []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "-algo":
-			if i+1 >= len(args) {
-				return usagef("-algo needs a name")
-			}
-			algo, i = args[i+1], i+1
 		case "-json":
 			jsonOut = true
 		default:
@@ -85,7 +79,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 		defer f.Close()
 		r = f
 	}
-	h, dedup, err := localPut(ctx, t.raw, r, algo)
+	h, dedup, err := localPut(ctx, t.raw, r)
 	if err != nil {
 		return err
 	}
@@ -100,13 +94,10 @@ func opPut(ctx context.Context, t *target, args []string) error {
 	return nil
 }
 
-// localPut stores bytes under the hash of their content with algo,
-// streaming through a temp spool (hash-on-write).
-func localPut(ctx context.Context, raw *fs.Backend, r io.Reader, algo string) (cas.Hash, bool, error) {
-	hasher, err := cas.NewHasher(algo)
-	if err != nil {
-		return cas.Hash{}, false, err
-	}
+// localPut stores bytes under the hash of their content, streaming through a
+// temp spool (hash-on-write).
+func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Hash, bool, error) {
+	hasher := cas.NewHasher()
 	spool, err := os.CreateTemp("", "cask-put-*")
 	if err != nil {
 		return cas.Hash{}, false, err
@@ -116,7 +107,7 @@ func localPut(ctx context.Context, raw *fs.Backend, r io.Reader, algo string) (c
 	if _, err := io.Copy(io.MultiWriter(spool, hasher), r); err != nil {
 		return cas.Hash{}, false, err
 	}
-	h, err := cas.NewHash(algo, hasher.Sum(nil))
+	h, err := cas.NewHash(hasher.Sum(nil))
 	if err != nil {
 		return cas.Hash{}, false, err
 	}

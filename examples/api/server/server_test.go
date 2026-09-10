@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -64,8 +63,8 @@ func (c *testClient) do(ctx context.Context, method, path string, body io.Reader
 	return resp.StatusCode, b
 }
 
-func (c *testClient) put(ctx context.Context, body string, algo string) (int, cas.Hash, bool) {
-	status, b := c.do(ctx, http.MethodPost, "/api/cas/v1/objects?algo="+url.QueryEscape(algo), strings.NewReader(body))
+func (c *testClient) put(ctx context.Context, body string) (int, cas.Hash, bool) {
+	status, b := c.do(ctx, http.MethodPost, "/api/cas/v1/objects", strings.NewReader(body))
 	var res struct {
 		Hash         string `json:"hash"`
 		Deduplicated bool   `json:"deduplicated"`
@@ -134,11 +133,11 @@ func TestRoundTripAndDedup(t *testing.T) {
 	ctx := context.Background()
 	c, _ := newTestServer(t, DefaultRateLimit())
 
-	status, h1, dedup1 := c.put(ctx, "hello server", "sha256")
+	status, h1, dedup1 := c.put(ctx, "hello server")
 	if status != http.StatusCreated || dedup1 {
 		t.Fatalf("first put: status=%d dedup=%v", status, dedup1)
 	}
-	status, h2, dedup2 := c.put(ctx, "hello server", "sha256")
+	status, h2, dedup2 := c.put(ctx, "hello server")
 	if status != http.StatusCreated || h1.String() != h2.String() || !dedup2 {
 		t.Fatalf("dedup: status=%d %s vs %s dedup=%v", status, h1, h2, dedup2)
 	}
@@ -153,7 +152,7 @@ func TestLargePayload(t *testing.T) {
 	ctx := context.Background()
 	c, _ := newTestServer(t, DefaultRateLimit())
 	payload := strings.Repeat("x", 4<<20) // 4 MiB
-	status, h, _ := c.put(ctx, payload, "sha256")
+	status, h, _ := c.put(ctx, payload)
 	if status != http.StatusCreated {
 		t.Fatalf("put status = %d", status)
 	}
@@ -190,7 +189,7 @@ func TestRoleMatrix(t *testing.T) {
 	}
 	// Operator stores; operator cannot delete → 403; admin can → 204.
 	op := &testClient{base: ts.URL, token: "op-tok", hc: ts.Client()}
-	status, h, _ := op.put(ctx, "x", "sha256")
+	status, h, _ := op.put(ctx, "x")
 	if status != http.StatusCreated {
 		t.Fatalf("operator put = %d", status)
 	}
@@ -214,7 +213,7 @@ func TestRateLimit(t *testing.T) {
 	ok := 0
 	limited := 0
 	for i := 0; i < 5; i++ {
-		status, _, _ := c.put(ctx, "x", "sha256")
+		status, _, _ := c.put(ctx, "x")
 		switch status {
 		case http.StatusCreated:
 			ok++
@@ -232,7 +231,7 @@ func TestRateLimit(t *testing.T) {
 func TestMetaVerifyListStats(t *testing.T) {
 	ctx := context.Background()
 	c, _ := newTestServer(t, DefaultRateLimit())
-	status, h, _ := c.put(ctx, "meta me", "sha256")
+	status, h, _ := c.put(ctx, "meta me")
 	if status != http.StatusCreated {
 		t.Fatalf("put status = %d", status)
 	}
@@ -267,8 +266,8 @@ func TestGCAndOpenAPI(t *testing.T) {
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}
 
-	_, h1, _ := admin.put(ctx, "one", "sha256")
-	_, h2, _ := admin.put(ctx, "two", "sha256")
+	_, h1, _ := admin.put(ctx, "one")
+	_, h2, _ := admin.put(ctx, "two")
 
 	// GC keeping only h1 → deletes h2.
 	status, g := admin.gc(ctx, []cas.Hash{h1})

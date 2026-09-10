@@ -5,38 +5,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 )
 
-// hashData computes the content address of data with the named algorithm.
-// Test helper only — production code uses the public HashBytes; see cas-core
-// §4.2 for the registry contract.
-func hashData(algo string, data []byte) (Hash, error) {
-	fn, ok := LookupHash(algo)
-	if !ok {
-		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
-	}
-	return fn(data), nil
-}
-
 // --- Golden / NIST vectors (testing-strategy §4.6) ---
 
 func TestGoldenVectors(t *testing.T) {
-	cases := []struct {
-		algo, input, want string
-	}{
-		{"sha256", "", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
-		{"sha256", "abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"},
+	cases := []struct{ input, want string }{
+		{"", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+		{"abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"},
 	}
 	for _, tc := range cases {
-		h, err := hashData(tc.algo, []byte(tc.input))
-		if err != nil {
-			t.Fatalf("%s(%q): %v", tc.algo, tc.input, err)
-		}
-		if got := h.String(); got != tc.algo+":"+tc.want {
-			t.Errorf("%s(%q) = %q, want %q", tc.algo, tc.input, got, tc.algo+":"+tc.want)
+		if got := HashBytes([]byte(tc.input)).String(); got != SHA256+":"+tc.want {
+			t.Errorf("HashBytes(%q) = %q, want %q", tc.input, got, SHA256+":"+tc.want)
 		}
 	}
 }
@@ -45,8 +27,8 @@ func TestGoldenVectors(t *testing.T) {
 
 func TestHashDeterminism(t *testing.T) {
 	data := []byte("same bytes every time")
-	h1, _ := hashData("sha256", data)
-	h2, _ := hashData("sha256", data)
+	h1 := HashBytes(data)
+	h2 := HashBytes(data)
 	if h1.String() != h2.String() {
 		t.Fatalf("determinism broken: %s != %s", h1, h2)
 	}
@@ -60,6 +42,7 @@ func TestHashDeterminism(t *testing.T) {
 func TestParseHashValid(t *testing.T) {
 	cases := []string{
 		"sha256:" + strings.Repeat("ab", 32),
+		SHA256 + ":" + strings.Repeat("00", 32),
 	}
 	for _, s := range cases {
 		h, err := ParseHash(s)
@@ -70,8 +53,8 @@ func TestParseHashValid(t *testing.T) {
 		if h.String() != s {
 			t.Errorf("round-trip: %q -> %q", s, h.String())
 		}
-		if h.Algorithm() != s[:strings.IndexByte(s, ':')] {
-			t.Errorf("Algorithm() = %q", h.Algorithm())
+		if h.Algorithm() != SHA256 {
+			t.Errorf("Algorithm() = %q, want %q", h.Algorithm(), SHA256)
 		}
 	}
 }
@@ -86,11 +69,14 @@ func TestParseHashInvalid(t *testing.T) {
 		{"sha256", ErrInvalidHash},                                 // no colon
 		{":ab", ErrInvalidHash},                                    // empty algo
 		{"sha256:", ErrInvalidHash},                                // empty digest
-		{"sha256:" + strings.Repeat("a", 31), ErrInvalidHash},      // odd-length hex
-		{"sha256:" + strings.ToUpper(validDigest), ErrInvalidHash}, // uppercase
-		{"SHA256:" + validDigest, ErrInvalidHash},                  // uppercase algo
+		{"sha256:" + strings.Repeat("ab", 31), ErrInvalidHash},     // too short
+		{"sha256:" + strings.Repeat("ab", 33), ErrInvalidHash},     // too long
+		{"sha256:" + strings.Repeat("a", 63), ErrInvalidHash},      // odd-length hex
+		{"sha256:" + strings.ToUpper(validDigest), ErrInvalidHash}, // uppercase digest
+		{"SHA256:" + validDigest, ErrInvalidHash},                  // uppercase algo name
 		{"sha256:zz" + validDigest[2:], ErrInvalidHash},            // non-hex
-		{"sha3:" + validDigest, ErrUnknownAlgorithm},               // unknown algo
+		{"sha3:" + validDigest, ErrUnknownAlgorithm},               // algorithm not in this build
+		{"sha1:" + strings.Repeat("ab", 20), ErrUnknownAlgorithm},  // a legacy address shape
 	}
 	for _, tc := range cases {
 		_, err := ParseHash(tc.in)
@@ -101,122 +87,47 @@ func TestParseHashInvalid(t *testing.T) {
 }
 
 func TestNewHash(t *testing.T) {
-	digest := []byte{1, 2, 3, 4}
-	h, err := NewHash("sha256", digest)
+	sum := sha256.Sum256([]byte("abc"))
+	digest := make([]byte, len(sum))
+	copy(digest, sum[:])
+	h, err := NewHash(digest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.String() != "sha256:01020304" {
-		t.Errorf("NewHash string = %q", h.String())
+	if want := SHA256 + ":" + hex.EncodeToString(digest); h.String() != want {
+		t.Errorf("NewHash string = %q, want %q", h.String(), want)
 	}
 	// Must not alias the input slice (immutability).
 	digest[0] = 99
-	if h.String() != "sha256:01020304" {
+	if h.String() != SHA256+":"+hex.EncodeToString(sum[:]) {
 		t.Errorf("NewHash aliased its input: %q", h.String())
 	}
-	if _, err := NewHash("nope", digest); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Errorf("unknown algo: got %v", err)
-	}
-	if _, err := NewHash("sha256", nil); !errors.Is(err, ErrInvalidHash) {
-		t.Errorf("empty digest: got %v", err)
+
+	// With one algorithm the digest width is fixed: any other width cannot name
+	// a stored object.
+	for _, bad := range [][]byte{nil, {}, {1, 2, 3, 4}, make([]byte, sha256.Size+1)} {
+		if _, err := NewHash(bad); !errors.Is(err, ErrInvalidHash) {
+			t.Errorf("NewHash(%d bytes) error = %v, want ErrInvalidHash", len(bad), err)
+		}
 	}
 }
 
 // --- Equal semantics ---
 
 func TestHashEqual(t *testing.T) {
-	RegisterHash("equalalgo", func(data []byte) Hash {
-		return Hash{algo: "equalalgo", bytes: []byte{0x01}}
-	})
 	a, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	b, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	c, _ := ParseHash("sha256:" + strings.Repeat("cd", 32))
-	// Same digest, different algorithm — Equal must compare the algorithm too.
-	d, err := NewHash("equalalgo", a.Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
 	if !a.Equal(b) || !b.Equal(a) {
 		t.Error("identical hashes must be equal")
 	}
 	if a.Equal(c) || c.Equal(a) {
 		t.Error("different digests must not be equal")
 	}
-	if a.Equal(d) || d.Equal(a) {
-		t.Error("same digest different algorithm must not be equal")
-	}
 	// An absent address equals nothing, including another absent one.
 	var absent Hash
 	if a.Equal(absent) || absent.Equal(a) || absent.Equal(absent) {
 		t.Error("the absent hash must not compare equal")
-	}
-}
-
-// TestRegisterHashOverridesStreamHasher pins registry parity: registering a
-// one-shot function for a name that also has a streaming hasher drops the
-// stream constructor, so HashBytes and NewHasher never disagree about the
-// address of one algorithm name.
-func TestRegisterHashOverridesStreamHasher(t *testing.T) {
-	RegisterHash("parityalgo", func(data []byte) Hash {
-		return Hash{algo: "parityalgo", bytes: []byte{0x01}}
-	})
-	registerStreamHash("parityalgo", sha256.New)
-	RegisterHash("parityalgo", func(data []byte) Hash {
-		return Hash{algo: "parityalgo", bytes: []byte{0x02}}
-	})
-	if _, err := NewHasher("parityalgo"); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("NewHasher(parityalgo) = %v, want ErrUnknownAlgorithm after re-registration", err)
-	}
-	got, err := HashBytes("parityalgo", []byte("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.String() != "parityalgo:02" {
-		t.Fatalf("HashBytes(parityalgo) = %q, want the re-registered one-shot result", got)
-	}
-}
-
-// TestRegisterHashRejectsInvalidName pins the name validation that keeps a
-// hostile algorithm name out of store paths.
-func TestRegisterHashRejectsInvalidName(t *testing.T) {
-	for _, name := range []string{"", "..", "../evil", "SHA256", "a/b", "a b"} {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Fatalf("RegisterHash(%q) must panic", name)
-				}
-			}()
-			RegisterHash(name, func([]byte) Hash { return Hash{} })
-		})
-	}
-	defer func() {
-		if recover() == nil {
-			t.Fatal("RegisterHash with a nil func must panic")
-		}
-	}()
-	RegisterHash("nilfunc", nil)
-}
-
-// --- RegisterHash (pluggable algorithms, cas-core §4.2) ---
-
-func TestRegisterHash(t *testing.T) {
-	RegisterHash("testalgo", func(data []byte) Hash {
-		return Hash{algo: "testalgo", bytes: []byte{0xde, 0xad}}
-	})
-	h, err := ParseHash("testalgo:dead")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.String() != "testalgo:dead" {
-		t.Errorf("custom algo string = %q", h.String())
-	}
-	// HashFunc is deterministic and callable through the registry.
-	hr, err := hashData("testalgo", []byte("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hr.String() != "testalgo:dead" {
-		t.Errorf("custom HashFunc = %q", hr.String())
 	}
 }
 
@@ -289,6 +200,8 @@ func ExampleParseHash() {
 // FuzzParseHash must never panic and must round-trip valid output.
 func FuzzParseHash(f *testing.F) {
 	f.Add("sha256:" + strings.Repeat("ab", 32))
+	f.Add("sha256:" + strings.Repeat("ab", 31))
+	f.Add("sha1:" + strings.Repeat("ab", 20))
 	f.Add("garbage")
 	f.Add("sha256:")
 	f.Add("")
@@ -310,59 +223,31 @@ func FuzzParseHash(f *testing.F) {
 
 func TestHashBytes(t *testing.T) {
 	data := []byte("hash bytes")
-	got, err := HashBytes("sha256", data)
-	if err != nil {
-		t.Fatal(err)
+	got := HashBytes(data)
+	want := sha256.Sum256(data)
+	if got.String() != SHA256+":"+hex.EncodeToString(want[:]) {
+		t.Fatalf("HashBytes = %s, want sha256:%s", got, hex.EncodeToString(want[:]))
 	}
-	want, _ := hashData("sha256", data)
-	if got.String() != want.String() {
-		t.Fatalf("HashBytes = %s, want %s", got, want)
-	}
-	// One-shot custom algorithms (no stream constructor) use the HashFunc
-	// fallback path.
-	if _, err := HashBytes("nope", data); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("unknown algo = %v, want ErrUnknownAlgorithm", err)
-	}
-}
-
-// A one-shot registered algorithm (no streaming hasher) exercises the
-// HashBytes fallback.
-func TestHashBytesOneShotFallback(t *testing.T) {
-	RegisterHash("oneshot", func(data []byte) Hash {
-		return Hash{algo: "oneshot", bytes: []byte{0x01}}
-	})
-	h, err := HashBytes("oneshot", []byte("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.String() != "oneshot:01" {
-		t.Fatalf("HashBytes(oneshot) = %q", h.String())
+	if got.Algorithm() != SHA256 {
+		t.Fatalf("HashBytes algorithm = %q, want %q", got.Algorithm(), SHA256)
 	}
 }
 
 func TestNewHasher(t *testing.T) {
-	h, err := NewHasher("sha256")
+	h := NewHasher()
+	h.Write([]byte("abc"))
+	streamed, err := NewHash(h.Sum(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.Write([]byte("abc"))
-	sum := h.Sum(nil)
-	expected, _ := hashData("sha256", []byte("abc"))
-	if string(sum) != string(expected.Bytes()) {
+	if !streamed.Equal(HashBytes([]byte("abc"))) {
 		t.Fatal("streaming hash mismatch")
-	}
-	// A one-shot algorithm cannot stream.
-	if _, err := NewHasher("oneshot"); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("NewHasher(oneshot) = %v, want ErrUnknownAlgorithm", err)
-	}
-	if _, err := NewHasher("nope"); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("NewHasher(nope) = %v, want ErrUnknownAlgorithm", err)
 	}
 }
 
 func TestHashBytesRoundTrip(t *testing.T) {
 	// HashBytes output parses back into the same hash.
-	h, _ := HashBytes("sha256", []byte("round trip"))
+	h := HashBytes([]byte("round trip"))
 	back, err := ParseHash(h.String())
 	if err != nil {
 		t.Fatal(err)
@@ -370,31 +255,7 @@ func TestHashBytesRoundTrip(t *testing.T) {
 	if !h.Equal(back) {
 		t.Fatal("round-trip mismatch")
 	}
-	if !strings.HasPrefix(h.String(), "sha256:") {
+	if !strings.HasPrefix(h.String(), SHA256+":") {
 		t.Fatalf("hash = %q", h.String())
-	}
-}
-
-// TestHashOneShotRegistration pins the one-shot-only hash paths: HashBytes
-// works through the registry, NewHasher rejects non-streamable algorithms.
-func TestHashOneShotRegistration(t *testing.T) {
-	RegisterHash("obone", func(data []byte) Hash {
-		sum := sha256.Sum256(data)
-		h, _ := NewHash("obone", sum[:])
-		return h
-	})
-	want := sha256.Sum256([]byte("abc"))
-	h, err := HashBytes("obone", []byte("abc"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.String() != "obone:"+hex.EncodeToString(want[:]) {
-		t.Fatalf("HashBytes = %q", h.String())
-	}
-	if _, err := NewHasher("obone"); !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("NewHasher(one-shot) err = %v, want ErrUnknownAlgorithm", err)
-	}
-	if hs, err := NewHasher("sha256"); err != nil || hs == nil {
-		t.Fatalf("NewHasher(sha256) = %v, %v", hs, err)
 	}
 }

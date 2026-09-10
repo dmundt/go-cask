@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v16
+version: v17
 ---
 
 # Defaults & Behavior — go-cask
@@ -21,7 +21,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Item | Default/value | Defined in |
 |---|---|---|
 | Default hash algorithm | `sha256` | cas-core §4.2 |
-| Built-in hash algorithm | `sha256` (others via `RegisterHash`) | cas-core §4.2 |
+| Built-in hash algorithm | `sha256` (the core's only algorithm; no registry) | cas-core §4.2 |
 | Hash string format | `"<algo>:<lowercase-hex>"` | cas-core §4.1 |
 | Hash validation pattern | `^[a-z0-9]+:[0-9a-f]+$` | api-design §3 |
 | Fan-out layout | `FanOut=2`, `FanLevels=1`; file name always the full digest | cas-core §4.4 |

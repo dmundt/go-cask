@@ -10,22 +10,14 @@ import (
 )
 
 // FuzzPathRoundTrip checks that hashPath then pathToHash round-trips for
-// arbitrary digests across several fan-out layouts (flat, Git-like, deep).
-// Any bytes decode to valid (even-length, lowercase) hex, so every non-empty
-// input is a representable digest.
+// arbitrary content across several fan-out layouts (flat, Git-like, deep).
 func FuzzPathRoundTrip(f *testing.F) {
 	for _, seed := range [][]byte{{'a'}, []byte("abc"), bytes.Repeat([]byte{0xab}, 32)} {
 		f.Add(seed)
 	}
 	layouts := []struct{ fanOut, fanLevels int }{{0, 0}, {2, 1}, {4, 2}}
-	f.Fuzz(func(t *testing.T, digest []byte) {
-		if len(digest) == 0 {
-			t.Skip("empty digest is not a valid hash")
-		}
-		h, err := cas.NewHash("sha256", digest)
-		if err != nil {
-			t.Fatalf("NewHash: %v", err)
-		}
+	f.Fuzz(func(t *testing.T, content []byte) {
+		h := cas.HashBytes(content)
 		for _, lay := range layouts {
 			s := &Backend{fanOut: lay.fanOut, fanLevels: lay.fanLevels}
 			rel := s.hashPath(h)
@@ -53,10 +45,7 @@ func FuzzVerify(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h, err := cas.HashBytes("sha256", content)
-		if err != nil {
-			t.Fatal(err)
-		}
+		h := cas.HashBytes(content)
 		if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 			t.Fatal(err)
 		}

@@ -2,7 +2,7 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v6
+version: v7
 ---
 
 # Extensions — go-cask
@@ -18,7 +18,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 
 ## 2. Requirements
 
-1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]`, `HashFunc`, or wrap `CachedStore[T]` — nothing else.
+1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]`, or wrap `CachedStore[T]` — nothing else.
 2. Never add `any`/`interface{}` or reflection to a public API (coding-guidelines §8).
 3. Wrap the core's sentinel errors with `%w` and use `errors.Is`; map them to your layer (api-design §6 for HTTP).
 4. Additive changes only; never break the core's stable surface (library-design §5).

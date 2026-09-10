@@ -98,10 +98,7 @@ func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int) []cas.
 	p := make([]byte, scaleObjSize)
 	for i := 0; i < n; i++ {
 		scalePayload(p, i)
-		h, err := cas.HashBytes("sha256", p)
-		if err != nil {
-			b.Fatal(err)
-		}
+		h := cas.HashBytes(p)
 		hs[i] = h
 		if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
 			b.Fatal(err)
@@ -147,10 +144,7 @@ func BenchmarkScalePut(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				scalePayload(p, n+i)
-				h, err := cas.HashBytes("sha256", p)
-				if err != nil {
-					b.Fatal(err)
-				}
+				h := cas.HashBytes(p)
 				if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
 					b.Fatal(err)
 				}

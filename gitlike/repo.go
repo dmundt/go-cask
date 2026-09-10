@@ -21,26 +21,16 @@ type Repository struct {
 	Tags    *cas.Store[*Tag]
 }
 
-// NewRepository builds a Repository over raw with the given hash algorithm.
-// It returns ErrUnknownAlgorithm if algo is not registered.
-func NewRepository(raw cas.Backend, algo string) (*Repository, error) {
-	blobs, err := cas.New(raw, jsoncodec.New[*Blob](), algo)
-	if err != nil {
-		return nil, err
+// NewRepository builds a Repository over raw. It cannot fail: the core has one
+// hash algorithm and no registry (cas-core §4.2).
+func NewRepository(raw cas.Backend) *Repository {
+	return &Repository{
+		raw:     raw,
+		Blobs:   cas.New(raw, jsoncodec.New[*Blob]()),
+		Trees:   cas.New(raw, jsoncodec.New[*Tree]()),
+		Commits: cas.New(raw, jsoncodec.New[*Commit]()),
+		Tags:    cas.New(raw, jsoncodec.New[*Tag]()),
 	}
-	trees, err := cas.New(raw, jsoncodec.New[*Tree](), algo)
-	if err != nil {
-		return nil, err
-	}
-	commits, err := cas.New(raw, jsoncodec.New[*Commit](), algo)
-	if err != nil {
-		return nil, err
-	}
-	tags, err := cas.New(raw, jsoncodec.New[*Tag](), algo)
-	if err != nil {
-		return nil, err
-	}
-	return &Repository{raw: raw, Blobs: blobs, Trees: trees, Commits: commits, Tags: tags}, nil
 }
 
 // ResolvedObject is the typed union returned by Resolver.ResolveAny — the
@@ -158,10 +148,7 @@ func shortHash(h cas.Hash) string {
 	}
 	s := h.String()
 	_, hexPart, _ := strings.Cut(s, ":")
-	if len(hexPart) > 8 {
-		return hexPart[:8]
-	}
-	return hexPart
+	return hexPart[:8]
 }
 
 // WalkGraph traverses the whole object graph reachable from h, resolving

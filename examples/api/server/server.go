@@ -157,15 +157,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // the body to a temp spool (memory-bounded), then the spool streams into
 // the store. Identical bytes → identical hash → deduplicated.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
-	algo := r.URL.Query().Get("algo")
-	if algo == "" {
-		algo = "sha256"
-	}
-	hasher, err := cas.NewHasher(algo)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
+	hasher := cas.NewHasher()
 	spool, err := os.CreateTemp("", "cask-upload-*")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "upload spool failed"})
@@ -179,9 +171,9 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
 		return
 	}
-	h, err := cas.NewHash(algo, hasher.Sum(nil))
+	h, err := cas.NewHash(hasher.Sum(nil))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	ctx := r.Context()
@@ -318,16 +310,12 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	hasher, err := cas.NewHasher(h.Algorithm())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
+	hasher := cas.NewHasher()
 	if _, err := io.Copy(hasher, rc); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
 		return
 	}
-	recomputed, err := cas.NewHash(h.Algorithm(), hasher.Sum(nil))
+	recomputed, err := cas.NewHash(hasher.Sum(nil))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

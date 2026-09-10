@@ -10,7 +10,53 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
-_No changes yet._
+**BREAKING: the hash algorithm is fixed at compile time — the runtime registry is
+gone.** `cas` implements exactly one algorithm (`sha256`), and an address still
+carries its name, so the stored format and every object address are unchanged;
+what disappears is the ability to register or select an algorithm at runtime.
+
+### Removed
+
+- **`cas.RegisterHash`, `cas.LookupHash`, `cas.LookupStreamHash` and the
+  `cas.HashFunc` type** — there is no algorithm registry. The algorithm is
+  `sha256` (`cas.SHA256`) for the whole build. The one-shot/streaming duality
+  existed only to serve registered algorithms, so it is gone with them:
+  `HashBytes` is the one-shot entry point, `NewHasher()` the streaming one, and
+  `fs.Backend.Verify` streams through the latter without a lookup or a
+  buffering fallback.
+- **Every `algo` parameter that selected an algorithm**: `cas.New(raw, codec)`
+  (no longer returns an error — nothing can fail), `HashBytes(data)`,
+  `NewHasher()`, `NewHash(digest)`, and `gitlike.NewRepository(raw)` (also
+  error-free). The `examples/api` `POST /objects?algo=` parameter and the CLI's
+  `put -algo` flag go with them; the CLI's `list --algo` remains as a layout
+  filter over `Backend.List(ctx, algo)`, which is unchanged.
+- **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
+  The example keeps its custom `Codec[T]` seam (gzip) and now stores under
+  `sha256`.
+
+### Changed
+
+- **An address is validated completely.** `NewHash` and `ParseHash` require a
+  `sha256.Size`-byte digest (64 hex digits), since with one algorithm any other
+  width cannot name a stored object; `ErrUnknownAlgorithm` now means exactly one
+  thing — a well-formed address naming an algorithm this build does not
+  implement (a store written by another build), which `List`/`Stats` skip rather
+  than misreport.
+- **Layout and walker simplifications that follow from one fixed-width digest**:
+  `fs.hashPath` no longer clamps chunks (`WithFanOut` × `WithFanLevels` is
+  bounded by the digest width), and `gitlike`'s `shortHash` no longer carries a
+  non-truncating branch. A cycle is no longer constructible through the public
+  API (an address depends on the bytes that would contain it), so the walker's
+  cycle test is replaced by a keys-by-address test; the visited set remains for
+  shared subgraphs.
+- Docs re-aligned with the code: `cas-core.md` v40→v41 (§3.1/§3.2 diagrams,
+  §4.1/§4.2 one algorithm and no registry, §4.8 `Store` without a hasher field,
+  §4.9 walker note, §5 write path, §6 concurrency table, §7.1 surface, §7.2
+  recipe), `library-design.md` v19→v20, `coding-guidelines.md` v13→v14,
+  `defaults.md` v16→v17, `examples.md` v15→v16, `extensions.md` v6→v7,
+  `operations.md` v6→v7 (algorithm migration is a format transition),
+  `testing-strategy.md` v12→v13, `versioning.md` v13→v14, `AGENTS.md` v15→v16,
+  `README.md`, `examples/artifacts/README.md`, `examples/api/README.md`.
 
 ## [v1.2.0] - 2026-09-10
 

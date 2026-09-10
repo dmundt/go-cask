@@ -38,10 +38,7 @@ func (o testObject) References() []cas.Hash {
 
 func newStore(t *testing.T) (*cas.Store[testObject], *mem.CachedStore[testObject]) {
 	t.Helper()
-	s, err := cas.New(backmem.New(), jsoncodec.New[testObject](), "sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := cas.New(backmem.New(), jsoncodec.New[testObject]())
 	return s, mem.New(s)
 }
 
