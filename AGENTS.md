@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v11
+version: v13
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -272,6 +272,7 @@ import (
     "fmt"
     "time"
 
+    "github.com/dmundt/go-cask/cas"
     "github.com/dmundt/go-cask/cas/backend/fs"
     "github.com/dmundt/go-cask/gitlike"
 )
@@ -285,20 +286,24 @@ func main() {
     resolver := gitlike.NewResolver(repo)
 
     // 2. Build a Git-like object graph: blob → tree → commit → tag.
+    //    Hash fields are value cas.HashRef: cas.NewHashRef(h) for a present
+    //    reference, the zero value for an absent one (fields tagged omitzero
+    //    are then left out of the encoding).
     blobHash, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("Hello, World!")})
     treeHash, _ := repo.Trees.Put(ctx, &gitlike.Tree{Entries: []gitlike.TreeEntry{
-        {Name: "hello.txt", Hash: blobHash, Mode: "file"},
+        {Name: "hello.txt", Hash: cas.NewHashRef(blobHash), Mode: "file"},
     }})
     commitHash, _ := repo.Commits.Put(ctx, &gitlike.Commit{
-        Tree: treeHash, Parent: nil, Author: "Alice",
+        Tree: cas.NewHashRef(treeHash), Author: "Alice",
         Message: "Initial commit", Time: time.Now(),
     })
-    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
+    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: cas.NewHashRef(commitHash), Tagger: "Bob", Message: "Release"})
 
-    // 3. Type-safe reads — no casts, no any.
+    // 3. Type-safe reads — no casts, no any. .Hash() unwraps a reference
+    //    (nil when absent).
     commit, _ := resolver.ResolveCommit(ctx, tagHash)
-    tree, _ := resolver.ResolveTree(ctx, commit.Tree)
-    blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash)
+    tree, _ := resolver.ResolveTree(ctx, commit.Tree.Hash())
+    blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash.Hash())
     fmt.Println(string(blob.Data)) // "Hello, World!"
 
     // 4. Cached access (gitlike per-type LRU caches over the repository).
@@ -340,11 +345,19 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    codec's job, not the object's.
 2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()`
    (package `cas/codec/json`) — the generic core stays untouched.
-3. If you need a repository/resolver for your types (per-type stores,
+3. Reference other objects with value `cas.HashRef` fields, never bare
+   `Hash`/`[]Hash`: `encoding/json` cannot allocate into an interface field, so a
+   bare `Hash` field can be written but never read back. One shape covers
+   everything — `cas.NewHashRef(h)` for a present reference, the zero value for
+   an absent one, and the tag `json:"…,omitzero"` when absence should be left
+   out of the encoding (a field that is always present needs no option). Unwrap
+   with `.Hash()` in `References()`. That way the type needs no JSON code at all
+   (cas-core §4.2).
+4. If you need a repository/resolver for your types (per-type stores,
    `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
    `gitlike` reference pattern into your own package; do NOT add your types to
    `cas` or extend `gitlike`.
-4. Never add `any` or reflection to do this — add explicit typed methods.
+5. Never add `any` or reflection to do this — add explicit typed methods.
 
 **Add a hash algorithm** (e.g. `blake3`):
 ```go
@@ -372,7 +385,7 @@ gofmt -l .
 
 ## Constraints & Conventions
 
-- Go **1.22+** required (generics, enhanced routing, stdlib-only); repo toolchain is 1.27. Module: the repo
+- Go **1.24+** required (generics, enhanced routing, `omitzero` JSON tags, stdlib-only); repo toolchain is 1.27. Module: the repo
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the

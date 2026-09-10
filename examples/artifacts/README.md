@@ -26,7 +26,7 @@
 
 - `hasher.go` — registers `sha256double` at init.
 - `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's output; `Unmarshal` = gunzip then inner decode (pinned gzip mtime).
-- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact hashes; `MarshalJSON`/`UnmarshalJSON` render the hash slices as `algo:hex`), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
+- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact hashes as `[]cas.HashRef`, which renders as `algo:hex` and validates on decode with no JSON code here), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
   - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's manifest** (delete the previous), so the replaced artifact becomes garbage;
   - `get <hash>` — through the `LRUCache`, `CacheMonitor` printing snapshots;
   - `gc` — reachable = all manifests + referenced artifacts → `fs.Backend.GC`;

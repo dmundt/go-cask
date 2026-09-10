@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v10
+version: v11
 ---
 
 # Versioning — go-cask
@@ -28,7 +28,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 - **v0/v1:** no path suffix. Tags `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, …
 - **v2+:** Go REQUIRES the major in the module path — `github.com/dmundt/go-cask/v2` (tags become `v2.0.0`, …). Layout: keep both majors in one repo by mirroring the library under `cas/v2/` (its `go.mod` declares the `/v2` path), so v1 and v2 consumers coexist without a fork. `gitlike` follows the same major as the core it builds on.
 - **Untagged commits:** consumers get a Go **pseudo-version** (`v1.2.3-0.<timestamp>-<commit>`) automatically — no action needed; tags are still the contract.
-- `go.mod`: `go 1.27` toolchain; library baseline Go 1.22+.
+- `go.mod`: `go 1.27` toolchain; library baseline Go 1.24+ (the `omitzero` JSON tag floor).
 - Tags MUST be on the module root commit (a wrong-commit tag breaks resolution).
 
 ## 3. Git mechanics
@@ -64,7 +64,7 @@ Every item MUST be satisfied before the first stable release.
 - [x] Pluggable algorithms: sha256 built-in, `RegisterHash` for custom; sha1 removed from core
 - [x] GC concurrency: writers lock-free, maintenance sweeps exclusive + grace-gated (`--min-age 1h` default)
 - [x] Lean-core export budget re-baselined to ~40 (library-design v10)
-- [x] Library baseline declared Go 1.22 (toolchain 1.27)
+- [x] Library baseline declared Go 1.24 (toolchain 1.27; `omitzero` JSON tags)
 
 ### 6.2 Release mechanics
 - [x] `v0.1.0-alpha.1` and `v0.1.0-alpha.2` tags exist

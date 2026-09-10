@@ -45,47 +45,20 @@ func (b *Blob) Type() string { return TypeBlob }
 func (b *Blob) References() []cas.Hash { return nil }
 
 // TreeEntry is one entry in a Tree. It is an entry, not an object itself;
-// Hash references the stored object for Name.
+// Hash references the stored object for Name and may be absent.
 type TreeEntry struct {
-	Name string   `json:"name"`
-	Hash cas.Hash `json:"hash"`
-	Mode string   `json:"mode"`
+	Name string      `json:"name"`
+	Hash cas.HashRef `json:"hash,omitzero"` // optional: absent is omitted
+	Mode string      `json:"mode"`
 }
 
-// MarshalJSON implements json.Marshaler: it renders Hash as its "algo:hex"
-// string; a nil Hash is omitted from the JSON.
-func (e TreeEntry) MarshalJSON() ([]byte, error) {
-	type out struct {
-		Name string `json:"name"`
-		Hash string `json:"hash,omitempty"`
-		Mode string `json:"mode"`
-	}
-	h := ""
-	if e.Hash != nil {
-		h = e.Hash.String()
-	}
-	return json.Marshal(out{Name: e.Name, Hash: h, Mode: e.Mode})
-}
-
-// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex" hash
-// string back into Hash. A missing or empty hash leaves Hash nil (a nil
-// reference round-trips as nil); a malformed hash returns an error.
-func (e *TreeEntry) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Name string `json:"name"`
-		Hash string `json:"hash"`
-		Mode string `json:"mode"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	e.Name, e.Mode = raw.Name, raw.Mode
-	if raw.Hash != "" {
-		h, err := cas.ParseHash(raw.Hash)
-		if err != nil {
-			return fmt.Errorf("gitlike: decode tree entry hash: %w", err)
-		}
-		e.Hash = h
+// Validate reports whether the entry can be stored and read back: a tree entry
+// must be named. An absent Hash is valid — an entry without a reference is
+// representable and round-trips as absent. Validation is advisory;
+// Tree.Validate runs it over a whole tree.
+func (e TreeEntry) Validate() error {
+	if e.Name == "" {
+		return fmt.Errorf("gitlike: tree entry has no name")
 	}
 	return nil
 }
@@ -98,79 +71,75 @@ type Tree struct {
 // Type returns the versioned type name "tree@1".
 func (t *Tree) Type() string { return TypeTree }
 
+// Validate reports whether every entry can be stored and read back. It is
+// advisory: Store.Put marshals an object, it does not validate one, so callers
+// building a tree by hand SHOULD call Validate before Put.
+func (t *Tree) Validate() error {
+	for i, e := range t.Entries {
+		if err := e.Validate(); err != nil {
+			return fmt.Errorf("entry %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // References returns the hashes of every entry.
 func (t *Tree) References() []cas.Hash {
 	refs := make([]cas.Hash, 0, len(t.Entries))
 	for _, e := range t.Entries {
-		if e.Hash != nil {
-			refs = append(refs, e.Hash)
+		if h := e.Hash.Hash(); h != nil {
+			refs = append(refs, h)
 		}
 	}
 	return refs
 }
 
-// Commit points at a tree (and optionally a parent commit); nil Parent marks
-// a root commit.
+// Commit points at a tree (and optionally a parent commit); an absent Parent
+// marks a root commit.
 type Commit struct {
-	Tree    cas.Hash  `json:"tree"`
-	Parent  cas.Hash  `json:"parent,omitempty"`
-	Author  string    `json:"author"`
-	Message string    `json:"message"`
-	Time    time.Time `json:"time"`
+	Tree    cas.HashRef `json:"tree"`            // required: a missing/empty/null tree fails decode
+	Parent  cas.HashRef `json:"parent,omitzero"` // optional: absent is omitted
+	Author  string      `json:"author"`
+	Message string      `json:"message"`
+	Time    time.Time   `json:"time"`
 }
 
-// MarshalJSON implements json.Marshaler: it renders the tree and parent
-// hashes as "algo:hex" strings; a nil parent is omitted (a commit always
-// names a tree).
+// Validate reports whether the commit can be stored and read back: a commit
+// must name a tree. Store.Put enforces this through MarshalJSON, so an
+// unreadable commit cannot be written; calling Validate directly lets a caller
+// check a hand-built object before Put.
+func (c *Commit) Validate() error {
+	if c.Tree.Hash() == nil {
+		return fmt.Errorf("gitlike: commit has no tree")
+	}
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler. It only enforces the mandatory tree;
+// the hash fields serialize themselves through cas.HashRef (cas-core §4.2), so
+// no hand-written hash rendering is involved.
 func (c Commit) MarshalJSON() ([]byte, error) {
-	type out struct {
-		Tree    string    `json:"tree"`
-		Parent  string    `json:"parent,omitempty"`
-		Author  string    `json:"author"`
-		Message string    `json:"message"`
-		Time    time.Time `json:"time"`
+	if err := c.Validate(); err != nil {
+		return nil, err
 	}
-	parent := ""
-	if c.Parent != nil {
-		parent = c.Parent.String()
-	}
-	return json.Marshal(out{
-		Tree:    c.Tree.String(),
-		Parent:  parent,
-		Author:  c.Author,
-		Message: c.Message,
-		Time:    c.Time,
-	})
+	type plain Commit // no methods: marshals by field, no recursion
+	return json.Marshal(plain(c))
 }
 
-// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex" tree
-// and parent strings back into Hash values. The tree hash is required; a
-// missing or empty parent leaves Parent nil (a root commit); a malformed hash
-// returns an error.
+// UnmarshalJSON implements json.Unmarshaler. The hash fields decode themselves
+// (cas.HashRef validates every reference), so this method only exists to keep
+// the required tree strict: a missing, empty, or null tree is a decode error
+// rather than a silently rootless commit. An absent parent decodes as absent.
 func (c *Commit) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Tree    string    `json:"tree"`
-		Parent  string    `json:"parent"`
-		Author  string    `json:"author"`
-		Message string    `json:"message"`
-		Time    time.Time `json:"time"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	type plain Commit // no methods: decodes by field, no recursion
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
 		return err
 	}
-	c.Author, c.Message, c.Time = raw.Author, raw.Message, raw.Time
-	tree, err := cas.ParseHash(raw.Tree)
-	if err != nil {
-		return fmt.Errorf("gitlike: decode commit tree hash: %w", err)
+	if p.Tree.Hash() == nil {
+		return fmt.Errorf("gitlike: commit has no tree")
 	}
-	c.Tree = tree
-	if raw.Parent != "" {
-		parent, err := cas.ParseHash(raw.Parent)
-		if err != nil {
-			return fmt.Errorf("gitlike: decode commit parent hash: %w", err)
-		}
-		c.Parent = parent
-	}
+	*c = Commit(p)
 	return nil
 }
 
@@ -180,58 +149,30 @@ func (c *Commit) Type() string { return TypeCommit }
 // References returns the tree hash and the parent hash (if any).
 func (c *Commit) References() []cas.Hash {
 	refs := make([]cas.Hash, 0, 2)
-	if c.Tree != nil {
-		refs = append(refs, c.Tree)
+	if h := c.Tree.Hash(); h != nil {
+		refs = append(refs, h)
 	}
-	if c.Parent != nil {
-		refs = append(refs, c.Parent)
+	if h := c.Parent.Hash(); h != nil {
+		refs = append(refs, h)
 	}
 	return refs
 }
 
 // Tag names a target object (typically a commit).
 type Tag struct {
-	Name    string   `json:"name"`
-	Target  cas.Hash `json:"target"`
-	Tagger  string   `json:"tagger"`
-	Message string   `json:"message"`
+	Name    string      `json:"name"`
+	Target  cas.HashRef `json:"target"` // required field, but may be absent (value field keeps the historical "")
+	Tagger  string      `json:"tagger"`
+	Message string      `json:"message"`
 }
 
-// MarshalJSON implements json.Marshaler: it renders the target hash as its
-// "algo:hex" string; a nil target encodes as an empty string.
-func (g Tag) MarshalJSON() ([]byte, error) {
-	type out struct {
-		Name    string `json:"name"`
-		Target  string `json:"target"`
-		Tagger  string `json:"tagger"`
-		Message string `json:"message"`
-	}
-	target := ""
-	if g.Target != nil {
-		target = g.Target.String()
-	}
-	return json.Marshal(out{Name: g.Name, Target: target, Tagger: g.Tagger, Message: g.Message})
-}
-
-// UnmarshalJSON implements json.Unmarshaler: it parses the "algo:hex"
-// target string back into a Hash value. An empty target leaves Target nil.
-func (g *Tag) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Name    string `json:"name"`
-		Target  string `json:"target"`
-		Tagger  string `json:"tagger"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	g.Name, g.Tagger, g.Message = raw.Name, raw.Tagger, raw.Message
-	if raw.Target != "" {
-		target, err := cas.ParseHash(raw.Target)
-		if err != nil {
-			return fmt.Errorf("gitlike: decode tag target hash: %w", err)
-		}
-		g.Target = target
+// Validate reports whether the tag can be stored and read back: a tag must be
+// named. An absent Target is valid (a tag may be created before its target) and
+// round-trips as absent. Validation is advisory — Store.Put marshals, it does
+// not validate.
+func (g *Tag) Validate() error {
+	if g.Name == "" {
+		return fmt.Errorf("gitlike: tag has no name")
 	}
 	return nil
 }
@@ -241,10 +182,10 @@ func (g *Tag) Type() string { return TypeTag }
 
 // References returns the target hash.
 func (g *Tag) References() []cas.Hash {
-	if g.Target == nil {
-		return nil
+	if h := g.Target.Hash(); h != nil {
+		return []cas.Hash{h}
 	}
-	return []cas.Hash{g.Target}
+	return nil
 }
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a

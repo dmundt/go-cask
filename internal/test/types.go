@@ -3,7 +3,6 @@
 package test
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 
@@ -21,43 +20,39 @@ func (Note) References() []cas.Hash { return nil }
 
 // Node is a test Object[T] with references, used to test Walker/References.
 type Node struct {
-	Name string     `json:"name"`
-	Refs []cas.Hash `json:"refs,omitempty"`
+	Name string        `json:"name"`
+	Refs []cas.HashRef `json:"refs,omitempty"`
 }
 
-func (Node) Type() string             { return "node@1" }
-func (n Node) References() []cas.Hash { return n.Refs }
+func (Node) Type() string { return "node@1" }
 
-// MarshalJSON encodes Node with Refs as hex strings for JSON round-tripping.
-func (n Node) MarshalJSON() ([]byte, error) {
-	s := struct {
-		Name string   `json:"name"`
-		Refs []string `json:"refs,omitempty"`
-	}{Name: n.Name}
+// References returns the non-absent references, or nil for a leaf node (nil
+// means "no references", matching Blob.References). Serialization needs no
+// helper: cas.HashRef renders itself as an "algo:hex" string and validates on
+// decode (cas-core §4.2).
+func (n Node) References() []cas.Hash {
+	if len(n.Refs) == 0 {
+		return nil
+	}
+	refs := make([]cas.Hash, 0, len(n.Refs))
 	for _, r := range n.Refs {
-		s.Refs = append(s.Refs, r.String())
+		if h := r.Hash(); h != nil {
+			refs = append(refs, h)
+		}
 	}
-	return json.Marshal(s)
+	return refs
 }
 
-// UnmarshalJSON decodes Node from the JSON format produced by MarshalJSON.
-func (n *Node) UnmarshalJSON(data []byte) error {
-	var s struct {
-		Name string   `json:"name"`
-		Refs []string `json:"refs,omitempty"`
-	}
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	n.Name = s.Name
-	for _, r := range s.Refs {
-		h, err := cas.ParseHash(r)
-		if err != nil {
-			return err
+// HashRefs builds a Node reference slice, skipping nil hashes, so test literals
+// stay short: Refs: test.HashRefs(h).
+func HashRefs(hashes ...cas.Hash) []cas.HashRef {
+	refs := make([]cas.HashRef, 0, len(hashes))
+	for _, h := range hashes {
+		if h != nil {
+			refs = append(refs, cas.NewHashRef(h))
 		}
-		n.Refs = append(n.Refs, h)
 	}
-	return nil
+	return refs
 }
 
 // ErrorObj is a test Object[T] used in error-path tests.

@@ -15,7 +15,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -29,60 +28,30 @@ const (
 	typeAttachment = "attachment@1"
 )
 
-// Note references tags, attachments, and related notes by hash.
+// Note references tags, attachments, and related notes by hash. The reference
+// fields are cas.HashRef: they serialize as "algo:hex" strings and validate on
+// decode without any code here (cas-core §4.2), and `omitempty` drops an empty
+// group.
 type Note struct {
-	Title       string     `json:"title"`
-	Body        string     `json:"body"`
-	Tags        []cas.Hash `json:"tags,omitempty"`
-	Attachments []cas.Hash `json:"attachments,omitempty"`
-	Related     []cas.Hash `json:"related,omitempty"`
+	Title       string        `json:"title"`
+	Body        string        `json:"body"`
+	Tags        []cas.HashRef `json:"tags,omitempty"`
+	Attachments []cas.HashRef `json:"attachments,omitempty"`
+	Related     []cas.HashRef `json:"related,omitempty"`
 }
 
 func (n *Note) Type() string { return typeNote }
 
 func (n *Note) References() []cas.Hash {
 	refs := make([]cas.Hash, 0, len(n.Tags)+len(n.Attachments)+len(n.Related))
-	refs = append(refs, n.Tags...)
-	refs = append(refs, n.Attachments...)
-	refs = append(refs, n.Related...)
+	for _, group := range [][]cas.HashRef{n.Tags, n.Attachments, n.Related} {
+		for _, r := range group {
+			if h := r.Hash(); h != nil {
+				refs = append(refs, h)
+			}
+		}
+	}
 	return refs
-}
-
-// MarshalJSON renders hash slices as "algo:hex" strings.
-func (n Note) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Title       string   `json:"title"`
-		Body        string   `json:"body"`
-		Tags        []string `json:"tags,omitempty"`
-		Attachments []string `json:"attachments,omitempty"`
-		Related     []string `json:"related,omitempty"`
-	}{n.Title, n.Body, hashStrings(n.Tags), hashStrings(n.Attachments), hashStrings(n.Related)})
-}
-
-// UnmarshalJSON parses the string hashes back into Hash values.
-func (n *Note) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Title       string   `json:"title"`
-		Body        string   `json:"body"`
-		Tags        []string `json:"tags"`
-		Attachments []string `json:"attachments"`
-		Related     []string `json:"related"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	n.Title, n.Body = raw.Title, raw.Body
-	var err error
-	if n.Tags, err = parseHashes(raw.Tags); err != nil {
-		return err
-	}
-	if n.Attachments, err = parseHashes(raw.Attachments); err != nil {
-		return err
-	}
-	if n.Related, err = parseHashes(raw.Related); err != nil {
-		return err
-	}
-	return nil
 }
 
 // Tag is a leaf object a note references.
@@ -100,26 +69,6 @@ type Attachment struct {
 
 func (a *Attachment) Type() string           { return typeAttachment }
 func (a *Attachment) References() []cas.Hash { return nil }
-
-func hashStrings(hashes []cas.Hash) []string {
-	out := make([]string, 0, len(hashes))
-	for _, h := range hashes {
-		out = append(out, h.String())
-	}
-	return out
-}
-
-func parseHashes(strs []string) ([]cas.Hash, error) {
-	out := make([]cas.Hash, 0, len(strs))
-	for _, s := range strs {
-		h, err := cas.ParseHash(s)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, h)
-	}
-	return out, nil
-}
 
 // parseType extracts the unversioned type name ("note", "tag", ...) from the
 // stored TLV envelope bytes (see cas.EnvelopeFromBytes).

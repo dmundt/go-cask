@@ -23,11 +23,11 @@ func TestWalkerTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: []cas.Hash{hc}})
+	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: test.HashRefs(hc)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: []cas.Hash{hb}})
+	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: test.HashRefs(hb)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +96,12 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []cas.Hash{leafH}})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: test.HashRefs(leafH)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	missingH, _ := test.HashData("sha256", []byte("missing"))
-	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Hash{missingH}})
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: test.HashRefs(missingH)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,5 +124,84 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	}
 	if seen != 2 {
 		t.Fatalf("visited %d objects, want root+leaf = 2", seen)
+	}
+}
+
+// TestWalkerSharedSubgraphVisitedOnce pins the visited-set contract: a hash
+// reached through two paths is visited once, not once per path.
+func TestWalkerSharedSubgraphVisitedOnce(t *testing.T) {
+	ctx := context.Background()
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Node](), "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafH, err := st.Put(ctx, test.Node{Name: "leaf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftH, err := st.Put(ctx, test.Node{Name: "left", Refs: test.HashRefs(leafH)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightH, err := st.Put(ctx, test.Node{Name: "right", Refs: test.HashRefs(leafH)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: test.HashRefs(leftH, rightH)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	w := cas.NewWalker(st, func(n test.Node) error {
+		counts[n.Name]++
+		return nil
+	})
+	if err := w.Walk(ctx, rootH); err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 4 {
+		t.Fatalf("visited %d distinct objects, want 4: %v", len(counts), counts)
+	}
+	if counts["leaf"] != 1 {
+		t.Fatalf("shared leaf visited %d times, want 1", counts["leaf"])
+	}
+}
+
+// TestWalkerTerminatesOnCycle pins cycle safety: a non-injective HashFunc can
+// map an object onto its own address, so the walker must not recurse forever.
+func TestWalkerTerminatesOnCycle(t *testing.T) {
+	ctx := context.Background()
+	// A constant hash maps every object to the same address, so an object
+	// that references its own hash is a self-cycle.
+	cas.RegisterHash("consthash", func([]byte) cas.Hash {
+		h, _ := cas.NewHash("consthash", []byte{0xab})
+		return h
+	})
+	st, err := cas.New(mem.New(), jsoncodec.New[test.Node](), "consthash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	self, err := st.Put(ctx, test.Node{Name: "self"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Put(ctx, test.Node{Name: "self", Refs: test.HashRefs(self)}); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := 0
+	w := cas.NewWalker(st, func(n test.Node) error {
+		seen++
+		if seen > 10 {
+			return errors.New("walker revisited a cyclic node")
+		}
+		return nil
+	})
+	if err := w.Walk(ctx, self); err != nil {
+		t.Fatal(err)
+	}
+	if seen != 1 {
+		t.Fatalf("visited %d objects, want 1", seen)
 	}
 }

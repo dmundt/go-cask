@@ -46,46 +46,29 @@ func (a *Artifact) Type() string { return "artifact@1" }
 func (a *Artifact) References() []cas.Hash { return nil }
 
 // Manifest names the current artifact(s) of a build target. GC keeps
-// everything reachable from manifests and reclaims replaced artifacts.
+// everything reachable from manifests and reclaims replaced artifacts. The
+// reference field is cas.HashRef: it serializes as "algo:hex" and validates on
+// decode with no code here (cas-core §4.2).
 type Manifest struct {
-	Name      string     `json:"name"`
-	Artifacts []cas.Hash `json:"artifacts"`
+	Name      string        `json:"name"`
+	Artifacts []cas.HashRef `json:"artifacts,omitempty"`
 }
 
 func (m *Manifest) Type() string { return "manifest@1" }
 
-func (m *Manifest) References() []cas.Hash { return m.Artifacts }
-
-// MarshalJSON renders artifact hashes as "algo:hex" strings.
-func (m Manifest) MarshalJSON() ([]byte, error) {
-	arts := make([]string, 0, len(m.Artifacts))
-	for _, h := range m.Artifacts {
-		arts = append(arts, h.String())
+// References returns the artifact hashes, or nil for an empty manifest (nil
+// means "no references", which is what GC reads as unreachable).
+func (m *Manifest) References() []cas.Hash {
+	if len(m.Artifacts) == 0 {
+		return nil
 	}
-	return json.Marshal(struct {
-		Name      string   `json:"name"`
-		Artifacts []string `json:"artifacts,omitempty"`
-	}{m.Name, arts})
-}
-
-// UnmarshalJSON parses the string hashes back into Hash values.
-func (m *Manifest) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Name      string   `json:"name"`
-		Artifacts []string `json:"artifacts"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	m.Name = raw.Name
-	for _, s := range raw.Artifacts {
-		h, err := cas.ParseHash(s)
-		if err != nil {
-			return err
+	refs := make([]cas.Hash, 0, len(m.Artifacts))
+	for _, r := range m.Artifacts {
+		if h := r.Hash(); h != nil {
+			refs = append(refs, h)
 		}
-		m.Artifacts = append(m.Artifacts, h)
 	}
-	return nil
+	return refs
 }
 
 // gzipJSON compresses the JSON encoding of v (deterministic output: fixed
@@ -182,7 +165,7 @@ func (a *app) put(ctx context.Context, name, file string) (cas.Hash, bool, error
 			return nil, false, err
 		}
 	}
-	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: []cas.Hash{h}}); err != nil {
+	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: []cas.HashRef{cas.NewHashRef(h)}}); err != nil {
 		return nil, false, err
 	}
 	return h, dedup, nil
@@ -250,6 +233,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		dir, args = args[1], args[2:]
+	}
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, usage)
+		return 2
 	}
 	a, err := newApp(dir)
 	if err != nil {

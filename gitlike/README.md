@@ -18,7 +18,8 @@
 
 ## What it extends
 
-- **Four `Object[T]` types** with the self-describing envelope (`types.go`) — custom JSON methods render `Hash` values as `algo:hex` strings (a `Hash` interface cannot be unmarshaled by `encoding/json` directly).
+- **Four `Object[T]` types** with the self-describing envelope (`types.go`). Hash fields are value `cas.HashRef`: `cas.NewHashRef(h)` for a present reference, the zero value for an absent one, and the tag `omitzero` where absence should be left out of the encoding (`TreeEntry.Hash`, `Commit.Parent`). `Tree`, `TreeEntry` and `Tag` therefore contain **no** JSON code at all, and every reference is rendered as `algo:hex` and validated as it decodes (`ErrInvalidHash` for a malformed string). `Commit` keeps two small methods for its one mandatory-field rule: write refuses a tree-less commit, decode rejects a missing, empty, or null tree. Stored bytes — and so every object address — are unchanged.
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — advisory checks for hand-built objects (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent `HashRef` is valid where absence is legal). `Store.Put` marshals, it does not validate, so call a `Validate` yourself before `Put` when you build objects in code; a tree-less commit is the one case still rejected at `Put` (via `Commit.MarshalJSON`).
 - **`Repository`** — per-type `Store[T]` over one `cas.Backend` (cross-type access without `any`; the wrong store is a compile-time error).
 - **`Resolver` / `ResolvedObject` / `parseType` / `ResolveAny`** — typed resolution; `ResolveAny` reads the envelope type via `parseType` and dispatches to the typed `Resolve*`.
 - **`WalkGraph`, `CachedRepository`, `Preloader`** — whole-graph traversal, per-type LRU caches, and a background commit preloader.
@@ -26,7 +27,7 @@
 
 ## Code walkthrough
 
-- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
+- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
 - `repo.go` — `Repository` wires the four stores; `Resolver.ResolveAny` resolves any hash via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
 - `cached.go` — `CachedRepository` (per-type `LRUCache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
 - `gitlike_test.go` — round-trips, references, `ResolveAny` for every type, legacy unversioned envelopes, `WalkGraph`, cached repository, preloader.

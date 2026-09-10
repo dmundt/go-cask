@@ -14,15 +14,33 @@ import (
 
 type testObject struct {
 	Name string
-	Refs []cas.Hash
+	Refs []cas.HashRef
 }
 
-func (o testObject) Type() string           { return "test@1" }
-func (o testObject) References() []cas.Hash { return o.Refs }
+func (o testObject) Type() string { return "test@1" }
+
+// References returns the non-absent references, or nil for a leaf (cas.HashRef
+// serializes and validates itself, so this type needs no JSON code).
+func (o testObject) References() []cas.Hash {
+	if len(o.Refs) == 0 {
+		return nil
+	}
+	refs := make([]cas.Hash, 0, len(o.Refs))
+	for _, r := range o.Refs {
+		if h := r.Hash(); h != nil {
+			refs = append(refs, h)
+		}
+	}
+	return refs
+}
 
 func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) cas.Hash {
 	t.Helper()
-	h, err := s.Put(context.Background(), testObject{Name: name, Refs: refs})
+	obj := testObject{Name: name}
+	for _, r := range refs {
+		obj.Refs = append(obj.Refs, cas.NewHashRef(r))
+	}
+	h, err := s.Put(context.Background(), obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,8 +439,8 @@ func TestCachedStoreFullStats(t *testing.T) {
 	if st.Hits != 1 || st.Misses != 1 {
 		t.Fatalf("Hits/Misses = %d/%d, want 1/1", st.Hits, st.Misses)
 	}
-	if st.Loads != 0 {
-		t.Fatalf("Loads = %d, want 0", st.Loads)
+	if st.Loads != 1 {
+		t.Fatalf("Loads = %d, want 1 (one store fetch, second Get is memoized)", st.Loads)
 	}
 	if st.Evicts != 0 {
 		t.Fatalf("Evicts = %d, want 0", st.Evicts)

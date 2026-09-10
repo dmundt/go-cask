@@ -10,6 +10,132 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 ## [Unreleased]
 
+Code audit of the `v1.1.0` tree: a full read of `cas`, the backends, caches,
+codecs, CLI, viewer, the `gitlike` reference model and the examples, with fixes
+for the defects it found, plus a hash-serialization cleanup described below. No
+public `cas` API removal and no on-disk format change — existing stores stay
+readable and writable, and every stored object keeps its address.
+
+### Added
+
+- **`cas.HashRef` — the hash field type, so object types need no JSON code.**
+  `cas.Hash` marshals itself as its canonical `"algo:hexdigest"` string, but
+  `encoding/json` can never *allocate* a value into an interface field, so a
+  bare `Hash`/`[]Hash` field could be written and never read back. `HashRef`
+  closes that gap with one implementation in the core: it renders a present
+  reference as `"algo:hexdigest"` and an absent one as `""`, and on decode it
+  accepts `""`/`null` as absent while requiring every other value to parse — so
+  a decoded object can never hold an unparsable reference that would later
+  vanish from `References()`. There is exactly one field shape: a value
+  `HashRef`, built with `cas.NewHashRef(h)`, whose zero value is the absent
+  reference; a field tagged `omitzero` is left out of the encoding when absent.
+  `HashRef.Hash()` unwraps (nil = absent) and `HashRef.IsZero()` reports absence.
+  No on-disk format change: the JSON for every existing object is byte-identical,
+  so no object is re-addressed.
+- **`Validate() error` on the `gitlike` object types** (`TreeEntry`, `Tree`,
+  `Commit`, `Tag`) for objects built in code: a tree entry and a tag need a
+  name, a commit needs a tree, an absent reference is valid where absence is
+  legal. Advisory — `Store.Put` marshals, it does not validate — except the
+  nil-tree commit, which `Commit.MarshalJSON` still rejects at write time.
+
+### Changed
+
+- **Library baseline raised to Go 1.24** (`go.mod`, `library-design.md`,
+  `defaults.md`, `coding-guidelines.md`, `versioning.md`, `AGENTS.md`,
+  `README.md`). `HashRef`'s optional fields rely on the `omitzero` JSON tag
+  option, which an older standard library silently ignores — that would drop the
+  option and change the stored bytes, so the floor is now enforced by `go.mod`
+  (a consumer on Go 1.22/1.23 gets a clear build error instead of a different
+  wire format).
+- **All per-type hash JSON code is gone.** `gitlike`'s `TreeEntry` and `Tag`
+  now carry no JSON methods at all, and `Commit` keeps only two small ones for
+  its one mandatory-field rule (write refuses a tree-less commit; decode rejects
+  a missing, empty, or null tree). The same cleanup removed the hand-written
+  marshallers *and* unmarshallers in `internal/test/types.go` (`Node`),
+  `examples/notes/types.go` (`Note`), `examples/artifacts/main.go` (`Manifest`),
+  `cas/cache/prefetch/prefetch_test.go` and `cas/cache/mem/cached_test.go`
+  (`testObject`), plus the now-unused `hashStrings`/`parseHashes` helpers.
+  Repository-wide, hash JSON code went from nine methods in five packages to two
+  core methods (`HashRef`, plus `Hash`'s marshaler) and `Commit`'s guard. Stored
+  payloads and addresses are unchanged, pinned by `TestStoredAddressesPinned`,
+  `TestNoteJSONPayloadPinned` and `TestManifestJSONPayloadPinned`.
+- Docs and agent instructions updated for the new field type: `cas-core.md`
+  (v35→v38: §4.2 Hash JSON form + the single value `HashRef` shape, §4.12 gitlike
+  serialization and advisory `Validate()`, §7.1 surface adds `HashRef`/
+  `NewHashRef`, §7.2 object-type recipe), `library-design.md` v17,
+  `coding-guidelines.md` v13, `defaults.md` v16, `versioning.md` v11,
+  `AGENTS.md` v13 (object-type recipe step and a type-checked usage example),
+  `gitlike/README.md`, `examples/notes/README.md`,
+  `examples/artifacts/README.md`. A godoc `ExampleHashRef` in `cas` shows the
+  field pattern from `go doc`.
+
+### Fixed
+
+- **Viewer: the maintenance GC form was unusable.** `templates/gc.html` shipped
+  no CSRF field, so every submit was rejected with 403 even though the handler
+  passed a token; the form now carries it.
+- **Viewer: a template error left a half-written 200.** `render` executes into a
+  buffer and answers 500 on failure instead of streaming a partial page.
+- **Viewer: an empty token could authenticate.** `resolveToken` rejects an empty
+  submission and compares tokens in constant time; `cask web -tokens` skips
+  empty token pairs (`-tokens "admin="` no longer creates a `""` key).
+- **Viewer: login-throttle TOCTOU and missing backoff.** The budget check and
+  the attempt record now share one critical section, an exhausted budget blocks
+  for an exponentially growing backoff (capped at 30 min), and stale per-IP
+  state is swept so a rotating caller cannot grow the map without bound.
+- **Viewer/CLI: type sniffing failed for large objects.** The TLV header is
+  parsed without requiring the payload, so objects larger than the 256 KiB
+  preview limit report their type; the object page shows the real size from the
+  backend, and the raw view marks a truncated preview.
+- **CLI:** the global `-store` is honored by `cask web` (it was dropped, so the
+  viewer served `./objects`); `cask meta` reports the real object size instead
+  of the bounded read length; `cask list -limit`/`-offset` reject out-of-range
+  values (exit 2) instead of silently clamping; `put` implements the documented
+  `-json` output.
+- **`lru.Cache`:** `Clear`/`Evict`/`EvictKey` drop the recency bookkeeping, so
+  cleared entries no longer retain objects or cause phantom evictions.
+- **`CacheMetrics.Loads`** was exported but never incremented; `CachedObject.Load`
+  now counts its store fetch.
+- **`cas`:** `Put` rejects an object whose `Type()` is empty (it previously wrote
+  an envelope that `Get` could never read); payload-decode errors keep their
+  cause (`%w`); `Walker.Walk` uses an explicit stack plus a visited set, so a
+  cyclic or deeply nested graph terminates instead of exhausting the goroutine
+  stack; `RegisterHash` validates the algorithm name (`^[a-z0-9]+$`) and drops a
+  stale streaming hasher, keeping `HashBytes`/`Store`/`Verify` in agreement.
+- **fs backend:** `Clean` reclaims the `<hex>.tmp.<n>` collision fallbacks it
+  missed, returns walk/removal errors, and tolerates a missing base; `Put`
+  observes cancellation while streaming and treats an existing regular file as
+  idempotent success (Windows rename-over-open); `Get` retries briefly while a
+  concurrent rename makes the file unopenable; `hashPath` maps a non-conforming
+  algorithm name to a safe in-root element.
+- **mem backend:** `WithMaxSize` bounds buffering, so an oversized `Put` is
+  rejected without allocating past the cap.
+- **gitlike:** `Commit.MarshalJSON` returns an error for a nil tree instead of
+  panicking on the nil `cas.Hash` interface.
+- **examples:** `examples/artifacts` no longer panics on `-store <dir>` with no
+  command; `examples/api/server` guards its size map with a mutex and verifies
+  objects by streaming the hash (it previously hashed only the first 1 MiB, so
+  every intact object above that was reported invalid).
+- **benchmarks:** the FS `Put` benchmark varies 8 bytes of content per
+  iteration instead of 2, so its hashes no longer repeat every 65536 iterations.
+
+### Changed
+
+- Docs re-aligned with the code: `cas-core.md` (v34→v35: `RegisterHash`
+  validation, walker visited set, `CacheMetrics.Loads` semantics, fs
+  rename/`Clean`/listing scope, mem buffering), `cli.md` (v12→v13: `gc`/`prune`
+  grace default is 1h — the text said 24h while the code and `defaults.md` said
+  1h — plus the exact `-json` shapes), `backend-architecture.md` (v14→v15) and
+  `versioning.md` (v9→v10: grace default), `cas/store.go`'s stale pre-TLV
+  on-disk-format comment, and `cas/backend.go`'s integrity note (bytes are not
+  re-hashed on read unless `Verify` runs).
+- `internal/index.Paginate` computes its window without overflow; callers
+  validate the bounds first.
+- Tests added: backend cancellation and size bounds, fs concurrency (`-race`),
+  walker cycle/shared subgraph, hash `Equal` across algorithms, legacy envelope
+  round-trip, cache `Loads` and LRU bookkeeping, and viewer CSRF/throttle/
+  large-object coverage.
+
 ## [v1.1.0] - 2026-09-09
 
 Minor release: an **additive viewer feature** plus docs/tests/CI work. No change

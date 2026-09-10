@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,34 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 )
+
+// TestManifestJSONPayloadPinned locks the stored payload shape: it is the JSON
+// the hand-written marshaller used to emit, so dropping that marshaller in
+// favour of cas.Hash's own json.Marshaler does not re-address stored
+// manifests (the manifest hash is part of the GC reachability set).
+func TestManifestJSONPayloadPinned(t *testing.T) {
+	h, err := cas.HashBytes("sha256", []byte("artifact payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: []cas.HashRef{cas.NewHashRef(h)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"name":"target","artifacts":["` + h.String() + `"]}`
+	if string(raw) != want {
+		t.Fatalf("Manifest JSON = %s, want %s", raw, want)
+	}
+
+	// An empty artifact list stays omitted, as before.
+	raw, err = json.Marshal(Manifest{Name: "target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != `{"name":"target"}` {
+		t.Fatalf("empty-artifacts Manifest JSON = %s", raw)
+	}
+}
 
 func newTestApp(t *testing.T) *app {
 	t.Helper()
@@ -179,11 +208,12 @@ func TestRunCommands(t *testing.T) {
 func TestRunUsageErrors(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cases := [][]string{
-		{},          // no args
-		{"-store"},  // -store missing value
-		{"put"},     // put missing args
-		{"get"},     // get missing hash
-		{"unknown"}, // unknown command
+		{},                      // no args
+		{"-store"},              // -store missing value
+		{"-store", t.TempDir()}, // -store with no command (must not panic)
+		{"put"},                 // put missing args
+		{"get"},                 // get missing hash
+		{"unknown"},             // unknown command
 	}
 	for _, c := range cases {
 		stdout.Reset()

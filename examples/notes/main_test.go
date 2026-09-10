@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -21,6 +22,33 @@ func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 	return repo, newResolver(repo)
 }
 
+// TestNoteJSONPayloadPinned locks the stored payload shape: it is the JSON the
+// hand-written marshaller used to emit, so dropping that marshaller in favour
+// of cas.Hash's own json.Marshaler does not re-address stored notes.
+func TestNoteJSONPayloadPinned(t *testing.T) {
+	h, err := cas.HashBytes("sha256", []byte("tag payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: []cas.HashRef{cas.NewHashRef(h)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"title":"t","body":"b","tags":["` + h.String() + `"]}`
+	if string(raw) != want {
+		t.Fatalf("Note JSON = %s, want %s", raw, want)
+	}
+
+	// Empty reference slices stay omitted (`omitempty`), as before.
+	raw, err = json.Marshal(Note{Title: "t", Body: "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != `{"title":"t","body":"b"}` {
+		t.Fatalf("empty-refs Note JSON = %s", raw)
+	}
+}
+
 // Acceptance: notes resolve across all three types.
 func TestCrossTypeResolution(t *testing.T) {
 	ctx := context.Background()
@@ -34,7 +62,7 @@ func TestCrossTypeResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: []cas.Hash{tag}, Attachments: []cas.Hash{att}})
+	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: []cas.HashRef{cas.NewHashRef(tag)}, Attachments: []cas.HashRef{cas.NewHashRef(att)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +126,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: []cas.Hash{second}})
+	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: []cas.HashRef{cas.NewHashRef(second)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +150,7 @@ func TestBrokenReference(t *testing.T) {
 	ctx := context.Background()
 	repo, res := newTestRepo(t)
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.Hash{missing}})
+	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.HashRef{cas.NewHashRef(missing)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,11 +171,11 @@ func TestWalkerChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: []cas.Hash{leaf}})
+	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: []cas.HashRef{cas.NewHashRef(leaf)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: []cas.Hash{mid}})
+	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: []cas.HashRef{cas.NewHashRef(mid)}})
 	if err != nil {
 		t.Fatal(err)
 	}

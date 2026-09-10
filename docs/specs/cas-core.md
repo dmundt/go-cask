@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v34
+version: v38
 ---
 
 # CAS Core — go-cask
@@ -241,9 +241,14 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 ```
 
 - Built-in algorithm: `sha256` (others registered at runtime, e.g. `blake3`).
+- `RegisterHash` rejects (panics on) a name outside `^[a-z0-9]+$` or a nil function: such a name can never be parsed back out of a hash string and is unsafe as a store path element (§4.4 derives the algorithm directory from it). Re-registering a name **drops any streaming hasher** registered for it, so `HashBytes`, `Store` and `Verify` always agree on one algorithm name's address.
 - `cas.New(raw, codec, algo)` resolves the algorithm at construction; `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot path (library-design §3).
 - `NewHasher` returns a streaming hasher for a registered algorithm (built-ins register `hash.Hash` constructors); one-shot-only algorithms cannot stream — use `HashBytes`. `HashBytes` uses the streaming hasher when available, else the one-shot `HashFunc`. These helpers serve HTTP/CLI (hash-on-write, verify) without duplicating the algorithm switch.
-- Registry populated at init; guard with a mutex once registration can occur after startup.
+- Registry populated at init; guarded by a `sync.RWMutex` so registration after startup is race-free.
+- **JSON form:** the concrete `Hash` implements `json.Marshaler`, so a `Hash` serializes as its canonical `"algo:hexdigest"` string (directly, in an interface field, or in a `[]Hash` slice). There is deliberately **no** `UnmarshalJSON` on `Hash`, and `encoding/json` cannot allocate a value into an interface field at all — so a `Hash`/`[]Hash` field can be *written* but never *read back*. An object type that must decode therefore declares **`HashRef`** fields, not bare `Hash` fields.
+- **`HashRef` — the hash field type.** `cas.HashRef` holds a Hash or absence and implements both directions, so object types need no JSON code for hashes: `MarshalJSON` renders a present reference as `"algo:hexdigest"` and an absent one as `""`; `UnmarshalJSON` maps `""`/`null` to absent and otherwise requires a parseable hash, so a decoded object can never hold an unparsable reference that would later vanish from `References()`. `NewHashRef(h)` builds a present reference (a nil Hash means absent), `HashRef.Hash()` unwraps (nil = absent), and `HashRef.IsZero()` reports absence.
+- **One field shape: a plain value.** Every hash field is a value `HashRef`; optional references are tagged **`omitzero`** (Go 1.24+), which omits the field when `IsZero()` reports absent, while a field that is always present simply uses `json:"tree"` and keeps its historical `""` for an absent value. There are no pointer fields and no `omitempty`, so one literal shape serves required, optional and slice fields (`[]HashRef` works element-wise) and the zero value is the absent reference. The module therefore declares `go 1.24`: an older standard library ignores the unknown tag option, which would silently change the stored bytes and the object's address.
+- **Validation belongs to the wrapper.** Because decoding is the wrapper's job, a reference whose absence is illegal *and* must fail at decode time needs only a small per-type guard on presence — never a hand-written `UnmarshalJSON` for rendering (gitlike's `Commit`, §4.12, is the reference implementation).
 
 **Algorithm coexistence & migration:**
 - Several algorithms coexist (supported): the byte layer namespaces per algorithm (`<base>/<algo>/...`), so one store holds many algorithms; `List(algo)` filters; `Stats` reports per-algorithm counts. Different `Store[T]` over one `Backend` may write with different algorithms.
@@ -301,19 +306,21 @@ MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync
 ```
 - Directory fsync is optional via `WithDirSync()` (fsync the parent after rename so the publish is crash-durable). Best-effort — platforms that can't sync dirs (Windows) make it a no-op (operations §1); default off.
 - Temp name is **unique per writer**: base `<path>.tmp`; if `O_EXCL` fails (only possible across processes, since the in-process mutex serializes Puts) append a numeric suffix `<path>.tmp.<n>`. No two writers share a temp inode, so concurrent same-hash writers across processes cannot corrupt each other's write or the stored object.
-- Rename is atomic: on POSIX the last writer wins with identical bytes; on Windows a concurrent rename-over-existing can transiently fail (no cross-process last-wins), so a racing `Put` MAY return an error — the object is never corrupted and the failed temp is removed.
-- On any failure the temp is removed; readers never observe partial files. `.tmp` files ignored by `List`/`Stats`.
+- Rename is atomic: on POSIX the last writer wins with identical bytes; on Windows a concurrent rename-over-existing can transiently fail (no cross-process last-wins). Because the address is the content, an existing **regular file** at the destination already holds those bytes, so such a `Put` reports success (idempotent); anything else at the path is a real error. A concurrent `Get` retries briefly while the file exists but cannot be opened (Windows sharing violation), so readers still see the old or the new file.
+- On any failure the temp is removed; readers never observe partial files. `.tmp` files (`<hex>.tmp` and the `<hex>.tmp.<n>` collision fallbacks) are ignored by `List`/`Stats` and reclaimed by `Clean`.
+- `Put` checks `ctx` before each read from the source, so a canceled `Put` (HTTP upload, CLI pipe) stops streaming and publishes nothing.
 
 **Concurrency (lock-free reads):** writes are atomic, so `Get`/`Exists`/`List`/`Stats` take **no lock** — a reader sees the old or the new file, never partial (performance §2). `Put` is idempotent, so concurrent same-hash writers never corrupt — in-process via the mutex, across processes via unique temp names (with the POSIX/Windows rename caveat). At most one `sync.Mutex` coordinates `Put`/`Delete` in-process; reads are wait-free. **Cross-process guarantees stop at object writes**: no inter-process locking, so a maintenance sweep (`Delete`/`GC`/`Prune`/`Clean`) racing another process's writes is NOT safe. The **grace model** applies: sweeps that MAY race live writers MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h; forced `--min-age 0` is the dangerous variant).
 
-**Maintenance methods** (§4.11): `Stats`, `Verify`, `GC`, `Clean`; `Size(h)` returns an object's size (`ErrNotFound` when missing); `Clean(ctx, olderThan)` sweeps leftover `*.tmp` older than the threshold — always safe (`.tmp` never a valid object).
+**Maintenance methods** (§4.11): `Stats`, `Verify`, `GC`, `Clean`; `Size(h)` returns an object's size (`ErrNotFound` when missing); `Clean(ctx, olderThan)` sweeps leftover temp files (`<hex>.tmp` and `<hex>.tmp.<n>`) older than the threshold — always safe (a temp file is never a valid object). It tolerates a missing store directory (nothing to sweep) and returns walk/removal errors instead of swallowing them.
+- **Listing scope:** `List`/`Stats` rebuild each hash from its path, which requires the algorithm to be registered in the calling process (§4.2). Object files written under an algorithm this process has not registered are skipped — register the algorithm before listing such a store.
 
 ### 4.5 `memory.Backend` — in-memory backend (`cas/backend/mem`)
 
 Keeps objects in `map[string][]byte` (keyed by `h.String()`) under a `sync.RWMutex`.
 - **Purpose:** fast, dependency-free, deterministic storage for unit/property/fuzz tests and benchmarks; **not persistent**.
 - **Contracts:** same `Backend` semantics as fs — idempotent `Put`; `Get` returns a reader the caller MUST close (missing → `ErrNotFound`); `Delete` no-op on missing; `List(algo)` filters.
-- **Buffering:** `Put` buffers the whole stream (`io.ReadAll`); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`).
+- **Buffering:** `Put` buffers the whole stream (`io.ReadAll`); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`). With `WithMaxSize` the read is bounded to the remaining budget first, so an oversized `Put` is rejected without allocating past the cap.
 - **Concurrency:** `RWMutex` (the lock-free rename trick doesn't apply; still far faster than disk).
 - **Stats:** implements `Backend.Stats` (`*cas.Stats`), recomputing per-algorithm counts/total bytes/object count from the map each call — no desynchronized counter. No `Verify`/`GC`/`Prune` (fs-only, §4.11).
 - **Construction:** `memory.New(...)` (`cas/backend/mem`; optional `memory.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.
@@ -377,14 +384,14 @@ func (w *Walker[T]) Walk(ctx context.Context, h Hash) error
 ```
 
 - `visit` receives every reached object as the concrete `T`; reads via `Store[T].Get`.
-- Recurses over `obj.References()`; works for any object type. Content addressing makes cycles impossible, so no visited set is needed.
+- Traversal is **iterative with an explicit stack and a visited set** keyed by `h.String()`: each hash is visited at most once, a shared subgraph is not visited twice, and a cyclic or very deep graph terminates instead of exhausting the goroutine stack. A registered `HashFunc` need not be injective, so a cycle is constructible through the public API even though `sha256` content addressing makes one impossible.
 - Mixed-type traversal is the app's job (`gitlike` resolver, §4.12).
 
 ### 4.10 Caching & lazy loading
 
 **`memory.CachedObject[T]`** — lazy proxy for one hash (`cas/cache/mem`): fields `hash`, back-pointer to its `CachedStore[T]`, `sync.RWMutex`, `obj`, `loaded`, `err`. `Load(ctx)` uses **double-checked locking**, loads exactly once, memoizes object AND error. `IsLoaded()` reports state without loading.
 
-**`memory.CachedStore[T]`** — wraps `Store[T]`, built with `memory.New(store)`. Cache: `sync.Map` keyed by `h.String()` → `*CachedObject[T]`. Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic). `Proxy(ctx, h)` returns a not-yet-loaded `*CachedObject[T]` (verifies existence first); `Get` = `Proxy` + `Load`. `Preload(ctx, hashes)` loads in parallel (worker goroutines + error channel); `PreloadRecursive(ctx, h, depth)` preloads the graph. `CacheStats()`/`Evict(h)`/`Clear()`/`Warmup(ctx, hashes)`.
+**`memory.CachedStore[T]`** — wraps `Store[T]`, built with `memory.New(store)`. Cache: `sync.Map` keyed by `h.String()` → `*CachedObject[T]`. Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic): `Hits`/`Misses` count `Proxy` lookups, `Loads` counts store fetches performed by `CachedObject.Load` (at most one per cached object, including a fetch that returns an error), `Evicts` counts removals by a policy or `Evict`. `OnNew` is a construction-time hook (set it before the cache is used concurrently). `Proxy(ctx, h)` returns a not-yet-loaded `*CachedObject[T]` (verifies existence first); `Get` = `Proxy` + `Load`. `Preload(ctx, hashes)` loads in parallel (worker goroutines + error channel); `PreloadRecursive(ctx, h, depth)` preloads the graph. `CacheStats()`/`Evict(h)`/`Clear()`/`Warmup(ctx, hashes)`.
 
 **`lru.Cache[T]`** — size-bounded LRU (`cas/cache/lru`): wraps/embeds `CachedStore[T]`, adds LRU with `maxSize` (in-tree std-lib, §8 d3), overrides `Proxy`/`Get` to track/promote. `lru.New(store, maxSize)` returns `(*lru.Cache[T], error)`; rejects `maxSize <= 0`.
 
@@ -410,7 +417,9 @@ A shared **reference object-model library** at `gitlike/`, `package gitlike` —
 | `Tag` | `Name`, `Target Hash`, `Tagger`, `Message` | target |
 
 - All four versioned from the start (`blob@1`, `tree@1`, `commit@1`, `tag@1`); a future incompatible change becomes `type@2` with the old deserializer registered.
-- `Parent`/`Target` are `nil`-able (`Hash` interface) — nil marks root/leaf. Cross-type references are plain `Hash`; target type discovered at resolution, not baked in.
+- `Parent`/`Target` may be absent — an absent reference marks root/leaf. Cross-type references are plain `Hash`; target type discovered at resolution, not baked in.
+- **Serialization:** every reference field is a value `cas.HashRef` (§4.2) — `omitzero` where absence is legal (`TreeEntry.Hash`, `Commit.Parent`), a plain field where the value is always present (`Commit.Tree`, `Tag.Target`; a tag target may still be absent and keeps its historical `""`). `Tree`, `TreeEntry` and `Tag` therefore carry **no** JSON code at all, and every reference is rendered and validated by the wrapper. `Commit` keeps two small methods for its one mandatory-field invariant: `MarshalJSON` refuses a tree-less commit on write, and `UnmarshalJSON` turns a missing, empty, or null tree into a decode error. Stored bytes — and therefore every object address — are unchanged (`TestStoredAddressesPinned`).
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` is advisory for objects built in code: a `TreeEntry` needs a name, a `Commit` needs a tree (checked with `Tree.Hash() != nil`), a `Tag` needs a name, and an absent `HashRef` is valid wherever absence is legal. `Store.Put` marshals but does not validate, so callers constructing objects by hand SHOULD call `Validate` before `Put`; the nil-tree commit is the one case still rejected at `Put` time.
 
 **`Repository` and `Resolver` — cross-type access without `any`:**
 
@@ -478,7 +487,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 
 | Area | Exported identifiers |
 |---|---|
-| Addressing | `Hash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
+| Addressing | `Hash`, `HashRef`, `NewHashRef`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
 | Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
@@ -490,7 +499,7 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 
 **Add a storage backend:** implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`) — idempotent `Put`, no-op `Delete` on missing, `List(algo)` filter, `Get`→`ErrNotFound` on missing, a `Stats` summary (§4.11). Keep the byte layer non-generic; the `memory` backend is the minimal reference; add durability per operations.md §1 where persistent.
 
-**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
+**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. Declare hash fields as value `cas.HashRef` (`json:"…,omitzero"` when the reference may be absent) so the type needs no JSON code, and unwrap with `HashRef.Hash()` in `References()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
 
 **Add a hash algorithm:** `cas.RegisterHash("blake3", func(data []byte) cas.Hash {...})`; then `cas.New(raw, codec, "blake3")` works; existing objects under other algorithms remain readable.
 

@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults & Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v15
+version: v16
 ---
 
 # Defaults & Behavior — go-cask
@@ -100,7 +100,7 @@ Baselines are calibratable on CI hardware (performance §11.4) — default targe
 | Item | Default/value | Defined in |
 |---|---|---|
 | Toolchain / `go.mod` | Go 1.27 | coding-guidelines §1 |
-| Library baseline | Go 1.22+ | library-design §5 |
+| Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | std-lib only (external only if justified + vendored) | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS/CSS | coding-guidelines §4 |
 | Lean-core budget | `cas/` ≤ ~1500 LOC, ≤ ~20 exported | library-design §1 |

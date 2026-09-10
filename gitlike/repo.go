@@ -144,7 +144,7 @@ func PrintObject(o *ResolvedObject) string {
 	case "commit":
 		return fmt.Sprintf("commit by %s: %s", o.Commit.Author, o.Commit.Message)
 	case "tag":
-		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortHash(o.Tag.Target))
+		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortHash(o.Tag.Target.Hash()))
 	default:
 		return fmt.Sprintf("unknown type %q", o.Type)
 	}

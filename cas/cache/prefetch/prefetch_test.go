@@ -2,7 +2,6 @@ package prefetch_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -15,45 +14,25 @@ import (
 )
 
 type testObject struct {
-	Name string
-	Refs []cas.Hash
+	Name string        `json:"Name"`
+	Refs []cas.HashRef `json:"Refs"`
 }
 
-func (testObject) Type() string             { return "test@1" }
-func (o testObject) References() []cas.Hash { return o.Refs }
+func (testObject) Type() string { return "test@1" }
 
-// MarshalJSON renders references as "algo:hex" strings so they survive
-// serialization (cas.Hash is an interface over unexported fields).
-func (o testObject) MarshalJSON() ([]byte, error) {
-	refs := make([]string, len(o.Refs))
-	for i, h := range o.Refs {
-		refs[i] = h.String()
+// References returns the non-absent references, or nil for a leaf (cas.HashRef
+// serializes and validates itself, so this type needs no JSON code).
+func (o testObject) References() []cas.Hash {
+	if len(o.Refs) == 0 {
+		return nil
 	}
-	return json.Marshal(struct {
-		Name string
-		Refs []string
-	}{o.Name, refs})
-}
-
-// UnmarshalJSON parses the string references back into Hash values.
-func (o *testObject) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Name string
-		Refs []string
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	o.Name = raw.Name
-	o.Refs = make([]cas.Hash, 0, len(raw.Refs))
-	for _, s := range raw.Refs {
-		h, err := cas.ParseHash(s)
-		if err != nil {
-			return err
+	refs := make([]cas.Hash, 0, len(o.Refs))
+	for _, r := range o.Refs {
+		if h := r.Hash(); h != nil {
+			refs = append(refs, h)
 		}
-		o.Refs = append(o.Refs, h)
 	}
-	return nil
+	return refs
 }
 
 func newStore(t *testing.T) (*cas.Store[testObject], *mem.CachedStore[testObject]) {
@@ -124,7 +103,7 @@ func TestSmartCachePrefetchReference(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Hash{leaf}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(leaf)}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	obj, err := sc.GetWithPrefetch(ctx, parent)
@@ -144,8 +123,8 @@ func TestSmartCachePrefetchChainRecursion(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Hash{leaf}})
-	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []cas.Hash{parent}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(leaf)}})
+	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []cas.HashRef{cas.NewHashRef(parent)}})
 	sc := prefetch.NewSmartCache(cs, 3)
 
 	if _, err := sc.GetWithPrefetch(ctx, root); err != nil {
@@ -164,7 +143,7 @@ func TestSmartCachePrefetchSkipsMissing(t *testing.T) {
 	s, cs := newStore(t)
 	child, _ := s.Put(ctx, testObject{Name: "child"})
 	missing, _ := cas.ParseHash("sha256:1111111111111111111111111111111111111111111111111111111111111111")
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.Hash{child, missing}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(child), cas.NewHashRef(missing)}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	if _, err := sc.GetWithPrefetch(ctx, parent); err != nil {

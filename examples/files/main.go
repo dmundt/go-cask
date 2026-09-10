@@ -92,7 +92,7 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Hash, error) {
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: h, Mode: "100644"})
+		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: cas.NewHashRef(h), Mode: "100644"})
 	}
 	h, err := a.repo.Trees.Put(ctx, &gitlike.Tree{Entries: entries})
 	if err != nil {
@@ -113,8 +113,8 @@ func (a *app) commit(ctx context.Context, msg string) (cas.Hash, error) {
 	}
 	parent, _ := a.headCommit() // no parent for the first commit
 	c := &gitlike.Commit{
-		Tree:    tree,
-		Parent:  parent,
+		Tree:    cas.NewHashRef(tree),
+		Parent:  cas.NewHashRef(parent),
 		Author:  "files",
 		Message: msg,
 		Time:    time.Now(),
@@ -138,7 +138,7 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(out, "%s %s\n", short(h), c.Message)
-		h = c.Parent
+		h = c.Parent.Hash() // nil for a root commit: the walk ends
 	}
 	return nil
 }

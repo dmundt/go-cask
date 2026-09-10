@@ -24,36 +24,39 @@ import (
 
 // CacheMetrics are atomic counters tracking cache behavior.
 type CacheMetrics struct {
-	Hits   atomic.Uint64
-	Misses atomic.Uint64
-	Loads  atomic.Uint64
-	Evicts atomic.Uint64
+	Hits   atomic.Uint64 // Proxy found the object already cached
+	Misses atomic.Uint64 // Proxy had to create a cache entry
+	Loads  atomic.Uint64 // CachedObject.Load fetched the object from the store
+	Evicts atomic.Uint64 // entries removed by a policy or by Evict
 }
 
 // CacheStats is a point-in-time snapshot of cache behavior.
 type CacheStats struct {
-	Hits    uint64
-	Misses  uint64
-	Loads   uint64
-	Evicts  uint64
-	HitRate float64
-	Size    int
+	Hits    uint64  // Proxy hits
+	Misses  uint64  // Proxy misses
+	Loads   uint64  // store fetches by Load
+	Evicts  uint64  // entries evicted
+	HitRate float64 // Hits / (Hits + Misses), 0 when there was no access
+	Size    int     // entries currently cached
 }
 
 // CachedObject[T] is a lazy proxy for one hash: it loads the object from the
 // underlying Store[T] exactly once (double-checked locking) and memoizes the
 // result.
 type CachedObject[T cas.Object[T]] struct {
-	store  *cas.Store[T]
-	hash   cas.Hash
-	mu     sync.RWMutex
-	obj    T
-	err    error
-	loaded bool
+	store   *cas.Store[T]
+	metrics *CacheMetrics
+	hash    cas.Hash
+	mu      sync.RWMutex
+	obj     T
+	err     error
+	loaded  bool
 }
 
 // Load returns the object, loading it from the underlying store on first
-// access and memoizing the result.
+// access and memoizing the result. The first Load for a hash records one
+// CacheMetrics.Loads, whether or not the store fetch succeeds; later calls are
+// served from the memoized value.
 func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	c.mu.RLock()
 	if c.loaded {
@@ -69,6 +72,9 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 	}
 	obj, err := c.store.Get(ctx, c.hash)
 	c.obj, c.err, c.loaded = obj, err, true
+	if c.metrics != nil {
+		c.metrics.Loads.Add(1)
+	}
 	return obj, err
 }
 
@@ -95,7 +101,8 @@ func New[T cas.Object[T]](store *cas.Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
 }
 
-// OnNew sets the callback called when a new key is added to the cache.
+// OnNew sets the callback called when a new key is added to the cache. Set it
+// during construction, before the cache is used concurrently.
 func (c *CachedStore[T]) OnNew(fn func(key string)) { c.onNew = fn }
 
 // Lookup returns the cached object for key, or nil if absent.
@@ -132,7 +139,7 @@ func (c *CachedStore[T]) Proxy(ctx context.Context, h cas.Hash) (*CachedObject[T
 	if !exists {
 		return nil, fmt.Errorf("cache: %w: %s", cas.ErrNotFound, h)
 	}
-	co := &CachedObject[T]{store: c.store, hash: h}
+	co := &CachedObject[T]{store: c.store, metrics: &c.metrics, hash: h}
 	actual, loaded := c.cache.LoadOrStore(key, co)
 	if !loaded && c.onNew != nil {
 		c.onNew(key)
