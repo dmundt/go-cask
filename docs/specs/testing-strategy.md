@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v15
+version: v16
 ---
 
 # Testing Strategy — go-cask
@@ -19,7 +19,7 @@ CASK's value is its invariants (same bytes ⇒ same digest ⇒ stored once, immu
 | Immutability | stored bytes never change after `Put` |
 | Integrity | `Verify` passes intact, fails after ANY byte flip |
 | Layout equivalence | same content addressable under every `FanOut`/`FanLevels` combo |
-| Path round-trip | `pathToDigest(hashPath(d))` equals `d` for every layout |
+| Path round-trip | `pathToDigest(digestPath(d))` equals `d` for every layout |
 | Errors | missing object on any read → `ErrNotFound`; `ParseDigest` garbage → `ErrInvalidDigest` |
 | Invariants | a type declaring `Validate()` cannot be written invalid (`Put` rejects) and a stored object violating it is `ErrCorrupt` on `Get`; a nil object is rejected on `Put`, a payload decoding to nil is `ErrCorrupt` |
 

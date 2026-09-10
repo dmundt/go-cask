@@ -126,23 +126,52 @@ payloads are unchanged, so addresses are stable *within* this model.
 - The `go 1.24` floor stays: object fields still use `omitzero`, and an older
   standard library would emit `""` instead of omitting an absent reference.
 
+### Internal
+
+- **Identifiers that hold a digest are now named `…Digest`/`…digest`** where the
+  old name was a leftover from the removed `cas.Hash`: `hashPath` → `digestPath`
+  (fs), `shortHash` → `shortDigest` and `hashWithType` → `digestWithType`
+  (viewer + `gitlike`), `parseHash`/`parseHashLines` → `parseDigest`/
+  `parseDigestLines` (viewer), `objectRow.Hash` → `Digest`,
+  `hashWithType` → `digestWithType`, `test.HashData` → `test.DigestData`,
+  `parseHashParam` → `parseDigestParam` (example API), `auditRow.hash` →
+  `digest`, plus the prose/comments that called a digest a hash. No exported
+  identifier changed, no stored byte changed, and no behavior changed.
+- Deliberately **not** renamed: `cas.Hasher` (the algorithm seam),
+  `cas/hash/sha256`, `NewHasher` (stdlib `hash.Hash`), "hash-on-write", the
+  `{hash}` route/CLI params and `"hash"` JSON keys/UI labels (the user-facing
+  word), and `gitlike.TreeEntry.Hash` — its `json:"hash,omitzero"` tag is a
+  **stored payload key**, so renaming the tag would re-address every tree while
+  commits still point at the old digests; the Go field rename (tag unchanged,
+  so no data change) is scheduled with the v2 module move.
+- **`internal/web` has two dead helpers**: the `shortDigest` FuncMap entry is
+  registered but no template calls it (templates use the precomputed
+  `objectRow.Short` field), and `digestWithType` has no caller at all — the
+  `docs/specs/viewer-design.md` §4 helper list (`humanSize`, `byteSize`, …)
+  still describes a FuncMap the viewer does not build. Left as-is (renamed only)
+  rather than wired up or deleted, pending a decision.
+- `docs/specs/AGENT.md` §6 now carries the **`hash` vs `digest`** glossary row
+  that makes the surviving `hash` names intentional rather than debt.
+
 ### Docs
 
-`cas-core.md` v41→v45 (the `Digest`/`Hasher` model throughout: invariants,
+`cas-core.md` v41→v46 (the `Digest`/`Hasher` model throughout: invariants,
 diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
 §8 decisions; then the `Validator` contract, the codec-injected
 `gitlike.Repository` and its migration note; then the one-base exclusivity rule
 and the "several stores under one root" recipe in §4.4; then the diagram pass,
 which adds `Validator`/`Codecs` and corrects stale classes and member
-signatures), `library-design.md`
+signatures; then `digestPath`/`shortDigest` in §4.4/§4.12), `library-design.md`
 v20→v23 (`cas.Validator` in the exported surface; the third ratified exception
 in §5), `coding-guidelines.md` v14→v15, `defaults.md` v17→v18,
 `examples.md` v16→v17, `extensions.md` v7→v9 (the rejected `WithNamespace`
 decision in §3), `operations.md` v7→v9 (the legacy store's actual failure
-symptoms in §5), `testing-strategy.md` v13→v15 (the invariant law),
-`versioning.md` v14→v17 (the third exception, the `v1.3.0` release, and the
-layout's part in the break), `docs/index.md` v8→v9, `AGENTS.md` v16→v20 (the
-one-base rule in Constraints; `Validator` in the architecture figures),
+symptoms in §5), `testing-strategy.md` v13→v16 (the invariant law; `digestPath`
+in the path round-trip law), `versioning.md` v14→v17 (the third exception, the
+`v1.3.0` release, and the layout's part in the break), `docs/index.md` v8→v9,
+`AGENTS.md` v16→v20 (the one-base rule in Constraints; `Validator` in the
+architecture figures), `viewer-design.md` v11→v12 (`shortDigest`/
+`digestWithType`), `AGENT.md` v15→v16 (the `hash` vs `digest` glossary row),
 `README.md`, and the example/`gitlike` READMEs.
 
 Every Mermaid diagram in the repo (13 blocks across 8 files) was re-checked

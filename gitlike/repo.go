@@ -59,7 +59,7 @@ type ResolvedObject struct {
 	Tag    *Tag
 }
 
-// Resolver resolves hashes to the right concrete type. Dedicated methods
+// Resolver resolves digests to the right concrete type. Dedicated methods
 // (ResolveCommit, ResolveTree, ResolveBlob, ResolveTag) are compile-time
 // typed; ResolveAny discovers the type from the stored bytes.
 type Resolver struct {
@@ -149,15 +149,15 @@ func PrintObject(o *ResolvedObject) string {
 	case "commit":
 		return fmt.Sprintf("commit by %s: %s", o.Commit.Author, o.Commit.Message)
 	case "tag":
-		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortHash(o.Tag.Target))
+		return fmt.Sprintf("tag %q -> %s", o.Tag.Name, shortDigest(o.Tag.Target))
 	default:
 		return fmt.Sprintf("unknown type %q", o.Type)
 	}
 }
 
-// shortHash renders the first 8 hex chars of a digest for display (the
-// viewer's short-hash default).
-func shortHash(d cas.Digest) string {
+// shortDigest renders the first 8 hex chars of a digest for display (the
+// viewer's short-digest default).
+func shortDigest(d cas.Digest) string {
 	if d.IsZero() {
 		return "<absent>"
 	}

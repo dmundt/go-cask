@@ -17,7 +17,7 @@ import (
 // for both artifacts and manifests, so their stored payloads are compressed.
 //
 // Output is deterministic: the gzip header's mtime is pinned, so identical
-// values encode to identical bytes and therefore identical hashes (dedup).
+// values encode to identical bytes and therefore identical digests (dedup).
 type gzipCodec[T any] struct{ inner cas.Codec[T] }
 
 // newGzipCodec wraps the default JSON codec (json.New[T]()).

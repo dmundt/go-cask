@@ -21,7 +21,7 @@
 <caption>Sample objects</caption>
 <thead><tr><th scope="col">Hash</th><th scope="col">Size</th></tr></thead>
 <tbody>
-{{range .Sample}}<tr><td><a href="/viewer/objects/{{.Hash}}">{{.Short}}{{if .Type}} ({{.Type}}){{end}}</a></td><td>{{.Size}}</td></tr>{{end}}
+{{range .Sample}}<tr><td><a href="/viewer/objects/{{.Digest}}">{{.Short}}{{if .Type}} ({{.Type}}){{end}}</a></td><td>{{.Size}}</td></tr>{{end}}
 </tbody>
 </table>
 {{if .HasSample}}<p><a href="/viewer/objects">see all objects</a></p>{{end}}
@@ -32,7 +32,7 @@
 <caption>Objects</caption>
 <thead><tr><th scope="col">Hash</th><th scope="col">Type</th><th scope="col">Size</th></tr></thead>
 <tbody>
-{{range .Objects}}<tr><td><a href="/viewer/objects/{{.Hash}}">{{.Short}}</a></td><td>{{.Type}}</td><td>{{.Size}}</td></tr>{{end}}
+{{range .Objects}}<tr><td><a href="/viewer/objects/{{.Digest}}">{{.Short}}</a></td><td>{{.Type}}</td><td>{{.Size}}</td></tr>{{end}}
 </tbody>
 </table>
 {{end}}

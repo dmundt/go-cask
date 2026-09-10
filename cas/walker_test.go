@@ -89,8 +89,8 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	missingH := test.HashData([]byte("missing"))
-	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Digest{missingH}})
+	missingD := test.DigestData([]byte("missing"))
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []cas.Digest{missingD}})
 	if err != nil {
 		t.Fatal(err)
 	}

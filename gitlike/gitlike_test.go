@@ -180,7 +180,7 @@ func TestResolverTyped(t *testing.T) {
 	if err != nil || string(blob.Data) != "data" {
 		t.Fatalf("ResolveBlob = %v, %v", blob, err)
 	}
-	// Wrong resolver for a hash → decode/type error, not silent garbage.
+	// Wrong resolver for a digest → decode/type error, not silent garbage.
 	if _, err := res.ResolveCommit(ctx, hb); err == nil {
 		t.Fatal("ResolveCommit on a blob must fail")
 	}
@@ -570,29 +570,29 @@ func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) 
 	return h
 }
 
-func TestGetRejectsInvalidHashPayloads(t *testing.T) {
+func TestGetRejectsInvalidDigestPayloads(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
 
-	// Tree with an invalid entry hash string.
+	// Tree with an invalid reference string.
 	h := mustStoreEnv(t, repo, "tree@1", `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`)
 	if _, err := repo.Trees.Get(ctx, h); err == nil {
-		t.Fatal("tree with invalid entry hash must fail decode")
+		t.Fatal("tree with an invalid entry digest must fail decode")
 	}
-	// Commit with an invalid tree hash.
+	// Commit with an invalid tree reference.
 	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"nope:zz","author":"a"}`)
 	if _, err := repo.Commits.Get(ctx, h); err == nil {
-		t.Fatal("commit with invalid tree hash must fail decode")
+		t.Fatal("commit with an invalid tree digest must fail decode")
 	}
-	// Commit with an invalid parent hash.
+	// Commit with an invalid parent reference.
 	h = mustStoreEnv(t, repo, "commit@1", `{"tree":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parent":"nope:zz","author":"a"}`)
 	if _, err := repo.Commits.Get(ctx, h); err == nil {
-		t.Fatal("commit with invalid parent hash must fail decode")
+		t.Fatal("commit with an invalid parent digest must fail decode")
 	}
-	// Tag with an invalid target hash.
+	// Tag with an invalid target reference.
 	h = mustStoreEnv(t, repo, "tag@1", `{"name":"v","target":"nope:zz","tagger":"t"}`)
 	if _, err := repo.Tags.Get(ctx, h); err == nil {
-		t.Fatal("tag with invalid target hash must fail decode")
+		t.Fatal("tag with an invalid target digest must fail decode")
 	}
 }
 
@@ -645,22 +645,22 @@ func TestRepositoryErrorPaths(t *testing.T) {
 
 func ctxBackground() context.Context { return context.Background() }
 
-func TestPrintObjectNilHash(t *testing.T) {
-	// A nil-hash reference exercises the shortHash nil guard.
+func TestPrintObjectNilDigest(t *testing.T) {
+	// An absent-digest reference exercises the shortDigest nil guard.
 	got := PrintObject(&ResolvedObject{Type: "tree", Tree: &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}}})
 	if got == "" {
-		t.Fatal("PrintObject of tree with nil-hash entry returned empty")
+		t.Fatal("PrintObject of tree with an absent-digest entry returned empty")
 	}
 }
 
 // TestNilOptionalFieldRoundTrips covers marshal/unmarshal + References
 // branches for objects with nil optional references (no parent, no target,
-// nil-hash tree entry).
+// an absent-digest tree entry).
 func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	ctx := ctxBackground()
 	repo := newRepo(t, mem.New())
 
-	tree := &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}} // nil Hash entry
+	tree := &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}} // absent Hash reference
 	th, err := repo.Trees.Put(ctx, tree)
 	if err != nil {
 		t.Fatal(err)
@@ -670,10 +670,10 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(back.Entries) != 1 || !back.Entries[0].Hash.IsZero() {
-		t.Fatalf("tree with nil-hash entry round-trip: %+v", back)
+		t.Fatalf("tree with an absent-digest entry round-trip: %+v", back)
 	}
 	if refs := tree.References(); len(refs) != 0 {
-		t.Fatalf("nil-hash entry must not be a reference: %v", refs)
+		t.Fatalf("an absent-digest entry must not be a reference: %v", refs)
 	}
 
 	commit := &Commit{Tree: ref(th), Author: "a", Message: "root"} // absent Parent
@@ -711,7 +711,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 // TestUnmarshalInvalidJSON pins that malformed JSON fails for every object
 // type. TreeEntry and Tag have no JSON code of their own any more, so this
 // goes through json.Unmarshal (the path a store read takes); Commit's required
-// tree and cas.Hash's reference validation are covered separately.
+// tree and cas.Digest's reference validation are covered separately.
 func TestUnmarshalInvalidJSON(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -808,12 +808,12 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 	}
 }
 
-// --- Hash marshalling and validation ---
+// --- Digest field marshalling and validation ---
 
-// TestHashFieldsMarshalWithoutCustomCode pins the delegation that let
-// TreeEntry drop its hand-written marshaller: cas.Hash marshals itself as its
-// "algo:hex" string, and a nil hash is omitted.
-func TestHashFieldsMarshalWithoutCustomCode(t *testing.T) {
+// TestDigestFieldsMarshalWithoutCustomCode pins the delegation that let
+// TreeEntry drop its hand-written marshaller: the cas.Digest field renders
+// itself as bare lowercase hex, and an absent reference is omitted.
+func TestDigestFieldsMarshalWithoutCustomCode(t *testing.T) {
 	h := mustDigest(t, strings.Repeat("ab", 32))
 
 	raw, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
@@ -825,12 +825,12 @@ func TestHashFieldsMarshalWithoutCustomCode(t *testing.T) {
 		t.Fatalf("TreeEntry JSON = %s, want %s", raw, want)
 	}
 
-	raw, err = json.Marshal(TreeEntry{Name: "g", Mode: "100644"}) // nil Hash
+	raw, err = json.Marshal(TreeEntry{Name: "g", Mode: "100644"}) // absent reference
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(raw) != `{"name":"g","mode":"100644"}` {
-		t.Fatalf("nil-hash TreeEntry JSON = %s", raw)
+		t.Fatalf("absent-reference TreeEntry JSON = %s", raw)
 	}
 }
 
@@ -1063,7 +1063,7 @@ func TestResolveAnyTypeDecodeErrors(t *testing.T) {
 	}
 }
 
-// --- shortHash absent guard via PrintObject on a tag with no target ---
+// --- shortDigest absent guard via PrintObject on a tag with no target ---
 
 func TestPrintObjectAbsentTargetTag(t *testing.T) {
 	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1"}})

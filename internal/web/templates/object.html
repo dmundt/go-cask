@@ -5,20 +5,20 @@
 <nav><p><a href="/viewer/">Dashboard</a> · <a href="/viewer/objects">Objects</a></p></nav>
 <h1>Object</h1>
 <dl id="object-meta">
-<dt>Hash</dt><dd>{{.Hash}}</dd>
+<dt>Hash</dt><dd>{{.Digest}}</dd>
 <dt>Algorithm</dt><dd>{{.Algorithm}}</dd>
 <dt>Type</dt><dd>{{.Type}}</dd>
 <dt>Size</dt><dd>{{.Size}} bytes</dd>
 </dl>
 <section aria-label="Actions">
 {{if or (eq .Role "operator") (eq .Role "admin")}}
-<form method="post" action="/viewer/objects/{{.Hash}}/verify" hx-post="/viewer/objects/{{.Hash}}/verify" hx-target="#action-result">
+<form method="post" action="/viewer/objects/{{.Digest}}/verify" hx-post="/viewer/objects/{{.Digest}}/verify" hx-target="#action-result">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button type="submit">Verify</button>
 </form>
 {{end}}
 {{if eq .Role "admin"}}
-<form method="post" action="/viewer/objects/{{.Hash}}/delete" hx-post="/viewer/objects/{{.Hash}}/delete" hx-target="#action-result" hx-confirm="Delete this object?">
+<form method="post" action="/viewer/objects/{{.Digest}}/delete" hx-post="/viewer/objects/{{.Digest}}/delete" hx-target="#action-result" hx-confirm="Delete this object?">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button type="submit">Delete</button>
 </form>
@@ -28,7 +28,7 @@
 <section>
 <h2>Raw bytes</h2>
 <div id="hexdump"
-     hx-get="/viewer/objects/{{.Hash}}/raw" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">
+     hx-get="/viewer/objects/{{.Digest}}/raw" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">
 <p>loading hexdump…</p>
 </div>
 </section>

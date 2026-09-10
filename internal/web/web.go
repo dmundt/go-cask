@@ -49,7 +49,7 @@ type Server struct {
 // caller (cmd/cask) and printed once at startup.
 func New(store *fs.Backend, cfg Config) (*Server, error) {
 	tmpl, err := template.New("viewer").Funcs(template.FuncMap{
-		"shortHash": shortHash,
+		"shortDigest": shortDigest,
 	}).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -206,10 +206,10 @@ type dashboardData struct {
 }
 
 type objectRow struct {
-	Hash  string
-	Short string
-	Type  string
-	Size  int64
+	Digest string
+	Short  string
+	Type   string
+	Size   int64
 }
 
 func (s *Server) dashboardData(ctx context.Context) dashboardData {
@@ -223,7 +223,7 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 		return d
 	}
 	for _, h := range index.Paginate(digests, 0, 10) {
-		d.Sample = append(d.Sample, objectRow{h.String(), shortHash(h), s.objectType(ctx, h), s.objectSize(ctx, h)})
+		d.Sample = append(d.Sample, objectRow{h.String(), shortDigest(h), s.objectType(ctx, h), s.objectSize(ctx, h)})
 	}
 	d.HasSample = len(d.Sample) > 0
 	return d
@@ -247,7 +247,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		rows = append(rows, objectRow{h.String(), shortHash(h), typ, s.objectSize(r.Context(), h)})
+		rows = append(rows, objectRow{h.String(), shortDigest(h), typ, s.objectSize(r.Context(), h)})
 	}
 	data := struct {
 		Query   string
@@ -264,7 +264,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 // --- object detail ---
 
 func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHash(w, r)
+	h, ok := parseDigest(w, r)
 	if !ok {
 		return
 	}
@@ -275,7 +275,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	typ := index.EnvelopeType(data)
 	s.render(w, "object", struct {
-		Hash      string
+		Digest    string
 		Algorithm string
 		Type      string
 		Size      int64
@@ -285,7 +285,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHash(w, r)
+	h, ok := parseDigest(w, r)
 	if !ok {
 		return
 	}
@@ -305,7 +305,7 @@ func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHash(w, r)
+	h, ok := parseDigest(w, r)
 	if !ok {
 		return
 	}
@@ -317,7 +317,7 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHash(w, r)
+	h, ok := parseDigest(w, r)
 	if !ok {
 		return
 	}
@@ -336,7 +336,7 @@ func (s *Server) gcPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
-	roots, err := parseHashLines(r.FormValue("roots"))
+	roots, err := parseDigestLines(r.FormValue("roots"))
 	if err != nil {
 		s.render(w, "result", "invalid root hash")
 		return
@@ -454,7 +454,7 @@ func (s *Server) roleFor(r *http.Request) string {
 	return ""
 }
 
-func parseHash(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
+func parseDigest(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
 	d, err := sha256.Parse(r.PathValue("hash"))
 	if err != nil {
 		http.Error(w, "malformed hash", http.StatusBadRequest)
@@ -463,7 +463,7 @@ func parseHash(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
 	return d, true
 }
 
-func parseHashLines(s string) ([]cas.Digest, error) {
+func parseDigestLines(s string) ([]cas.Digest, error) {
 	var out []cas.Digest
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
@@ -479,18 +479,21 @@ func parseHashLines(s string) ([]cas.Digest, error) {
 	return out, nil
 }
 
-func shortHash(d cas.Digest) string {
+func shortDigest(d cas.Digest) string {
 	if d.IsZero() {
 		return ""
 	}
 	return sha256.Short(d)
 }
 
-func hashWithType(h string, typ string) string {
+// digestWithType renders the viewer's generic-list form, "<short digest>
+// (<type>)". NOTE: currently unreferenced — templates use the precomputed
+// objectRow.Short field instead (see the report on dead viewer helpers).
+func digestWithType(h string, typ string) string {
 	if typ == "" {
-		return shortHash(parseDigestOrNil(h))
+		return shortDigest(parseDigestOrNil(h))
 	}
-	return shortHash(parseDigestOrNil(h)) + " (" + typ + ")"
+	return shortDigest(parseDigestOrNil(h)) + " (" + typ + ")"
 }
 
 func parseDigestOrNil(s string) cas.Digest {

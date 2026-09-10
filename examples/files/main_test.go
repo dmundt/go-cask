@@ -151,11 +151,11 @@ func TestAuditStates(t *testing.T) {
 	}
 
 	// Corrupt a reachable object on disk: audit reports it corrupt.
-	hashes, err := a.raw.List(ctx)
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := objectPath(a.dir, hashes[0].String())
+	path := objectPath(a.dir, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -207,14 +207,14 @@ func TestVerify(t *testing.T) {
 	}
 
 	// Corrupt one stored object on disk.
-	hashes, err := a.raw.List(ctx)
+	digests, err := a.raw.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hashes) == 0 {
+	if len(digests) == 0 {
 		t.Fatal("no objects stored")
 	}
-	path := objectPath(a.dir, hashes[0].String())
+	path := objectPath(a.dir, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

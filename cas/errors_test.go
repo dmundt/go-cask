@@ -29,13 +29,13 @@ func mustFS(t *testing.T, opts ...backend.Option) *fs.Backend {
 
 // test.ErrorObj / test.FailingCodec are defined in external_test.go. The FS-internal
 // error-path tests (TestFSPutMkdirError, TestFSPutReaderError,
-// TestFSListIgnoresRootStray, TestFSHashPathDigestClamp) moved into
+// TestFSListIgnoresRootStray, TestFSDigestPathClamp) moved into
 // cas/backend/fs/fs_test.go where they can reach the unexported layout.
 
 func TestBackendCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h := test.HashData([]byte("x"))
+	h := test.DigestData([]byte("x"))
 
 	for _, bf := range []struct {
 		name string
@@ -105,7 +105,7 @@ func TestGetCorruptPayload(t *testing.T) {
 	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	stored := buf.Bytes()
-	h := test.HashData(stored)
+	h := test.DigestData(stored)
 	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 		"\npayload",       // version byte is '\n' (0x0A) ≠ 1
 		"note@1",          // version byte is 'n' (0x6E) ≠ 1
 	} {
-		h := test.HashData([]byte(garbage))
+		h := test.DigestData([]byte(garbage))
 		if err := raw.Put(ctx, h, strings.NewReader(garbage)); err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +138,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 
 func TestVerifyCancelled(t *testing.T) {
 	s := mustFS(t)
-	h := test.HashData([]byte("x"))
+	h := test.DigestData([]byte("x"))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := s.Verify(ctx, h, sha256.New()); err == nil {

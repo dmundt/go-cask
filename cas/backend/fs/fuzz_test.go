@@ -9,7 +9,7 @@ import (
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// FuzzPathRoundTrip checks that hashPath then pathToDigest round-trips for
+// FuzzPathRoundTrip checks that digestPath then pathToDigest round-trips for
 // arbitrary content across several fan-out layouts (flat, Git-like, deep).
 func FuzzPathRoundTrip(f *testing.F) {
 	for _, seed := range [][]byte{{'a'}, []byte("abc"), bytes.Repeat([]byte{0xab}, 32)} {
@@ -20,7 +20,7 @@ func FuzzPathRoundTrip(f *testing.F) {
 		h := sha256.Of(content)
 		for _, lay := range layouts {
 			s := &Backend{fanOut: lay.fanOut, fanLevels: lay.fanLevels}
-			rel := s.hashPath(h)
+			rel := s.digestPath(h)
 			got, err := pathToDigest(rel)
 			if err != nil {
 				t.Fatalf("layout %d/%d pathToDigest(%q): %v", lay.fanOut, lay.fanLevels, rel, err)
@@ -62,7 +62,7 @@ func FuzzVerify(f *testing.F) {
 		if bytes.Equal(corrupt, content) {
 			t.Skip("no-op corruption")
 		}
-		if err := os.WriteFile(s.hashPath(h), corrupt, 0o644); err != nil {
+		if err := os.WriteFile(s.digestPath(h), corrupt, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Verify(ctx, h, sha256.New()); err == nil {

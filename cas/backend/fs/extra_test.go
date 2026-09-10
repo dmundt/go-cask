@@ -92,7 +92,7 @@ func TestCleanRemovesTempCollisionFallbacks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir := filepath.Dir(s.hashPath(d))
+	dir := filepath.Dir(s.digestPath(d))
 	temps := []string{
 		filepath.Join(dir, d.String()+".tmp"),
 		filepath.Join(dir, d.String()+".tmp.1"),
@@ -154,12 +154,12 @@ func TestPutUniqueTempPerWriterFallback(t *testing.T) {
 	s := mustFS(t)
 	data := []byte("fallback temp")
 	d := digestOf(data)
-	dir := filepath.Dir(s.hashPath(d))
+	dir := filepath.Dir(s.digestPath(d))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Occupy the first candidate name.
-	if err := os.WriteFile(filepath.Join(dir, filepath.Base(s.hashPath(d))+".tmp"), []byte("stale"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, filepath.Base(s.digestPath(d))+".tmp"), []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Put(ctx, d, bytes.NewReader(data)); err != nil {
@@ -169,7 +169,7 @@ func TestPutUniqueTempPerWriterFallback(t *testing.T) {
 		t.Fatalf("Verify after fallback Put = %v", err)
 	}
 	// The stale temp file is still there, and the object is intact.
-	if _, err := os.Stat(filepath.Join(dir, filepath.Base(s.hashPath(d))+".tmp")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, filepath.Base(s.digestPath(d))+".tmp")); err != nil {
 		t.Fatalf("stale temp file disappeared: %v", err)
 	}
 }

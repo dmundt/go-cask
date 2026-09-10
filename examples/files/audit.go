@@ -31,8 +31,8 @@ const (
 
 // auditRow is one object's state in the report.
 type auditRow struct {
-	hash  string
-	state auditState
+	digest string
+	state  auditState
 }
 
 // auditReport is the full per-object state report plus a summary.
@@ -71,7 +71,7 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		} else {
 			state = stateUnverified
 		}
-		rep.rows = append(rep.rows, auditRow{hash: key, state: state})
+		rep.rows = append(rep.rows, auditRow{digest: key, state: state})
 		rep.counts[state]++
 	}
 	rep.total = len(digests)
@@ -79,7 +79,7 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		if rep.rows[i].state != rep.rows[j].state {
 			return rep.rows[i].state < rep.rows[j].state
 		}
-		return rep.rows[i].hash < rep.rows[j].hash
+		return rep.rows[i].digest < rep.rows[j].digest
 	})
 	return rep, nil
 }
@@ -137,10 +137,10 @@ func referencesOf(ro *gitlike.ResolvedObject) []cas.Digest {
 	}
 }
 
-// print writes one line per object (state, hash) followed by a summary.
+// print writes one line per object (state, digest) followed by a summary.
 func (r *auditReport) print(out io.Writer) {
 	for _, row := range r.rows {
-		fmt.Fprintf(out, "%-10s %s\n", row.state, row.hash)
+		fmt.Fprintf(out, "%-10s %s\n", row.state, row.digest)
 	}
 	fmt.Fprintf(out, "audit: %d objects — verified %d, orphaned %d, corrupt %d, unverified %d\n",
 		r.total,

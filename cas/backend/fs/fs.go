@@ -27,7 +27,7 @@ const (
 	DefaultFanLevels = 1
 	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed the
 	// hex digest width. Go-cask's own clients digest with sha256 (64 hex chars),
-	// so this makes a configured layout cover the digest exactly and hashPath
+	// so this makes a configured layout cover the digest exactly and digestPath
 	// never runs past its end. A client whose digest is shorter must keep
 	// FanOut × FanLevels within its own width.
 	MaxFanDepth = 64
@@ -119,14 +119,14 @@ func syncParentDir(path string) error {
 	return d.Sync()
 }
 
-// hashPath returns the on-disk path for a digest: the store base, then the
+// digestPath returns the on-disk path for a digest: the store base, then the
 // fan-out directory chunks, then the lowercase-hex digest as the file name.
 // There is no algorithm directory — the backend does not know which algorithm
 // produced a key (cas-core §4.2) — and a digest is hex by construction
 // (cas.Digest.UnmarshalText), so no path element needs sanitizing.
 // WithFanOut/WithFanLevels bound FanOut × FanLevels to the digest width
 // (MaxFanDepth), so every chunk is in range.
-func (s *Backend) hashPath(d cas.Digest) string {
+func (s *Backend) digestPath(d cas.Digest) string {
 	hexDigest := hex.EncodeToString(d)
 	p := s.base
 	if s.fanOut > 0 && s.fanLevels > 0 {
@@ -157,7 +157,7 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := s.hashPath(d)
+	path := s.digestPath(d)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("cas: create object dir: %w", err)
 	}
@@ -247,7 +247,7 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	if err := cas.CheckDigest(d, "fs: get"); err != nil {
 		return nil, err
 	}
-	path := s.hashPath(d)
+	path := s.digestPath(d)
 	f, err := openObject(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -298,7 +298,7 @@ func (s *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if err := cas.CheckDigest(d, "fs: exists"); err != nil {
 		return false, err
 	}
-	_, err := os.Stat(s.hashPath(d))
+	_, err := os.Stat(s.digestPath(d))
 	if err == nil {
 		return true, nil
 	}
@@ -318,7 +318,7 @@ func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := os.Remove(s.hashPath(d)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(s.digestPath(d)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("cas: delete object: %w", err)
 	}
 	return nil
@@ -333,7 +333,7 @@ func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
 	if err := cas.CheckDigest(d, "fs: size"); err != nil {
 		return 0, err
 	}
-	fi, err := os.Stat(s.hashPath(d))
+	fi, err := os.Stat(s.digestPath(d))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
@@ -534,7 +534,7 @@ func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Dur
 		if reachable[d.String()] {
 			continue
 		}
-		info, err := os.Stat(s.hashPath(d))
+		info, err := os.Stat(s.digestPath(d))
 		if err != nil {
 			continue
 		}

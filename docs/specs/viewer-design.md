@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v11
+version: v12
 ---
 
 # Viewer Design — go-cask
@@ -41,7 +41,7 @@ Only `html/template` (auto-escaping = XSS boundary), embedded via `embed.FS` + `
 Template tree (partials in `internal/web/templates/`):
 - `base` (html shell + nav) → `dashboard` (stat-card, stats-panel [OOB], sample-table, quick-nav), `login` (standalone), `objects` (object-row), `object` (object-meta, hexdump [lazy]); `fragments` reuse the same partials; `_error` (minimal; 401/403 empty).
 
-Conventions: one template per view + small partials; minimal logic (`{{if}}`/`{{range}}`/`{{with}}`/pipelines), all computation in Go handlers passing pre-shaped data; registered pure `template.FuncMap` helpers — `shortHash` (first 8 hex chars), `hashWithType` (`<shorthash> (<type>)` for generic lists), `humanSize` (overviews), `byteSize` (exact), `hexdump` (format bytes); raw semantic HTML only.
+Conventions: one template per view + small partials; minimal logic (`{{if}}`/`{{range}}`/`{{with}}`/pipelines), all computation in Go handlers passing pre-shaped data; registered pure `template.FuncMap` helpers — `shortDigest` (first 8 hex chars), `digestWithType` (`<shorthash> (<type>)` for generic lists), `humanSize` (overviews), `byteSize` (exact), `hexdump` (format bytes); raw semantic HTML only.
 
 ## 5. Hypermedia interaction model (htmx)
 
@@ -85,7 +85,7 @@ All under `/viewer` (configurable via the `viewer:` config block). `{hash}` valu
 
 **Dashboard (landing):** stat cards (total objects, total size); an **addressing note** (digests are raw digest bytes rendered as lowercase hex — the core names no algorithm; this viewer digests and validates with `sha256`); sample objects (`sample-table`, first N from `Backend.List`, rows as `<shorthash> (<type>)` linking to details via the full digest); prominent search (jumps into the object list — the entry point for "find this hash"); quick nav line (Objects · GC).
 
-**Objects:** UI links ALWAYS show the **8-char short hash** (`shortHash`, e.g. `9f86d081`); the link `href` always carries the **full digest** (lowercase hex, e.g. `/viewer/objects/9f86d081…`, no algorithm prefix) — short form is display-only, identity never lost; the full digest is always on the detail page (`object-meta`). Generic lists render `<shorthash> (<type>)`; tables with a dedicated type column MAY show the plain short hash. List columns: hash (short), `Type()`, size; search filters by hash or type substring (active search, `q`). Detail order: summary (`object-meta` `<dl>`: full digest, the client's constant algorithm name `sha256`, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
+**Objects:** UI links ALWAYS show the **8-char short hash** (`shortDigest`, e.g. `9f86d081`); the link `href` always carries the **full digest** (lowercase hex, e.g. `/viewer/objects/9f86d081…`, no algorithm prefix) — short form is display-only, identity never lost; the full digest is always on the detail page (`object-meta`). Generic lists render `<shorthash> (<type>)`; tables with a dedicated type column MAY show the plain short hash. List columns: hash (short), `Type()`, size; search filters by hash or type substring (active search, `q`). Detail order: summary (`object-meta` `<dl>`: full digest, the client's constant algorithm name `sha256`, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
 
 **References are out of scope:** the viewer is a **byte-layer** tool and MUST NOT interpret typed references (resolving `References()` needs an app object model; the product ships none; `internal/` and `cas/` MUST NOT import `examples/`). Reference graphs belong to app layers (`gitlike`). The viewer shows objects, bytes, and integrity, not typed structure.
 

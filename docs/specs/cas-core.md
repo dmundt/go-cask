@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v45
+version: v46
 ---
 
 # CAS Core — go-cask
@@ -350,8 +350,8 @@ This interface is the **backend extension point** — any storage system (S3, Ba
 
 Examples (sha256 digest `a1b2c3d4…`): flat `(0,0)` `<base>/a1b2c3d4...`; Git-like `(2,1)` `<base>/a1/a1b2c3d4...`; deep `(2,2)` `<base>/a1/b2/...`; wide `(4,1)` `<base>/a1b2/...`.
 - The default (2,1) is Git-like in directories only; the file name is always the **complete digest**, never the Git-style remainder.
-- Any n-way/n-level allowed: `fs.New(basePath, opts ...backend.Option)` with `fs.WithFanOut(n)`/`fs.WithFanLevels(n)`, as long as `FanOut × FanLevels` ≤ `MaxFanDepth` (64 hex chars). With 32-byte digests — the shipped sha256 client — the configured layout then covers the digest exactly, so `hashPath` never runs past its end. Negative parameters and over-deep configs are rejected at construction. `fs` itself checks presence (`CheckDigest`) and never width: a direct `Backend` caller must keep keys at least `FanOut × FanLevels` hex chars long. Going through `Store` is safe by construction — `Store.check` runs `hasher.Validate` before any key reaches a backend.
-- `hashPath(d)` builds the path from the configured layout; `pathToDigest(rel)` rebuilds a `Digest` from the relative path (the **last** element is the hex digest, leading elements are fan-out chunks) through `cas.ParseDigest`; a file whose name is not lowercase hex is skipped rather than reported.
+- Any n-way/n-level allowed: `fs.New(basePath, opts ...backend.Option)` with `fs.WithFanOut(n)`/`fs.WithFanLevels(n)`, as long as `FanOut × FanLevels` ≤ `MaxFanDepth` (64 hex chars). With 32-byte digests — the shipped sha256 client — the configured layout then covers the digest exactly, so `digestPath` never runs past its end. Negative parameters and over-deep configs are rejected at construction. `fs` itself checks presence (`CheckDigest`) and never width: a direct `Backend` caller must keep keys at least `FanOut × FanLevels` hex chars long. Going through `Store` is safe by construction — `Store.check` runs `hasher.Validate` before any key reaches a backend.
+- `digestPath(d)` builds the path from the configured layout; `pathToDigest(rel)` rebuilds a `Digest` from the relative path (the **last** element is the hex digest, leading elements are fan-out chunks) through `cas.ParseDigest`; a file whose name is not lowercase hex is skipped rather than reported.
 
 > Decision (2026-09): file-name style is **not configurable** — full-hash names are the only layout (a Git-remainder option was rejected: no interop, a second mode everywhere, loses the self-describing full-hash name `List`/`Stats`/`Verify` rely on). Revisit only if a real consumer requires remainder names.
 
@@ -530,7 +530,7 @@ type ResolvedObject struct {
 ```
 
 - `ResolveAny` reads the raw bytes, determines the type via its `parseType` on the TLV envelope (§8 d1), then dispatches to the matching `Resolve*`; an unknown type returns `ErrUnknownType`.
-- `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. `shortHash(d)` renders the first 8 hex chars of a digest (or `<absent>`).
+- `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. `shortDigest(d)` renders the first 8 hex chars of a digest (or `<absent>`).
 - **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic alternative: `Walker[T]`, §4.9).
 - **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`.
 - **`Preloader`** — background worker pool on a `chan cas.Digest`, running `Commits.PreloadRecursive(ctx, d, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.

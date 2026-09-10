@@ -80,7 +80,7 @@ func TestSmartCacheMissing(t *testing.T) {
 	}
 }
 
-// waitCached polls until the given hash is loaded into the store's cache or
+// waitCached polls until the given digest is loaded into the store's cache or
 // the deadline passes. It lets the asynchronous prefetch goroutine finish.
 func waitCached(t *testing.T, cs *mem.CachedStore[testObject], d cas.Digest) {
 	t.Helper()
@@ -134,7 +134,7 @@ func TestSmartCachePrefetchChainRecursion(t *testing.T) {
 }
 
 // TestSmartCachePrefetchSkipsMissing has the fetched object reference an
-// existing child and a missing hash; the prefetch loop must load the valid
+// existing child and a missing digest; the prefetch loop must load the valid
 // child and skip (not fail on) the missing reference.
 func TestSmartCachePrefetchSkipsMissing(t *testing.T) {
 	ctx := context.Background()

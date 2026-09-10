@@ -57,10 +57,10 @@ func TestFanOutLayouts(t *testing.T) {
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
-		got := s.hashPath(h)
+		got := s.digestPath(h)
 		want := filepath.Join(s.base, tc.wantPath)
 		if got != want {
-			t.Errorf("%s: hashPath = %q, want %q", tc.name, got, want)
+			t.Errorf("%s: digestPath = %q, want %q", tc.name, got, want)
 		}
 	}
 }
@@ -120,7 +120,7 @@ func TestPathRoundTrip(t *testing.T) {
 		if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
 			t.Fatal(err)
 		}
-		rel, err := filepath.Rel(s.base, s.hashPath(h))
+		rel, err := filepath.Rel(s.base, s.digestPath(h))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +129,7 @@ func TestPathRoundTrip(t *testing.T) {
 			t.Fatalf("pathToDigest(%q): %v", rel, err)
 		}
 		if !back.Equal(h) {
-			t.Fatalf("pathToDigest(hashPath(h)) != h: %s vs %s", back, h)
+			t.Fatalf("pathToDigest(digestPath(h)) != h: %s vs %s", back, h)
 		}
 	}
 }
@@ -154,7 +154,7 @@ func (r *failingReader) Read(p []byte) (int, error) {
 // directory that would hold h. Put writes uniquely named temps there, so a
 // failed write must leave none behind.
 func tmpFilesIn(s *Backend, h cas.Digest) []string {
-	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(s.hashPath(h)), "*.tmp"))
+	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(s.digestPath(h)), "*.tmp"))
 	return matches
 }
 
@@ -208,11 +208,11 @@ func TestFSListIgnoresRootStray(t *testing.T) {
 	}
 }
 
-// TestFSHashPathDigestClamp pins the digest-width invariant that replaced the
+// TestFSDigestPathClamp pins the digest-width invariant that replaced the
 // old clamping logic: FanOut × FanLevels is bounded to the digest width
 // (MaxFanDepth, checked in New), so every fan-out chunk stays in range and the
 // file name is always the full hex digest — there is no algorithm directory.
-func TestFSHashPathDigestClamp(t *testing.T) {
+func TestFSDigestPathClamp(t *testing.T) {
 	h := digestOf([]byte("clamp"))
 	cases := []struct {
 		opts []backend.Option
@@ -223,7 +223,7 @@ func TestFSHashPathDigestClamp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
-		p := s.hashPath(h)
+		p := s.digestPath(h)
 		// The file name must still be the full hex digest.
 		base := filepath.Base(p)
 		if base != h.String() {
@@ -364,7 +364,7 @@ func TestPutPublishError(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("rename over a directory must fail")
 	h := digestOf(content)
-	path := s.hashPath(h)
+	path := s.digestPath(h)
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestCleanRemovesTempFallbacks(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	h := digestOf([]byte("payload"))
-	objPath := s.hashPath(h)
+	objPath := s.digestPath(h)
 	if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -549,11 +549,11 @@ func TestCleanRemovesTempFallbacks(t *testing.T) {
 	}
 }
 
-// TestHashPathRejectsAbsentDigest pins the guard that replaced the old
+// TestDigestPathRejectsAbsentDigest pins the guard that replaced the old
 // algorithm-name sanitizer: cas.Digest is a raw byte slice now, so the only
 // invalid address left is the absent one, and every backend entry point
 // rejects it with ErrInvalidDigest.
-func TestHashPathRejectsAbsentDigest(t *testing.T) {
+func TestDigestPathRejectsAbsentDigest(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	var absent cas.Digest
@@ -813,7 +813,7 @@ func TestVerifyStreaming(t *testing.T) {
 		t.Fatalf("Verify intact = %v", err)
 	}
 	// Corrupt the stored bytes.
-	if err := os.WriteFile(s.hashPath(h), []byte("tampered!"), 0o644); err != nil {
+	if err := os.WriteFile(s.digestPath(h), []byte("tampered!"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Verify(ctx, h, sha256.New()); !errors.Is(err, cas.ErrDigestMismatch) {
@@ -964,11 +964,11 @@ func TestCreateTempExclNoParent(t *testing.T) {
 	}
 }
 
-// TestHashPathDepthBound pins the layout invariant that makes the chunking in
-// hashPath total: FanOut × FanLevels never exceeds the digest width
+// TestDigestPathDepthBound pins the layout invariant that makes the chunking in
+// digestPath total: FanOut × FanLevels never exceeds the digest width
 // (MaxFanDepth), so a configured layout covers the digest exactly and cannot
 // run past its end.
-func TestHashPathDepthBound(t *testing.T) {
+func TestDigestPathDepthBound(t *testing.T) {
 	if _, err := New(t.TempDir(), WithFanOut(3), WithFanLevels(22)); err == nil {
 		t.Fatal("fan-out beyond MaxFanDepth must be rejected")
 	}
@@ -984,7 +984,7 @@ func TestHashPathDepthBound(t *testing.T) {
 		if err := b.Put(context.Background(), h, strings.NewReader("x")); err != nil {
 			t.Fatalf("opts %v: Put: %v", opts, err)
 		}
-		if p := b.hashPath(h); filepath.Base(p) != digest {
+		if p := b.digestPath(h); filepath.Base(p) != digest {
 			t.Errorf("opts %v: basename = %q, want %q", opts, filepath.Base(p), digest)
 		}
 	}
@@ -995,7 +995,7 @@ func TestHashPathDepthBound(t *testing.T) {
 func TestDeleteDirectoryError(t *testing.T) {
 	s := mustFS(t)
 	h := digestOf([]byte("dir-as-object"))
-	dir := s.hashPath(h)
+	dir := s.digestPath(h)
 	if err := os.MkdirAll(filepath.Join(dir, "child"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1060,7 +1060,7 @@ func TestVerifyReadOnDirectory(t *testing.T) {
 	s := mustFS(t)
 	ctx := context.Background()
 	h := digestOf([]byte("dir not an object"))
-	if err := os.MkdirAll(s.hashPath(h), 0o755); err != nil {
+	if err := os.MkdirAll(s.digestPath(h), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Verify(ctx, h, sha256.New()); err == nil {
@@ -1076,13 +1076,13 @@ func TestPutCreateTempExhausted(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("temp namespace exhausted")
 	h := digestOf(content)
-	dir := filepath.Dir(s.hashPath(h))
+	dir := filepath.Dir(s.digestPath(h))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Pre-create <path>.tmp and <path>.tmp.1 .. <path>.tmp.9999 so every
 	// candidate name in createTempExcl's retry loop already exists.
-	base := s.hashPath(h) + ".tmp"
+	base := s.digestPath(h) + ".tmp"
 	for i := 0; i < 10000; i++ {
 		name := base
 		if i > 0 {

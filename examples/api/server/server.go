@@ -228,7 +228,7 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 
 // Stream the stored bytes with X-CAS-* metadata headers.
 func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHashParam(w, r)
+	h, ok := parseDigestParam(w, r)
 	if !ok {
 		return
 	}
@@ -249,7 +249,7 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /objects/{hash}: admin; deleting a missing object is a no-op.
 func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHashParam(w, r)
+	h, ok := parseDigestParam(w, r)
 	if !ok {
 		return
 	}
@@ -264,7 +264,7 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 
 // Metadata — size always; type best-effort from the envelope.
 func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHashParam(w, r)
+	h, ok := parseDigestParam(w, r)
 	if !ok {
 		return
 	}
@@ -297,7 +297,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 
 // Integrity — recompute and compare (operator).
 func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseHashParam(w, r)
+	h, ok := parseDigestParam(w, r)
 	if !ok {
 		return
 	}
@@ -377,8 +377,10 @@ func (s *server) openapi(w http.ResponseWriter, r *http.Request) {
 	w.Write(openapiYAML)
 }
 
-// parseHashParam validates {hash} with sha256.Parse → 400 on malformed.
-func parseHashParam(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
+// parseDigestParam validates the {hash} path value with sha256.Parse → 400 on
+// malformed. (The URL/JSON word stays "hash": that is the user-facing
+// vocabulary, per AGENT.md §6.)
+func parseDigestParam(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
 	h, err := sha256.Parse(r.PathValue("hash"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed hash"})

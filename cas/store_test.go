@@ -52,7 +52,7 @@ func memFactory(t *testing.T) cas.Backend { return mem.New() }
 // against any backend implementation.
 func testBackendContract(t *testing.T, raw cas.Backend) {
 	ctx := context.Background()
-	h := test.HashData([]byte("contract"))
+	h := test.DigestData([]byte("contract"))
 	if err := raw.Put(ctx, h, strings.NewReader("contract")); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	buf.Write(lenBuf[:n])
 	buf.Write(payload)
 	env := buf.Bytes()
-	h := test.HashData(env)
+	h := test.DigestData(env)
 	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestStoreCanceledOps(t *testing.T) {
 	st := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h := test.HashData([]byte("x"))
+	h := test.DigestData([]byte("x"))
 	for _, tc := range []struct {
 		name string
 		run  func() error

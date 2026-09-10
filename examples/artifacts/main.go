@@ -72,7 +72,7 @@ func (m *Manifest) References() []cas.Digest {
 }
 
 // gzipJSON compresses the JSON encoding of v (deterministic output: fixed
-// mtime, so identical values produce identical bytes → identical hashes).
+// mtime, so identical values produce identical bytes → identical digests).
 func gzipJSON(v any) []byte {
 	inner, err := json.Marshal(v)
 	if err != nil {

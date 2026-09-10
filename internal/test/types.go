@@ -56,8 +56,8 @@ type FailingCodec[T any] struct{}
 func (FailingCodec[T]) Marshal(T) ([]byte, error)   { return nil, errors.New("marshal exploded") }
 func (FailingCodec[T]) Unmarshal([]byte) (T, error) { var z T; return z, nil }
 
-// HashData is a test helper for digesting data with the shipped sha256 hasher.
-func HashData(data []byte) cas.Digest {
+// DigestData is a test helper for digesting data with the shipped sha256 hasher.
+func DigestData(data []byte) cas.Digest {
 	return sha256.Of(data)
 }
 

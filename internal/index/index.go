@@ -1,5 +1,5 @@
 // Package index provides the listing/metadata helpers shared by the cask CLI
-// and the viewer: pagination over stored hashes and best-effort type
+// and the viewer: pagination over stored digests and best-effort type
 // detection from the self-describing TLV envelope (cas-core §8 decision 1).
 package index
 
