@@ -63,6 +63,10 @@ func marshalEnvelope(typ string, payload []byte) []byte {
 // lifetime (Store.Get, the hot path, decodes it and discards it immediately).
 // It returns ErrUnknownType for a malformed envelope or an unknown envelope
 // version.
+//
+// Bytes after the declared payload are ignored (the field is self-delimiting):
+// readers tolerate a frame extension that appends fields without breaking
+// existing objects, while the writer never emits a trailer.
 func parseEnvelope(data []byte) (string, []byte, error) {
 	if len(data) < 1 {
 		return "", nil, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)

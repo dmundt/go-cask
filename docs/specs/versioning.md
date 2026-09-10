@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v9
+version: v10
 ---
 
 # Versioning — go-cask
@@ -62,7 +62,7 @@ Every item MUST be satisfied before the first stable release.
 - [x] Hash naming: keep `Hash` (algo:hexdigest) — no rename
 - [x] Fan-out file-name style: full-hash names only; Git-remainder option rejected
 - [x] Pluggable algorithms: sha256 built-in, `RegisterHash` for custom; sha1 removed from core
-- [x] GC concurrency: writers lock-free, maintenance sweeps exclusive + grace-gated (`--min-age 24h` default)
+- [x] GC concurrency: writers lock-free, maintenance sweeps exclusive + grace-gated (`--min-age 1h` default)
 - [x] Lean-core export budget re-baselined to ~40 (library-design v10)
 - [x] Library baseline declared Go 1.22 (toolchain 1.27)
 

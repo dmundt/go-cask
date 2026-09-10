@@ -1,14 +1,20 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
@@ -252,6 +258,181 @@ func mustParse(t *testing.T, s string) cas.Hash {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// TestGCPageShipsCSRF covers the GC mutation end to end: the maintenance form
+// must carry a CSRF token, or every submit is rejected with 403.
+func TestGCPageShipsCSRF(t *testing.T) {
+	ts, _ := newTestServer(t)
+	admin := login(t, ts, testStartupToken)
+
+	resp, err := admin.Get(ts.URL + "/viewer/gc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	csrf := csrfFromPage(string(page))
+	if csrf == "" {
+		t.Fatalf("gc page has no CSRF field: %.200q", page)
+	}
+
+	roots := "sha256:" + strings.Repeat("ab", 32)
+	resp, err = admin.PostForm(ts.URL+"/viewer/gc", url.Values{"roots": {roots}, "csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("gc with CSRF = %d, want 200 (body %.120q)", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "gc: deleted") {
+		t.Fatalf("gc result missing: %.120q", body)
+	}
+}
+
+// TestLoginRejectsEmptyToken pins the fail-closed rule: an empty submitted
+// token never authenticates, even if a role token was misconfigured as "".
+func TestLoginRejectsEmptyToken(t *testing.T) {
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		RoleTokens:   map[string]string{"": RoleAdmin},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.PostForm(ts.URL+"/viewer/login", url.Values{"token": {""}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("empty-token login = %d, want 401", resp.StatusCode)
+	}
+	if len(resp.Cookies()) != 0 {
+		t.Fatalf("empty-token login set cookies: %v", resp.Cookies())
+	}
+}
+
+// tlvEnvelope builds a TLV envelope (cas-core §8 decision 1) for viewer tests.
+func tlvEnvelope(typeName string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(1) // envelopeVersion
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
+	buf.Write(lenBuf[:n])
+	buf.WriteString(typeName)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
+// TestLargeObjectDetailAndRaw covers objects above the preview limit: the type
+// is sniffed from the envelope header only, the detail page reports the real
+// size, and the raw view says the preview is truncated.
+func TestLargeObjectDetailAndRaw(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := tlvEnvelope("blob@1", bytes.Repeat([]byte("x"), previewLimit+10))
+	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	admin := login(t, ts, testStartupToken)
+
+	resp, err := admin.Get(ts.URL + "/viewer/objects/" + h.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(page), "blob@1") {
+		t.Fatalf("large-object type missing from detail page: %.200q", page)
+	}
+	if want := fmt.Sprintf("%d bytes", len(env)); !strings.Contains(string(page), want) {
+		t.Fatalf("detail page does not report the real size %q: %.200q", want, page)
+	}
+
+	resp, err = admin.Get(ts.URL + "/viewer/objects/" + h.String() + "/raw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(rawBody), "preview truncated") {
+		t.Fatalf("raw view does not mark the truncated preview: %.200q", rawBody)
+	}
+}
+
+// TestThrottleExponentialBackoff pins the backoff growth: each consecutive
+// exhaustion doubles the block window.
+func TestThrottleExponentialBackoff(t *testing.T) {
+	const window = 50 * time.Millisecond
+	th := newThrottle(2, window)
+	for i := 0; i < 2; i++ {
+		if !th.allow("ip") {
+			t.Fatalf("attempt %d blocked before the budget was spent", i+1)
+		}
+	}
+	if th.allow("ip") {
+		t.Fatal("third attempt must be blocked")
+	}
+	time.Sleep(window + 10*time.Millisecond)
+	// The block expired after one window: two more attempts are allowed.
+	if !th.allow("ip") || !th.allow("ip") {
+		t.Fatal("attempts after the first backoff must be allowed")
+	}
+	if th.allow("ip") {
+		t.Fatal("budget must be exhausted again")
+	}
+	// The second exhaustion doubles the backoff, so one window is not enough.
+	time.Sleep(window + 10*time.Millisecond)
+	if th.allow("ip") {
+		t.Fatal("second backoff must outlast one window")
+	}
+	time.Sleep(window + 10*time.Millisecond)
+	if !th.allow("ip") {
+		t.Fatal("attempt after the doubled backoff must be allowed")
+	}
+}
+
+// TestThrottleConcurrentBudget pins the single-critical-section behavior: a
+// burst of concurrent attempts cannot slip past the failure budget.
+func TestThrottleConcurrentBudget(t *testing.T) {
+	th := newThrottle(5, time.Minute)
+	var allowed atomic.Int64
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if th.allow("ip") {
+				allowed.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := allowed.Load(); got != 5 {
+		t.Fatalf("allowed %d concurrent attempts, want exactly 5", got)
+	}
 }
 
 func csrfFromPage(page string) string {

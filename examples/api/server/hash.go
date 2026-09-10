@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"io"
-
-	"github.com/dmundt/go-cask/cas"
+	"strings"
 )
 
 // spoolAndHash copies r into w while hashing it, returning the byte count.
@@ -16,12 +16,28 @@ func spoolAndHash(w io.Writer, hasher interface {
 }
 
 // envelopeType extracts the versioned type name from the self-describing TLV
-// envelope (cas-core §8 decision 1) on a best-effort basis; "" when the bytes
-// are not an envelope (raw objects have no type).
+// envelope header (cas-core §8 decision 1) on a best-effort basis; "" when the
+// bytes are not an envelope (raw objects have no type).
+//
+// Only the header — [version][uvarint typeLen][type] — is parsed, so a bounded
+// prefix of a large object still yields its type (cas.EnvelopeFromBytes
+// decodes the payload too and therefore needs the whole object).
 func envelopeType(data []byte) string {
-	env, err := cas.EnvelopeFromBytes(data)
-	if err != nil {
+	const envelopeVersion = 1
+	if len(data) < 1 || data[0] != envelopeVersion {
 		return ""
 	}
-	return env.Type
+	typeLen, n := binary.Uvarint(data[1:])
+	if n <= 0 {
+		return ""
+	}
+	off := 1 + n
+	if typeLen == 0 || typeLen > uint64(len(data)-off) {
+		return ""
+	}
+	name := string(data[off : off+int(typeLen)])
+	if !strings.Contains(name, "@") {
+		name += "@1" // legacy unversioned type name
+	}
+	return name
 }

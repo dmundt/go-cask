@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v14
+version: v15
 ---
 
 # Backend Architecture — go-cask
@@ -40,7 +40,7 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 
 - Config selects the backend: `fs` (Git-like fan-out) or `memory` (tests/ephemeral) — cas-core §4.4–4.5.
 - The viewer and CLI talk to the library **in-process only** — no remote backend, no client SDK. Serving to other machines is an app concern (copy the `examples/api` pattern; run as that app's server). The product ships no such server.
-- **One store directory ↔ one writer process, grace for sweeps.** `cas` concurrency safety is per-process: any number of goroutines/HTTP clients may share one store within a process. Across OS processes, writes/reads are safe by construction (atomic rename, unique temps). A maintenance sweep racing another process's writes needs care: the `cask` CLI uses the grace model — writers and `web` run lock-free; `gc`/`prune`/`clean` take the exclusive `.cask.lock` (one sweep at a time) and reclaim only objects older than `--min-age` (default 24h); a forced `--min-age 0` sweep is the dangerous variant (cli §2, cas-core §6). Scale by serving more clients from one process or sharding store directories; embedding apps provide equivalent coordination.
+- **One store directory ↔ one writer process, grace for sweeps.** `cas` concurrency safety is per-process: any number of goroutines/HTTP clients may share one store within a process. Across OS processes, writes/reads are safe by construction (atomic rename, unique temps). A maintenance sweep racing another process's writes needs care: the `cask` CLI uses the grace model — writers and `web` run lock-free; `gc`/`prune`/`clean` take the exclusive `.cask.lock` (one sweep at a time) and reclaim only objects older than `--min-age` (default 1h); a forced `--min-age 0` sweep is the dangerous variant (cli §2, cas-core §6). Scale by serving more clients from one process or sharding store directories; embedding apps provide equivalent coordination.
 
 ## 6. Configuration
 

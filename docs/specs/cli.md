@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v12
+version: v13
 ---
 
 # CLI — go-cask
@@ -25,7 +25,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 | Command | Behavior |
 |---|---|
-| `put <file>\|-` | store bytes (or stdin); prints the hash |
+| `put <file>\|- [-algo <name>] [-json]` | store bytes (or stdin); prints the hash |
 | `get <hash> [-o <file>]` | retrieve to a file or stdout (no `-o` → stdout) |
 | `list [--algo] [--limit] [--offset]` | list objects (`{total, objects}` shape) |
 | `meta <hash>` | metadata of one object (size, type) |
@@ -38,7 +38,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `version` | print library + Go version |
 
 - Hash arguments are validated with `ParseHash` before use; malformed → usage error (exit 2).
-- `gc`/`prune` are destructive and **grace-gated**: they reclaim only objects unreachable from roots AND older than `--min-age` (default 24h), so a concurrent writer's fresh objects survive (cas-core §6). `prune` defaults to `--dry-run`; `gc` prints the count deleted (consistency §4–§5). A forced sweep (`--min-age 0`) prints a warning and is safe only when no other process writes the store.
+- `gc`/`prune` are destructive and **grace-gated**: they reclaim only objects unreachable from roots AND older than `--min-age` (default 1h), so a concurrent writer's fresh objects survive (cas-core §6). `prune` defaults to `--dry-run`; `gc` prints the count deleted (consistency §4–§5). A forced sweep (`--min-age 0`) prints a warning and is safe only when no other process writes the store.
 - **Store lock:** maintenance sweeps (`gc`/`prune`/`clean`) take the store's exclusive cross-process lock (a `.cask.lock` file at the store root holding the PID) so two sweeps never overlap. A second holder → exit 1 naming the holder's PID (and telling the operator to remove a stale lock file when no such process runs). Writers (`put`) and the viewer (`web`) never lock — object writes are cross-process safe by construction and the grace period protects fresh objects (cas-core §6). Read-only commands (`get`/`list`/`meta`/`stats`/`verify`) never lock. The library has no inter-process locking; this lock only keeps maintenance sweeps from racing.
 - Every operation calls the library in-process.
 - `web` is the only non-terminating subcommand: it runs until signalled (graceful shutdown per backend-architecture §6).
@@ -46,7 +46,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 ## 3. Output & exit codes
 
 - Default output is plain text: one hash per line for `put`/`list`; human-readable summaries for `stats`/`meta`/`verify`/`gc`/`prune`.
-- `-json` switches to machine-readable JSON (`{"hash": "…"}`, `{"total": n, "objects": […]}`).
+- `-json` switches to machine-readable JSON: `put` → `{"hash": "…", "deduplicated": bool}`; `list` → `{"total": n, "objects": […]}`; `meta` → `{"hash": …, "algorithm": …, "size": n, "type": "…"}`.
 - Errors go to stderr, never stdout.
 
 | Exit | Meaning |
@@ -67,7 +67,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - [x] Local-only: `-store` mode; `-algo` honored for writes; no remote flags
 - [x] `web` starts the embedded viewer per backend-architecture §3; no separate server binary
 - [x] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second sweep refused with the holder's PID (exit 1); writers (`put`) and reads never lock
-- [x] `gc`/`prune` grace-gated by `--min-age` (default 24h); forced `--min-age 0` warns
+- [x] `gc`/`prune` grace-gated by `--min-age` (default 1h); forced `--min-age 0` warns
 - [x] All subcommands map to core operations or the viewer server composition — no new CLI logic
 - [x] Hash arguments validated with `ParseHash` (exit 2 on malformed)
 - [x] Plain text by default, `-json` on request; errors on stderr

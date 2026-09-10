@@ -7,15 +7,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
 )
+
+// unsafeHash is a cas.Hash carrying an algorithm name that could only exist if
+// it bypassed ParseHash/RegisterHash; it pins the backend's path-safety guard.
+type unsafeHash struct{ algo string }
+
+func (u unsafeHash) Algorithm() string         { return u.algo }
+func (u unsafeHash) Bytes() []byte             { return []byte{0xab} }
+func (u unsafeHash) String() string            { return u.algo + ":ab" }
+func (u unsafeHash) Equal(other cas.Hash) bool { return other != nil && other.Algorithm() == u.algo }
 
 func hashData(algo string, data []byte) (cas.Hash, error) {
 	return cas.HashBytes(algo, data)
@@ -546,6 +557,232 @@ func TestCleanTmpRemoval(t *testing.T) {
 	}
 }
 
+// TestCleanRemovesTempFallbacks covers the collision-fallback temp names
+// createTempExcl produces ("<hex>.tmp.<n>"): matching only the exact ".tmp"
+// suffix left crash leftovers with fallback names unreclaimable.
+func TestCleanRemovesTempFallbacks(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+	h, _ := hashData("sha256", []byte("payload"))
+	objPath := s.hashPath(h)
+	if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fallback := objPath + ".tmp.1"
+	if err := os.WriteFile(fallback, []byte("leftover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A file that merely contains ".tmp" is not a temp file and must survive.
+	decoy := filepath.Join(filepath.Dir(objPath), "notes.tmpdata")
+	if err := os.WriteFile(decoy, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.Clean(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("Clean removed %d files, want 1 (the .tmp.1 fallback)", n)
+	}
+	if _, err := os.Stat(fallback); !os.IsNotExist(err) {
+		t.Fatalf("fallback temp survived Clean: %v", err)
+	}
+	if _, err := os.Stat(decoy); err != nil {
+		t.Fatalf("non-temp file removed by Clean: %v", err)
+	}
+}
+
+// TestHashPathNeverEscapesBase pins the path-safety guard: a Hash whose
+// algorithm name is not a single lowercase-alphanumeric path element must
+// still resolve inside the store root.
+func TestHashPathNeverEscapesBase(t *testing.T) {
+	s := mustFS(t)
+	for _, algo := range []string{"..", "../evil", "a/b", `a\b`, "SHA256", ""} {
+		got := s.hashPath(unsafeHash{algo: algo})
+		rel, err := filepath.Rel(s.base, got)
+		if err != nil {
+			t.Fatalf("hashPath(%q) = %q: %v", algo, got, err)
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			t.Fatalf("hashPath(%q) escapes the store base: %q", algo, got)
+		}
+	}
+}
+
+// TestOpenWithRetry covers the transient-open retry path deterministically:
+// a sharing-style failure while the file exists is retried, a missing file is
+// not, and an unrelenting failure is reported.
+func TestOpenWithRetry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "object")
+	if err := os.WriteFile(path, []byte("bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fails twice with a permissions-style error, then succeeds.
+	calls := 0
+	f, err := openWithRetry(func(p string) (*os.File, error) {
+		calls++
+		if calls <= 2 {
+			return nil, &os.PathError{Op: "open", Path: p, Err: os.ErrPermission}
+		}
+		return os.Open(p)
+	}, path)
+	if err != nil {
+		t.Fatalf("openWithRetry after transient failures = %v", err)
+	}
+	f.Close()
+	if calls != 3 {
+		t.Fatalf("open attempts = %d, want 3", calls)
+	}
+
+	// A missing file is reported immediately (no retry).
+	calls = 0
+	if _, err := openWithRetry(func(p string) (*os.File, error) {
+		calls++
+		return nil, &os.PathError{Op: "open", Path: p, Err: fs.ErrNotExist}
+	}, path); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing file = %v, want fs.ErrNotExist", err)
+	}
+	if calls != 1 {
+		t.Fatalf("missing-file open attempts = %d, want 1", calls)
+	}
+
+	// A file that exists but never opens exhausts the retries and errors.
+	calls = 0
+	if _, err := openWithRetry(func(p string) (*os.File, error) {
+		calls++
+		return nil, &os.PathError{Op: "open", Path: p, Err: os.ErrPermission}
+	}, path); err == nil {
+		t.Fatal("persistent open failure must error")
+	}
+	if calls != 20 {
+		t.Fatalf("persistent-failure open attempts = %d, want 20", calls)
+	}
+}
+
+// cancelAfterReader cancels a context once the first chunk has been served.
+type cancelAfterReader struct {
+	cancel context.CancelFunc
+	data   []byte
+	served bool
+}
+
+func (c *cancelAfterReader) Read(p []byte) (int, error) {
+	n := copy(p, c.data)
+	c.data = c.data[n:]
+	if !c.served {
+		c.served = true
+		c.cancel()
+	}
+	if n == 0 {
+		return 0, io.EOF
+	}
+	return n, nil
+}
+
+// TestPutCanceledMidStream pins the streaming cancellation contract: a Put
+// whose context is canceled mid-write publishes nothing and leaves no temp.
+func TestPutCanceledMidStream(t *testing.T) {
+	s := mustFS(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	content := bytes.Repeat([]byte("x"), 3<<20) // several io.Copy buffers
+	h, _ := hashData("sha256", content)
+	r := &cancelAfterReader{cancel: cancel, data: content}
+	if err := s.Put(ctx, h, r); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Put canceled mid-stream = %v, want context.Canceled", err)
+	}
+	if ok, _ := s.Exists(context.Background(), h); ok {
+		t.Fatal("canceled Put published the object")
+	}
+	if leftovers := tmpFilesIn(s, h); len(leftovers) != 0 {
+		t.Fatalf("canceled Put left temp files behind: %v", leftovers)
+	}
+}
+
+// TestConcurrentPutGetDelete exercises the backend's concurrency contract
+// (testing-strategy §4, performance §6): concurrent same-hash Puts, reads
+// during writes/deletes, and parallel List/Stats must never corrupt or lose
+// intact objects. Run under -race in CI.
+func TestConcurrentPutGetDelete(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+	shared := []byte("shared object")
+	sharedHash, err := hashData("sha256", shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const workers, perWorker = 8, 25
+	errs := make(chan error, workers*perWorker)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < perWorker; i++ {
+				// Concurrent writers of the same content (idempotent Put).
+				if err := s.Put(ctx, sharedHash, bytes.NewReader(shared)); err != nil {
+					errs <- err
+					return
+				}
+				content := []byte(fmt.Sprintf("obj-%d-%d", w, i))
+				h, err := hashData("sha256", content)
+				if err != nil {
+					errs <- err
+					return
+				}
+				if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
+					errs <- err
+					return
+				}
+				rc, err := s.Get(ctx, h)
+				if err != nil {
+					errs <- err
+					return
+				}
+				got, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					errs <- err
+					return
+				}
+				if !bytes.Equal(got, content) {
+					errs <- fmt.Errorf("read %q, want %q", got, content)
+					return
+				}
+				if i%5 == 0 {
+					if err := s.Delete(ctx, h); err != nil {
+						errs <- err
+						return
+					}
+				}
+				if i%7 == 0 {
+					if _, err := s.List(ctx, "sha256"); err != nil {
+						errs <- err
+						return
+					}
+					if _, err := s.Stats(ctx); err != nil {
+						errs <- err
+						return
+					}
+					if err := s.Verify(ctx, sharedHash); err != nil {
+						errs <- err
+						return
+					}
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
 // TestStats exercises Stats per-algorithm counts + total size and String.
 func TestStats(t *testing.T) {
 	s := mustFS(t)
@@ -845,8 +1082,8 @@ func TestWalkOnMissingBase(t *testing.T) {
 	if _, err := s.Stats(ctx); err == nil {
 		t.Error("Stats over a removed base must error")
 	}
-	// Clean's walk callback swallows the root error, so it reports success
-	// with nothing removed (exercising that callback error branch).
+	// Clean tolerates a missing base (there is nothing to sweep) while
+	// List/Stats report it.
 	if n, err := s.Clean(ctx, 0); err != nil || n != 0 {
 		t.Errorf("Clean over a removed base = %d, %v; want 0, nil", n, err)
 	}

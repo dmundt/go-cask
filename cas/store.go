@@ -16,10 +16,11 @@ const SHA256 = "sha256"
 // distinct, so passing a commit hash to a blob store is a compile-time
 // error. Store[T] is safe for concurrent use if its Backend is.
 //
-// Stored objects are self-describing: the raw codec payload is prefixed with
-// the type string (e.g. "commit@1") and a newline separator, so the type
-// version travels with the bytes without a JSON envelope or base64. The
-// On-disk form is: <type>\n<codec payload>.
+// Stored objects are self-describing: the codec payload is wrapped in the TLV
+// envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
+// (envelope.go, cas-core §8 decision 1), so the versioned type name (e.g.
+// "commit@1") travels with the bytes without a side registry. The hash covers
+// the whole envelope, so the type is part of the address.
 // The typed layer is constrained: T MUST implement Object[T]. The type
 // system therefore proves that every value a Store handles is an object —
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
@@ -96,7 +97,13 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
-	return marshalEnvelope(obj.Type(), payload), nil
+	typ := obj.Type()
+	if typ == "" {
+		// An empty type name produces an envelope that parseEnvelope rejects,
+		// i.e. an object Put succeeds on but Get can never read.
+		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
+	}
+	return marshalEnvelope(typ, payload), nil
 }
 
 // Get reads the object at h and returns the concrete T directly — no casts.
@@ -115,7 +122,7 @@ func (s *Store[T]) Get(ctx context.Context, h Hash) (T, error) {
 	}
 	v, err := s.codec.Unmarshal(payload)
 	if err != nil {
-		return zero, fmt.Errorf("cas: %w: payload decode failed", ErrCorrupt)
+		return zero, fmt.Errorf("cas: %w: payload decode: %w", ErrCorrupt, err)
 	}
 	if v.Type() != typeName {
 		return zero, fmt.Errorf("%w: stored type %q != decoded type %q", ErrUnknownType, typeName, v.Type())

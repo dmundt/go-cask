@@ -18,13 +18,13 @@ flags:
   -store <path>   the store directory (the library in-process, FSBackend)
 
 commands:
-  put <file|- >      store bytes (or stdin); prints the hash
+  put <file|-> [-algo <name>] [-json]   store bytes (or stdin); prints the hash
   get <hash> [-o <file>]     (no -o prints to stdout)
   list [--algo] [--limit] [--offset]
   meta <hash>
   stats
   verify <hash|--all>
-  gc --min-age <dur> <roots...>   reclaim unreachable objects older than the grace (default 24h; 0 = immediate, dangerous)
+  gc --min-age <dur> <roots...>   reclaim unreachable objects older than the grace (default 1h; 0 = immediate, dangerous)
   prune --min-age <dur> <roots...> [--dry-run] | age-based retention (dry-run default)
   clean [--min-age <dur>]   remove orphan *.tmp files (crash leftovers)
   web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]
@@ -45,7 +45,7 @@ func main() {
 	}
 	switch cmd {
 	case "web":
-		runWeb(ctx, args)
+		runWeb(ctx, mf, args)
 	case "version":
 		runVersion()
 	default:

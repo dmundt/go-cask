@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,55 @@ func run(t *testing.T, mf modeFlags, cmd string, args ...string) (string, int) {
 
 func localMF(t *testing.T) modeFlags {
 	return modeFlags{store: t.TempDir()}
+}
+
+// TestPutJSON covers the documented -json shape for put (cli §3).
+func TestPutJSON(t *testing.T) {
+	mf := localMF(t)
+	out, code := run(t, mf, "put", "-json", writeTemp(t, "json put"))
+	if code != 0 {
+		t.Fatalf("put -json exit %d", code)
+	}
+	var got struct {
+		Hash         string `json:"hash"`
+		Deduplicated bool   `json:"deduplicated"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("put -json output %q: %v", out, err)
+	}
+	if _, err := cas.ParseHash(got.Hash); err != nil {
+		t.Fatalf("put -json hash %q: %v", got.Hash, err)
+	}
+	if got.Deduplicated {
+		t.Fatal("first put must not be reported as deduplicated")
+	}
+
+	// A second put of the same bytes deduplicates and says so.
+	out, code = run(t, mf, "put", "-json", writeTemp(t, "json put"))
+	if code != 0 {
+		t.Fatalf("second put -json exit %d", code)
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("second put -json output %q: %v", out, err)
+	}
+	if !got.Deduplicated {
+		t.Fatalf("second put not reported as deduplicated: %q", out)
+	}
+}
+
+// TestListRejectsOutOfRangeFlags pins the CLI validation added for api-design
+// §9 (reject rather than silently clamp).
+func TestListRejectsOutOfRangeFlags(t *testing.T) {
+	mf := localMF(t)
+	for _, args := range [][]string{
+		{"list", "-limit", "0"},
+		{"list", "-limit", "1001"},
+		{"list", "-offset", "-1"},
+	} {
+		if _, code := run(t, mf, args[0], args[1:]...); code != 2 {
+			t.Errorf("%v: exit %d, want 2 (usage)", args, code)
+		}
+	}
 }
 
 func TestLocalRoundTrip(t *testing.T) {

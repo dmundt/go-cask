@@ -11,9 +11,11 @@ import (
 // for storing and retrieving bytes; they know nothing about envelopes,
 // codecs, object types, or generics.
 //
-// Integrity is provided by the address hash: the hash is the content,
-// so any corruption is detected the moment the bytes are read — the
-// calling layer can recompute the hash and compare.
+// Integrity is provided by the address hash: the hash IS the content, so any
+// conflict is impossible by construction. Backends store and return bytes
+// without recomputing the hash — an explicit integrity check is the caller's
+// job (Store.Verify / Backend.Verify, fs.Verify), which recomputes the digest
+// and reports ErrHashMismatch on corruption.
 //
 // Implementations must be safe for concurrent use.
 //

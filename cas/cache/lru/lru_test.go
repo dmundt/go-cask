@@ -237,3 +237,79 @@ func TestCacheBoundViaWarmupPreload(t *testing.T) {
 		t.Fatalf("PreloadRecursive exceeded bound: %+v", st)
 	}
 }
+
+func TestCacheClearResetsBookkeeping(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	c, err := lru.New(s, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b"} {
+		if _, err := c.Get(ctx, putItem(t, s, id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st := c.CacheStats(); st.Size != 2 {
+		t.Fatalf("Size = %d, want 2", st.Size)
+	}
+
+	c.Clear()
+	if st := c.CacheStats(); st.Size != 0 {
+		t.Fatalf("Size after Clear = %d, want 0", st.Size)
+	}
+
+	// Refilling to maxSize must not evict anything: cleared entries may not
+	// linger in the recency list and consume slots.
+	if _, err := c.Get(ctx, putItem(t, s, "c")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Get(ctx, putItem(t, s, "d")); err != nil {
+		t.Fatal(err)
+	}
+	st := c.CacheStats()
+	if st.Size != 2 {
+		t.Fatalf("Size = %d, want 2", st.Size)
+	}
+	if st.Evicts != 0 {
+		t.Fatalf("Evicts = %d, want 0: Clear left stale recency entries", st.Evicts)
+	}
+}
+
+func TestCacheEvictResetsBookkeeping(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	c, err := lru.New(s, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := putItem(t, s, "a")
+	if _, err := c.Get(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+
+	c.Evict(h)
+	if st := c.CacheStats(); st.Size != 0 {
+		t.Fatalf("Size after Evict = %d, want 0", st.Size)
+	}
+	// Evict counted the removal; the entry must no longer occupy a slot.
+	if st := c.CacheStats(); st.Evicts != 1 {
+		t.Fatalf("Evicts after Evict = %d, want 1", st.Evicts)
+	}
+
+	// Filling the single slot must not evict a second time: a stale recency
+	// entry would consume the slot and report a phantom eviction.
+	if _, err := c.Get(ctx, putItem(t, s, "b")); err != nil {
+		t.Fatal(err)
+	}
+	st := c.CacheStats()
+	if st.Size != 1 {
+		t.Fatalf("Size = %d, want 1", st.Size)
+	}
+	if st.Evicts != 1 {
+		t.Fatalf("Evicts = %d, want 1: Evict left a stale recency entry", st.Evicts)
+	}
+	if c.Lookup(h.String()) != nil {
+		t.Fatal("evicted key must not be cached")
+	}
+}

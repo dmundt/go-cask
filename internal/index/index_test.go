@@ -64,6 +64,9 @@ func TestEnvelopeType(t *testing.T) {
 		{"garbage bytes are not an envelope", []byte("not an envelope"), ""},
 		{"JSON object is not a TLV envelope", []byte(`{"type":"blob@1","data":"aGk="}`), ""},
 		{"empty input", nil, ""},
+		{"type length beyond buffer", []byte{1, 200, 'a'}, ""},
+		{"truncated payload still yields the type", tlvEnvelope("blob@1", bytes.Repeat([]byte("x"), 1<<20))[:32], "blob@1"},
+		{"non-TLV first byte", []byte{2, 1, 'a'}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

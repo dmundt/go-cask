@@ -56,6 +56,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 	// Flags may follow the positional (spec order: put <file> [-algo]), so
 	// std flag parsing is not used here.
 	algo := "sha256"
+	jsonOut := false
 	var files []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -64,6 +65,8 @@ func opPut(ctx context.Context, t *target, args []string) error {
 				return usagef("-algo needs a name")
 			}
 			algo, i = args[i+1], i+1
+		case "-json":
+			jsonOut = true
 		default:
 			files = append(files, args[i])
 		}
@@ -85,6 +88,9 @@ func opPut(ctx context.Context, t *target, args []string) error {
 	h, dedup, err := localPut(ctx, t.raw, r, algo)
 	if err != nil {
 		return err
+	}
+	if jsonOut {
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"hash": h.String(), "deduplicated": dedup})
 	}
 	if dedup {
 		fmt.Printf("%s (deduplicated)\n", h)
@@ -183,6 +189,12 @@ func opList(ctx context.Context, t *target, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
+	if *limit < 1 || *limit > 1000 {
+		return usagef("limit must be between 1 and 1000, got %d", *limit)
+	}
+	if *offset < 0 {
+		return usagef("offset must be >= 0, got %d", *offset)
+	}
 	type item struct {
 		Hash      string `json:"hash"`
 		Algorithm string `json:"algorithm"`
@@ -229,12 +241,15 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return err
 	}
-	data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(rc, 4<<10)) // TLV header carries the type
 	rc.Close()
 	if err != nil {
 		return err
 	}
-	size := int64(len(data))
+	size, err := t.raw.Size(ctx, h)
+	if err != nil {
+		return err
+	}
 	typ := index.EnvelopeType(data)
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{

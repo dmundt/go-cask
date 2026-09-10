@@ -164,6 +164,44 @@ func TestMemoryBackendWithMaxSize(t *testing.T) {
 	}
 }
 
+// countingReader yields n bytes and records how many were actually served.
+type countingReader struct {
+	n    int
+	read int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	if c.read >= c.n {
+		return 0, io.EOF
+	}
+	chunk := min(len(p), c.n-c.read)
+	for i := 0; i < chunk; i++ {
+		p[i] = 'x'
+	}
+	c.read += chunk
+	return chunk, nil
+}
+
+// TestMemoryBackendMaxSizeBoundsBuffering pins the documented "checked before
+// allocation" behavior: an oversized Put must be rejected without buffering
+// the whole object first.
+func TestMemoryBackendMaxSizeBoundsBuffering(t *testing.T) {
+	ctx := context.Background()
+	const capBytes = 16
+	b := New(WithMaxSize(capBytes))
+	h, _ := cas.HashBytes("sha256", []byte("whatever"))
+	src := &countingReader{n: 1 << 20}
+	if err := b.Put(ctx, h, src); err == nil {
+		t.Fatal("Put over cap must error")
+	}
+	if src.read > capBytes+1 {
+		t.Fatalf("Put buffered %d bytes for a %d-byte cap; want at most %d", src.read, capBytes, capBytes+1)
+	}
+	if st, err := b.Stats(ctx); err != nil || st.ObjectCount != 0 {
+		t.Fatalf("rejected Put stored objects: %+v, %v", st, err)
+	}
+}
+
 // TestMemoryBackendStats verifies Stats recomputes per-algorithm counts, the
 // total stored byte size, and the object count from the live map.
 func TestMemoryBackendStats(t *testing.T) {

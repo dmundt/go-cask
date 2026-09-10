@@ -7,6 +7,7 @@ package benchmark_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"strings"
@@ -114,14 +115,14 @@ func BenchmarkFSBackendPut(b *testing.B) {
 				}
 				// Distinct content per iteration: each Put creates a new
 				// object (a realistic write workload) rather than
-				// overwriting one hash.
+				// overwriting one hash. The counter spans 8 bytes, so the
+				// content does not repeat within any realistic b.N.
 				data := []byte(strings.Repeat("x", sz.size))
 				b.SetBytes(int64(sz.size))
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					data[0] = byte(i)
-					data[1] = byte(i >> 8)
+					binary.BigEndian.PutUint64(data, uint64(i))
 					h, _ := hashData("sha256", data)
 					if err := s.Put(ctx, h, bytes.NewReader(data)); err != nil {
 						b.Fatal(err)

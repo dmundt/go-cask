@@ -92,12 +92,22 @@ func TestEnvelopeEmptyType(t *testing.T) {
 	}
 }
 
+// TestEnvelopeVersionAppliedToLegacy pins the legacy path end to end: a type
+// name without "@major" reads back with "@1" appended.
 func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
-	if !strings.Contains("blob@1", "@") {
-		t.Fatal("versioned name lacks @")
+	env, err := EnvelopeFromBytes(marshalEnvelope("blob", []byte("x")))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains("blob", "@") {
-		t.Fatal("unversioned name has @")
+	if env.Type != "blob@1" {
+		t.Fatalf("unversioned type name = %q, want blob@1", env.Type)
+	}
+	env, err = EnvelopeFromBytes(marshalEnvelope("blob@2", []byte("x")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Type != "blob@2" {
+		t.Fatalf("versioned type name = %q, want blob@2", env.Type)
 	}
 }
 

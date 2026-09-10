@@ -3,6 +3,7 @@ package cas
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -124,10 +125,17 @@ func TestNewHash(t *testing.T) {
 // --- Equal semantics ---
 
 func TestHashEqual(t *testing.T) {
+	RegisterHash("equalalgo", func(data []byte) Hash {
+		return hash{algo: "equalalgo", bytes: []byte{0x01}}
+	})
 	a, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	b, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	c, _ := ParseHash("sha256:" + strings.Repeat("cd", 32))
-	d, _ := ParseHash("sha256:" + strings.Repeat("ef", 32))
+	// Same digest, different algorithm — Equal must compare the algorithm too.
+	d, err := NewHash("equalalgo", a.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !a.Equal(b) || !b.Equal(a) {
 		t.Error("identical hashes must be equal")
 	}
@@ -140,6 +148,51 @@ func TestHashEqual(t *testing.T) {
 	if a.Equal(nil) {
 		t.Error("hash must not equal nil")
 	}
+}
+
+// TestRegisterHashOverridesStreamHasher pins registry parity: registering a
+// one-shot function for a name that also has a streaming hasher drops the
+// stream constructor, so HashBytes and NewHasher never disagree about the
+// address of one algorithm name.
+func TestRegisterHashOverridesStreamHasher(t *testing.T) {
+	RegisterHash("parityalgo", func(data []byte) Hash {
+		return hash{algo: "parityalgo", bytes: []byte{0x01}}
+	})
+	registerStreamHash("parityalgo", sha256.New)
+	RegisterHash("parityalgo", func(data []byte) Hash {
+		return hash{algo: "parityalgo", bytes: []byte{0x02}}
+	})
+	if _, err := NewHasher("parityalgo"); !errors.Is(err, ErrUnknownAlgorithm) {
+		t.Fatalf("NewHasher(parityalgo) = %v, want ErrUnknownAlgorithm after re-registration", err)
+	}
+	got, err := HashBytes("parityalgo", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "parityalgo:02" {
+		t.Fatalf("HashBytes(parityalgo) = %q, want the re-registered one-shot result", got)
+	}
+}
+
+// TestRegisterHashRejectsInvalidName pins the name validation that keeps a
+// hostile algorithm name out of store paths.
+func TestRegisterHashRejectsInvalidName(t *testing.T) {
+	for _, name := range []string{"", "..", "../evil", "SHA256", "a/b", "a b"} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("RegisterHash(%q) must panic", name)
+				}
+			}()
+			RegisterHash(name, func([]byte) Hash { return nil })
+		})
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("RegisterHash with a nil func must panic")
+		}
+	}()
+	RegisterHash("nilfunc", nil)
 }
 
 // --- RegisterHash (pluggable algorithms, cas-core §4.2) ---
@@ -171,6 +224,59 @@ func TestBytesIsCopy(t *testing.T) {
 	b[0] = 0xff
 	if h.Bytes()[0] == 0xff {
 		t.Fatal("Bytes() must not alias internal state")
+	}
+}
+
+// TestHashJSONMarshal pins the Hash JSON contract: a Hash marshals as its
+// canonical "algo:hexdigest" string through interface fields and slices, which
+// is what lets object types declare plain Hash fields (gitlike's
+// TreeEntry/Commit/Tag). Unmarshalling into a Hash field stays impossible for
+// encoding/json — interface with no exported implementation — which is why
+// those types keep their own UnmarshalJSON.
+func TestHashJSONMarshal(t *testing.T) {
+	h, err := ParseHash("sha256:" + strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `"` + h.String() + `"`
+
+	direct, err := json.Marshal(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(direct) != want {
+		t.Fatalf("json.Marshal(Hash) = %s, want %s", direct, want)
+	}
+
+	type holder struct {
+		Tree  Hash   `json:"tree"`
+		Refs  []Hash `json:"refs,omitempty"`
+		Empty Hash   `json:"empty,omitempty"`
+	}
+	got, err := json.Marshal(holder{Tree: h, Refs: []Hash{h, h}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHolder := `{"tree":` + want + `,"refs":[` + want + `,` + want + `]}`
+	if string(got) != wantHolder {
+		t.Fatalf("json.Marshal(holder) = %s, want %s", got, wantHolder)
+	}
+
+	// A nil Hash is omitted under omitempty, and null without it.
+	got, err = json.Marshal(struct {
+		Empty Hash `json:"empty"`
+	}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"empty":null}` {
+		t.Fatalf("nil Hash = %s, want {\"empty\":null}", got)
+	}
+
+	// Decoding into a Hash field cannot work: documented reason for keeping
+	// per-type UnmarshalJSON in the object model.
+	if err := json.Unmarshal([]byte(`{"tree":`+want+`}`), &holder{}); err == nil {
+		t.Fatal("json.Unmarshal into a Hash field must fail (no exported implementation)")
 	}
 }
 

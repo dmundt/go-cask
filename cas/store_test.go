@@ -19,6 +19,27 @@ import (
 // backendFactory builds a backend for the shared contract test.
 type backendFactory func(t *testing.T) cas.Backend
 
+// untypedObj is an Object[T] whose Type() is empty: Put must reject it rather
+// than write an envelope whose type parseEnvelope rejects on read.
+type untypedObj struct{}
+
+func (untypedObj) Type() string           { return "" }
+func (untypedObj) References() []cas.Hash { return nil }
+
+func TestStoreRejectsEmptyTypeName(t *testing.T) {
+	ctx := context.Background()
+	s, err := cas.New(mem.New(), jsoncodec.New[untypedObj](), "sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Put(empty type) = %v, want ErrUnknownType", err)
+	}
+	if _, _, err := s.PutDedup(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("PutDedup(empty type) = %v, want ErrUnknownType", err)
+	}
+}
+
 func fsFactory(t *testing.T) cas.Backend {
 	s, err := fs.New(t.TempDir())
 	if err != nil {

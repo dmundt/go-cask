@@ -56,18 +56,46 @@ func New(opts ...backend.Option) *Backend {
 
 // Put buffers r and stores it under h. Idempotent. When a max size is set, a
 // Put whose addition would exceed the cap is rejected with an error and no
-// entry is stored.
+// entry is stored; buffering is bounded to the remaining budget first, so an
+// oversized Put cannot allocate past the cap.
 func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	data, err := io.ReadAll(r)
+	key := h.String()
+	reader := r
+	if budget, capped := m.budget(key); capped {
+		// One byte past the budget is enough to detect an overflow, so the
+		// read never buffers more than the cap allows.
+		reader = io.LimitReader(r, budget+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return fmt.Errorf("cas: buffer object: %w", err)
 	}
+	return m.store(key, data)
+}
+
+// budget returns how many bytes a Put at key may add before hitting the cap;
+// capped is false when no cap is configured.
+func (m *Backend) budget(key string) (int64, bool) {
+	if m.maxBytes <= 0 {
+		return 0, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	b := m.maxBytes - (m.usedBytes - int64(len(m.objects[key])))
+	if b < 0 {
+		b = 0
+	}
+	return b, true
+}
+
+// store inserts data under key and updates the byte accounting, enforcing the
+// cap under the write lock.
+func (m *Backend) store(key string, data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := h.String()
 	// Bytes this Put would add: the new blob minus any existing blob at the
 	// same key (re-Put of an identical hash replaces, not grows).
 	added := int64(len(data))

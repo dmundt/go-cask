@@ -4,6 +4,7 @@ package fs
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -116,7 +118,7 @@ func syncParentDir(path string) error {
 // hashPath returns the on-disk path for h.
 func (s *Backend) hashPath(h cas.Hash) string {
 	hexDigest := hex.EncodeToString(h.Bytes())
-	p := filepath.Join(s.base, h.Algorithm())
+	p := filepath.Join(s.base, safeAlgo(h.Algorithm()))
 	if s.fanOut > 0 && s.fanLevels > 0 {
 		for i := 0; i < s.fanLevels; i++ {
 			start := i * s.fanOut
@@ -131,6 +133,24 @@ func (s *Backend) hashPath(h cas.Hash) string {
 		}
 	}
 	return filepath.Join(p, hexDigest)
+}
+
+// safeAlgo returns the path element for an algorithm name. Valid hashes carry
+// a lowercase-alphanumeric algorithm (cas.ParseHash and cas.RegisterHash
+// enforce `^[a-z0-9]+$`, cas/hash.go), so this is defense in depth: a Hash
+// built by other means maps to a fixed in-root element rather than escaping
+// the store through ".." or a separator.
+func safeAlgo(algo string) string {
+	if algo == "" {
+		return "invalid"
+	}
+	for i := 0; i < len(algo); i++ {
+		c := algo[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return "invalid"
+		}
+	}
+	return algo
 }
 
 // pathToHash rebuilds a Hash from a path relative to the store base.
@@ -162,7 +182,7 @@ func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 		f.Close()
 		os.Remove(tmp)
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	if _, err := io.Copy(f, ctxReader{ctx: ctx, r: r}); err != nil {
 		cleanup()
 		return fmt.Errorf("cas: write object: %w", err)
 	}
@@ -175,6 +195,14 @@ func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 		return fmt.Errorf("cas: close object: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
+		// Windows cannot always replace a file another reader has open; the
+		// content address makes the object already stored, so an existing
+		// regular file satisfies an idempotent Put (cas-core §4.4). Anything
+		// else at the path (a directory, a device) is a real failure.
+		if fi, statErr := os.Stat(path); statErr == nil && fi.Mode().IsRegular() {
+			os.Remove(tmp)
+			return nil
+		}
 		os.Remove(tmp)
 		return fmt.Errorf("cas: publish object: %w", err)
 	}
@@ -184,6 +212,21 @@ func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 		}
 	}
 	return nil
+}
+
+// ctxReader aborts a copy once ctx is canceled, so a canceled Put does not
+// keep streaming and publishing an object it no longer needs (Get honors
+// context at entry only, because a returned reader outlives the call).
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // createTempExcl creates a uniquely named temp file for an object write.
@@ -214,7 +257,8 @@ func (s *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	f, err := os.Open(s.hashPath(h))
+	path := s.hashPath(h)
+	f, err := openObject(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, h)
@@ -222,6 +266,38 @@ func (s *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("cas: open object: %w", err)
 	}
 	return f, nil
+}
+
+// openObject opens an object file for reading, retrying briefly while the file
+// exists but cannot be opened. On Windows a concurrent atomic rename makes the
+// destination momentarily unopenable ("access is denied" / "being used by
+// another process"), so a lock-free reader may need a moment before it sees
+// the old or the new file (cas-core §4.4 rename caveat). A missing file is
+// reported immediately.
+func openObject(path string) (*os.File, error) {
+	return openWithRetry(os.Open, path)
+}
+
+// openWithRetry implements openObject with an injectable open function, so the
+// transient-failure path is testable on every platform.
+func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, error) {
+	const attempts = 20
+	var err error
+	for i := 0; i < attempts; i++ {
+		var f *os.File
+		f, err = open(path)
+		if err == nil {
+			return f, nil
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if _, statErr := os.Stat(path); statErr != nil {
+			return nil, err // gone or unreadable: not transient contention
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return nil, err
 }
 
 // Exists reports whether the object is stored. Lock-free.
@@ -252,8 +328,6 @@ func (s *Backend) Delete(ctx context.Context, h cas.Hash) error {
 	return nil
 }
 
-// Clean removes leftover *.tmp files older than olderThan.
-
 // Size returns the stored object's size in bytes. A missing object returns
 // ErrNotFound. ctx is honored at entry for cancellation.
 func (s *Backend) Size(ctx context.Context, h cas.Hash) (int64, error) {
@@ -270,6 +344,10 @@ func (s *Backend) Size(ctx context.Context, h cas.Hash) (int64, error) {
 	return fi.Size(), nil
 }
 
+// Clean removes orphan temp files (crash leftovers) older than olderThan
+// (olderThan <= 0 removes them all). It removes both "<hex>.tmp" and the
+// collision fallbacks "<hex>.tmp.<n>" that createTempExcl may leave behind.
+// Walk and removal errors are returned, not swallowed.
 func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -278,29 +356,62 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 	removed := 0
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".tmp") {
+		if d.IsDir() || !isTempFile(d.Name()) {
 			return nil
 		}
 		if olderThan > 0 {
 			fi, err := d.Info()
-			if err != nil || fi.ModTime().After(cutoff) {
+			if err != nil {
+				return err
+			}
+			if fi.ModTime().After(cutoff) {
 				return nil
 			}
 		}
-		if err := os.Remove(path); err == nil {
-			removed++
+		if err := os.Remove(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // removed by a concurrent sweep
+			}
+			return err
 		}
+		removed++
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return removed, nil // the store directory itself is gone: nothing to clean
+		}
 		return removed, fmt.Errorf("cas: clean: %w", err)
 	}
 	return removed, nil
 }
 
+// isTempFile reports whether name is an object temp file: "<hex>.tmp" or a
+// collision fallback "<hex>.tmp.<n>" (createTempExcl).
+func isTempFile(name string) bool {
+	i := strings.Index(name, ".tmp")
+	if i < 0 {
+		return false
+	}
+	rest := name[i+len(".tmp"):]
+	if rest == "" {
+		return true
+	}
+	if rest[0] != '.' {
+		return false
+	}
+	_, err := strconv.Atoi(rest[1:])
+	return err == nil
+}
+
 // List returns every stored hash, filtered by algorithm when algo != "".
+// Hashes are rebuilt from their on-disk paths, which requires the algorithm to
+// be registered in this process (cas.ParseHash, cas-core §4.2): object files
+// written by another process under a custom, unregistered algorithm are
+// skipped rather than reported. Register the algorithm with cas.RegisterHash
+// before listing such a store.
 func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -335,6 +446,8 @@ func (s *Backend) List(ctx context.Context, algo string) ([]cas.Hash, error) {
 }
 
 // Stats walks the tree and returns per-algorithm counts and total size.
+// Like List, it can only account for objects whose algorithm is registered in
+// this process (cas.ParseHash); others are skipped.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	hashtype "hash"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -19,7 +21,7 @@ import (
 // panics, so check for nil before use (ParseHash/NewHash never return nil
 // on success).
 type Hash interface {
-	Algorithm() string // "sha1", "sha256", ...
+	Algorithm() string // "sha256", or a registered custom algorithm
 	Bytes() []byte     // raw digest bytes
 	String() string    // "algo:hexdigest"
 	Equal(other Hash) bool
@@ -48,6 +50,20 @@ func (h hash) Equal(other Hash) bool {
 	}
 	return h.algo == other.Algorithm() && bytes.Equal(h.bytes, other.Bytes())
 }
+
+// MarshalJSON implements json.Marshaler, so a Hash serializes as its canonical
+// "algo:hexdigest" string. encoding/json resolves this through interface
+// fields and []Hash slices, which is what lets an object type declare plain
+// `Tree Hash` / `Refs []Hash` fields and marshal correctly without a
+// hand-written marshaller (gitlike's TreeEntry/Commit/Tag do exactly that). A
+// nil Hash in an interface field still encodes as null — or is omitted under
+// `omitempty` — before this method is consulted.
+//
+// There is deliberately no UnmarshalJSON: encoding/json cannot allocate a
+// value into an interface field, so a struct carrying Hash fields still needs
+// its own UnmarshalJSON that calls ParseHash. Keeping that method in the object
+// type also keeps decode-time hash validation where the field names are known.
+func (h hash) MarshalJSON() ([]byte, error) { return json.Marshal(h.String()) }
 
 // HashBytes computes the content address of data with a registered
 // algorithm: it streams through the built-in hasher when available, or uses
@@ -168,12 +184,27 @@ func LookupStreamHash(algo string) (func() hashtype.Hash, bool) {
 }
 
 // RegisterHash registers a hash algorithm under name, making it usable by
-// ParseHash, NewHash and NewStore. It replaces any previous function under
-// the same name. Call it before constructing stores that use the algorithm.
+// ParseHash, NewHash and NewStore. It replaces any previous function under the
+// same name and drops a previously registered streaming hasher for it, so the
+// one-shot function is authoritative everywhere — HashBytes, Store and Verify
+// keep agreeing on the address of the same algorithm name. Call it before
+// constructing stores that use the algorithm.
+//
+// It panics on an invalid name (lowercase alphanumerics only) or a nil
+// function: such a name can never be parsed back out of a hash string, and it
+// would be unsafe as a store path element (fs backends derive directories from
+// it).
 func RegisterHash(algo string, fn HashFunc) {
+	if !algoRe.MatchString(algo) {
+		panic("cas: invalid algorithm name " + strconv.Quote(algo) + ` (must match ^[a-z0-9]+$)`)
+	}
+	if fn == nil {
+		panic("cas: nil HashFunc for algorithm " + strconv.Quote(algo))
+	}
 	hashRegistryMu.Lock()
 	defer hashRegistryMu.Unlock()
 	hashRegistry[algo] = fn
+	delete(hashStreams, algo)
 }
 
 // LookupHash returns the registered one-shot hash function for the given

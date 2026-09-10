@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
@@ -21,8 +22,41 @@ type server struct {
 	raw            *fs.Backend
 	tokens         map[string]string // token → role
 	rl             *rateLimiter
+	sizesMu        sync.RWMutex
 	sizes          map[string]int64 // hash string → size (maintained at Put)
 	trustedProxies map[string]bool
+}
+
+// setSize records an object's size.
+func (s *server) setSize(hash string, size int64) {
+	s.sizesMu.Lock()
+	defer s.sizesMu.Unlock()
+	s.sizes[hash] = size
+}
+
+// sizeOf returns a recorded size (0 when unknown).
+func (s *server) sizeOf(hash string) int64 {
+	s.sizesMu.RLock()
+	defer s.sizesMu.RUnlock()
+	return s.sizes[hash]
+}
+
+// forgetSize drops a recorded size.
+func (s *server) forgetSize(hash string) {
+	s.sizesMu.Lock()
+	defer s.sizesMu.Unlock()
+	delete(s.sizes, hash)
+}
+
+// retainSizes drops every recorded size not in reachable (used by GC).
+func (s *server) retainSizes(reachable map[string]bool) {
+	s.sizesMu.Lock()
+	defer s.sizesMu.Unlock()
+	for hs := range s.sizes {
+		if !reachable[hs] {
+			delete(s.sizes, hs)
+		}
+	}
 }
 
 // New creates a server over raw with per-role tokens ("token" → role) and
@@ -166,7 +200,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.sizes[h.String()] = size
+	s.setSize(h.String(), size)
 	slog.Info("cas api audit", "action", "put", "hash", h.String(), "size", size, "deduplicated", exists)
 	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
@@ -197,7 +231,7 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 		objects = append(objects, map[string]any{
 			"hash":      h.String(),
 			"algorithm": h.Algorithm(),
-			"size":      s.sizes[h.String()],
+			"size":      s.sizeOf(h.String()),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": total, "objects": objects})
@@ -216,7 +250,7 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 	w.Header().Set("X-CAS-Algorithm", h.Algorithm())
-	if size := s.sizes[h.String()]; size > 0 {
+	if size := s.sizeOf(h.String()); size > 0 {
 		w.Header().Set("X-CAS-Size", strconv.FormatInt(size, 10))
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
@@ -234,7 +268,7 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
 	}
-	delete(s.sizes, h.String())
+	s.forgetSize(h.String())
 	slog.Info("cas api audit", "action", "delete", "hash", h.String())
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -251,9 +285,14 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(rc, 4<<10)) // TLV header carries the type
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
+		return
+	}
+	size, err := s.raw.Size(r.Context(), h)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stat failed"})
 		return
 	}
 	// Type is best-effort from the self-describing envelope; references are
@@ -261,7 +300,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hash":       h.String(),
 		"algorithm":  h.Algorithm(),
-		"size":       len(data),
+		"size":       size,
 		"type":       envelopeType(data),
 		"references": []string{},
 	})
@@ -279,12 +318,16 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
+	hasher, err := cas.NewHasher(h.Algorithm())
 	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if _, err := io.Copy(hasher, rc); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
 		return
 	}
-	recomputed, err := cas.HashBytes(h.Algorithm(), data)
+	recomputed, err := cas.NewHash(h.Algorithm(), hasher.Sum(nil))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

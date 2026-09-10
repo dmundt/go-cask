@@ -1,7 +1,9 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"crypto/subtle"
 	"embed"
 	"fmt"
 	"html/template"
@@ -138,14 +140,14 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 // backoff, viewer-security §5), and issues a session cookie.
 func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string) {
 	ip := callerIP(r)
-	if s.loginThrottle.blocked(ip) {
+	if !s.loginThrottle.allow(ip) {
 		slog.Warn("viewer login throttled", "ip", ip)
 		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
 		return
 	}
 	role, ok := s.resolveToken(token)
 	if !ok {
-		s.loginThrottle.fail(ip)
+		// The attempt was already recorded by allow.
 		slog.Warn("viewer login failed", "ip", ip) // token value never logged
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
@@ -166,18 +168,23 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 	s.loginToken(w, r, r.FormValue("token"))
 }
 
+// resolveToken matches token against the startup token (admin role) and the
+// configured per-role tokens (token → role) using constant-time comparison.
+// An empty token never matches, so a mis-configured empty token cannot grant
+// a role (viewer-security §5).
 func (s *Server) resolveToken(token string) (string, bool) {
-	switch {
-	case token == s.cfg.StartupToken:
-		return RoleAdmin, true
-	default:
-		for tok, want := range s.cfg.RoleTokens { // map is token → role
-			if tok == token {
-				return want, true
-			}
-		}
+	if token == "" {
 		return "", false
 	}
+	if subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.StartupToken)) == 1 {
+		return RoleAdmin, true
+	}
+	for tok, role := range s.cfg.RoleTokens {
+		if subtle.ConstantTimeCompare([]byte(tok), []byte(token)) == 1 {
+			return role, true
+		}
+	}
+	return "", false
 }
 
 // --- dashboard ---
@@ -272,7 +279,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.readBounded(r.Context(), h)
+	data, err := s.readN(r.Context(), h, typePrefixLimit)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -282,10 +289,10 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 		Hash      string
 		Algorithm string
 		Type      string
-		Size      int
+		Size      int64
 		CSRF      string
 		Role      string
-	}{h.String(), h.Algorithm(), typ, len(data), s.csrfFor(r), s.roleFor(r)})
+	}{h.String(), h.Algorithm(), typ, s.objectSize(r.Context(), h), s.csrfFor(r), s.roleFor(r)})
 }
 
 func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
@@ -293,13 +300,19 @@ func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.readBounded(r.Context(), h)
+	data, truncated, err := s.readPreview(r.Context(), h)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	s.render(w, "hexdump", hexdump(data))
+	note := ""
+	if truncated {
+		note = fmt.Sprintf("preview truncated at %d KiB of %d bytes", previewLimit>>10, s.objectSize(r.Context(), h))
+	}
+	s.render(w, "hexdump", struct {
+		Rows []dumpRow
+		Note string
+	}{hexdump(data), note})
 }
 
 func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
@@ -376,20 +389,49 @@ func gcCount(ctx context.Context, store *fs.Backend, reachable map[string]bool) 
 
 // --- helpers ---
 
+// render executes the named template into a buffer first, so a template error
+// yields a clean 500 instead of a half-written 200.
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
+	var buf bytes.Buffer
+	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		slog.Error("render", "template", name, "err", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		slog.Error("render write", "template", name, "err", err)
 	}
 }
 
-func (s *Server) readBounded(ctx context.Context, h cas.Hash) ([]byte, error) {
+// previewLimit bounds the hexdump preview; larger objects are truncated.
+const previewLimit = 256 << 10
+
+// typePrefixLimit bounds the bytes read for envelope type sniffing: only the
+// TLV header ([version][uvarint typeLen][type]) is needed, not the payload.
+const typePrefixLimit = 4 << 10
+
+// readN reads at most n bytes from the object at h.
+func (s *Server) readN(ctx context.Context, h cas.Hash, n int64) ([]byte, error) {
 	rc, err := s.store.Get(ctx, h)
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	return io.ReadAll(io.LimitReader(rc, 256<<10))
+	return io.ReadAll(io.LimitReader(rc, n))
+}
+
+// readPreview reads at most previewLimit bytes and reports whether the object
+// was truncated.
+func (s *Server) readPreview(ctx context.Context, h cas.Hash) ([]byte, bool, error) {
+	data, err := s.readN(ctx, h, previewLimit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(data) > previewLimit {
+		return data[:previewLimit], true, nil
+	}
+	return data, false, nil
 }
 
 // objectSize returns an object's size in bytes (0 when unavailable).
@@ -402,7 +444,7 @@ func (s *Server) objectSize(ctx context.Context, h cas.Hash) int64 {
 }
 
 func (s *Server) objectType(ctx context.Context, h cas.Hash) string {
-	data, err := s.readBounded(ctx, h)
+	data, err := s.readN(ctx, h, typePrefixLimit)
 	if err != nil {
 		return ""
 	}

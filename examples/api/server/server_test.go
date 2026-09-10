@@ -161,6 +161,12 @@ func TestLargePayload(t *testing.T) {
 	if status != http.StatusOK || len(got) != len(payload) || got[0] != 'x' {
 		t.Fatalf("large payload round-trip: status=%d got %d bytes", status, len(got))
 	}
+	// Verify streams the whole object: a bounded read would report an intact
+	// 4 MiB object as invalid.
+	status, v := c.verify(ctx, h)
+	if status != http.StatusOK || v["valid"] != true {
+		t.Fatalf("large payload verify = (%d, %v), want valid", status, v)
+	}
 }
 
 func TestRoleMatrix(t *testing.T) {

@@ -40,11 +40,12 @@
 {{end}}
 
 {{define "hexdump-table"}}
+{{if .Note}}<p class="note">{{.Note}}</p>{{end}}
 <table id="hexdump">
 <caption>Hexdump</caption>
 <thead><tr><th scope="col">Offset</th><th scope="col">Hex</th><th scope="col">ASCII</th></tr></thead>
 <tbody>
-{{range .}}<tr><td>{{.Offset}}</td><td>{{.Hex}}</td><td>{{.ASCII}}</td></tr>{{end}}
+{{range .Rows}}<tr><td>{{.Offset}}</td><td>{{.Hex}}</td><td>{{.ASCII}}</td></tr>{{end}}
 </tbody>
 </table>
 {{end}}

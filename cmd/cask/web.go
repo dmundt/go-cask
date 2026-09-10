@@ -24,10 +24,15 @@ import (
 // runWeb starts the embedded viewer — the product's only HTTP surface
 // (backend-architecture §3). Invoking `cask web` IS the explicit enablement
 // (viewer-security §3); binding to a non-loopback address requires explicit
-// confirmation (viewer-security §4).
-func runWeb(ctx context.Context, args []string) {
+// confirmation (viewer-security §4). The store defaults to the global -store
+// flag when the subcommand's own -store is not given.
+func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	fs := flag.NewFlagSet("web", flag.ExitOnError)
-	store := fs.String("store", "./objects", "filesystem store directory")
+	storeDefault := mf.store
+	if storeDefault == "" {
+		storeDefault = "./objects"
+	}
+	store := fs.String("store", storeDefault, "filesystem store directory")
 	bind := fs.String("bind", "127.0.0.1:8080", "listen address")
 	tokens := fs.String("tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
@@ -55,9 +60,11 @@ func runWeb(ctx context.Context, args []string) {
 	roleTokens := map[string]string{} // token → role, for viewer login
 	for _, pair := range strings.Split(*tokens, ",") {
 		role, tok, ok := strings.Cut(pair, "=")
-		if ok {
-			roleTokens[strings.TrimSpace(tok)] = strings.TrimSpace(role)
+		tok = strings.TrimSpace(tok)
+		if !ok || tok == "" {
+			continue // ignore empty entries and tokens that would grant a role to ""
 		}
+		roleTokens[tok] = strings.TrimSpace(role)
 	}
 
 	token := randomToken()
