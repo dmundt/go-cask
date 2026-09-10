@@ -405,7 +405,7 @@ func parseHashParam(w http.ResponseWriter, r *http.Request) (cas.Hash, bool) {
 	h, err := cas.ParseHash(r.PathValue("hash"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed hash"})
-		return nil, false
+		return cas.Hash{}, false
 	}
 	return h, true
 }

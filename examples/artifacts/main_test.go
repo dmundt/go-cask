@@ -14,15 +14,15 @@ import (
 )
 
 // TestManifestJSONPayloadPinned locks the stored payload shape: it is the JSON
-// the hand-written marshaller used to emit, so dropping that marshaller in
-// favour of cas.Hash's own json.Marshaler does not re-address stored
-// manifests (the manifest hash is part of the GC reachability set).
+// the hand-written marshaller used to emit, so moving the hash JSON shape into
+// the codec's field type (jsoncodec.Hash) does not re-address stored manifests
+// (the manifest hash is part of the GC reachability set).
 func TestManifestJSONPayloadPinned(t *testing.T) {
 	h, err := cas.HashBytes("sha256", []byte("artifact payload"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: []cas.HashRef{cas.NewHashRef(h)}})
+	raw, err := json.Marshal(Manifest{Name: "target", Artifacts: refs(h)})
 	if err != nil {
 		t.Fatal(err)
 	}

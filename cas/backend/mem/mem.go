@@ -62,6 +62,9 @@ func (m *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := cas.CheckHash(h, "mem: put"); err != nil {
+		return err
+	}
 	key := h.String()
 	reader := r
 	if budget, capped := m.budget(key); capped {
@@ -118,6 +121,9 @@ func (m *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := cas.CheckHash(h, "mem: get"); err != nil {
+		return nil, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	data, ok := m.objects[h.String()]
@@ -132,6 +138,9 @@ func (m *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+	if err := cas.CheckHash(h, "mem: exists"); err != nil {
+		return false, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	_, ok := m.objects[h.String()]
@@ -141,6 +150,9 @@ func (m *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
 // Delete removes the object. A missing object is a no-op.
 func (m *Backend) Delete(ctx context.Context, h cas.Hash) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := cas.CheckHash(h, "mem: delete"); err != nil {
 		return err
 	}
 	m.mu.Lock()

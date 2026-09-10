@@ -23,11 +23,11 @@ func TestWalkerTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: test.HashRefs(hc)})
+	hb, err := s.Put(ctx, test.Node{Name: "b", Refs: []jsoncodec.Hash{jsoncodec.NewHash(hc)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: test.HashRefs(hb)})
+	ha, err := s.Put(ctx, test.Node{Name: "a", Refs: []jsoncodec.Hash{jsoncodec.NewHash(hb)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +96,12 @@ func TestWalkerRecursionErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: test.HashRefs(leafH)})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	missingH, _ := test.HashData("sha256", []byte("missing"))
-	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: test.HashRefs(missingH)})
+	brokenH, err := st.Put(ctx, test.Node{Name: "broken", Refs: []jsoncodec.Hash{jsoncodec.NewHash(missingH)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,15 +139,15 @@ func TestWalkerSharedSubgraphVisitedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leftH, err := st.Put(ctx, test.Node{Name: "left", Refs: test.HashRefs(leafH)})
+	leftH, err := st.Put(ctx, test.Node{Name: "left", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rightH, err := st.Put(ctx, test.Node{Name: "right", Refs: test.HashRefs(leafH)})
+	rightH, err := st.Put(ctx, test.Node{Name: "right", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leafH)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: test.HashRefs(leftH, rightH)})
+	rootH, err := st.Put(ctx, test.Node{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leftH), jsoncodec.NewHash(rightH)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestWalkerTerminatesOnCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Put(ctx, test.Node{Name: "self", Refs: test.HashRefs(self)}); err != nil {
+	if _, err := st.Put(ctx, test.Node{Name: "self", Refs: []jsoncodec.Hash{jsoncodec.NewHash(self)}}); err != nil {
 		t.Fatal(err)
 	}
 

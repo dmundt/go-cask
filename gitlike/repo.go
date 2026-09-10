@@ -153,8 +153,8 @@ func PrintObject(o *ResolvedObject) string {
 // shortHash renders the first 8 hex chars of a digest for display (the
 // viewer's short-hash default).
 func shortHash(h cas.Hash) string {
-	if h == nil {
-		return "<nil>"
+	if h.IsZero() {
+		return "<absent>"
 	}
 	s := h.String()
 	_, hexPart, _ := strings.Cut(s, ":")

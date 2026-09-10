@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	hashtype "hash"
 	"regexp"
@@ -14,56 +13,64 @@ import (
 )
 
 // Hash is a content address: "algo:hexdigest" (e.g. "sha256:a1b2…"). Every
-// reference between objects holds a full Hash — algorithm AND digest — never
-// a bare digest, so one object graph may mix algorithms freely and a store
-// can read any object whose algorithm is registered. Hashes are immutable
-// value carriers. The zero value is a nil Hash: calling a method on it
-// panics, so check for nil before use (ParseHash/NewHash never return nil
-// on success).
-type Hash interface {
-	Algorithm() string // "sha256", or a registered custom algorithm
-	Bytes() []byte     // raw digest bytes
-	String() string    // "algo:hexdigest"
-	Equal(other Hash) bool
-}
-
-// hash is the concrete Hash implementation; equality is algorithm AND digest
-// comparison.
-type hash struct {
+// reference between objects holds a full Hash — algorithm AND digest — never a
+// bare digest, so one object graph may mix algorithms freely and a store can
+// read any object whose algorithm is registered. Hashes are immutable value
+// carriers: the fields are unexported, so the only ways to obtain one are
+// ParseHash, NewHash and HashBytes, all of which validate.
+//
+// The zero value is the ABSENT hash — the one spelling of "no hash" in the
+// library (cas-core §4.2). IsZero reports it, String renders it as "", and
+// Equal treats it as equal to nothing. It is the natural zero for object
+// fields, while an address handed to the byte layer must be present: Store and
+// the backends reject a zero Hash with ErrInvalidHash rather than addressing an
+// object it cannot mean.
+//
+// Hash deliberately carries no serialization, so the core stays free of any
+// encoding. The JSON field shape — an object field that renders as
+// "algo:hexdigest", omits an absent value and validates on decode — lives in
+// the JSON codec as jsoncodec.Hash; another codec may define its own.
+type Hash struct {
 	algo  string
 	bytes []byte
 }
 
-func (h hash) Algorithm() string { return h.algo }
+// Algorithm returns the algorithm name ("sha256", or a registered custom
+// algorithm); "" for the zero value.
+func (h Hash) Algorithm() string { return h.algo }
 
-func (h hash) Bytes() []byte {
+// Bytes returns a copy of the raw digest; nil for the zero value. The copy
+// keeps the address immutable for the caller.
+func (h Hash) Bytes() []byte {
+	if h.bytes == nil {
+		return nil
+	}
 	b := make([]byte, len(h.bytes))
 	copy(b, h.bytes)
 	return b
 }
 
-func (h hash) String() string { return h.algo + ":" + hex.EncodeToString(h.bytes) }
-
-func (h hash) Equal(other Hash) bool {
-	if other == nil {
-		return false
+// String returns the canonical "algo:hexdigest" form, or "" for the zero value.
+func (h Hash) String() string {
+	if h.algo == "" {
+		return ""
 	}
-	return h.algo == other.Algorithm() && bytes.Equal(h.bytes, other.Bytes())
+	return h.algo + ":" + hex.EncodeToString(h.bytes)
 }
 
-// MarshalJSON implements json.Marshaler, so a Hash serializes as its canonical
-// "algo:hexdigest" string. encoding/json resolves this through interface
-// fields and []Hash slices, which is what lets an object type declare plain
-// `Tree Hash` / `Refs []Hash` fields and marshal correctly without a
-// hand-written marshaller (gitlike's TreeEntry/Commit/Tag do exactly that). A
-// nil Hash in an interface field still encodes as null — or is omitted under
-// `omitempty` — before this method is consulted.
-//
-// There is deliberately no UnmarshalJSON: encoding/json cannot allocate a
-// value into an interface field, so a struct carrying Hash fields still needs
-// its own UnmarshalJSON that calls ParseHash. Keeping that method in the object
-// type also keeps decode-time hash validation where the field names are known.
-func (h hash) MarshalJSON() ([]byte, error) { return json.Marshal(h.String()) }
+// IsZero reports whether the address is absent (the zero value). Absent
+// addresses are valid as object fields and invalid as store keys.
+func (h Hash) IsZero() bool { return h.algo == "" }
+
+// Equal reports whether both addresses name the same algorithm and digest. An
+// absent address equals nothing, including another absent one: two unknown
+// hashes are not the same object.
+func (h Hash) Equal(other Hash) bool {
+	if h.IsZero() || other.IsZero() {
+		return false
+	}
+	return h.algo == other.algo && bytes.Equal(h.bytes, other.bytes)
+}
 
 // HashBytes computes the content address of data with a registered
 // algorithm: it streams through the built-in hasher when available, or uses
@@ -78,7 +85,7 @@ func HashBytes(algo string, data []byte) (Hash, error) {
 	if fn, ok := LookupHash(algo); ok {
 		return fn(data), nil
 	}
-	return nil, fmt.Errorf("cas: %w: %q", ErrUnknownAlgorithm, algo)
+	return Hash{}, fmt.Errorf("cas: %w: %q", ErrUnknownAlgorithm, algo)
 }
 
 // NewHasher returns a streaming hasher for a registered algorithm (the
@@ -96,6 +103,8 @@ func NewHasher(algo string) (hashtype.Hash, error) {
 
 // HashFunc computes the content address of data. Implementations MUST be
 // deterministic and pure: identical input, identical Hash, no side effects.
+// Build the result with NewHash rather than a struct literal, so the address
+// stays validated.
 type HashFunc func(data []byte) Hash
 
 // NewHash builds a Hash from a registered algorithm name and raw digest
@@ -104,14 +113,14 @@ type HashFunc func(data []byte) Hash
 // NewHash for a custom algorithm.
 func NewHash(algo string, digest []byte) (Hash, error) {
 	if _, ok := LookupHash(algo); !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
+		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}
 	if len(digest) == 0 {
-		return nil, fmt.Errorf("%w: empty digest for %q", ErrInvalidHash, algo)
+		return Hash{}, fmt.Errorf("%w: empty digest for %q", ErrInvalidHash, algo)
 	}
 	b := make([]byte, len(digest))
 	copy(b, digest)
-	return hash{algo: algo, bytes: b}, nil
+	return Hash{algo: algo, bytes: b}, nil
 }
 
 // ParseHash reconstructs a Hash from its string form "algo:hexdigest". It
@@ -122,22 +131,33 @@ func NewHash(algo string, digest []byte) (Hash, error) {
 func ParseHash(s string) (Hash, error) {
 	algo, hexPart, ok := strings.Cut(s, ":")
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidHash, s)
+		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
 	if !algoRe.MatchString(algo) {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidHash, s)
+		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
 	if _, known := LookupHash(algo); !known {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, s)
+		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, s)
 	}
 	if len(hexPart) == 0 || len(hexPart)%2 != 0 || !hexRe.MatchString(hexPart) {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidHash, s)
+		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
 	digest, err := hex.DecodeString(hexPart)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidHash, s)
+		return Hash{}, fmt.Errorf("%w: %q", ErrInvalidHash, s)
 	}
-	return hash{algo: algo, bytes: digest}, nil
+	return Hash{algo: algo, bytes: digest}, nil
+}
+
+// CheckHash rejects an absent address, so a caller handed a zero Hash (a
+// forgotten parse, a zero-valued field) gets ErrInvalidHash instead of an
+// object written under an address that cannot mean anything. It is the guard
+// the store and every backend apply to their hash arguments.
+func CheckHash(h Hash, what string) error {
+	if h.IsZero() {
+		return fmt.Errorf("%w: %s: absent hash", ErrInvalidHash, what)
+	}
+	return nil
 }
 
 var (
@@ -159,7 +179,7 @@ var (
 func init() {
 	RegisterHash("sha256", func(data []byte) Hash {
 		sum := sha256.Sum256(data)
-		return hash{algo: "sha256", bytes: sum[:]}
+		return Hash{algo: "sha256", bytes: sum[:]}
 	})
 	registerStreamHash("sha256", sha256.New)
 }

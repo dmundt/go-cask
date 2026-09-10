@@ -12,62 +12,113 @@ The project is pre-release; the first public tag is `v0.1.0-alpha.1`
 
 Code audit of the `v1.1.0` tree: a full read of `cas`, the backends, caches,
 codecs, CLI, viewer, the `gitlike` reference model and the examples, with fixes
-for the defects it found, plus a hash-serialization cleanup described below. No
-public `cas` API removal and no on-disk format change — existing stores stay
-readable and writable, and every stored object keeps its address.
+for the defects it found, plus a hash-type consolidation described below. The
+on-disk format is unchanged — existing stores stay readable and writable, and
+every stored object keeps its address.
 
 ### Added
 
-- **`cas.HashRef` — the hash field type, so object types need no JSON code.**
-  `cas.Hash` marshals itself as its canonical `"algo:hexdigest"` string, but
-  `encoding/json` can never *allocate* a value into an interface field, so a
-  bare `Hash`/`[]Hash` field could be written and never read back. `HashRef`
-  closes that gap with one implementation in the core: it renders a present
-  reference as `"algo:hexdigest"` and an absent one as `""`, and on decode it
-  accepts `""`/`null` as absent while requiring every other value to parse — so
-  a decoded object can never hold an unparsable reference that would later
-  vanish from `References()`. There is exactly one field shape: a value
-  `HashRef`, built with `cas.NewHashRef(h)`, whose zero value is the absent
-  reference; a field tagged `omitzero` is left out of the encoding when absent.
-  `HashRef.Hash()` unwraps (nil = absent) and `HashRef.IsZero()` reports absence.
-  No on-disk format change: the JSON for every existing object is byte-identical,
-  so no object is re-addressed.
+- **`jsoncodec.Hash`** — the JSON codec's hash *field type*
+  (`cas/codec/json`), the only place that renders and validates a hash as text:
+  `NewHash(cas.Hash) Hash`, `Hash() cas.Hash`, `IsZero()`, `MarshalJSON`
+  (present → `"algo:hexdigest"`, absent → `""`), `UnmarshalJSON` (`""`/`null` →
+  absent, else `ParseHash`). Object types declare this type for reference
+  fields; the byte layer stays format-free.
+- **`cas.CheckHash`** — the guard the store and every backend apply to a hash
+  argument: an absent (zero) address returns `ErrInvalidHash` instead of being
+  used as a store key.
 - **`Validate() error` on the `gitlike` object types** (`TreeEntry`, `Tree`,
   `Commit`, `Tag`) for objects built in code: a tree entry and a tag need a
   name, a commit needs a tree, an absent reference is valid where absence is
   legal. Advisory — `Store.Put` marshals, it does not validate — except the
-  nil-tree commit, which `Commit.MarshalJSON` still rejects at write time.
+  tree-less commit, which `Commit.MarshalJSON` still rejects at write time.
 
 ### Changed
 
+- **BREAKING: `cas.Hash` is a concrete value type, not an interface, and it
+  carries no JSON code.** `Hash` was an interface over an unexported
+  implementation, which meant object fields could never be decoded by
+  `encoding/json` (it cannot allocate into an interface field) and "no hash" had
+  two spellings: a nil `Hash` in the byte layer and an absent wrapper in object
+  fields. `Hash` is now a struct with unexported fields and one meaning for
+  absence:
+
+  ```go
+  type Hash struct{ /* algorithm + digest */ }   // zero value = absent
+
+  func (h Hash) IsZero() bool                    // the one "no hash"
+  ```
+
+  Serialization moved out of the core into the codec that owns a wire format.
+  `cas/codec/json` defines the field type object types use:
+
+  ```go
+  type Hash struct{ /* wraps cas.Hash */ }        // jsoncodec.Hash
+  func NewHash(h cas.Hash) Hash                   // wrap for a field or literal
+  func (x Hash) Hash() cas.Hash                   // unwrap for the byte layer
+  func (x Hash) MarshalJSON() ([]byte, error)     // present → "algo:hexdigest", absent → ""
+  func (x *Hash) UnmarshalJSON([]byte) error      // ""/null → absent, else ParseHash
+  ```
+
+  `cas` no longer imports `encoding/json` at all: the byte layer knows nothing
+  about any wire format, and only the codec that defines one renders and
+  validates hashes as text. Object types declare `jsoncodec.Hash` fields
+  (`omitzero` where absence is optional), so they still contain no JSON code
+  themselves.
+  **Migration from v1.1.x:**
+  - `var h cas.Hash` / `cas.Hash{}` now means *absent* instead of nil — replace
+    `h == nil` / `h != nil` with `h.IsZero()` / `!h.IsZero()`, and `x.Equal(nil)`
+    with `!x.IsZero()` (an absent address compares equal to nothing).
+  - `cas.ParseHash`, `NewHash` and `HashBytes` return the zero `Hash` on error
+    (unchanged in shape: still `(Hash, error)`); check the error as before.
+  - Reference *fields* change type to the codec's field type:
+    `Ref cas.Hash` → `Ref jsoncodec.Hash`, literals `Ref: h` →
+    `Ref: jsoncodec.NewHash(h)`, slices → `jsoncodec.NewHash` per element. Reads
+    that need the byte-layer type (`ResolveTree(ctx, c.Tree)`,
+    `x.Equal(y)`) unwrap with `.Hash()`; `IsZero()`, `omitzero`/`omitempty`
+    tags and `References()` skipping behave as before.
+  - Hand-written `Hash` implementations are no longer possible — build addresses
+    with `NewHash`/`ParseHash`/`HashBytes` in a registered `HashFunc`. This
+    closes the hole that let an unvalidated address (e.g. a hostile algorithm
+    name) reach a backend, so `fs`'s `safeAlgo` path sanitizer is gone.
+  - The absent wrapper type `cas.HashRef` — added earlier in this same
+    unreleased cycle and never released — is deleted; `cas.Hash` covers both
+    roles.
+  - `Validate()`-style checks now read `Tree.IsZero()` on the field type.
+- **Stored bytes are unchanged.** `json` output for a present reference is the
+  same `"algo:hexdigest"` string, an absent optional reference is still omitted
+  (`omitzero`), and an absent always-present field still encodes as `""` — so no
+  object is re-addressed and no migration is required. Pinned by
+  `TestStoredAddressesPinned`, `TestNoteJSONPayloadPinned` and
+  `TestManifestJSONPayloadPinned`.
+- **All hash JSON code is in one place: the JSON codec.** Repository-wide, hash
+  serialization went from nine methods in five packages to the one field type
+  above — `jsoncodec.Hash`'s marshaler/unmarshaler in `cas/codec/json` — plus
+  `gitlike.Commit`'s two guards for its one mandatory-field rule (write refuses a
+  tree-less commit; decode rejects a missing, empty, or null tree). `gitlike`'s
+  `TreeEntry` and `Tag` carry no JSON methods at all, and the hand-written
+  marshallers *and* unmarshallers are gone from `internal/test/types.go`
+  (`Node`), `examples/notes/types.go` (`Note`), `examples/artifacts/main.go`
+  (`Manifest`), `cas/cache/prefetch/prefetch_test.go` and
+  `cas/cache/mem/cached_test.go` (`testObject`), along with the now-unused
+  `hashStrings`/`parseHashes`/`HashRefs` helpers.
 - **Library baseline raised to Go 1.24** (`go.mod`, `library-design.md`,
   `defaults.md`, `coding-guidelines.md`, `versioning.md`, `AGENTS.md`,
-  `README.md`). `HashRef`'s optional fields rely on the `omitzero` JSON tag
-  option, which an older standard library silently ignores — that would drop the
-  option and change the stored bytes, so the floor is now enforced by `go.mod`
-  (a consumer on Go 1.22/1.23 gets a clear build error instead of a different
-  wire format).
-- **All per-type hash JSON code is gone.** `gitlike`'s `TreeEntry` and `Tag`
-  now carry no JSON methods at all, and `Commit` keeps only two small ones for
-  its one mandatory-field rule (write refuses a tree-less commit; decode rejects
-  a missing, empty, or null tree). The same cleanup removed the hand-written
-  marshallers *and* unmarshallers in `internal/test/types.go` (`Node`),
-  `examples/notes/types.go` (`Note`), `examples/artifacts/main.go` (`Manifest`),
-  `cas/cache/prefetch/prefetch_test.go` and `cas/cache/mem/cached_test.go`
-  (`testObject`), plus the now-unused `hashStrings`/`parseHashes` helpers.
-  Repository-wide, hash JSON code went from nine methods in five packages to two
-  core methods (`HashRef`, plus `Hash`'s marshaler) and `Commit`'s guard. Stored
-  payloads and addresses are unchanged, pinned by `TestStoredAddressesPinned`,
-  `TestNoteJSONPayloadPinned` and `TestManifestJSONPayloadPinned`.
-- Docs and agent instructions updated for the new field type: `cas-core.md`
-  (v35→v38: §4.2 Hash JSON form + the single value `HashRef` shape, §4.12 gitlike
-  serialization and advisory `Validate()`, §7.1 surface adds `HashRef`/
-  `NewHashRef`, §7.2 object-type recipe), `library-design.md` v17,
-  `coding-guidelines.md` v13, `defaults.md` v16, `versioning.md` v11,
-  `AGENTS.md` v13 (object-type recipe step and a type-checked usage example),
+  `README.md`). Optional hash fields rely on the `omitzero` JSON tag option,
+  which an older standard library silently ignores — that would change the
+  stored bytes, so the floor is now enforced by `go.mod` (a consumer on Go
+  1.22/1.23 gets a clear build error instead of a different wire format).
+- Docs and agent instructions updated for the unified type: `cas-core.md`
+  (v35→v39: §4.2 the concrete `Hash` and the single meaning of absence, §4.6 the
+  JSON codec's `jsoncodec.Hash` field type, §4.12 gitlike serialization and
+  advisory `Validate()`, §7.1 surface adds `CheckHash`, §7.2 object-type recipe),
+  `library-design.md` v18, `coding-guidelines.md` v13, `defaults.md` v16,
+  `versioning.md` v12 (records this as a one-off ratified breaking change inside
+  v1 — later breaking changes still need a MAJOR with the `/v2` mirror),
+  `AGENTS.md` v15 (object-type recipe step and a type-checked usage example),
   `gitlike/README.md`, `examples/notes/README.md`,
-  `examples/artifacts/README.md`. A godoc `ExampleHashRef` in `cas` shows the
-  field pattern from `go doc`.
+  `examples/artifacts/README.md`. A godoc `ExampleHash` in `cas/codec/json`
+  shows the field pattern from `go doc`.
 
 ### Fixed
 

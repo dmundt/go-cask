@@ -57,9 +57,9 @@ func demo() error {
 	first, err := repo.Notes.Put(ctx, &Note{
 		Title:       "first",
 		Body:        "the root note",
-		Tags:        []cas.HashRef{cas.NewHashRef(workTag), cas.NewHashRef(ideaTag)},
-		Attachments: []cas.HashRef{cas.NewHashRef(att)},
-		Related:     []cas.HashRef{cas.NewHashRef(second)},
+		Tags:        refs(workTag, ideaTag),
+		Attachments: refs(att),
+		Related:     refs(second),
 	})
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func demo() error {
 	fmt.Printf("attachment loaded after access: %v (%d bytes)\n", co.IsLoaded(), len(obj.Data))
 
 	// SmartCache prefetch: loading a related-only note warms its references.
-	prefetchRoot, err := repo.Notes.Put(ctx, &Note{Title: "prefetch-root", Related: []cas.HashRef{cas.NewHashRef(second)}})
+	prefetchRoot, err := repo.Notes.Put(ctx, &Note{Title: "prefetch-root", Related: refs(second)})
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func demo() error {
 	// The note itself resolves; its dangling reference is reported when the
 	// graph is walked.
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.HashRef{cas.NewHashRef(missing)}})
+	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: refs(missing)})
 	if err != nil {
 		return err
 	}
@@ -133,11 +133,11 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	mid, err := repo.Notes.Put(ctx, &Note{Title: "chain-b", Related: []cas.HashRef{cas.NewHashRef(leaf)}})
+	mid, err := repo.Notes.Put(ctx, &Note{Title: "chain-b", Related: refs(leaf)})
 	if err != nil {
 		return err
 	}
-	root, err := repo.Notes.Put(ctx, &Note{Title: "chain-a", Related: []cas.HashRef{cas.NewHashRef(mid)}})
+	root, err := repo.Notes.Put(ctx, &Note{Title: "chain-a", Related: refs(mid)})
 	if err != nil {
 		return err
 	}

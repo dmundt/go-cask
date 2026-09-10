@@ -23,14 +23,14 @@ func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 }
 
 // TestNoteJSONPayloadPinned locks the stored payload shape: it is the JSON the
-// hand-written marshaller used to emit, so dropping that marshaller in favour
-// of cas.Hash's own json.Marshaler does not re-address stored notes.
+// hand-written marshaller used to emit, so moving the hash JSON shape into the
+// codec's field type (jsoncodec.Hash) does not re-address stored notes.
 func TestNoteJSONPayloadPinned(t *testing.T) {
 	h, err := cas.HashBytes("sha256", []byte("tag payload"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: []cas.HashRef{cas.NewHashRef(h)}})
+	raw, err := json.Marshal(Note{Title: "t", Body: "b", Tags: refs(h)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestCrossTypeResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: []cas.HashRef{cas.NewHashRef(tag)}, Attachments: []cas.HashRef{cas.NewHashRef(att)}})
+	note, err := repo.Notes.Put(ctx, &Note{Title: "n", Tags: refs(tag), Attachments: refs(att)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestPrefetchWarmsCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: []cas.HashRef{cas.NewHashRef(second)}})
+	first, err := repo.Notes.Put(ctx, &Note{Title: "first", Related: refs(second)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestBrokenReference(t *testing.T) {
 	ctx := context.Background()
 	repo, res := newTestRepo(t)
 	missing, _ := cas.ParseHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: []cas.HashRef{cas.NewHashRef(missing)}})
+	broken, err := repo.Notes.Put(ctx, &Note{Title: "broken", Related: refs(missing)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,11 +171,11 @@ func TestWalkerChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: []cas.HashRef{cas.NewHashRef(leaf)}})
+	mid, err := repo.Notes.Put(ctx, &Note{Title: "b", Related: refs(leaf)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: []cas.HashRef{cas.NewHashRef(mid)}})
+	root, err := repo.Notes.Put(ctx, &Note{Title: "a", Related: refs(mid)})
 	if err != nil {
 		t.Fatal(err)
 	}

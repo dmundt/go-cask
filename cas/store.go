@@ -50,15 +50,18 @@ func New[T Object[T]](raw Backend, codec Codec[T], algo string) (*Store[T], erro
 // backend without buffering (performance §3).
 func (s *Store[T]) Put(ctx context.Context, obj T) (Hash, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return Hash{}, err
 	}
 	data, err := s.marshal(obj)
 	if err != nil {
-		return nil, err
+		return Hash{}, err
 	}
 	h := s.hasher(data)
+	if err := CheckHash(h, "store: put"); err != nil {
+		return Hash{}, err
+	}
 	if err := s.raw.Put(ctx, h, bytes.NewReader(data)); err != nil {
-		return nil, err
+		return Hash{}, err
 	}
 	return h, nil
 }
@@ -68,22 +71,25 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Hash, error) {
 // and (h, false, nil) when it was written now.
 func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Hash, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, false, err
+		return Hash{}, false, err
 	}
 	data, err := s.marshal(obj)
 	if err != nil {
-		return nil, false, err
+		return Hash{}, false, err
 	}
 	h := s.hasher(data)
+	if err := CheckHash(h, "store: put"); err != nil {
+		return Hash{}, false, err
+	}
 	exists, err := s.raw.Exists(ctx, h)
 	if err != nil {
-		return nil, false, err
+		return Hash{}, false, err
 	}
 	if exists {
 		return h, true, nil
 	}
 	if err := s.raw.Put(ctx, h, bytes.NewReader(data)); err != nil {
-		return nil, false, err
+		return Hash{}, false, err
 	}
 	return h, false, nil
 }
@@ -136,6 +142,9 @@ func (s *Store[T]) GetRaw(ctx context.Context, h Hash) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := CheckHash(h, "store: get"); err != nil {
+		return nil, err
+	}
 	rc, err := s.raw.Get(ctx, h)
 	if err != nil {
 		return nil, err
@@ -150,11 +159,17 @@ func (s *Store[T]) GetRaw(ctx context.Context, h Hash) ([]byte, error) {
 
 // Exists reports whether the object is stored. Delegates to the backend.
 func (s *Store[T]) Exists(ctx context.Context, h Hash) (bool, error) {
+	if err := CheckHash(h, "store: exists"); err != nil {
+		return false, err
+	}
 	return s.raw.Exists(ctx, h)
 }
 
 // Delete removes the object. A missing object is a no-op. Delegates to the
 // backend.
 func (s *Store[T]) Delete(ctx context.Context, h Hash) error {
+	if err := CheckHash(h, "store: delete"); err != nil {
+		return err
+	}
 	return s.raw.Delete(ctx, h)
 }

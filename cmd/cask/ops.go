@@ -105,31 +105,31 @@ func opPut(ctx context.Context, t *target, args []string) error {
 func localPut(ctx context.Context, raw *fs.Backend, r io.Reader, algo string) (cas.Hash, bool, error) {
 	hasher, err := cas.NewHasher(algo)
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	spool, err := os.CreateTemp("", "cask-put-*")
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	defer os.Remove(spool.Name())
 	defer spool.Close()
 	if _, err := io.Copy(io.MultiWriter(spool, hasher), r); err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	h, err := cas.NewHash(algo, hasher.Sum(nil))
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	exists, err := raw.Exists(ctx, h)
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	if !exists {
 		if _, err := spool.Seek(0, 0); err != nil {
-			return nil, false, err
+			return cas.Hash{}, false, err
 		}
 		if err := raw.Put(ctx, h, spool); err != nil {
-			return nil, false, err
+			return cas.Hash{}, false, err
 		}
 	}
 	return h, exists, nil

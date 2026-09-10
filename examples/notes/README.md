@@ -12,11 +12,11 @@
 | `CachedObject[T]` / `CachedStore[T]` | lazy attachment loading |
 | prefetch-on-access (own `SmartCache` recipe) | warms references via `CachedStore` |
 | `Walker[T]` | same-type related-note traversal |
-| `Hash` / `ParseHash` | references and `parseType` |
+| `Hash` / `ParseHash` / `jsoncodec.Hash` | references and `parseType` |
 
 ## What it extends
 
-- **Own object types** — `Note` (references tags, attachments, and related notes), `Tag`, `Attachment`; hash fields are `[]cas.HashRef`, which round-trips as `algo:hex` strings and validates on decode with no JSON code here (gitlike pattern, cas-core §4.2).
+- **Own object types** — `Note` (references tags, attachments, and related notes), `Tag`, `Attachment`; reference fields are `[]jsoncodec.Hash`, the JSON codec's field type, which round-trips as `algo:hex` strings and validates on decode with no JSON code here (gitlike pattern, cas-core §4.2/§4.6).
 - **Own `Repository` / `Resolver` / `ResolvedObject` / `parseType`** — the pattern copied from gitlike, specific to this object set. The core `Store` builds the self-describing TLV envelope around the codec payload; the app's `parseType` reads the type back from stored bytes.
 - **`cas` and `gitlike` are untouched.**
 

@@ -23,7 +23,21 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	lru "github.com/dmundt/go-cask/cas/cache/lru"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
+
+// refs wraps plain hashes as the JSON codec's field type for object literals;
+// the wrapper carries the wire shape and validates on decode.
+func refs(hs ...cas.Hash) []jsoncodec.Hash {
+	if len(hs) == 0 {
+		return nil
+	}
+	out := make([]jsoncodec.Hash, len(hs))
+	for i, h := range hs {
+		out[i] = jsoncodec.NewHash(h)
+	}
+	return out
+}
 
 const usage = `usage: artifacts [-store <dir>] <command> [args]
 
@@ -47,11 +61,12 @@ func (a *Artifact) References() []cas.Hash { return nil }
 
 // Manifest names the current artifact(s) of a build target. GC keeps
 // everything reachable from manifests and reclaims replaced artifacts. The
-// reference field is cas.HashRef: it serializes as "algo:hex" and validates on
-// decode with no code here (cas-core §4.2).
+// reference field uses jsoncodec.Hash, the JSON codec's field type: it
+// serializes as "algo:hex" and validates on decode with no code here
+// (cas-core §4.2).
 type Manifest struct {
-	Name      string        `json:"name"`
-	Artifacts []cas.HashRef `json:"artifacts,omitempty"`
+	Name      string           `json:"name"`
+	Artifacts []jsoncodec.Hash `json:"artifacts,omitempty"`
 }
 
 func (m *Manifest) Type() string { return "manifest@1" }
@@ -64,7 +79,7 @@ func (m *Manifest) References() []cas.Hash {
 	}
 	refs := make([]cas.Hash, 0, len(m.Artifacts))
 	for _, r := range m.Artifacts {
-		if h := r.Hash(); h != nil {
+		if h := r.Hash(); !h.IsZero() {
 			refs = append(refs, h)
 		}
 	}
@@ -150,23 +165,23 @@ func (a *app) close() { a.monitor.Stop() }
 func (a *app) put(ctx context.Context, name, file string) (cas.Hash, bool, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	h, dedup, err := a.artifacts.PutDedup(ctx, &Artifact{Name: name, Data: data})
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	prev, err := a.manifestsNamed(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return cas.Hash{}, false, err
 	}
 	for _, ph := range prev {
 		if err := a.raw.Delete(ctx, ph); err != nil {
-			return nil, false, err
+			return cas.Hash{}, false, err
 		}
 	}
-	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: []cas.HashRef{cas.NewHashRef(h)}}); err != nil {
-		return nil, false, err
+	if _, _, err := a.manifests.PutDedup(ctx, &Manifest{Name: name, Artifacts: refs(h)}); err != nil {
+		return cas.Hash{}, false, err
 	}
 	return h, dedup, nil
 }

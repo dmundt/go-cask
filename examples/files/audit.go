@@ -88,7 +88,7 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 // the store has no roots and every object is unreachable.
 func (a *app) reachableFromHead(ctx context.Context) (map[string]bool, error) {
 	head, err := a.headCommit()
-	if err != nil || head == nil {
+	if err != nil || head.IsZero() {
 		return map[string]bool{}, nil // no roots yet
 	}
 	seen := make(map[string]bool)
@@ -102,7 +102,7 @@ func (a *app) reachableFromHead(ctx context.Context) (map[string]bool, error) {
 // A hash that cannot be resolved (dangling or corrupt) stops that branch;
 // it was already marked, so it is still reported reachable-then-corrupt.
 func (a *app) markReachable(ctx context.Context, h cas.Hash, seen map[string]bool) error {
-	if h == nil || seen[h.String()] {
+	if h.IsZero() || seen[h.String()] {
 		return nil
 	}
 	seen[h.String()] = true

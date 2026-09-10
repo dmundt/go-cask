@@ -14,20 +14,21 @@ import (
 
 type testObject struct {
 	Name string
-	Refs []cas.HashRef
+	Refs []jsoncodec.Hash
 }
 
 func (o testObject) Type() string { return "test@1" }
 
-// References returns the non-absent references, or nil for a leaf (cas.HashRef
-// serializes and validates itself, so this type needs no JSON code).
+// References returns the non-absent references, or nil for a leaf (the JSON
+// codec's field type carries the wire shape and validates on decode, so this
+// type needs no JSON code).
 func (o testObject) References() []cas.Hash {
 	if len(o.Refs) == 0 {
 		return nil
 	}
 	refs := make([]cas.Hash, 0, len(o.Refs))
 	for _, r := range o.Refs {
-		if h := r.Hash(); h != nil {
+		if h := r.Hash(); !h.IsZero() {
 			refs = append(refs, h)
 		}
 	}
@@ -36,15 +37,25 @@ func (o testObject) References() []cas.Hash {
 
 func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Hash) cas.Hash {
 	t.Helper()
-	obj := testObject{Name: name}
-	for _, r := range refs {
-		obj.Refs = append(obj.Refs, cas.NewHashRef(r))
-	}
+	obj := testObject{Name: name, Refs: newRefs(refs)}
 	h, err := s.Put(context.Background(), obj)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// newRefs wraps plain hashes as the JSON codec's field type; nil stays nil so
+// a leaf object encodes without a refs field.
+func newRefs(refs []cas.Hash) []jsoncodec.Hash {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]jsoncodec.Hash, len(refs))
+	for i, h := range refs {
+		out[i] = jsoncodec.NewHash(h)
+	}
+	return out
 }
 
 func newStore(t *testing.T) *cas.Store[testObject] {

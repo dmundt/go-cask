@@ -115,10 +115,13 @@ func syncParentDir(path string) error {
 	return d.Sync()
 }
 
-// hashPath returns the on-disk path for h.
+// hashPath returns the on-disk path for h. Every caller has already rejected
+// the absent hash (cas.CheckHash), and a present one carries a validated
+// lowercase-alphanumeric algorithm name (cas.ParseHash/NewHash), so the
+// algorithm is a single safe path element.
 func (s *Backend) hashPath(h cas.Hash) string {
 	hexDigest := hex.EncodeToString(h.Bytes())
-	p := filepath.Join(s.base, safeAlgo(h.Algorithm()))
+	p := filepath.Join(s.base, h.Algorithm())
 	if s.fanOut > 0 && s.fanLevels > 0 {
 		for i := 0; i < s.fanLevels; i++ {
 			start := i * s.fanOut
@@ -135,29 +138,15 @@ func (s *Backend) hashPath(h cas.Hash) string {
 	return filepath.Join(p, hexDigest)
 }
 
-// safeAlgo returns the path element for an algorithm name. Valid hashes carry
-// a lowercase-alphanumeric algorithm (cas.ParseHash and cas.RegisterHash
-// enforce `^[a-z0-9]+$`, cas/hash.go), so this is defense in depth: a Hash
-// built by other means maps to a fixed in-root element rather than escaping
-// the store through ".." or a separator.
-func safeAlgo(algo string) string {
-	if algo == "" {
-		return "invalid"
-	}
-	for i := 0; i < len(algo); i++ {
-		c := algo[i]
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
-			return "invalid"
-		}
-	}
-	return algo
-}
+// safeAlgo was removed: Hash is a concrete type with unexported fields, so an
+// algorithm name outside `^[a-z0-9]+$` is no longer constructible and the
+// path element needs no sanitizing.
 
 // pathToHash rebuilds a Hash from a path relative to the store base.
 func pathToHash(rel string) (cas.Hash, error) {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	if len(parts) < 2 {
-		return nil, cas.ErrInvalidHash
+		return cas.Hash{}, cas.ErrInvalidHash
 	}
 	return cas.ParseHash(parts[0] + ":" + parts[len(parts)-1])
 }
@@ -165,6 +154,9 @@ func pathToHash(rel string) (cas.Hash, error) {
 // Put stores the bytes read from r under h (atomic temp-file write + rename).
 func (s *Backend) Put(ctx context.Context, h cas.Hash, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := cas.CheckHash(h, "fs: put"); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -257,6 +249,9 @@ func (s *Backend) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := cas.CheckHash(h, "fs: get"); err != nil {
+		return nil, err
+	}
 	path := s.hashPath(h)
 	f, err := openObject(path)
 	if err != nil {
@@ -305,6 +300,9 @@ func (s *Backend) Exists(ctx context.Context, h cas.Hash) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+	if err := cas.CheckHash(h, "fs: exists"); err != nil {
+		return false, err
+	}
 	_, err := os.Stat(s.hashPath(h))
 	if err == nil {
 		return true, nil
@@ -320,6 +318,9 @@ func (s *Backend) Delete(ctx context.Context, h cas.Hash) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := cas.CheckHash(h, "fs: delete"); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := os.Remove(s.hashPath(h)); err != nil && !os.IsNotExist(err) {
@@ -332,6 +333,9 @@ func (s *Backend) Delete(ctx context.Context, h cas.Hash) error {
 // ErrNotFound. ctx is honored at entry for cancellation.
 func (s *Backend) Size(ctx context.Context, h cas.Hash) (int64, error) {
 	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := cas.CheckHash(h, "fs: size"); err != nil {
 		return 0, err
 	}
 	fi, err := os.Stat(s.hashPath(h))
@@ -486,6 +490,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 // Verify re-reads the object and recomputes its hash.
 func (s *Backend) Verify(ctx context.Context, h cas.Hash) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := cas.CheckHash(h, "fs: verify"); err != nil {
 		return err
 	}
 	rc, err := s.Get(ctx, h)

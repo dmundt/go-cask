@@ -44,14 +44,14 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tree == nil {
+	if tree.IsZero() {
 		t.Fatal("add returned no tree hash")
 	}
 	commit, err := a.commit(ctx, "initial")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if commit == nil {
+	if commit.IsZero() {
 		t.Fatal("commit returned no hash")
 	}
 
@@ -405,8 +405,8 @@ func TestRunStoreError(t *testing.T) {
 
 func TestSplitHash(t *testing.T) {
 	h, _ := cas.ParseHash("sha256:" + strings.Repeat("ab", 32))
-	if short(nil) != "<nil>" {
-		t.Fatal("short(nil) should say <nil>")
+	if short(cas.Hash{}) != "<absent>" {
+		t.Fatal("short(absent) should say <absent>")
 	}
 	if !strings.Contains(short(h), "sha256") {
 		t.Fatalf("short = %q", short(h))

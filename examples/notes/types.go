@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/dmundt/go-cask/cas"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Type names (versioned majors per object-versioning §6).
@@ -28,25 +29,41 @@ const (
 	typeAttachment = "attachment@1"
 )
 
+// ref wraps a plain cas.Hash as the JSON codec's field type, and refs wraps a
+// group of them, for object literals. The wrapper carries the wire shape and
+// validates on decode, so the object types need no JSON code for hashes.
+func ref(h cas.Hash) jsoncodec.Hash { return jsoncodec.NewHash(h) }
+
+func refs(hs ...cas.Hash) []jsoncodec.Hash {
+	if len(hs) == 0 {
+		return nil
+	}
+	out := make([]jsoncodec.Hash, len(hs))
+	for i, h := range hs {
+		out[i] = ref(h)
+	}
+	return out
+}
+
 // Note references tags, attachments, and related notes by hash. The reference
-// fields are cas.HashRef: they serialize as "algo:hex" strings and validate on
-// decode without any code here (cas-core §4.2), and `omitempty` drops an empty
-// group.
+// fields use jsoncodec.Hash, the JSON codec's field type: it serializes as an
+// "algo:hex" string and validates on decode without any code here
+// (cas-core §4.2), and `omitempty` drops an empty group.
 type Note struct {
-	Title       string        `json:"title"`
-	Body        string        `json:"body"`
-	Tags        []cas.HashRef `json:"tags,omitempty"`
-	Attachments []cas.HashRef `json:"attachments,omitempty"`
-	Related     []cas.HashRef `json:"related,omitempty"`
+	Title       string           `json:"title"`
+	Body        string           `json:"body"`
+	Tags        []jsoncodec.Hash `json:"tags,omitempty"`
+	Attachments []jsoncodec.Hash `json:"attachments,omitempty"`
+	Related     []jsoncodec.Hash `json:"related,omitempty"`
 }
 
 func (n *Note) Type() string { return typeNote }
 
 func (n *Note) References() []cas.Hash {
 	refs := make([]cas.Hash, 0, len(n.Tags)+len(n.Attachments)+len(n.Related))
-	for _, group := range [][]cas.HashRef{n.Tags, n.Attachments, n.Related} {
+	for _, group := range [][]jsoncodec.Hash{n.Tags, n.Attachments, n.Related} {
 		for _, r := range group {
-			if h := r.Hash(); h != nil {
+			if h := r.Hash(); !h.IsZero() {
 				refs = append(refs, h)
 			}
 		}

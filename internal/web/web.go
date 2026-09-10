@@ -469,7 +469,7 @@ func parseHash(w http.ResponseWriter, r *http.Request) (cas.Hash, bool) {
 	h, err := cas.ParseHash(r.PathValue("hash"))
 	if err != nil {
 		http.Error(w, "malformed hash", http.StatusBadRequest)
-		return nil, false
+		return cas.Hash{}, false
 	}
 	return h, true
 }
@@ -491,7 +491,7 @@ func parseHashLines(s string) ([]cas.Hash, error) {
 }
 
 func shortHash(h cas.Hash) string {
-	if h == nil {
+	if h.IsZero() {
 		return ""
 	}
 	_, hexPart, _ := strings.Cut(h.String(), ":")
@@ -511,7 +511,7 @@ func hashWithType(h string, typ string) string {
 func parseHashOrNil(s string) cas.Hash {
 	h, err := cas.ParseHash(s)
 	if err != nil {
-		return nil
+		return cas.Hash{}
 	}
 	return h
 }

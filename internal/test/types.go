@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/dmundt/go-cask/cas"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Note is a test Object[T] used across the test suite.
@@ -20,36 +21,24 @@ func (Note) References() []cas.Hash { return nil }
 
 // Node is a test Object[T] with references, used to test Walker/References.
 type Node struct {
-	Name string        `json:"name"`
-	Refs []cas.HashRef `json:"refs,omitempty"`
+	Name string           `json:"name"`
+	Refs []jsoncodec.Hash `json:"refs,omitempty"`
 }
 
 func (Node) Type() string { return "node@1" }
 
 // References returns the non-absent references, or nil for a leaf node (nil
-// means "no references", matching Blob.References). Serialization needs no
-// helper: cas.HashRef renders itself as an "algo:hex" string and validates on
-// decode (cas-core §4.2).
+// means "no references", matching Blob.References). Hash fields use the JSON
+// codec's field type, which carries the wire shape and validates on decode
+// (cas-core §4.2) — the object itself needs no JSON code.
 func (n Node) References() []cas.Hash {
 	if len(n.Refs) == 0 {
 		return nil
 	}
 	refs := make([]cas.Hash, 0, len(n.Refs))
 	for _, r := range n.Refs {
-		if h := r.Hash(); h != nil {
+		if h := r.Hash(); !h.IsZero() {
 			refs = append(refs, h)
-		}
-	}
-	return refs
-}
-
-// HashRefs builds a Node reference slice, skipping nil hashes, so test literals
-// stay short: Refs: test.HashRefs(h).
-func HashRefs(hashes ...cas.Hash) []cas.HashRef {
-	refs := make([]cas.HashRef, 0, len(hashes))
-	for _, h := range hashes {
-		if h != nil {
-			refs = append(refs, cas.NewHashRef(h))
 		}
 	}
 	return refs

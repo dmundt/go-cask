@@ -14,21 +14,22 @@ import (
 )
 
 type testObject struct {
-	Name string        `json:"Name"`
-	Refs []cas.HashRef `json:"Refs"`
+	Name string           `json:"Name"`
+	Refs []jsoncodec.Hash `json:"Refs"`
 }
 
 func (testObject) Type() string { return "test@1" }
 
-// References returns the non-absent references, or nil for a leaf (cas.HashRef
-// serializes and validates itself, so this type needs no JSON code).
+// References returns the non-absent references, or nil for a leaf (the JSON
+// codec's field type carries the wire shape and validates on decode, so this
+// type needs no JSON code).
 func (o testObject) References() []cas.Hash {
 	if len(o.Refs) == 0 {
 		return nil
 	}
 	refs := make([]cas.Hash, 0, len(o.Refs))
 	for _, r := range o.Refs {
-		if h := r.Hash(); h != nil {
+		if h := r.Hash(); !h.IsZero() {
 			refs = append(refs, h)
 		}
 	}
@@ -103,7 +104,7 @@ func TestSmartCachePrefetchReference(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(leaf)}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leaf)}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	obj, err := sc.GetWithPrefetch(ctx, parent)
@@ -123,8 +124,8 @@ func TestSmartCachePrefetchChainRecursion(t *testing.T) {
 	ctx := context.Background()
 	s, cs := newStore(t)
 	leaf, _ := s.Put(ctx, testObject{Name: "leaf"})
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(leaf)}})
-	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []cas.HashRef{cas.NewHashRef(parent)}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(leaf)}})
+	root, _ := s.Put(ctx, testObject{Name: "root", Refs: []jsoncodec.Hash{jsoncodec.NewHash(parent)}})
 	sc := prefetch.NewSmartCache(cs, 3)
 
 	if _, err := sc.GetWithPrefetch(ctx, root); err != nil {
@@ -143,7 +144,7 @@ func TestSmartCachePrefetchSkipsMissing(t *testing.T) {
 	s, cs := newStore(t)
 	child, _ := s.Put(ctx, testObject{Name: "child"})
 	missing, _ := cas.ParseHash("sha256:1111111111111111111111111111111111111111111111111111111111111111")
-	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []cas.HashRef{cas.NewHashRef(child), cas.NewHashRef(missing)}})
+	parent, _ := s.Put(ctx, testObject{Name: "parent", Refs: []jsoncodec.Hash{jsoncodec.NewHash(child), jsoncodec.NewHash(missing)}})
 	sc := prefetch.NewSmartCache(cs, 2)
 
 	if _, err := sc.GetWithPrefetch(ctx, parent); err != nil {

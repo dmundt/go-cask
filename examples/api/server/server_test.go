@@ -71,11 +71,11 @@ func (c *testClient) put(ctx context.Context, body string, algo string) (int, ca
 		Deduplicated bool   `json:"deduplicated"`
 	}
 	if err := json.Unmarshal(b, &res); err != nil {
-		return status, nil, false
+		return status, cas.Hash{}, false
 	}
 	h, err := cas.ParseHash(res.Hash)
 	if err != nil {
-		return status, nil, false
+		return status, cas.Hash{}, false
 	}
 	return status, h, res.Deduplicated
 }

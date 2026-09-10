@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v38
+version: v40
 ---
 
 # CAS Core — go-cask
@@ -216,17 +216,20 @@ classDiagram
 ### 4.1 `Hash` — content address
 
 ```go
-type Hash interface {
-    Algorithm() string   // "sha1", "sha256", "blake3", ...
-    Bytes() []byte       // raw digest bytes
-    String() string      // "algo:hexdigest"
-    Equal(other Hash) bool
-}
+type Hash struct{ /* algo string; bytes []byte — unexported */ }
+
+func (h Hash) Algorithm() string   // "sha1", "sha256", "blake3", ...
+func (h Hash) Bytes() []byte       // raw digest bytes
+func (h Hash) String() string      // "algo:hexdigest"; "" when absent
+func (h Hash) IsZero() bool        // the one "no hash"
+func (h Hash) Equal(other Hash) bool
 ```
 
-- Concrete impl is the unexported `hash{algo string; bytes []byte}`; equality is algorithm AND digest.
-- `String()` = `"<algo>:<lowercase-hex digest>"`.
-- `ParseHash("algo:hex")` reconstructs a `Hash`; MUST reject unknown algorithms (`ErrUnknownAlgorithm`) and malformed hex (`ErrInvalidHash`).
+- `Hash` is a **concrete, closed value type** (unexported fields): `NewHash`, `ParseHash` and `HashBytes` are the only ways to obtain a present address, so an unvalidated address (e.g. a hostile algorithm name) can never reach a store or a backend path.
+- The **zero value IS the absent address** — one spelling of "no hash" for the byte layer and for object fields alike (§4.2); equality is algorithm AND digest.
+- `String()` = `"<algo>:<lowercase-hex digest>"`, and `""` when absent (never a bare `":"`).
+- `ParseHash("algo:hex")` reconstructs a present `Hash`; MUST reject unknown algorithms (`ErrUnknownAlgorithm`) and malformed hex (`ErrInvalidHash`).
+- The byte layer carries **no serialization**: `Hash` has no `MarshalJSON`/`UnmarshalJSON`, and `cas` does not import `encoding/json`. Rendering a hash as text and parsing it back belongs to whichever codec defines a wire format — the JSON codec's `jsoncodec.Hash` field type (§4.6) is the one for JSON.
 - Hashes are immutable value carriers AND the **universal reference type**: any field pointing to another object holds a full `Hash` (`algo:digest`); a bare digest is never a valid reference.
 
 ### 4.2 `HashFunc` and the algorithm registry
@@ -245,10 +248,10 @@ func HashBytes(algo string, data []byte) (Hash, error) // any registered algo
 - `cas.New(raw, codec, algo)` resolves the algorithm at construction; `Store[T]` holds a concrete `HashFunc` — no global dependence in the hot path (library-design §3).
 - `NewHasher` returns a streaming hasher for a registered algorithm (built-ins register `hash.Hash` constructors); one-shot-only algorithms cannot stream — use `HashBytes`. `HashBytes` uses the streaming hasher when available, else the one-shot `HashFunc`. These helpers serve HTTP/CLI (hash-on-write, verify) without duplicating the algorithm switch.
 - Registry populated at init; guarded by a `sync.RWMutex` so registration after startup is race-free.
-- **JSON form:** the concrete `Hash` implements `json.Marshaler`, so a `Hash` serializes as its canonical `"algo:hexdigest"` string (directly, in an interface field, or in a `[]Hash` slice). There is deliberately **no** `UnmarshalJSON` on `Hash`, and `encoding/json` cannot allocate a value into an interface field at all — so a `Hash`/`[]Hash` field can be *written* but never *read back*. An object type that must decode therefore declares **`HashRef`** fields, not bare `Hash` fields.
-- **`HashRef` — the hash field type.** `cas.HashRef` holds a Hash or absence and implements both directions, so object types need no JSON code for hashes: `MarshalJSON` renders a present reference as `"algo:hexdigest"` and an absent one as `""`; `UnmarshalJSON` maps `""`/`null` to absent and otherwise requires a parseable hash, so a decoded object can never hold an unparsable reference that would later vanish from `References()`. `NewHashRef(h)` builds a present reference (a nil Hash means absent), `HashRef.Hash()` unwraps (nil = absent), and `HashRef.IsZero()` reports absence.
-- **One field shape: a plain value.** Every hash field is a value `HashRef`; optional references are tagged **`omitzero`** (Go 1.24+), which omits the field when `IsZero()` reports absent, while a field that is always present simply uses `json:"tree"` and keeps its historical `""` for an absent value. There are no pointer fields and no `omitempty`, so one literal shape serves required, optional and slice fields (`[]HashRef` works element-wise) and the zero value is the absent reference. The module therefore declares `go 1.24`: an older standard library ignores the unknown tag option, which would silently change the stored bytes and the object's address.
-- **Validation belongs to the wrapper.** Because decoding is the wrapper's job, a reference whose absence is illegal *and* must fail at decode time needs only a small per-type guard on presence — never a hand-written `UnmarshalJSON` for rendering (gitlike's `Commit`, §4.12, is the reference implementation).
+- **JSON form lives in the JSON codec, not in `Hash`** (§4.6): the field type `jsoncodec.Hash` renders a present address as its canonical `"algo:hexdigest"` string, the zero value as `""`, and decoding `""`/`null` yields the zero value while every other value must parse (`ErrInvalidHash` / `ErrUnknownAlgorithm`). A decoded object can therefore never hold an unparsable reference that would later vanish from `References()`, and an object type declares `jsoncodec.Hash` fields with **no** JSON code of its own.
+- **One spelling of "no hash".** The zero value IS the absent address: `IsZero()` reports it, `String()` renders it as `""` rather than a bare `":"`, `Equal` treats it as equal to nothing, and the JSON codec's field type renders it as `""`. Object fields use that field type — an optional reference is tagged **`omitzero`** (Go 1.24+), which omits the field when `IsZero()` reports absent, while a field that is always present keeps its historical `""`. The module declares `go 1.24` for `omitzero`: an older standard library ignores the unknown tag option, which would silently change the stored bytes and the object's address.
+- **An absent address is not a store key.** The byte layer must receive a present address: `Store` and both backends reject the zero value with `ErrInvalidHash` (via `CheckHash`) instead of addressing an object that cannot exist.
+- **Validation belongs to the codec's field type.** Because decoding is its job, a reference whose absence is illegal *and* must fail at decode time needs only a small per-type guard on presence — never a hand-written `UnmarshalJSON` for rendering (gitlike's `Commit`, §4.12, is the reference implementation).
 
 **Algorithm coexistence & migration:**
 - Several algorithms coexist (supported): the byte layer namespaces per algorithm (`<base>/<algo>/...`), so one store holds many algorithms; `List(algo)` filters; `Stats` reports per-algorithm counts. Different `Store[T]` over one `Backend` may write with different algorithms.
@@ -337,6 +340,19 @@ type Codec[T any] interface {
 - Default: the JSON codec `json.New[T]()` (`cas/codec/json`), wrapping std-lib `encoding/json`.
 - Compression/encryption/protobuf are additional `Codec[T]` impls; they never change the byte layer.
 - Contract: `Unmarshal(Marshal(v)) == v` (round-trip) for all storable values.
+- **The codec owns the hash wire shape.** `cas/codec/json` also exports the hash *field type* object types declare for reference fields — the one place a hash is rendered as text and validated on the way back in:
+
+  ```go
+  type Hash struct{ /* wraps cas.Hash */ }        // jsoncodec.Hash
+
+  func NewHash(h cas.Hash) Hash                   // wrap for a field or literal
+  func (x Hash) Hash() cas.Hash                   // unwrap for the byte layer
+  func (x Hash) IsZero() bool                     // consults `omitzero`
+  func (x Hash) MarshalJSON() ([]byte, error)     // present → "algo:hexdigest", absent → ""
+  func (x *Hash) UnmarshalJSON([]byte) error      // ""/null → absent, else ParseHash
+  ```
+
+  Rationale: `cas.Hash` is the byte layer's address and knows nothing about any wire format — the byte layer importing `encoding/json` would make one codec's concern universal. An object type therefore writes `Hash jsoncodec.Hash \`json:"…,omitzero"\``, wraps literals with `jsoncodec.NewHash(...)`, and unwraps with `.Hash()` where the byte-layer type is needed (a `Store`/`Resolver` call, `.Equal`). A non-JSON codec carries no hash type at all: `gob` encodes `cas.Hash`'s fields directly, so its stored form is naturally unchanged. See §4.2 for the rules this type implements and §4.12 for a working object model.
 
 ### 4.7 `Object[T]` — self-describing typed object
 
@@ -418,8 +434,8 @@ A shared **reference object-model library** at `gitlike/`, `package gitlike` —
 
 - All four versioned from the start (`blob@1`, `tree@1`, `commit@1`, `tag@1`); a future incompatible change becomes `type@2` with the old deserializer registered.
 - `Parent`/`Target` may be absent — an absent reference marks root/leaf. Cross-type references are plain `Hash`; target type discovered at resolution, not baked in.
-- **Serialization:** every reference field is a value `cas.HashRef` (§4.2) — `omitzero` where absence is legal (`TreeEntry.Hash`, `Commit.Parent`), a plain field where the value is always present (`Commit.Tree`, `Tag.Target`; a tag target may still be absent and keeps its historical `""`). `Tree`, `TreeEntry` and `Tag` therefore carry **no** JSON code at all, and every reference is rendered and validated by the wrapper. `Commit` keeps two small methods for its one mandatory-field invariant: `MarshalJSON` refuses a tree-less commit on write, and `UnmarshalJSON` turns a missing, empty, or null tree into a decode error. Stored bytes — and therefore every object address — are unchanged (`TestStoredAddressesPinned`).
-- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` is advisory for objects built in code: a `TreeEntry` needs a name, a `Commit` needs a tree (checked with `Tree.Hash() != nil`), a `Tag` needs a name, and an absent `HashRef` is valid wherever absence is legal. `Store.Put` marshals but does not validate, so callers constructing objects by hand SHOULD call `Validate` before `Put`; the nil-tree commit is the one case still rejected at `Put` time.
+- **Serialization:** every reference field uses the JSON codec's field type, `jsoncodec.Hash` (§4.6) — `omitzero` where absence is legal (`TreeEntry.Hash`, `Commit.Parent`), a plain field where the value is always present (`Commit.Tree`, `Tag.Target`; a tag target may still be absent and keeps its historical `""`). `Tree`, `TreeEntry` and `Tag` therefore carry **no** JSON code at all, and every reference is rendered and validated by `jsoncodec.Hash` itself. `Commit` keeps two small methods for its one mandatory-field invariant: `MarshalJSON` refuses a tree-less commit on write, and `UnmarshalJSON` turns a missing, empty, or null tree into a decode error. Stored bytes — and therefore every object address — are unchanged (`TestStoredAddressesPinned`).
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` is advisory for objects built in code: a `TreeEntry` needs a name, a `Commit` needs a tree (checked with `Tree.IsZero()`), a `Tag` needs a name, and an absent `Hash` is valid wherever absence is legal. `Store.Put` marshals but does not validate, so callers constructing objects by hand SHOULD call `Validate` before `Put`; the nil-tree commit is the one case still rejected at `Put` time.
 
 **`Repository` and `Resolver` — cross-type access without `any`:**
 
@@ -487,9 +503,9 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 
 | Area | Exported identifiers |
 |---|---|
-| Addressing | `Hash`, `HashRef`, `NewHashRef`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
+| Addressing | `Hash`, `CheckHash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `HashBytes` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
-| Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
+| Typed layer | `Object[T]`, `Codec[T]`, `Store[T]`, `Walker[T]`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`); JSON hash field type `jsoncodec.Hash` (`jsoncodec.NewHash`, `.Hash()`, `.IsZero()`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors | `ErrNotFound`, `ErrHashMismatch`, `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrUnknownType`, `ErrCorrupt` |
 
@@ -499,7 +515,7 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 
 **Add a storage backend:** implement the six `Backend` methods (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`) — idempotent `Put`, no-op `Delete` on missing, `List(algo)` filter, `Get`→`ErrNotFound` on missing, a `Stats` summary (§4.11). Keep the byte layer non-generic; the `memory` backend is the minimal reference; add durability per operations.md §1 where persistent.
 
-**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. Declare hash fields as value `cas.HashRef` (`json:"…,omitzero"` when the reference may be absent) so the type needs no JSON code, and unwrap with `HashRef.Hash()` in `References()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
+**Add an object type:** implement `Object[Document]` (`Type()`/`References()`); create your own `*Store[Document]` with `json.New[Document]()`. Declare reference fields as `jsoncodec.Hash` — the JSON codec's field type (§4.6) — with `json:"…,omitzero"` when the reference may be absent, so the type needs no JSON code for hashes; wrap literals with `jsoncodec.NewHash(h)`, unwrap with `.Hash()` where a `Hash` is expected, and skip `IsZero()` entries in `References()`. For a repository/resolver, copy the `gitlike` pattern into your own package — do NOT extend `cas`/`gitlike`. Never add `any`/reflection — add explicit typed methods.
 
 **Add a hash algorithm:** `cas.RegisterHash("blake3", func(data []byte) cas.Hash {...})`; then `cas.New(raw, codec, "blake3")` works; existing objects under other algorithms remain readable.
 

@@ -16,7 +16,7 @@ import (
 func hashData(algo string, data []byte) (Hash, error) {
 	fn, ok := LookupHash(algo)
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
+		return Hash{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algo)
 	}
 	return fn(data), nil
 }
@@ -126,7 +126,7 @@ func TestNewHash(t *testing.T) {
 
 func TestHashEqual(t *testing.T) {
 	RegisterHash("equalalgo", func(data []byte) Hash {
-		return hash{algo: "equalalgo", bytes: []byte{0x01}}
+		return Hash{algo: "equalalgo", bytes: []byte{0x01}}
 	})
 	a, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	b, _ := ParseHash("sha256:" + strings.Repeat("ab", 32))
@@ -145,8 +145,10 @@ func TestHashEqual(t *testing.T) {
 	if a.Equal(d) || d.Equal(a) {
 		t.Error("same digest different algorithm must not be equal")
 	}
-	if a.Equal(nil) {
-		t.Error("hash must not equal nil")
+	// An absent address equals nothing, including another absent one.
+	var absent Hash
+	if a.Equal(absent) || absent.Equal(a) || absent.Equal(absent) {
+		t.Error("the absent hash must not compare equal")
 	}
 }
 
@@ -156,11 +158,11 @@ func TestHashEqual(t *testing.T) {
 // address of one algorithm name.
 func TestRegisterHashOverridesStreamHasher(t *testing.T) {
 	RegisterHash("parityalgo", func(data []byte) Hash {
-		return hash{algo: "parityalgo", bytes: []byte{0x01}}
+		return Hash{algo: "parityalgo", bytes: []byte{0x01}}
 	})
 	registerStreamHash("parityalgo", sha256.New)
 	RegisterHash("parityalgo", func(data []byte) Hash {
-		return hash{algo: "parityalgo", bytes: []byte{0x02}}
+		return Hash{algo: "parityalgo", bytes: []byte{0x02}}
 	})
 	if _, err := NewHasher("parityalgo"); !errors.Is(err, ErrUnknownAlgorithm) {
 		t.Fatalf("NewHasher(parityalgo) = %v, want ErrUnknownAlgorithm after re-registration", err)
@@ -184,7 +186,7 @@ func TestRegisterHashRejectsInvalidName(t *testing.T) {
 					t.Fatalf("RegisterHash(%q) must panic", name)
 				}
 			}()
-			RegisterHash(name, func([]byte) Hash { return nil })
+			RegisterHash(name, func([]byte) Hash { return Hash{} })
 		})
 	}
 	defer func() {
@@ -199,7 +201,7 @@ func TestRegisterHashRejectsInvalidName(t *testing.T) {
 
 func TestRegisterHash(t *testing.T) {
 	RegisterHash("testalgo", func(data []byte) Hash {
-		return hash{algo: "testalgo", bytes: []byte{0xde, 0xad}}
+		return Hash{algo: "testalgo", bytes: []byte{0xde, 0xad}}
 	})
 	h, err := ParseHash("testalgo:dead")
 	if err != nil {
@@ -227,56 +229,51 @@ func TestBytesIsCopy(t *testing.T) {
 	}
 }
 
-// TestHashJSONMarshal pins the Hash JSON contract: a Hash marshals as its
-// canonical "algo:hexdigest" string through interface fields and slices, which
-// is what lets object types declare plain Hash fields (gitlike's
-// TreeEntry/Commit/Tag). Unmarshalling into a Hash field stays impossible for
-// encoding/json — interface with no exported implementation — which is why
-// those types keep their own UnmarshalJSON.
-func TestHashJSONMarshal(t *testing.T) {
+// TestHashZeroValue pins the absent hash: it is the zero value, it reports
+// IsZero, it renders as "" rather than a bare ":", and it equals nothing.
+func TestHashZeroValue(t *testing.T) {
+	var h Hash
+	if !h.IsZero() {
+		t.Fatal("the zero Hash must be absent")
+	}
+	if h.String() != "" || h.Algorithm() != "" || h.Bytes() != nil {
+		t.Fatalf("zero Hash renders as %q / %q / %v", h.String(), h.Algorithm(), h.Bytes())
+	}
+	if h.Equal(h) {
+		t.Fatal("an absent hash must not equal itself")
+	}
+
+	// CheckHash is the guard the store and the backends apply.
+	if err := CheckHash(Hash{}, "test"); !errors.Is(err, ErrInvalidHash) {
+		t.Fatalf("CheckHash(zero) = %v, want ErrInvalidHash", err)
+	}
+	present, err := ParseHash("sha256:" + strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckHash(present, "test"); err != nil {
+		t.Fatalf("CheckHash(present) = %v", err)
+	}
+}
+
+// TestHashHasNoJSON pins that the core stays free of any encoding: the JSON
+// field shape lives in the JSON codec (jsoncodec.Hash), so a bare Hash field
+// does not serialize as "algo:hexdigest" — object types use the codec type.
+func TestHashHasNoJSON(t *testing.T) {
 	h, err := ParseHash("sha256:" + strings.Repeat("ab", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `"` + h.String() + `"`
-
-	direct, err := json.Marshal(h)
+	raw, err := json.Marshal(h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(direct) != want {
-		t.Fatalf("json.Marshal(Hash) = %s, want %s", direct, want)
+	if string(raw) != `{}` {
+		t.Fatalf("json.Marshal(cas.Hash) = %s, want {} (unexported fields; use jsoncodec.Hash in fields)", raw)
 	}
-
-	type holder struct {
-		Tree  Hash   `json:"tree"`
-		Refs  []Hash `json:"refs,omitempty"`
-		Empty Hash   `json:"empty,omitempty"`
-	}
-	got, err := json.Marshal(holder{Tree: h, Refs: []Hash{h, h}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantHolder := `{"tree":` + want + `,"refs":[` + want + `,` + want + `]}`
-	if string(got) != wantHolder {
-		t.Fatalf("json.Marshal(holder) = %s, want %s", got, wantHolder)
-	}
-
-	// A nil Hash is omitted under omitempty, and null without it.
-	got, err = json.Marshal(struct {
-		Empty Hash `json:"empty"`
-	}{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != `{"empty":null}` {
-		t.Fatalf("nil Hash = %s, want {\"empty\":null}", got)
-	}
-
-	// Decoding into a Hash field cannot work: documented reason for keeping
-	// per-type UnmarshalJSON in the object model.
-	if err := json.Unmarshal([]byte(`{"tree":`+want+`}`), &holder{}); err == nil {
-		t.Fatal("json.Unmarshal into a Hash field must fail (no exported implementation)")
+	var back Hash
+	if err := json.Unmarshal([]byte(`"`+h.String()+`"`), &back); err == nil {
+		t.Fatalf("json.Unmarshal into a bare Hash must fail, got %v", back)
 	}
 }
 
@@ -332,7 +329,7 @@ func TestHashBytes(t *testing.T) {
 // HashBytes fallback.
 func TestHashBytesOneShotFallback(t *testing.T) {
 	RegisterHash("oneshot", func(data []byte) Hash {
-		return hash{algo: "oneshot", bytes: []byte{0x01}}
+		return Hash{algo: "oneshot", bytes: []byte{0x01}}
 	})
 	h, err := HashBytes("oneshot", []byte("x"))
 	if err != nil {

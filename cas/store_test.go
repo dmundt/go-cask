@@ -285,7 +285,7 @@ func TestStoreCancelledContext(t *testing.T) {
 	if _, err := s.Put(ctx, test.Note{Title: "t"}); err == nil {
 		t.Fatal("Put on cancelled context must error")
 	}
-	if _, err := s.Get(ctx, nil); err == nil {
+	if _, err := s.Get(ctx, cas.Hash{}); err == nil {
 		t.Fatal("Get on cancelled context must error")
 	}
 }

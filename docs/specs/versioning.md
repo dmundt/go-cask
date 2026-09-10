@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v11
+version: v13
 ---
 
 # Versioning — go-cask
@@ -20,6 +20,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 | PATCH | Bug fixes and behavior corrections within the same contract |
 
 - The stable surface and compatibility rules come from `library-design.md` §1/§5 — this doc only turns them into Git mechanics.
+- **Ratified exception (v1.2.0):** one breaking change shipped inside the `v1` line — `cas.Hash` went from an interface to a concrete value type, deleting `cas.HashRef`/`NewHashRef`/`Ref` before any of them were released, and hash JSON rendering moved out of the core into the JSON codec (`cas/codec/json`'s `jsoncodec.Hash` field type), so `cas` no longer imports `encoding/json`. It was accepted because the surface was weeks old with negligible adoption, the break is compile-time only (`h == nil` → `h.IsZero()`, custom `Hash` implementations, `jsoncodec.Hash` reference fields), and the on-disk format is unchanged. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). This is a one-off, not a policy change: every later breaking change needs a MAJOR with the `/v2` mechanics in §2.
 - **Pre-release policy:** breaking changes are allowed in `v0.x.y` minor bumps (Go convention). The project may start at `v0.1.0` and reach `v1.0.0` when the stable surface is frozen, or go straight to `v1.0.0`. **Decision: start at `v0.1.0`** — first public tag is the pre-release `v0.1.0-alpha.1`, then further pre-releases (`-alpha.N`, `-beta.N`, `-rc.N`) and `v0.1.0`, then `v1.0.0` when cas-core §7.1 is frozen. Pre-release tags sort below their final release (`v0.1.0-alpha.1` < `v0.1.0`) and use the same annotated-tag mechanics (§3, §5).
 
 ## 2. Go module versioning rules

@@ -19,15 +19,7 @@ import (
 	"github.com/dmundt/go-cask/cas/backend"
 )
 
-// unsafeHash is a cas.Hash carrying an algorithm name that could only exist if
-// it bypassed ParseHash/RegisterHash; it pins the backend's path-safety guard.
-type unsafeHash struct{ algo string }
-
-func (u unsafeHash) Algorithm() string         { return u.algo }
-func (u unsafeHash) Bytes() []byte             { return []byte{0xab} }
-func (u unsafeHash) String() string            { return u.algo + ":ab" }
-func (u unsafeHash) Equal(other cas.Hash) bool { return other != nil && other.Algorithm() == u.algo }
-
+// hashData computes a content address for the backend tests.
 func hashData(algo string, data []byte) (cas.Hash, error) {
 	return cas.HashBytes(algo, data)
 }
@@ -593,20 +585,30 @@ func TestCleanRemovesTempFallbacks(t *testing.T) {
 	}
 }
 
-// TestHashPathNeverEscapesBase pins the path-safety guard: a Hash whose
-// algorithm name is not a single lowercase-alphanumeric path element must
-// still resolve inside the store root.
-func TestHashPathNeverEscapesBase(t *testing.T) {
+// TestHashPathRejectsAbsentHash pins the guard that replaced the old
+// algorithm-name sanitizer: cas.Hash is a closed type now, so the only invalid
+// address left is the absent one, and every backend entry point rejects it.
+func TestHashPathRejectsAbsentHash(t *testing.T) {
 	s := mustFS(t)
-	for _, algo := range []string{"..", "../evil", "a/b", `a\b`, "SHA256", ""} {
-		got := s.hashPath(unsafeHash{algo: algo})
-		rel, err := filepath.Rel(s.base, got)
-		if err != nil {
-			t.Fatalf("hashPath(%q) = %q: %v", algo, got, err)
-		}
-		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-			t.Fatalf("hashPath(%q) escapes the store base: %q", algo, got)
-		}
+	ctx := context.Background()
+	var absent cas.Hash
+	if err := s.Put(ctx, absent, strings.NewReader("x")); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Put(absent) = %v, want ErrInvalidHash", err)
+	}
+	if _, err := s.Get(ctx, absent); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Get(absent) = %v, want ErrInvalidHash", err)
+	}
+	if _, err := s.Exists(ctx, absent); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Exists(absent) = %v, want ErrInvalidHash", err)
+	}
+	if err := s.Delete(ctx, absent); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Delete(absent) = %v, want ErrInvalidHash", err)
+	}
+	if _, err := s.Size(ctx, absent); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Size(absent) = %v, want ErrInvalidHash", err)
+	}
+	if err := s.Verify(ctx, absent); !errors.Is(err, cas.ErrInvalidHash) {
+		t.Fatalf("Verify(absent) = %v, want ErrInvalidHash", err)
 	}
 }
 

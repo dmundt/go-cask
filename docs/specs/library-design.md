@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v17
+version: v19
 ---
 
 # Library Design — go-cask
@@ -12,8 +12,8 @@ The `cas` package must be small, obvious, and hard to misuse. Related: `cas-core
 ## 1. Lean-core budget
 
 - `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 LOC and ≤ ~40 exported identifiers (re-baselined 2026-09 to the frozen surface after the pre-v1.0.0 audit). Every exported name must earn its place; if it can live in a subpackage or an example, it does. Advisory ceiling for additions, not a shrinking target.
-- **Stable core surface** (the API docs promise — cas-core §7.1): `Hash`, `HashRef` (`NewHashRef`), `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`, `HashBytes`, `Backend` (byte interface), `Stats`, `Codec[T]` (interface), `Object`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and the six sentinel `Err*` values — all in `package cas`.
-- Byte backends, typed codecs and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); codecs `json.New[T]()` and `gob.New[T]()` (there is no `JSONCodec`/`GobCodec` type); caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
+- **Stable core surface** (the API docs promise — cas-core §7.1): `Hash`, `CheckHash`, `HashFunc`, `RegisterHash`, `ParseHash`, `NewHasher`, `NewHash`, `HashBytes`, `Backend` (byte interface), `Stats`, `Codec[T]` (interface), `Object`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, and the six sentinel `Err*` values — all in `package cas`.
+- Byte backends, typed codecs and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); codecs `json.New[T]()` and `gob.New[T]()` (there is no `JSONCodec`/`GobCodec` type) — the JSON codec additionally exports the hash field type `jsoncodec.Hash` (`jsoncodec.NewHash`, `.Hash()`, `.IsZero()`) that object types declare for reference fields, so no hash JSON code lives in `package cas`; caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
 - Optional machinery stays out of the core: prefetch-on-access and cache-monitor recipes are demonstrated by `examples/notes` and `examples/artifacts` — never part of `package cas`; record the decision in `AGENTS.md` when made.
 - The `gitlike` layer is NOT part of `cas`.
 
@@ -59,7 +59,7 @@ var (
 ## 5. Compatibility policy
 
 - Library baseline **Go 1.24+** (generics, enhanced routing, `omitzero` JSON tags, stdlib-only); built/tested with the repo toolchain (1.27).
-- Only additive, non-breaking changes inside the current major; breaking changes require a major version and a migration note.
+- Only additive, non-breaking changes inside the current major; breaking changes require a major version and a migration note — **except** for a change explicitly ratified while the surface is in its first release cycle and adoption is negligible: `cas.Hash` became a concrete value type — and gave up its JSON marshalling to the JSON codec's `jsoncodec.Hash` field type — in `v1.2.0` (a documented `BREAKING CHANGE` with a migration note, versioning §4) rather than waiting for a `/v2` mirror. Any further breaking change follows the ordinary rule again.
 - Example HTTP surfaces version independently (`/api/cas/v1` → `/api/cas/v2`, api-design §12).
 - Deprecations: keep deprecated symbols ≥ one minor release with a doc-comment pointer to the replacement.
 

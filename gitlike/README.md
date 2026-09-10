@@ -10,7 +10,7 @@
 |---|---|
 | `Store[T]` + the JSON codec (`json.New[T]()`) | the four per-type stores |
 | `Object[T]` (versioned `blob@1`…`tag@1`) | `types.go` |
-| `Hash` / `ParseHash` | all references (tree entries, commit tree/parent, tag target) |
+| `Hash` / `ParseHash` / `jsoncodec.Hash` | all references (tree entries, commit tree/parent, tag target) |
 | `cas.Backend` | the shared backend under `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
 | `LRUCache[T]` | `CachedRepository` |
@@ -18,8 +18,8 @@
 
 ## What it extends
 
-- **Four `Object[T]` types** with the self-describing envelope (`types.go`). Hash fields are value `cas.HashRef`: `cas.NewHashRef(h)` for a present reference, the zero value for an absent one, and the tag `omitzero` where absence should be left out of the encoding (`TreeEntry.Hash`, `Commit.Parent`). `Tree`, `TreeEntry` and `Tag` therefore contain **no** JSON code at all, and every reference is rendered as `algo:hex` and validated as it decodes (`ErrInvalidHash` for a malformed string). `Commit` keeps two small methods for its one mandatory-field rule: write refuses a tree-less commit, decode rejects a missing, empty, or null tree. Stored bytes — and so every object address — are unchanged.
-- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — advisory checks for hand-built objects (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent `HashRef` is valid where absence is legal). `Store.Put` marshals, it does not validate, so call a `Validate` yourself before `Put` when you build objects in code; a tree-less commit is the one case still rejected at `Put` (via `Commit.MarshalJSON`).
+- **Four `Object[T]` types** with the self-describing envelope (`types.go`). Reference fields use `jsoncodec.Hash`, the JSON codec's field type (`cas/codec/json`): the zero value is "absent", and the tag `omitzero` leaves an absent reference out of the encoding (`TreeEntry.Hash`, `Commit.Parent`). `Tree`, `TreeEntry` and `Tag` therefore contain **no** JSON code at all, and every reference is rendered as `algo:hex` and validated as it decodes (`ErrInvalidHash` for a malformed string). Literals wrap with `jsoncodec.NewHash(h)`; reads that need the byte-layer address unwrap with `.Hash()`. `Commit` keeps two small methods for its one mandatory-field rule: write refuses a tree-less commit, decode rejects a missing, empty, or null tree. Stored bytes — and so every object address — are unchanged.
+- **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — advisory checks for hand-built objects (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent `Hash` is valid where absence is legal). `Store.Put` marshals, it does not validate, so call a `Validate` yourself before `Put` when you build objects in code; a tree-less commit is the one case still rejected at `Put` (via `Commit.MarshalJSON`).
 - **`Repository`** — per-type `Store[T]` over one `cas.Backend` (cross-type access without `any`; the wrong store is a compile-time error).
 - **`Resolver` / `ResolvedObject` / `parseType` / `ResolveAny`** — typed resolution; `ResolveAny` reads the envelope type via `parseType` and dispatches to the typed `Resolve*`.
 - **`WalkGraph`, `CachedRepository`, `Preloader`** — whole-graph traversal, per-type LRU caches, and a background commit preloader.

@@ -15,7 +15,13 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
+
+// ref adapts a plain cas.Hash to the JSON codec's field type for object
+// literals. The field type carries the wire shape and validates on decode, so
+// the object types themselves need no JSON code for hashes (cas-core §4.2).
+func ref(h cas.Hash) jsoncodec.Hash { return jsoncodec.NewHash(h) }
 
 func newRepo(t *testing.T, raw cas.Backend) *Repository {
 	repo, err := NewRepository(raw, "sha256")
@@ -49,7 +55,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	}
 
 	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{
-		{Name: "a.txt", Hash: cas.NewHashRef(hb), Mode: "100644"},
+		{Name: "a.txt", Hash: ref(hb), Mode: "100644"},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +69,7 @@ func TestObjectRoundTrips(t *testing.T) {
 	}
 
 	hc, err := repo.Commits.Put(ctx, &Commit{
-		Tree: cas.NewHashRef(ht), Author: "a", Message: "m", Time: time.Unix(1, 0),
+		Tree: ref(ht), Author: "a", Message: "m", Time: time.Unix(1, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +85,7 @@ func TestObjectRoundTrips(t *testing.T) {
 		t.Fatalf("commit time round-trip: %v", commit.Time)
 	}
 
-	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v1", Target: cas.NewHashRef(hc), Tagger: "t", Message: "tag"})
+	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v1", Target: ref(hc), Tagger: "t", Message: "tag"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,19 +142,19 @@ func TestReferences(t *testing.T) {
 	if got := (&Blob{}).References(); got != nil {
 		t.Errorf("blob refs = %v", got)
 	}
-	tree := &Tree{Entries: []TreeEntry{{Name: "a", Hash: cas.NewHashRef(hb), Mode: "m"}, {Name: "b", Hash: cas.NewHashRef(hc), Mode: "m"}}}
+	tree := &Tree{Entries: []TreeEntry{{Name: "a", Hash: ref(hb), Mode: "m"}, {Name: "b", Hash: ref(hc), Mode: "m"}}}
 	if got := tree.References(); len(got) != 2 || !got[0].Equal(hb) || !got[1].Equal(hc) {
 		t.Errorf("tree refs = %v", got)
 	}
-	commit := &Commit{Tree: cas.NewHashRef(hb), Parent: cas.NewHashRef(hc)}
+	commit := &Commit{Tree: ref(hb), Parent: ref(hc)}
 	if got := commit.References(); len(got) != 2 {
 		t.Errorf("commit refs = %v", got)
 	}
-	root := &Commit{Tree: cas.NewHashRef(hb)}
+	root := &Commit{Tree: ref(hb)}
 	if got := root.References(); len(got) != 1 {
 		t.Errorf("root commit refs = %v", got)
 	}
-	tag := &Tag{Target: cas.NewHashRef(hb)}
+	tag := &Tag{Target: ref(hb)}
 	if got := tag.References(); len(got) != 1 || !got[0].Equal(hb) {
 		t.Errorf("tag refs = %v", got)
 	}
@@ -208,7 +214,7 @@ func TestResolverResolveAny(t *testing.T) {
 		t.Fatal("ResolveAny must fill exactly one field")
 	}
 
-	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: cas.NewHashRef(hb), Mode: "m"}}})
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: ref(hb), Mode: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +223,7 @@ func TestResolverResolveAny(t *testing.T) {
 		t.Fatalf("ResolveAny(tree) = %+v, %v", ro, err)
 	}
 
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Author: "a", Message: "m"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Author: "a", Message: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +232,7 @@ func TestResolverResolveAny(t *testing.T) {
 		t.Fatalf("ResolveAny(commit) = %+v, %v", ro, err)
 	}
 
-	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v", Target: cas.NewHashRef(hc)})
+	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v", Target: ref(hc)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +318,7 @@ func TestPrintObject(t *testing.T) {
 		{&ResolvedObject{Type: "blob", Blob: &Blob{Data: make([]byte, 5)}}, "blob (5 bytes)"},
 		{&ResolvedObject{Type: "tree", Tree: &Tree{}}, "tree (0 entries)"},
 		{&ResolvedObject{Type: "commit", Commit: &Commit{Author: "alice", Message: "hi"}}, "commit by alice: hi"},
-		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: cas.NewHashRef(mustHash(t, "sha256:"+strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
+		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(mustHash(t, "sha256:"+strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
 		{&ResolvedObject{Type: "other"}, "unknown type \"other\""},
 	}
 	for _, tc := range cases {
@@ -328,11 +334,11 @@ func TestWalkGraph(t *testing.T) {
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "content")
-	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: cas.NewHashRef(hb), Mode: "100644"}}})
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: ref(hb), Mode: "100644"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Author: "a", Message: "first"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Author: "a", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +365,7 @@ func TestWalkGraph(t *testing.T) {
 	}
 
 	// Tag → commit → tree → blob.
-	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v1", Target: cas.NewHashRef(hc)})
+	htag, err := repo.Tags.Put(ctx, &Tag{Name: "v1", Target: ref(hc)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,14 +426,14 @@ func TestCachedRepository(t *testing.T) {
 		t.Fatalf("cache hits = %d, want >= 1", st.Hits)
 	}
 
-	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: cas.NewHashRef(hb), Mode: "m"}}})
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: ref(hb), Mode: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cached.GetTree(ctx, ht); err != nil {
 		t.Fatal(err)
 	}
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Author: "a"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Author: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +477,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 	}
 	p := NewPreloader(cached, 0) // workers <= 0 → default
 	defer p.Stop()
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(mustHash(t, "sha256:"+strings.Repeat("ab", 32))), Author: "a"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(mustHash(t, "sha256:"+strings.Repeat("ab", 32))), Author: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,11 +505,11 @@ func TestPreloader(t *testing.T) {
 	defer p.Stop()
 
 	hb := putBlob(t, repo, "data")
-	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: cas.NewHashRef(hb), Mode: "m"}}})
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "f", Hash: ref(hb), Mode: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Author: "a", Message: "m"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Author: "a", Message: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -657,7 +663,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 		t.Fatalf("nil-hash entry must not be a reference: %v", refs)
 	}
 
-	commit := &Commit{Tree: cas.NewHashRef(th), Author: "a", Message: "root"} // nil Parent
+	commit := &Commit{Tree: ref(th), Author: "a", Message: "root"} // absent Parent
 	ch, err := repo.Commits.Put(ctx, commit)
 	if err != nil {
 		t.Fatal(err)
@@ -679,7 +685,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tb.Target.Hash() != nil || tb.Name != "v1" {
+	if !tb.Target.IsZero() || tb.Name != "v1" {
 		t.Fatalf("tag with nil target round-trip: %+v", tb)
 	}
 	if refs := tag.References(); len(refs) != 0 {
@@ -692,7 +698,7 @@ func TestNilOptionalFieldRoundTrips(t *testing.T) {
 // TestUnmarshalInvalidJSON pins that malformed JSON fails for every object
 // type. TreeEntry and Tag have no JSON code of their own any more, so this
 // goes through json.Unmarshal (the path a store read takes); Commit's required
-// tree and HashRef's reference validation are covered separately.
+// tree and cas.Hash's reference validation are covered separately.
 func TestUnmarshalInvalidJSON(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -735,8 +741,8 @@ func TestCommitRequiredTreeDecode(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"tree":"`+h.String()+`","parent":null,"author":"a"}`), &c); err != nil {
 		t.Fatal(err)
 	}
-	if c.Tree.Hash() == nil || !c.Tree.Hash().Equal(h) {
-		t.Fatalf("tree = %v", c.Tree.Hash())
+	if c.Tree.IsZero() || !c.Tree.Hash().Equal(h) {
+		t.Fatalf("tree = %v", c.Tree)
 	}
 	if !c.Parent.IsZero() {
 		t.Fatalf("null parent = %v, want absent", c.Parent)
@@ -751,15 +757,15 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 	repo := newRepo(t, mem.New())
 
 	hb := putBlob(t, repo, "a")
-	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "a.txt", Hash: cas.NewHashRef(hb), Mode: "m"}}})
+	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "a.txt", Hash: ref(hb), Mode: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Author: "a", Message: "root"})
+	root, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Author: "a", Message: "root"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(ht), Parent: cas.NewHashRef(root), Author: "a", Message: "child"})
+	child, err := repo.Commits.Put(ctx, &Commit{Tree: ref(ht), Parent: ref(root), Author: "a", Message: "child"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,7 +786,7 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 func TestHashFieldsMarshalWithoutCustomCode(t *testing.T) {
 	h := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
 
-	raw, err := json.Marshal(TreeEntry{Name: "f", Hash: cas.NewHashRef(h), Mode: "100644"})
+	raw, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -817,22 +823,22 @@ func TestStoredAddressesPinned(t *testing.T) {
 		put      func() (cas.Hash, error)
 	}{
 		{
-			"tree with a hash entry and a nil-hash entry",
+			"tree with a hash entry and an absent-hash entry",
 			TypeTree,
 			`{"entries":[{"name":"f","hash":"` + treeHash.String() + `","mode":"100644"},{"name":"g","mode":"100644"}]}`,
 			func() (cas.Hash, error) {
 				return repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{
-					{Name: "f", Hash: cas.NewHashRef(treeHash), Mode: "100644"},
+					{Name: "f", Hash: ref(treeHash), Mode: "100644"},
 					{Name: "g", Mode: "100644"},
 				}})
 			},
 		},
 		{
-			"root commit (nil parent omitted)",
+			"root commit (absent parent omitted)",
 			TypeCommit,
 			`{"tree":"` + treeHash.String() + `","author":"a","message":"m","time":"2026-09-09T12:00:00Z"}`,
 			func() (cas.Hash, error) {
-				return repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(treeHash), Author: "a", Message: "m", Time: ts})
+				return repo.Commits.Put(ctx, &Commit{Tree: ref(treeHash), Author: "a", Message: "m", Time: ts})
 			},
 		},
 		{
@@ -840,7 +846,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 			TypeCommit,
 			`{"tree":"` + treeHash.String() + `","parent":"` + parentHash.String() + `","author":"a","message":"m","time":"2026-09-09T12:00:00Z"}`,
 			func() (cas.Hash, error) {
-				return repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(treeHash), Parent: cas.NewHashRef(parentHash), Author: "a", Message: "m", Time: ts})
+				return repo.Commits.Put(ctx, &Commit{Tree: ref(treeHash), Parent: ref(parentHash), Author: "a", Message: "m", Time: ts})
 			},
 		},
 		{
@@ -848,7 +854,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 			TypeTag,
 			`{"name":"v1","target":"` + hb.String() + `","tagger":"t","message":"rel"}`,
 			func() (cas.Hash, error) {
-				return repo.Tags.Put(ctx, &Tag{Name: "v1", Target: cas.NewHashRef(hb), Tagger: "t", Message: "rel"})
+				return repo.Tags.Put(ctx, &Tag{Name: "v1", Target: ref(hb), Tagger: "t", Message: "rel"})
 			},
 		},
 		{
@@ -878,30 +884,30 @@ func TestStoredAddressesPinned(t *testing.T) {
 }
 
 // TestValidate pins the advisory validation contract: naming rules for entries
-// and tags, the mandatory commit tree, and nil optional references.
+// and tags, the mandatory commit tree, and absent optional references.
 func TestValidate(t *testing.T) {
 	h := mustHash(t, "sha256:"+strings.Repeat("ab", 32))
 
-	if err := (&Commit{Tree: cas.NewHashRef(h)}).Validate(); err != nil {
+	if err := (&Commit{Tree: ref(h)}).Validate(); err != nil {
 		t.Errorf("commit with tree: %v", err)
 	}
 	if err := (&Commit{}).Validate(); err == nil {
 		t.Error("commit without a tree must not validate")
 	}
 	if err := (&Tag{Name: "v1"}).Validate(); err != nil {
-		t.Errorf("named tag (nil target): %v", err)
+		t.Errorf("named tag (absent target): %v", err)
 	}
 	if err := (&Tag{}).Validate(); err == nil {
 		t.Error("nameless tag must not validate")
 	}
-	if err := (&Tree{Entries: []TreeEntry{{Name: "f", Hash: cas.NewHashRef(h)}, {Name: "g"}}}).Validate(); err != nil {
+	if err := (&Tree{Entries: []TreeEntry{{Name: "f", Hash: ref(h)}, {Name: "g"}}}).Validate(); err != nil {
 		t.Errorf("named entries: %v", err)
 	}
-	if err := (&Tree{Entries: []TreeEntry{{Hash: cas.NewHashRef(h)}}}).Validate(); err == nil {
+	if err := (&Tree{Entries: []TreeEntry{{Hash: ref(h)}}}).Validate(); err == nil {
 		t.Error("tree with a nameless entry must not validate")
 	}
 	if err := (TreeEntry{Name: "f"}).Validate(); err != nil {
-		t.Errorf("nil-hash entry: %v", err)
+		t.Errorf("absent-hash entry: %v", err)
 	}
 	if err := (TreeEntry{}).Validate(); err == nil {
 		t.Error("nameless entry must not validate")
@@ -976,12 +982,12 @@ func TestResolveAnyTypeDecodeErrors(t *testing.T) {
 	}
 }
 
-// --- shortHash nil guard via PrintObject on a tag with no target ---
+// --- shortHash absent guard via PrintObject on a tag with no target ---
 
-func TestPrintObjectNilTargetTag(t *testing.T) {
+func TestPrintObjectAbsentTargetTag(t *testing.T) {
 	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1"}})
-	if !strings.Contains(got, "<nil>") {
-		t.Fatalf("PrintObject of nil-target tag = %q, want <nil>", got)
+	if !strings.Contains(got, "<absent>") {
+		t.Fatalf("PrintObject of absent-target tag = %q, want <absent>", got)
 	}
 }
 
@@ -993,7 +999,7 @@ func TestWalkGraphDanglingReference(t *testing.T) {
 	res := NewResolver(repo)
 
 	missing, _ := cas.ParseHash("sha256:" + strings.Repeat("00", 32))
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: cas.NewHashRef(missing), Author: "a", Message: "dangling"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(missing), Author: "a", Message: "dangling"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1017,7 +1023,7 @@ func TestPrintObjectShortHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: cas.NewHashRef(h)}})
+	got := PrintObject(&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(h)}})
 	if !strings.Contains(got, "deadbeef") {
 		t.Fatalf("PrintObject short hash = %q", got)
 	}

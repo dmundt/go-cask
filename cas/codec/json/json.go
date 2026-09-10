@@ -7,6 +7,12 @@
 // round-trip contract, Unmarshal(Marshal(v)) == v, for all values with valid
 // UTF-8 content (encoding/json replaces invalid UTF-8 on encode, which is
 // pinned by tests).
+//
+// The package also owns the JSON shape of a hash: Hash is the field type an
+// object type declares for a reference (NewHash to wrap, Hash to unwrap). The
+// core's cas.Hash deliberately carries no serialization, so this codec — the
+// one that defines a wire format — is the only place a hash is rendered as text
+// and validated on the way back in (cas-core §4.2, §4.6).
 package json
 
 import "encoding/json"

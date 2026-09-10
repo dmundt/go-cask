@@ -27,6 +27,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -66,7 +67,7 @@ func newApp(dir string) (*app, error) {
 func (a *app) readRef(path string) (cas.Hash, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return cas.Hash{}, err
 	}
 	return cas.ParseHash(strings.TrimSpace(string(b)))
 }
@@ -86,20 +87,20 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Hash, error) {
 	for _, p := range paths {
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", p, err)
+			return cas.Hash{}, fmt.Errorf("read %s: %w", p, err)
 		}
 		h, err := a.repo.Blobs.Put(ctx, &gitlike.Blob{Data: data})
 		if err != nil {
-			return nil, err
+			return cas.Hash{}, err
 		}
-		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: cas.NewHashRef(h), Mode: "100644"})
+		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: jsoncodec.NewHash(h), Mode: "100644"})
 	}
 	h, err := a.repo.Trees.Put(ctx, &gitlike.Tree{Entries: entries})
 	if err != nil {
-		return nil, err
+		return cas.Hash{}, err
 	}
 	if err := a.writeRef(a.index, h); err != nil {
-		return nil, err
+		return cas.Hash{}, err
 	}
 	return h, nil
 }
@@ -109,19 +110,19 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Hash, error) {
 func (a *app) commit(ctx context.Context, msg string) (cas.Hash, error) {
 	tree, err := a.currentTree()
 	if err != nil {
-		return nil, fmt.Errorf("no tree to commit (run add first): %w", err)
+		return cas.Hash{}, fmt.Errorf("no tree to commit (run add first): %w", err)
 	}
-	parent, _ := a.headCommit() // no parent for the first commit
+	parent, _ := a.headCommit() // absent for the first commit
 	c := &gitlike.Commit{
-		Tree:    cas.NewHashRef(tree),
-		Parent:  cas.NewHashRef(parent),
+		Tree:    jsoncodec.NewHash(tree),
+		Parent:  jsoncodec.NewHash(parent),
 		Author:  "files",
 		Message: msg,
 		Time:    time.Now(),
 	}
 	h, err := a.repo.Commits.Put(ctx, c)
 	if err != nil {
-		return nil, err
+		return cas.Hash{}, err
 	}
 	return h, a.writeRef(a.head, h)
 }
@@ -132,13 +133,13 @@ func (a *app) log(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("no commits yet: %w", err)
 	}
-	for h != nil {
+	for !h.IsZero() {
 		c, err := a.repo.Commits.Get(ctx, h)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "%s %s\n", short(h), c.Message)
-		h = c.Parent.Hash() // nil for a root commit: the walk ends
+		h = c.Parent.Hash() // absent for a root commit: the walk ends
 	}
 	return nil
 }
@@ -178,8 +179,8 @@ func (a *app) verify(ctx context.Context) error {
 }
 
 func short(h cas.Hash) string {
-	if h == nil {
-		return "<nil>"
+	if h.IsZero() {
+		return "<absent>"
 	}
 	return h.String()
 }
