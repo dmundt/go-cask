@@ -14,7 +14,7 @@
 | `cas.Hasher` and `gitlike.Codecs` (both injected; the tests wire `sha256.New()` + `json.New[T]()`) | `NewRepository(raw, hasher, codecs)` → each per-type `cas.New` |
 | `cas.Backend` | the shared backend under `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
-| `LRUCache[T]` | `CachedRepository` |
+| `lru.Cache[T]` | `CachedRepository` |
 | `CachedStore[T].PreloadRecursive` | `Preloader` |
 
 ## What it extends
@@ -36,7 +36,7 @@ The `_test.go` files do name a codec (the shipped JSON one) exactly as a client 
 
 - `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules, which the store enforces on every `Put` and `Get` (`cas.Validator`) rather than any codec. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
 - `repo.go` — `Repository` wires the four stores over one backend, the caller's hasher and the caller's `Codecs` (one `Codec[T]` per type); `Resolver.ResolveAny` resolves any digest via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
-- `cached.go` — `CachedRepository` (per-type `LRUCache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
+- `cached.go` — `CachedRepository` (per-type `lru.Cache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
 - `gitlike_test.go` — round-trips, references, `ResolveAny` for every type, legacy unversioned envelopes, `WalkGraph`, cached repository, preloader.
 
 ```mermaid

@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (benchmarks/bench_test.go) and the on-demand state-scaling probes (benchmarks/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v7
+version: v8
 ---
 
 # Benchmarks — go-cask
@@ -16,7 +16,7 @@ The go-cask benchmarks measure the `cas` core's speed and allocations. They are 
 | Regular perf | `benchmarks/bench_test.go` | Per-op cost at fixed, small object counts (64 B – 1 MiB, flat vs. fan-out) | none (manual) |
 | Scale probes | `benchmarks/scale_bench_test.go` | Per-op cost as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` set |
 
-Both live in `benchmarks/` and use standard `go test -bench`. Every benchmark reports allocations (`b.ReportAllocs`) and throughput (`b.SetBytes`).
+Both live in `benchmarks/` and use standard `go test -bench`. Every benchmark except `BenchmarkScaleStoreEconomics` reports allocations (`b.ReportAllocs`) — 14 of the 15 `Benchmark*` functions (15 call sites: `BenchmarkParseDigest` calls it in each of its two subtests). `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput (`b.SetBytes`) is set only where one payload of known size defines the per-op work — `BenchmarkStorePut`, `BenchmarkStoreGet`, `BenchmarkFSBackendPut`, `BenchmarkFSBackendGet`, `BenchmarkRoundTrip`, `BenchmarkVerify` and the `ScalePut`/`ScaleGet` probes (8 of the 14). `BenchmarkParseDigest` (both subtests), `BenchmarkParallelPutGet`, `BenchmarkScaleExists`, `BenchmarkScaleDelete`, `BenchmarkScaleList` and `BenchmarkScaleStats` report allocations only, because "bytes per op" is meaningless for them.
 
 ## 2. Common flags
 

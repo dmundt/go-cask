@@ -72,11 +72,26 @@ func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		// read never buffers more than the cap allows.
 		reader = io.LimitReader(r, budget+1)
 	}
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(ctxReader{ctx: ctx, r: reader})
 	if err != nil {
 		return fmt.Errorf("cas: buffer object: %w", err)
 	}
 	return m.store(key, data)
+}
+
+// ctxReader aborts a buffering read once ctx is canceled, so a canceled Put
+// does not keep reading (and later storing) an object it no longer needs,
+// matching fs.Put's streaming behaviour.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // budget returns how many bytes a Put at key may add before hitting the cap;

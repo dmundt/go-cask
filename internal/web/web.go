@@ -309,10 +309,14 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Every admin action is audit-logged (viewer-security §"audit logging"), so
+	// verify records its outcome like delete and gc do.
 	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
+		slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", false)
 		s.render(w, "result", "corrupt: "+template.HTMLEscapeString(err.Error()))
 		return
 	}
+	slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", true)
 	s.render(w, "result", "ok")
 }
 
@@ -479,29 +483,15 @@ func parseDigestLines(s string) ([]cas.Digest, error) {
 	return out, nil
 }
 
+// shortDigest renders the first 8 hex chars of a digest for the FuncMap. The
+// templates currently use the precomputed objectRow.Short field, so this stays
+// registered for fragment templates that need to shorten a digest they hold as
+// a string.
 func shortDigest(d cas.Digest) string {
 	if d.IsZero() {
 		return ""
 	}
 	return sha256.Short(d)
-}
-
-// digestWithType renders the viewer's generic-list form, "<short digest>
-// (<type>)". NOTE: currently unreferenced — templates use the precomputed
-// objectRow.Short field instead (see the report on dead viewer helpers).
-func digestWithType(h string, typ string) string {
-	if typ == "" {
-		return shortDigest(parseDigestOrNil(h))
-	}
-	return shortDigest(parseDigestOrNil(h)) + " (" + typ + ")"
-}
-
-func parseDigestOrNil(s string) cas.Digest {
-	d, err := sha256.Parse(s)
-	if err != nil {
-		return nil
-	}
-	return d
 }
 
 // hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).

@@ -172,6 +172,61 @@ func BenchmarkFSBackendGet(b *testing.B) {
 	}
 }
 
+// BenchmarkMemBackendPut/Get measure the BYTE layer on the memory backend —
+// the case defaults.md §6 pins ("memory-backend small Put/Get … ≤5 allocs/op").
+// The Store-level cases above include codec, envelope and hashing costs and are
+// deliberately not held to that number.
+func BenchmarkMemBackendPut(b *testing.B) {
+	for _, sz := range []struct {
+		name string
+		size int
+	}{{"64B", 64}, {"1KiB", 1024}} {
+		b.Run(sz.name, func(b *testing.B) {
+			ctx := context.Background()
+			s := mem.New()
+			data := []byte(strings.Repeat("x", sz.size))
+			b.SetBytes(int64(sz.size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				binary.BigEndian.PutUint64(data, uint64(i))
+				if err := s.Put(ctx, digestData(data), bytes.NewReader(data)); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkMemBackendGet(b *testing.B) {
+	for _, sz := range []struct {
+		name string
+		size int
+	}{{"64B", 64}, {"1KiB", 1024}} {
+		b.Run(sz.name, func(b *testing.B) {
+			ctx := context.Background()
+			s := mem.New()
+			h := digestData(make([]byte, sz.size))
+			if err := s.Put(ctx, h, strings.NewReader(strings.Repeat("x", sz.size))); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(sz.size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rc, err := s.Get(ctx, h)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := io.Copy(io.Discard, rc); err != nil {
+					b.Fatal(err)
+				}
+				rc.Close()
+			}
+		})
+	}
+}
+
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
 	s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())

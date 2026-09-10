@@ -64,8 +64,10 @@ func (c *CachedRepository) GetBlob(ctx context.Context, d cas.Digest) (*Blob, er
 	return c.Blobs.Get(ctx, d)
 }
 
-// ResolveAny resolves d to any supported object type, using the caches where
-// possible.
+// ResolveAny resolves d to any supported object type through the shared
+// resolver. It reads the raw bytes and the per-type stores directly, so it does
+// not serve from these caches; use GetBlob/GetTree/GetCommit/GetTag for a cached
+// read of a known type.
 func (c *CachedRepository) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
 	return c.resolver.ResolveAny(ctx, d)
 }

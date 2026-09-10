@@ -52,6 +52,44 @@ func TestWalkerTraversal(t *testing.T) {
 	}
 }
 
+// rawRefsObj returns its references verbatim, including an absent one: the
+// object contract allows the zero Digest in References() to mean "no
+// reference", so the walker must skip it rather than treat it as a missing
+// object (the same rule WalkGraph follows).
+type rawRefsObj struct {
+	Name string
+	Refs []cas.Digest
+}
+
+func (rawRefsObj) Type() string               { return "rawrefs@1" }
+func (o rawRefsObj) References() []cas.Digest { return o.Refs }
+
+// TestWalkerSkipsAbsentReferences pins that a zero reference does not fail the
+// whole walk with ErrInvalidDigest.
+func TestWalkerSkipsAbsentReferences(t *testing.T) {
+	ctx := context.Background()
+	s := cas.New(mem.New(), jsoncodec.New[rawRefsObj](), sha256.New())
+	child, err := s.Put(ctx, rawRefsObj{Name: "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := s.Put(ctx, rawRefsObj{Name: "root", Refs: []cas.Digest{nil, child}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	w := cas.NewWalker(s, func(o rawRefsObj) error {
+		visited = append(visited, o.Name)
+		return nil
+	})
+	if err := w.Walk(ctx, root); err != nil {
+		t.Fatalf("Walk over an absent reference = %v, want nil", err)
+	}
+	if len(visited) != 2 {
+		t.Fatalf("visited %v, want the root and its child", visited)
+	}
+}
+
 func TestWalkerNotFound(t *testing.T) {
 	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
 	missing := sha256.Of([]byte("never stored"))

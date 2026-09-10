@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 )
 
 // Store[T] is the generic, type-safe content-addressable store for objects of
@@ -78,12 +79,16 @@ func validateDecoded[T any](obj T, typeName string) error {
 	return nil
 }
 
-// isNilValue reports whether v is a nil pointer, interface, map, slice, channel
-// or function. It is the core's only use of reflection, and it decides nothing
-// but "there is no value here" — the callers above need it so that a nil object
-// is rejected instead of panicking inside the object's own Validate.
+// isNilValue reports whether v carries no value: a nil interface value itself,
+// or a nil pointer, map, slice, channel, function or interface. It is the
+// core's only use of reflection, and it decides nothing but "there is no value
+// here" — the callers above need it so that a nil object is rejected instead of
+// panicking inside the object's own Type or Validate.
 func isNilValue[T any](v T) bool {
 	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return true // v is a nil interface value: reflect has no kind to inspect
+	}
 	switch rv.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return rv.IsNil()
@@ -170,6 +175,14 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 		// An empty type name produces an envelope that parseEnvelope rejects,
 		// i.e. an object Put succeeds on but Get can never read.
 		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
+	}
+	if !strings.Contains(typ, "@") {
+		// Object[T].Type MUST return a versioned name "<type>@<major>"
+		// (object.go, object-versioning.md). parseEnvelope reads a legacy
+		// unversioned name as "@1", so writing one produces an object whose
+		// stored type ("legacy@1") can never equal the decoded Type()
+		// ("legacy"): a write-only object. Reject it at the source instead.
+		return nil, fmt.Errorf("%w: type name %q is not versioned (want \"<type>@<major>\")", ErrUnknownType, typ)
 	}
 	return marshalEnvelope(typ, payload), nil
 }

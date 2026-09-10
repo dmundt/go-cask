@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -194,12 +195,24 @@ func opList(ctx context.Context, t *target, args []string) error {
 	}
 	total := len(digests)
 	items := make([]item, 0, total)
+	skipped := 0
 	for _, h := range index.Paginate(digests, *offset, *limit) {
 		size, err := t.raw.Size(ctx, h)
 		if err != nil {
+			// List reports every digest-named file, including one at a path the
+			// layout cannot address (a stray file in the store directory): such
+			// an entry is not an object, so it is skipped with a warning instead
+			// of failing the whole listing (cas-core §4.4).
+			if errors.Is(err, cas.ErrNotFound) || errors.Is(err, cas.ErrInvalidDigest) {
+				skipped++
+				continue
+			}
 			return err
 		}
 		items = append(items, item{sha256.Format(h), sha256.Name, size})
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "cask: skipped %d digest-named file(s) that are not readable objects\n", skipped)
 	}
 	if *jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"total": total, "objects": items})

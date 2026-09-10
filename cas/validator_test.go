@@ -168,3 +168,68 @@ func TestValidatorIsOptional(t *testing.T) {
 		t.Fatalf("Get = %v", err)
 	}
 }
+
+// ifaceObj is an interface type that satisfies Object[ifaceObj]: T may itself be
+// an interface, which is the case the reflect.Invalid guard in isNilValue
+// exists for (a nil interface value has no kind to inspect).
+type ifaceObj interface {
+	cas.Object[ifaceObj]
+}
+
+// implIface is the concrete implementation the interface-typed store decodes to.
+type implIface struct{ Name string }
+
+func (implIface) Type() string             { return "iface@1" }
+func (implIface) References() []cas.Digest { return nil }
+
+// TestNilObjectWithInterfaceType pins that a nil object is rejected — not a
+// panic — when T is an interface type, on both paths (Put before encoding, Get
+// after decoding a payload that is literally null).
+func TestNilObjectWithInterfaceType(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	s := cas.New[ifaceObj](raw, jsoncodec.New[ifaceObj](), sha256.New())
+
+	err := error(nil)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Put(nil) with an interface T panicked: %v", r)
+			}
+		}()
+		_, err = s.Put(ctx, nil)
+	}()
+	if err == nil || !strings.Contains(err.Error(), "nil object") {
+		t.Fatalf("Put(nil) = %v, want a nil-object error", err)
+	}
+	if _, _, err := s.PutDedup(ctx, nil); err == nil {
+		t.Fatal("PutDedup(nil) must fail")
+	}
+
+	d := storeRaw(t, raw, "iface@1", `null`)
+	if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(payload null, interface T) = %v, want ErrCorrupt", err)
+	}
+}
+
+// unversionedObj returns a type name without a major version. Object.Type MUST
+// return "<type>@<major>"; writing an unversioned name would store "x@1" in the
+// envelope (parseEnvelope's legacy rule) and then fail the decoded-type check on
+// every read, i.e. a write-only object.
+type unversionedObj struct{ Name string }
+
+func (unversionedObj) Type() string             { return "unversioned" }
+func (unversionedObj) References() []cas.Digest { return nil }
+
+// TestPutRejectsUnversionedTypeName pins the write-side guard: an unversioned
+// Type() is refused instead of producing an object Get can never read.
+func TestPutRejectsUnversionedTypeName(t *testing.T) {
+	ctx := context.Background()
+	s := cas.New(mem.New(), jsoncodec.New[unversionedObj](), sha256.New())
+	if _, err := s.Put(ctx, unversionedObj{Name: "x"}); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Put(unversioned type) = %v, want ErrUnknownType", err)
+	}
+	if _, _, err := s.PutDedup(ctx, unversionedObj{Name: "x"}); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("PutDedup(unversioned type) = %v, want ErrUnknownType", err)
+	}
+}

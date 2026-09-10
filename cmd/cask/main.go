@@ -27,7 +27,7 @@ commands:
   gc --min-age <dur> <roots...>   reclaim unreachable objects older than the grace (default 1h; 0 = immediate, dangerous)
   prune --min-age <dur> <roots...> [--dry-run] | age-based retention (dry-run default)
   clean [--min-age <dur>]   remove orphan *.tmp files (crash leftovers)
-  web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind]
+  web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]
   version
 `
 

@@ -15,6 +15,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -186,7 +187,11 @@ func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) erro
 }
 
 // PreloadRecursive loads the object at d and, to the given depth, every
-// object it references.
+// object it references. A reference that this store cannot decode — a commit
+// pointing at a tree, which is another store's type — and a missing one are
+// skipped rather than aborting the walk: a per-type cache must not fail because
+// its objects reference other types. Context errors and every other failure
+// still propagate.
 func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, depth int) error {
 	obj, err := c.Get(ctx, d)
 	if err != nil {
@@ -196,18 +201,33 @@ func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, dep
 		return nil
 	}
 	for _, ref := range obj.References() {
-		if err := c.PreloadRecursive(ctx, ref, depth-1); err != nil {
+		err := c.PreloadRecursive(ctx, ref, depth-1)
+		if err != nil && !errors.Is(err, cas.ErrUnknownType) && !errors.Is(err, cas.ErrNotFound) {
 			return err
 		}
 	}
 	return nil
 }
 
-// Warmup preloads digests into the cache; missing objects are tolerated.
+// Warmup preloads digests into the cache; missing objects are tolerated, other
+// failures (including a canceled context) are reported after every worker has
+// finished.
 func (c *CachedStore[T]) Warmup(ctx context.Context, digests []cas.Digest) error {
 	const workers = 8
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	record := func(err error) {
+		if err == nil || errors.Is(err, cas.ErrNotFound) {
+			return // a missing object is tolerated by contract
+		}
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}
 	for _, d := range digests {
 		d := d
 		wg.Add(1)
@@ -217,13 +237,16 @@ func (c *CachedStore[T]) Warmup(ctx context.Context, digests []cas.Digest) error
 			defer func() { <-sem }()
 			co, err := c.Proxy(ctx, d)
 			if err != nil {
+				record(err)
 				return
 			}
-			co.Load(ctx)
+			if _, err := co.Load(ctx); err != nil {
+				record(err)
+			}
 		}()
 	}
 	wg.Wait()
-	return nil
+	return firstErr
 }
 
 // CacheStats returns a snapshot of the cache metrics and current size.

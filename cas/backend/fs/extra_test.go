@@ -188,3 +188,94 @@ func TestBackendOptionsCompose(t *testing.T) {
 		t.Fatal("fan-out beyond MaxFanDepth must be rejected")
 	}
 }
+
+// TestShortDigestRejectedNotPanicking pins the fix for a slice-bounds panic: a
+// key whose hex form is shorter than FanOut × FanLevels cannot name an object of
+// this layout, so every key-taking method reports ErrInvalidDigest. The backend
+// names no algorithm, so it cannot know a client's digest width — but it can
+// measure the key it was handed (cas-core §4.4).
+func TestShortDigestRejectedNotPanicking(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name              string
+		fanOut, fanLevels int
+		width             int // digest bytes
+	}{
+		{"1 byte, (2,2)", 2, 2, 1},
+		{"2 bytes, (4,2)", 4, 2, 2},
+		{"3 bytes, (2,4)", 2, 4, 3},
+		{"0 bytes is absent anyway, (2,2)", 2, 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := New(t.TempDir(), WithFanOut(tc.fanOut), WithFanLevels(tc.fanLevels))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := make(cas.Digest, tc.width)
+			for i := range d {
+				d[i] = 0xab
+			}
+			if err := s.Put(ctx, d, strings.NewReader("x")); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Put = %v, want ErrInvalidDigest", err)
+			}
+			if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Get = %v, want ErrInvalidDigest", err)
+			}
+			if _, err := s.Exists(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Exists = %v, want ErrInvalidDigest", err)
+			}
+			if err := s.Delete(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Delete = %v, want ErrInvalidDigest", err)
+			}
+			if _, err := s.Size(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Size = %v, want ErrInvalidDigest", err)
+			}
+			if err := s.Verify(ctx, d, sha256.New()); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("Verify = %v, want ErrInvalidDigest", err)
+			}
+			// A key that fills the layout exactly still works: the guard rejects
+			// only what the layout cannot address.
+			if tc.width > 0 {
+				ok := make(cas.Digest, (tc.fanOut*tc.fanLevels+1)/2)
+				for i := range ok {
+					ok[i] = 0xcd
+				}
+				if err := s.Put(ctx, ok, strings.NewReader("x")); err != nil {
+					t.Errorf("Put of a wide-enough key = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestSweepsSkipUnaddressableDigestNames pins that a digest-named file the
+// layout cannot address is still reported by List (documented behaviour) but is
+// never touched by GC/Prune — they used to panic on it while building its path.
+func TestSweepsSkipUnaddressableDigestNames(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	s, err := New(base, WithFanLevels(2)) // needs >= 4 hex chars
+	if err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(base, "ab") // 1 byte of hex: unaddressable
+	if err := os.WriteFile(stray, []byte("junk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digests, err := s.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 1 || digests[0].String() != "ab" {
+		t.Fatalf("List = %v, want the stray digest reported", digests)
+	}
+	if err := s.GC(ctx, map[string]bool{}); err != nil {
+		t.Fatalf("GC with an unaddressable digest-named file = %v", err)
+	}
+	if _, err := s.Prune(ctx, nil, 0, false); err != nil {
+		t.Fatalf("Prune with an unaddressable digest-named file = %v", err)
+	}
+	if _, err := os.Stat(stray); err != nil {
+		t.Fatalf("stray file must survive the sweeps (it is not an object of this layout): %v", err)
+	}
+}

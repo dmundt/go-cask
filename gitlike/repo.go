@@ -156,30 +156,52 @@ func PrintObject(o *ResolvedObject) string {
 }
 
 // shortDigest renders the first 8 hex chars of a digest for display (the
-// viewer's short-digest default).
+// viewer's short-digest default). A digest shorter than 8 hex chars (a client
+// hasher may produce one — the core names no algorithm) is rendered whole
+// instead of being sliced out of range.
 func shortDigest(d cas.Digest) string {
 	if d.IsZero() {
 		return "<absent>"
 	}
-	return d.String()[:8]
+	s := d.String()
+	if len(s) <= 8 {
+		return s
+	}
+	return s[:8]
 }
 
-// WalkGraph traverses the whole object graph reachable from d, resolving
-// every node with the resolver and calling visit for each. The type-switch
-// dispatch makes it specific to this object set (the generic alternative is
-// cas.Walker[T]). Content addressing makes cycles impossible, so no visited
-// set is needed.
+// WalkGraph traverses the whole object graph reachable from d, resolving every
+// node with the resolver and calling visit for each, depth first. Each digest is
+// visited at most once — the same rule as cas.Walker[T] — so a shared subgraph
+// is walked once rather than once per path and the cost is linear in the number
+// of objects: a diamond-shaped history of n levels costs n visits, not 2^n.
+// The visited set also terminates on a store this library did not write: the
+// Backend stores bytes without recomputing their digest, so a crafted store CAN
+// hold a cycle even though an honestly written one cannot. The stack is
+// explicit, so a deep history does not exhaust the goroutine stack.
 func WalkGraph(ctx context.Context, resolver *Resolver, d cas.Digest, visit func(*ResolvedObject) error) error {
-	ro, err := resolver.ResolveAny(ctx, d)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := visit(ro); err != nil {
-		return err
-	}
-	for _, ref := range referencesOf(ro) {
-		if err := WalkGraph(ctx, resolver, ref, visit); err != nil {
+	visited := make(map[string]bool)
+	stack := []cas.Digest{d}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if cur.IsZero() || visited[cur.String()] {
+			continue
+		}
+		visited[cur.String()] = true
+		ro, err := resolver.ResolveAny(ctx, cur)
+		if err != nil {
 			return err
+		}
+		if err := visit(ro); err != nil {
+			return err
+		}
+		refs := referencesOf(ro)
+		for i := len(refs) - 1; i >= 0; i-- { // push reversed: keep reference order
+			stack = append(stack, refs[i])
 		}
 	}
 	return nil

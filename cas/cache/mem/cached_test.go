@@ -50,6 +50,58 @@ func newStore(t *testing.T) *cas.Store[testObject] {
 	return cas.New(mem.New(), jsoncodec.New[testObject](), sha256.New())
 }
 
+// otherObject is a second object type on the same backend, so a testObject can
+// reference something this store cannot decode (a per-type cache must skip it).
+type otherObject struct{ Name string }
+
+func (otherObject) Type() string             { return "other@1" }
+func (otherObject) References() []cas.Digest { return nil }
+
+// TestWarmupReportsCanceledContext pins that Warmup tolerates a missing object
+// (its documented contract) but no longer swallows a canceled context.
+func TestWarmupReportsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := newStore(t)
+	c := cachemem.New(s)
+	present := put(t, s, "present")
+	missing := sha256.Of([]byte("never stored"))
+
+	if err := c.Warmup(ctx, []cas.Digest{missing}); err != nil {
+		t.Fatalf("Warmup over a missing object = %v, want nil (tolerated)", err)
+	}
+	cancel()
+	if err := c.Warmup(ctx, []cas.Digest{present}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Warmup with a canceled context = %v, want context.Canceled", err)
+	}
+}
+
+// TestPreloadRecursiveSkipsForeignAndMissingRefs pins that a per-type cache does
+// not abort on a reference it cannot decode (another store's type) or on a
+// dangling one. It used to return the first such error, so a commit's tree
+// reference stopped the walk before the parent commit was ever reached.
+func TestPreloadRecursiveSkipsForeignAndMissingRefs(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	s := cas.New(raw, jsoncodec.New[testObject](), sha256.New())
+	other := cas.New(raw, jsoncodec.New[otherObject](), sha256.New())
+
+	foreign, err := other.Put(ctx, otherObject{Name: "not a testObject"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := sha256.Of([]byte("dangling"))
+	root := put(t, s, "root", foreign, missing)
+
+	c := cachemem.New(s)
+	if err := c.PreloadRecursive(ctx, root, 1); err != nil {
+		t.Fatalf("PreloadRecursive over foreign + missing references = %v, want nil", err)
+	}
+	if _, err := c.Get(ctx, root); err != nil {
+		t.Fatalf("the root itself must still be cached: %v", err)
+	}
+}
+
 func TestCachedObjectLazyLoad(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)

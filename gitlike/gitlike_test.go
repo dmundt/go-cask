@@ -389,6 +389,85 @@ func TestWalkGraph(t *testing.T) {
 	}
 }
 
+// TestWalkGraphVisitsSharedSubgraphOnce pins linear cost on a diamond: every
+// level is a tree whose two entries point at the SAME child, so the graph holds
+// 13 objects and a per-path walk would make 2^13-1 = 8191 visit calls.
+func TestWalkGraphVisitsSharedSubgraphOnce(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, mem.New())
+
+	d := putBlob(t, repo, "shared leaf")
+	for i := 0; i < 12; i++ {
+		ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{
+			{Name: "a", Hash: ref(d), Mode: "m"},
+			{Name: "b", Hash: ref(d), Mode: "m"},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		d = ht
+	}
+
+	visits := 0
+	if err := WalkGraph(ctx, NewResolver(repo), d, func(*ResolvedObject) error {
+		visits++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if visits != 13 {
+		t.Fatalf("visited %d objects, want 13 (each digest once, not once per path)", visits)
+	}
+}
+
+// TestWalkGraphTerminatesOnCycle pins termination on a store this library did
+// not write: the Backend stores bytes without re-verifying their digest, so two
+// hand-written trees can reference each other. The visited set makes the walk
+// stop after each digest once instead of looping forever.
+func TestWalkGraphTerminatesOnCycle(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	repo := newRepo(t, raw)
+	dA := mustDigest(t, strings.Repeat("aa", 32))
+	dB := mustDigest(t, strings.Repeat("bb", 32))
+
+	storeEnvelopeAt := func(d cas.Digest, payload string) {
+		t.Helper()
+		if err := raw.Put(ctx, d, bytes.NewReader(marshalEnvelope(TypeTree, []byte(payload)))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	storeEnvelopeAt(dA, `{"entries":[{"name":"b","hash":"`+dB.String()+`","mode":"m"}]}`)
+	storeEnvelopeAt(dB, `{"entries":[{"name":"a","hash":"`+dA.String()+`","mode":"m"}]}`)
+
+	visits := 0
+	if err := WalkGraph(ctx, NewResolver(repo), dA, func(*ResolvedObject) error {
+		visits++
+		return nil
+	}); err != nil {
+		t.Fatalf("walk over a cyclic store = %v", err)
+	}
+	if visits != 2 {
+		t.Fatalf("visited %d objects, want 2 (the cycle closes after both)", visits)
+	}
+}
+
+// TestShortDigestClamps pins that a digest shorter than the display width is
+// rendered whole: a client hasher may produce one, and the core names no
+// algorithm, so the display helper must not slice out of range.
+func TestShortDigestClamps(t *testing.T) {
+	if got := shortDigest(cas.Digest{0xab}); got != "ab" {
+		t.Errorf("shortDigest(1-byte) = %q, want %q", got, "ab")
+	}
+	if got := shortDigest(cas.Digest{}); got != "<absent>" {
+		t.Errorf("shortDigest(absent) = %q, want %q", got, "<absent>")
+	}
+	full := mustDigest(t, strings.Repeat("cd", 32))
+	if got := shortDigest(full); got != "cdcdcdcd" {
+		t.Errorf("shortDigest(32-byte) = %q, want the first 8 hex chars", got)
+	}
+}
+
 // A visit error must stop the walk and propagate.
 func TestWalkGraphVisitError(t *testing.T) {
 	ctx := context.Background()

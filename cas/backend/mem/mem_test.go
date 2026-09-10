@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -10,6 +11,40 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
+
+// cancelOnRead cancels the configured context during the first Read, so the
+// backend's mid-read context check is what stops the buffering.
+type cancelOnRead struct {
+	cancel context.CancelFunc
+	read   bool
+}
+
+func (r *cancelOnRead) Read(p []byte) (int, error) {
+	if !r.read {
+		r.read = true
+		r.cancel()
+	}
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
+// TestPutHonorsCancellationDuringRead pins that mem.Put stops buffering when the
+// context is canceled mid-read instead of storing the whole object and
+// reporting success — the same guarantee fs.Put gets from its ctxReader.
+func TestPutHonorsCancellationDuringRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b := New()
+	d := sha256.Of([]byte("canceled mid-read"))
+	if err := b.Put(ctx, d, &cancelOnRead{cancel: cancel}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Put with a canceled mid-read context = %v, want context.Canceled", err)
+	}
+	if ok, _ := b.Exists(context.Background(), d); ok {
+		t.Fatal("a canceled Put must not store the object")
+	}
+}
 
 func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 	defer rc.Close()

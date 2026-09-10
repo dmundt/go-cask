@@ -27,9 +27,11 @@ const (
 	DefaultFanLevels = 1
 	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed the
 	// hex digest width. Go-cask's own clients digest with sha256 (64 hex chars),
-	// so this makes a configured layout cover the digest exactly and digestPath
-	// never runs past its end. A client whose digest is shorter must keep
-	// FanOut × FanLevels within its own width.
+	// so a configured layout normally covers the digest exactly. A client whose
+	// digest is shorter must keep FanOut × FanLevels within its own width: the
+	// backend cannot know the algorithm, but it CAN see the key it is handed, so
+	// a key too short for the configured layout is rejected with
+	// ErrInvalidDigest (checkKey) instead of being sliced out of range.
 	MaxFanDepth = 64
 )
 
@@ -119,13 +121,38 @@ func syncParentDir(path string) error {
 	return d.Sync()
 }
 
+// addressable reports whether d is long enough for the configured layout: its
+// hex form must fill FanLevels chunks of FanOut characters. The rule is a
+// property of the layout, not of an algorithm, so the backend can apply it
+// without knowing which hasher produced the key.
+func (s *Backend) addressable(d cas.Digest) bool {
+	return len(d)*2 >= s.fanOut*s.fanLevels
+}
+
+// checkKey validates a caller-supplied key: present (cas.CheckDigest) and long
+// enough for the configured layout (addressable), because digestPath slices its
+// hex form. A key that cannot name an object is ErrInvalidDigest, exactly like
+// an absent one — the backend must never panic on a malformed key, and a client
+// with a digest shorter than the layout (the core names no algorithm, so any
+// width is legal) gets a clear error instead of a slice-bounds panic.
+func (s *Backend) checkKey(d cas.Digest, what string) error {
+	if err := cas.CheckDigest(d, what); err != nil {
+		return err
+	}
+	if !s.addressable(d) {
+		return fmt.Errorf("%w: %s: digest has %d hex chars, layout %d×%d needs %d",
+			cas.ErrInvalidDigest, what, len(d)*2, s.fanOut, s.fanLevels, s.fanOut*s.fanLevels)
+	}
+	return nil
+}
+
 // digestPath returns the on-disk path for a digest: the store base, then the
 // fan-out directory chunks, then the lowercase-hex digest as the file name.
 // There is no algorithm directory — the backend does not know which algorithm
 // produced a key (cas-core §4.2) — and a digest is hex by construction
 // (cas.Digest.UnmarshalText), so no path element needs sanitizing.
-// WithFanOut/WithFanLevels bound FanOut × FanLevels to the digest width
-// (MaxFanDepth), so every chunk is in range.
+// The caller MUST have admitted the key first (checkKey, or addressable in a
+// sweep), so every chunk is in range.
 func (s *Backend) digestPath(d cas.Digest) string {
 	hexDigest := hex.EncodeToString(d)
 	p := s.base
@@ -151,7 +178,7 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckDigest(d, "fs: put"); err != nil {
+	if err := s.checkKey(d, "fs: put"); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -244,7 +271,7 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := cas.CheckDigest(d, "fs: get"); err != nil {
+	if err := s.checkKey(d, "fs: get"); err != nil {
 		return nil, err
 	}
 	path := s.digestPath(d)
@@ -295,7 +322,7 @@ func (s *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	if err := cas.CheckDigest(d, "fs: exists"); err != nil {
+	if err := s.checkKey(d, "fs: exists"); err != nil {
 		return false, err
 	}
 	_, err := os.Stat(s.digestPath(d))
@@ -313,7 +340,7 @@ func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckDigest(d, "fs: delete"); err != nil {
+	if err := s.checkKey(d, "fs: delete"); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -330,7 +357,7 @@ func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	if err := cas.CheckDigest(d, "fs: size"); err != nil {
+	if err := s.checkKey(d, "fs: size"); err != nil {
 		return 0, err
 	}
 	fi, err := os.Stat(s.digestPath(d))
@@ -480,7 +507,7 @@ func (s *Backend) Verify(ctx context.Context, d cas.Digest, hasher cas.Hasher) e
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cas.CheckDigest(d, "fs: verify"); err != nil {
+	if err := s.checkKey(d, "fs: verify"); err != nil {
 		return err
 	}
 	if err := hasher.Validate(d); err != nil {
@@ -509,6 +536,9 @@ func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
 		return err
 	}
 	for _, d := range digests {
+		if !s.addressable(d) {
+			continue // a digest-named file this layout cannot address: List reports it, no sweep may touch it (cas-core §4.4)
+		}
 		if !reachable[d.String()] {
 			if err := s.Delete(ctx, d); err != nil {
 				return err
@@ -531,6 +561,9 @@ func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Dur
 	now := time.Now()
 	var doomed []cas.Digest
 	for _, d := range digests {
+		if !s.addressable(d) {
+			continue // not an object of this layout: no canonical path to age-check or delete
+		}
 		if reachable[d.String()] {
 			continue
 		}
