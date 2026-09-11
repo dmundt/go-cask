@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.0`. The stable
+Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
@@ -39,6 +39,15 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Tightened the `cas/codec/binary` README to document the intended `Blob` and
   `Tree`-style binary layouts as app-defined schemas, with compact marshal/
   unmarshal sketches that stay generic at the `cas` layer.
+
+## [v1.3.1] - 2026-09-11
+
+### Fixed
+
+- Fixed the `cas/codec/binary` test warning from unnecessary type arguments in
+  the generic constructor call.
+- Synced the docs/specs set to the binary codec addition and the documented
+  default policy for JSON, Gob, and compact custom binary payloads.
 
 ## [v1.3.0] - 2026-09-10
 
