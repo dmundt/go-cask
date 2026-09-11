@@ -114,7 +114,20 @@ CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./ben
 
 Notes: `-v` is required for the `[scale]` projection lines; `-benchtime=NNx` is recommended (exact counts, bounded runs); without it Go's `1s` calibration re-runs each bench (wasteful at large N); add `-timeout 0` when the prefill nears minutes.
 
-### 4.5 Reading the projection line
+### 4.5 Hash-choice comparison
+
+The scale probes now compare the default `sha256` path against the `sha512_256` path in the same benchmark family, so you can compare throughput without changing the benchmark harness:
+
+```text
+BenchmarkScalePut/Memory/sha256-8
+BenchmarkScalePut/Memory/sha512_256-8
+BenchmarkScaleGet/FS/sha256-8
+BenchmarkScaleGet/FS/sha512_256-8
+```
+
+Use them to answer the practical question: is the extra digest width worth the cost for your deployment? In practice, `SHA-256` is the default recommendation for durability and interoperability; `SHA-512/256` is a supported fast secure alternative if a workload favors a slightly different tradeoff. Do not use MD5 or SHA-1 for new content-addressed data.
+
+### 4.6 Reading the projection line
 
 ```text
 scale_bench_test.go:123: [scale] Put @ 1000 objects: 610 obj/s -> 10^10 objects ~ 4551.4 h | 64.00 B/obj file bytes -> 596.0 GiB for 10^10

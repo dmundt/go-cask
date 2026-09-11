@@ -1,12 +1,16 @@
-// Package sha256 is the hash algorithm shipped with go-cask: the client-side
-// side of the core's Hasher seam (cas.Hasher).
+// Package sha256 is the default recommended hash implementation for go-cask.
 //
 // The cas core is deliberately algorithm-agnostic — a Digest is just bytes — so
 // the algorithm a deployment uses is a property of its clients, not of the
-// library. This package is the default those clients wire in: cmd/cask, the
-// viewer, gitlike and the examples all construct a sha256.Hasher and hand it to
+// library. This package is the default go-cask clients wire in: cmd/cask, the
+// viewer, gitlike and the examples construct a sha256.Hasher and hand it to
 // cas.New, and use Parse/Format for the human-readable "sha256:hexdigest" form
 // in URLs, CLI arguments and JSON responses.
+//
+// Policy: prefer SHA-256 for new durable CAS data. SHA-512/256 is a supported
+// fast secure alternative, but the stable default recommendation remains SHA-256.
+// Do not use MD5 or SHA-1 for new content-addressed data; they are migration or
+// compatibility-only choices, not a recommended CAS default.
 //
 // Nothing in cas imports this package.
 package sha256

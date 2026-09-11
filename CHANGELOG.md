@@ -10,6 +10,25 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Documentation
+
+- Added package-level READMEs for the `cas` root, the backend/cache layers,
+  the codec policy, the hash layer, and the example set.
+- Added direct navigation links from each layer README to the concrete
+  subpackages (`fs`, `mem`, `lru`, `prefetch`, `json`, `gob`, `sha256`,
+  `sha512_256`) and back to the root package README.
+- Clarified the repo policy for supported vs recommended choices: the `cas`
+  core stays hash- and codec-agnostic, while the project recommends
+  `SHA-256` + JSON for durable storage and `SHA-512/256` as a fast secure
+  alternative.
+- Kept `cas/codec/gob` as an explicit opt-in compatibility codec, but described
+  it as Go-only and not suitable as the default or canonical long-term CAS
+  format.
+- Documented that MD5 and SHA-1 remain legacy or migration-only choices, not a
+  default recommendation for new content-addressed data.
+- Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
+  to compare `sha256` and `sha512_256` in the same benchmark family.
+
 ## [v1.3.0] - 2026-09-10
 
 This release is a MINOR that carries the library's recorded first-cycle breaking

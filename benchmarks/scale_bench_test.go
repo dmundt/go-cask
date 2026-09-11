@@ -38,6 +38,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512_256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 )
 
 // scaleTarget is the object count these probes extrapolate to:
@@ -92,14 +93,29 @@ func scalePayload(p []byte, i int) {
 	}
 }
 
+type scaleHashFunc func([]byte) cas.Digest
+
+func scaleHashers() []struct {
+	name string
+	of   scaleHashFunc
+} {
+	return []struct {
+		name string
+		of   scaleHashFunc
+	}{
+		{name: "sha256", of: sha256.Of},
+		{name: "sha512_256", of: sha512_256.Of},
+	}
+}
+
 // scaleFill prefills raw with n unique objects and returns their digests.
-func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int) []cas.Digest {
+func scaleFill(b *testing.B, ctx context.Context, raw cas.Backend, n int, of scaleHashFunc) []cas.Digest {
 	b.Helper()
 	hs := make([]cas.Digest, n)
 	p := make([]byte, scaleObjSize)
 	for i := 0; i < n; i++ {
 		scalePayload(p, i)
-		h := sha256.Of(p)
+		h := of(p)
 		hs[i] = h
 		if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
 			b.Fatal(err)
@@ -131,28 +147,30 @@ func scaleReport(b *testing.B, op string, n int, raw cas.Backend) {
 // already holds CASK_SCALE_OBJECTS objects: the per-Put cost at scale.
 func BenchmarkScalePut(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			ctx := context.Background()
-			raw := be.new(b)
-			scaleFill(b, ctx, raw, n) // setup, not timed
-			p := make([]byte, scaleObjSize)
-			b.SetBytes(scaleObjSize)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				scalePayload(p, n+i)
-				h := sha256.Of(p)
-				if err := raw.Put(ctx, h, bytes.NewReader(p)); err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				ctx := context.Background()
+				raw := be.new(b)
+				scaleFill(b, ctx, raw, n, h.of) // setup, not timed
+				p := make([]byte, scaleObjSize)
+				b.SetBytes(scaleObjSize)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					scalePayload(p, n+i)
+					hd := h.of(p)
+					if err := raw.Put(ctx, hd, bytes.NewReader(p)); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-			b.StopTimer()
-			scaleReport(b, "Put", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "Put", n, raw)
+			})
+		}
 	}
 }
 
@@ -160,32 +178,34 @@ func BenchmarkScalePut(b *testing.B) {
 // CASK_SCALE_OBJECTS objects.
 func BenchmarkScaleGet(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			ctx := context.Background()
-			raw := be.new(b)
-			hs := scaleFill(b, ctx, raw, n)
-			b.SetBytes(scaleObjSize)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				r, err := raw.Get(ctx, hs[i%n])
-				if err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				ctx := context.Background()
+				raw := be.new(b)
+				hs := scaleFill(b, ctx, raw, n, h.of)
+				b.SetBytes(scaleObjSize)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					r, err := raw.Get(ctx, hs[i%n])
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err := io.Copy(io.Discard, r); err != nil {
+						b.Fatal(err)
+					}
+					if err := r.Close(); err != nil {
+						b.Fatal(err)
+					}
 				}
-				if _, err := io.Copy(io.Discard, r); err != nil {
-					b.Fatal(err)
-				}
-				if err := r.Close(); err != nil {
-					b.Fatal(err)
-				}
-			}
-			b.StopTimer()
-			scaleReport(b, "Get", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "Get", n, raw)
+			})
+		}
 	}
 }
 
@@ -193,24 +213,26 @@ func BenchmarkScaleGet(b *testing.B) {
 // CASK_SCALE_OBJECTS objects.
 func BenchmarkScaleExists(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			ctx := context.Background()
-			raw := be.new(b)
-			hs := scaleFill(b, ctx, raw, n)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if _, err := raw.Exists(ctx, hs[i%n]); err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				ctx := context.Background()
+				raw := be.new(b)
+				hs := scaleFill(b, ctx, raw, n, h.of)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err := raw.Exists(ctx, hs[i%n]); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-			b.StopTimer()
-			scaleReport(b, "Exists", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "Exists", n, raw)
+			})
+		}
 	}
 }
 
@@ -218,24 +240,26 @@ func BenchmarkScaleExists(b *testing.B) {
 // CASK_SCALE_OBJECTS objects (the store shrinks as the loop runs).
 func BenchmarkScaleDelete(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			ctx := context.Background()
-			raw := be.new(b)
-			hs := scaleFill(b, ctx, raw, n)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if err := raw.Delete(ctx, hs[i%n]); err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				ctx := context.Background()
+				raw := be.new(b)
+				hs := scaleFill(b, ctx, raw, n, h.of)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if err := raw.Delete(ctx, hs[i%n]); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-			b.StopTimer()
-			scaleReport(b, "Delete", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "Delete", n, raw)
+			})
+		}
 	}
 }
 
@@ -244,28 +268,30 @@ func BenchmarkScaleDelete(b *testing.B) {
 // allocates the whole digest slice.
 func BenchmarkScaleList(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			ctx := context.Background()
-			raw := be.new(b)
-			scaleFill(b, ctx, raw, n)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				hh, err := raw.List(ctx)
-				if err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				ctx := context.Background()
+				raw := be.new(b)
+				scaleFill(b, ctx, raw, n, h.of)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					hh, err := raw.List(ctx)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if len(hh) == 0 {
+						b.Fatal("List returned nothing")
+					}
 				}
-				if len(hh) == 0 {
-					b.Fatal("List returned nothing")
-				}
-			}
-			b.StopTimer()
-			scaleReport(b, "List", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "List", n, raw)
+			})
+		}
 	}
 }
 
@@ -273,24 +299,26 @@ func BenchmarkScaleList(b *testing.B) {
 // objects on every backend (Memory and FS both implement Backend.Stats).
 func BenchmarkScaleStats(b *testing.B) {
 	for _, be := range scaleBackends() {
-		b.Run(be.name, func(b *testing.B) {
-			n := scaleObjectCount(b)
-			ctx := context.Background()
-			raw := be.new(b)
-			if b.N == 1 {
-				return
-			} // framework probe run (b.N=1); measure only the real run
-			scaleFill(b, ctx, raw, n)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if _, err := raw.Stats(ctx); err != nil {
-					b.Fatal(err)
+		for _, h := range scaleHashers() {
+			b.Run(be.name+"/"+h.name, func(b *testing.B) {
+				n := scaleObjectCount(b)
+				ctx := context.Background()
+				raw := be.new(b)
+				if b.N == 1 {
+					return
+				} // framework probe run (b.N=1); measure only the real run
+				scaleFill(b, ctx, raw, n, h.of)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err := raw.Stats(ctx); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-			b.StopTimer()
-			scaleReport(b, "Stats", n, raw)
-		})
+				b.StopTimer()
+				scaleReport(b, "Stats", n, raw)
+			})
+		}
 	}
 }
 
@@ -372,7 +400,7 @@ func BenchmarkScaleStoreEconomics(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			scaleFill(b, ctx, s, n)
+			scaleFill(b, ctx, s, n, sha256.Of)
 			e, err := measureFSEconomics(base)
 			if err != nil {
 				b.Fatal(err)

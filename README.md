@@ -11,6 +11,7 @@ A generic, Git-like **content-addressable store** for Go: store any bytes once u
 - **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
 - **Composable** — codecs and storage backends (filesystem + memory ship) plug in behind one `Backend` contract, and the client injects its hash algorithm (`cas/hash/sha256` ships as go-cask's default; the core names none).
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
+- **Policy matters** — the core is generic and format-agnostic; the project recommends `SHA-256` + JSON for durable work, `SHA-512/256` as a fast secure alternative, and keeps legacy/compatibility choices such as `gob`, MD5 and SHA-1 clearly marked as migration-only or Go-only compatibility options.
 
 ## Design decisions
 
@@ -87,6 +88,21 @@ classDiagram
     Store~T~ ..> Object~T~ : stores
     Walker~T~ ..> Store~T~ : reads via Get
 ```
+
+## Recommended defaults
+
+`cas` stays hash- and codec-agnostic by design, but the repo recommends a safe default for new durable data:
+
+- Recommended hash: `SHA-256` (`cas/hash/sha256`)
+- Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
+- Recommended object format: JSON (`cas/codec/json`) for readability and portability
+- Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
+
+Legacy or compatibility-only hashes should not be used for new content-addressed data: MD5 and SHA-1 are migration-only or compatibility choices, not the default for a CAS.
+
+## Security note
+
+Use cryptographic hashes for object identity and integrity. For new data, prefer `SHA-256` or `SHA-512/256`. Do not use `MD5` or `SHA-1` for new content-addressed data, even when a legacy system still emits them; they are not recommended for new objects or new interoperability contracts.
 
 ## Upgrading
 
