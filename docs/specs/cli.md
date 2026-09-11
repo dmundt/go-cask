@@ -9,7 +9,7 @@ version: v16
 
 The contract for `cmd/cask`, the single binary: a thin CLI over the cas library and, via `web`, the embedded viewer. It is a wrapper, not a second implementation — every operation maps to a core operation (cas-core §4) or the viewer server composition (backend-architecture §3). The product ships no network JSON API (backend-architecture §1). Related: cas-core, backend-architecture, viewer-design, viewer-security, consistency (GC/prune), versioning (version output).
 
-## 1. Purpose & modes
+## 1. Purpose and modes
 
 `cmd/cask` is the only entry point — no separate server binary. Store operations talk to the store in-process over the library.
 
@@ -43,7 +43,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - Every operation calls the library in-process.
 - `web` is the only non-terminating subcommand: it runs until signalled (graceful shutdown per backend-architecture §6).
 
-## 3. Output & exit codes
+## 3. Output and exit codes
 
 - Default output is plain text: one hash per line for `put`/`list`; human-readable summaries for `stats`/`meta`/`verify`/`gc`/`prune`.
 - `-json` switches to machine-readable JSON: `put` → `{"hash": "sha256:hexdigest", "deduplicated": bool}`; `list` → `{"total": n, "objects": [{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n}, …]}`; `meta` → `{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n, "type": "…"}`. `"algorithm"` is the client's constant, not something the core reports.

@@ -9,7 +9,7 @@ version: v17
 
 Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; std-lib only; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
 
-## 1. Go version & toolchain
+## 1. Go version and toolchain
 
 - Library baseline Go 1.24+. `go.mod` declares `go 1.24` with `toolchain go1.27` — the self-managing toolchain auto-downloads 1.27 for CI, while consumers on 1.24+ can build. The 1.24 floor is required by the `omitzero` JSON tag option (cas-core §4.6): an older standard library ignores it, which would change stored bytes.
 - Language available in the baseline (1.24+): generics/type sets (`~` unions)/`comparable` (1.18+), `slices`/`maps`/`cmp` (1.21+), range-over-int (1.22+), `iter`/range-over-func (1.23+), generic type aliases and `encoding/json` `omitzero`-style zero hooks (1.24+), and later additions.
@@ -67,7 +67,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 - Never build HTML in Go (`fmt.Sprintf("<td>…</td>")`) — dynamic output is always a template.
 - Prefer semantic elements (`<main>`, `<nav>`, `<table>`, `<form>`, `<label>`…) over `<div>` soup; accessibility required (labels, `alt`, logical heading order). Templates needing heavy logic signal the Go side should pre-compute.
 
-## 7. Document exported types & functions
+## 7. Document exported types and functions
 
 - Every exported identifier MUST have a doc comment beginning with its name. Every package SHALL have a package comment (`// Package cas implements …`).
 - Comments document contracts (preconditions, ownership e.g. "caller MUST Close", concurrency safety, error behavior), not code. `go doc` must read cleanly.
@@ -80,7 +80,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 - **1.27 additions:** generic methods (a method MAY declare its own type parameters) — but interface methods MAY NOT declare type parameters, and interface methods cannot be implemented by generic methods, so `Object[T]`'s methods stay non-generic; generalized function type inference (prefer inferable generic functions); field-selector keys in struct literals (`Config{Server.Port: 8080}`) where clear.
 - Use generic types/functions where they remove duplication or replace `any`/reflection — and no further. Do NOT over-generalize: for a single use or added indirection without removed duplication, write concrete code.
 
-## 9. Project structure & conventions
+## 9. Project structure and conventions
 
 - Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `gitlike/`).

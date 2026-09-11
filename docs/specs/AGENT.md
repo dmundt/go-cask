@@ -11,7 +11,7 @@ status: stable
 
 Governs the other files in this folder. Every agent (Copilot, other AI tooling) and every human maintainer editing any `docs/specs/*.md` MUST follow it so the folder stays one coherent specification set. Scope: the normative specs (core architecture, coding style, security, APIs, viewer design, examples, performance, testing, operations). The repo-root `AGENTS.md` is the aggregator pointing at them (outside this folder; follows the same style where applicable).
 
-## 1. Purpose & scope
+## 1. Purpose and scope
 
 - The folder is the **single source of truth** for how go-cask is designed, built, secured, tested, and operated.
 - Every file states **requirements** (MUST/SHALL be true) and **context** (why), not project prose.
@@ -44,13 +44,13 @@ version: v5
 
 1. H1 `# <Title>` identical to frontmatter title.
 2. Intro paragraph (2–6 lines) immediately after the H1 — plain prose, not a blockquote: what the file governs, and, where the file depends on siblings, a closing `Related:` line of backticked specs it must be read with.
-3. Numbered `## N.` sections (`## 1. <topic>` — `Purpose & scope` where that fits, a domain noun otherwise); subsections `### 3.1` (or `### 4.13`).
+3. Numbered `## N.` sections (`## 1. <topic>` — `Purpose and scope` where that fits, a domain noun otherwise); subsections `### 3.1` (or `### 4.13`).
 4. No `---` separators in the body: a spec's only `---` lines are the two frontmatter delimiters.
 5. Closing `## N. Checklist` of acceptance items derived from the body.
 
 - Requirements stated once and referenced, never duplicated with drift. Tables for enumerations/contracts; fenced code (`go`, `yaml`, `text`, `mermaid`) for concrete shapes; prose for rationale. Reference the shared glossary (§6); do not redefine terms.
 
-## 5. Normative language & tone
+## 5. Normative language and tone
 
 - **MUST/MUST NOT/SHALL/SHALL NOT** = hard requirements. **SHOULD/SHOULD NOT** = strong recommendation with documented reason. **MAY** = optional; state the decision point.
 - Imperative, present tense, active voice; no marketing/"we"/filler. Rules checkable. One provenance sentence allowed in the intro (never repeated per section).
@@ -81,7 +81,7 @@ Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guideline
 - Sibling files by backticked path (`docs/specs/cas-core.md`) or short backticked name (`cas-core.md`) in a `Related:` line. Reference sections by number (`§4.4`, `P-05`, `§2`), never approximate prose.
 - A contract change updates **all** referencing files in one pass; `grep` for the changed term across `docs/specs/` and `.github/` must be clean. The `AGENTS.md` "Related specs" list MUST list every instruction file (add new ones).
 
-## 8. Precedence & conflict resolution
+## 8. Precedence and conflict resolution
 
 On conflict this order decides (highest first):
 1. **Security** — `viewer-security.md` is non-negotiable for the viewer; nothing may weaken it.
@@ -92,14 +92,14 @@ On conflict this order decides (highest first):
 
 Fix the **more specific** document to match the more general one, unless the specific document is higher in this order. Never leave two contradicting statements in the folder.
 
-## 9. Diagram & formatting rules
+## 9. Diagram and formatting rules
 
 - Mermaid for relationships/flow: `classDiagram` for object models, `flowchart` for flows; one diagram per concept next to what it visualizes.
 - **Mermaid blocks MUST be balanced** (every ```mermaid opener has a matching closer; unbalanced fences break rendering and swallow the rest of the file). The only exception is an explicitly stated illustrative fragment, labeled in the surrounding text. Never leave one unbalanced without that statement.
 - ASCII allowed alongside mermaid (raw/terminal) but box-aligned; prefer mermaid when both exist.
 - Code fences always tagged (`go`, `yaml`, `text`, `json`, `html`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced.
 
-## 10. Editing & maintenance checklist
+## 10. Editing and maintenance checklist
 
 Before committing any change to a file in this folder:
 - [x] Frontmatter present; `title` == H1; one-line `description`

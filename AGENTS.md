@@ -227,7 +227,7 @@ build their own equivalents for their own types.
 
 ## Design Principles (Non-Negotiables)
 
-1. **Hash-addressed & immutable.** The key is the digest of the content; objects
+1. **Hash-addressed and immutable.** The key is the digest of the content; objects
    are never mutated in place. Same content ⇒ same digest ⇒ stored once
    (deduplication is automatic).
 2. **References are content digests; the client owns the algorithm.** `Digest` is
@@ -304,15 +304,15 @@ func main() {
     //    A reference field is a plain cas.Digest: the zero value is "absent",
     //    it renders itself as one hex string, and a field tagged omitzero is
     //    left out of the encoding when absent.
-    blobHash, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("Hello, World!")})
-    treeHash, _ := repo.Trees.Put(ctx, &gitlike.Tree{Entries: []gitlike.TreeEntry{
+    blobHash, _ := repo.Blobs.Put(ctx, andgitlike.Blob{Data: []byte("Hello, World!")})
+    treeHash, _ := repo.Trees.Put(ctx, andgitlike.Tree{Entries: []gitlike.TreeEntry{
         {Name: "hello.txt", Hash: blobHash, Mode: "file"},
     }})
-    commitHash, _ := repo.Commits.Put(ctx, &gitlike.Commit{
+    commitHash, _ := repo.Commits.Put(ctx, andgitlike.Commit{
         Tree: treeHash, Author: "Alice",
         Message: "Initial commit", Time: time.Now(),
     })
-    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
+    tagHash, _ := repo.Tags.Put(ctx, andgitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
 
     // 3. Type-safe reads — no casts, no any: the fields ARE the addresses
     //    (IsZero reports an absent one). Each step uses the resolver method
@@ -411,7 +411,7 @@ gofmt -l .
 
 ---
 
-## Constraints & Conventions
+## Constraints and Conventions
 
 - Go **1.24+** required (generics, enhanced routing, `omitzero` JSON tags, stdlib-only); repo toolchain is 1.27. Module: the repo
   root; core library lives in `cas/` as `package cas`.

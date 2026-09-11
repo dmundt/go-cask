@@ -41,7 +41,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 - **Branches:** full rules in `branch-naming.md`; essentials: `main` = default dev branch, version tags land here; `release/vX.Y` = created when a minor ships and still needs maintenance, PATCH releases tagged there; `hotfix/…` = short-lived, merged to `main` (and the open release branch).
 - No mutable `latest` tags (a Docker pattern, not a library pattern).
 
-## 4. Commit & changelog conventions
+## 4. Commit and changelog conventions
 
 - **Commits:** Conventional Commits — `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `chore:`. A breaking change MUST add a `BREAKING CHANGE:` footer → MAJOR. These types drive the bump decision (§5).
 - **CHANGELOG.md** (keep-a-changelog, repo root): `## [Unreleased]` collects changes between releases; on release it becomes `## [vX.Y.Z] - <date>` and a new empty `Unreleased` is opened; group by Added / Changed / Fixed / Removed; note breaking changes prominently.

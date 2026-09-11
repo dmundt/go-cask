@@ -1,22 +1,22 @@
 ---
 type: Specification
-title: Defaults & Behavior — go-cask
+title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
 version: v21
 ---
 
-# Defaults & Behavior — go-cask
+# Defaults and Behavior — go-cask
 
 Single reference for "how does it behave by default?" and "what are the numbers?", grouped by area with pointers to the owning spec. **Canonical for default values**: area specs MAY elaborate but MUST NOT contradict this list (AGENT.md §8). On a default change, update this document AND the owning spec and bump both versions (AGENT.md §3).
 
-## 1. Basic design & architecture
+## 1. Basic design and architecture
 
 - Three layers (cas-core §3): byte (non-generic `Digest`/`Backend`/backends) → typed (generic `Object[T]`/`Codec[T]`/`Store[T]`/`Walker[T]`/caches) → application (per-app types; `gitlike` is the reference).
 - One HTTP surface (api-design §2): the viewer (`/viewer/*`, HTML). No network JSON API ships (backend-architecture §1); `examples/api` demonstrates a JSON surface.
 - One server, one mux (backend-architecture §3–4), fixed middleware order: session auth → role → CSRF → handler.
 - Five maintenance operations (consistency §8): `Verify`, `ScanRefs`, `GC`, `Prune`, `Stats`.
 
-## 2. Core defaults & constants (`cas`)
+## 2. Core defaults and constants (`cas`)
 
 | Item | Default/value | Defined in |
 |---|---|---|
@@ -72,7 +72,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Dashboard stat cards | total objects, total size + the addressing note (digests are raw hex; this viewer uses `sha256`) | viewer-design §7 |
 | Roles | viewer (read) / operator (+store, verify) / admin (+delete, GC, prune) | viewer-security |
 
-## 5. Maintenance & consistency defaults
+## 5. Maintenance and consistency defaults
 
 | Item | Default/value | Defined in |
 |---|---|---|
@@ -97,7 +97,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 Baselines are calibratable on CI hardware (performance §11.4) — default targets, not absolutes.
 
-## 7. Go & project defaults
+## 7. Go and project defaults
 
 | Item | Default/value | Defined in |
 |---|---|---|

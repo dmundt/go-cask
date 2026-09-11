@@ -9,7 +9,7 @@ version: v14
 
 The embedded technical browser UI in `internal/web/`, for developers/admins browsing the CAS. Defines **how** (hypermedia, nested Go templates + htmx only, raw HTML) and **what** (dashboard hub → objects/blobs/stats at a technical level). MUST be **simple, elegant, usable** — elegance from clean semantic structure/layout/hierarchy, not CSS. Read with `viewer-security.md` (all requirements apply unchanged), `coding-guidelines.md` (§4 no CSS/JS, §5 templates+htmx, §6 raw HTML, §10 viewer boundary), `cas-core.md` (data model: `Digest`, `Object[T]`, `Backend.Stats`, `Verify`, `GC`). Design reference: hypermedia.systems. `docs/design/viewer-brief.md` is non-normative next-iteration input; changes nothing here until folded back.
 
-## 1. Purpose & persona
+## 1. Purpose and persona
 
 - Persona: developer/operator answering "what is stored? how much space? what does this point to? is it intact?".
 - Hub: a **dashboard** (landing) with storage stats, an addressing note, a sample of objects, and search — one click to every detail.
@@ -77,7 +77,7 @@ htmx attributes are the only interactivity; the single vendored script is served
 - No `hx-boost`, no `hx-swap-oob`, no polling (`hx-trigger="every …"`), no click-to-load/paging, and no custom events, `_hyperscript`, or Alpine — only the attributes above.
 - `GET /viewer/dashboard` exists and returns the `dashboard_panels` fragment, but no template issues that request, so nothing refreshes the dashboard in place today.
 
-## 6. Pages & routes
+## 6. Pages and routes
 
 All under `/viewer`. The surface is fixed by `Server.Handler()`: there is no config block and no `-config` file yet (cli §2 defers it) — `cask web` selects only store, bind address, role tokens and the insecure-bind acknowledgement. `{hash}` values are parsed with the client's `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before storage access.
 
@@ -105,7 +105,7 @@ All under `/viewer`. The surface is fixed by `Server.Handler()`: there is no con
 
 **Blobs:** the `raw` view shows exact serialized bytes — a hex dump table (`hexdump-table`: 16-byte rows, offset/hex/ASCII columns) plus the exact total size on the detail page. Hexdump is **lazy-loaded** via htmx (`revealed`) so large objects don't block the page (the handler streams at most `previewLimit` = 256 KiB and reports truncation; never buffer megabytes). The stored type comes from the TLV envelope; raw JSON payload is visible as-is.
 
-**Integrity & maintenance:** `verify` recomputes the stored-bytes digest with the client's hasher and reports match/mismatch (`Verify(ctx, d, hasher)` contract) as a `result` fragment. `gc` runs mark-and-sweep from the root hashes submitted in the form and returns a `result` fragment reporting the object count delta; only objects not in the reachable set are removed, and the GC run is audit-logged (admin only). There is no progress polling.
+**Integrity and maintenance:** `verify` recomputes the stored-bytes digest with the client's hasher and reports match/mismatch (`Verify(ctx, d, hasher)` contract) as a `result` fragment. `gc` runs mark-and-sweep from the root hashes submitted in the form and returns a `result` fragment reporting the object count delta; only objects not in the reachable set are removed, and the GC run is audit-logged (admin only). There is no progress polling.
 
 ## 8. Out of scope
 

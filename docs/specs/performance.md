@@ -32,7 +32,7 @@ Writes are atomic (temp file → `f.Sync()` → `os.Rename`; Go's `os.Rename` al
 
 Serialize once: `Store.Put` marshals the envelope into one buffer, digests that buffer with the injected `Hasher`, then streams it to `raw.Put` — the envelope is never marshaled twice. Surfaces that hash while writing (the CLI's `put` and `examples/api`'s upload) spool and hash in a single pass through `io.MultiWriter`/`io.Copy` into `sha256.NewHasher()`. `Backend.Put(ctx, d, r)` MUST stream `r` without buffering; the digest `d` is the trusted address (`Verify` is the integrity check).
 
-## 4. Allocation & streaming rules
+## 4. Allocation and streaming rules
 
 - `Store.Put`/`Get` (small objects) and `fs.Backend.Put`/`Get` SHOULD keep allocations flat/bounded; prove with `b.ReportAllocs()`.
 - Reuse buffers via `sync.Pool` for scratch in the HTTP layer and verify/hexdump paths.
@@ -61,7 +61,7 @@ Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet`
 
 Correctness, clarity, and documented contracts come first; reject any micro-optimization that obscures an invariant. No unsafe/cgo/assembly/third-party pools. Do not cache object bytes in memory as an implicit fast path (changes memory semantics) — use the documented cache layer.
 
-## 8. Scaling & limits
+## 8. Scaling and limits
 
 ### 8.1 Object count vs layout
 
@@ -134,7 +134,7 @@ Throughput (objects/s, MiB/s), latency p50/p95/p99, allocs/op, peak RSS, disk us
 | List at 1M objects (fs, (2,2)) | ≤30 s; Stats similar |
 | Concurrent readers (T-04) | scales ~linearly; clean mutex profile |
 
-### 11.4 Report & environment
+### 11.4 Report and environment
 
 Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× and take the median. Run Go benchmarks with `-benchmem`; review allocs/op deltas by hand (no committed baseline/CI gate, §5). Scenario tests run via a dedicated `cmd/perftest` harness or `-tags=perftest`, printing a `scenario / metric / target / result` table. Attach the table to PRs touching the core; nightly compares against the previous baseline and flags regressions.
 

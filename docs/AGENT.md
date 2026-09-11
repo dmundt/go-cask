@@ -26,7 +26,7 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 
 `type` and `version` are required. Other OKF keys (`sources`, `generated`, `verified`, `stale_after`, `tags`, `status`) optional but MUST be used when applicable.
 
-### 1.2 Type values & locations
+### 1.2 Type values and locations
 
 `Specification` → every `docs/specs/` file; `Design Document` → every `docs/design/` file; `Guide` → `benchmarks/README.md` and similar how-to; `Agent Instructions` → any `AGENT.md`.
 
@@ -58,19 +58,21 @@ Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-leve
 
 Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When the codebase diverges, the code wins — update the example (a non-compiling doc example is a defect).
 
-## 7. Diagram & formatting rules
+## 7. Diagram and formatting rules
 
 - Mermaid for relationships/flow; ASCII only alongside mermaid (raw views).
 - Code fences always carry a language tag (`go`, `yaml`, `text`, `mermaid`).
+- In prose, do not use the ampersand symbol as a substitute for `and` unless the text is code, a literal symbol, a diagram, or a mermaid block where the symbol is required by syntax or the source domain.
 - Line width ≤ ~100 chars; LF endings; UTF-8.
 
-## 8. Editing & maintenance checklist
+## 8. Editing and maintenance checklist
 
 Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] OKF frontmatter present (`type`, `title`, `description`, `version`; `okf_version: "0.2"` for indexes)
 - [ ] `version` bumped on material change
 - [ ] No duplication — check `defaults.md` and owning specs first
 - [ ] Cross-references updated in ALL files mentioning the changed term
+- [ ] Ampersand used only where required by code, literal symbol text, or diagram syntax
 - [ ] On add/remove/rename, `docs/index.md` and the parent `index.md` updated
 - [ ] Mermaid blocks balanced; all code fences tagged
 - [ ] LF endings, UTF-8

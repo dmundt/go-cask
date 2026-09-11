@@ -9,13 +9,13 @@ version: v16
 
 How the `cas` library is composed into a runnable system (binary layout, HTTP layer, middleware, config, lifecycle, observability, deployment). Library internals are in `cas-core.md`; this is the process around them. **No network JSON API ships.** go-cask is a single-host kit: `cas` + CLI + the embedded viewer; `cask web` is the only HTTP surface. Serving a store to other machines is an app pattern shown by `examples/api`. Related: viewer-design, viewer-security, api-design, operations, coding-guidelines.
 
-## 1. Purpose & scope
+## 1. Purpose and scope
 
 - The backend is all server-side code: binary, viewer HTTP layer, wiring of `cas` into handlers, config, lifecycle.
 - Handlers are **thin** — all logic lives in the library; the backend composes it and adds HTTP concerns (authn/authz, CSRF, validation, streaming).
 - One codebase serves all shapes (viewer via `cask web`, CLI, library embedding) — never separate forks. A process serving a store to other machines copies the `examples/api` pattern (§5); the product never ships that server.
 
-## 2. Process & binary layout
+## 2. Process and binary layout
 
 - `cmd/cask` is the only binary and a **thin main**: all viewer logic lives in `internal/` (`web` handlers+templates over `/viewer/*`, `index` listing/meta helpers); `cask web` wires the internal packages. `internal/` MUST NOT be imported outside the module (Go-enforced).
 - `cas/` is the public surface (embedded library + `gitlike/`); everything else is private. Non-`web` `cmd/cask` subcommands are a thin CLI over the same library — the library is the single source of behavior.
@@ -60,7 +60,7 @@ viewer:
 - **Shutdown:** graceful — `signal.NotifyContext`, stop accepting, drain in-flight, close the store; no mid-write corruption (atomic-rename contract).
 - Config-file support (`-config`) deferred — flags only (cli §2).
 
-## 7. Observability & audit
+## 7. Observability and audit
 
 - `log/slog`: viewer mutations, slow operations, GC runs (operations §3), login failures.
 - Audit per viewer-security: every admin action logged; tokens/secrets never logged.

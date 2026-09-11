@@ -46,7 +46,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 | Defaults | each default asserted (fan-out (2,1), the shipped `sha256` hasher, perms) |
 | Branch/CLI/versioning docs | where code exists (`cmd/cask`, `version` output) |
 
-## 3. Corner & error cases (mandatory inventory)
+## 3. Corner and error cases (mandatory inventory)
 
 - **Digest/rendering:** `Prefix(n)`: absent and `n <= 0` → `""`, a digest whose hex form is shorter than `n` returned whole, `n` beyond the hex form → the whole string, and the result is always a prefix of `String()`. **Digest/parsing:** absent (zero) `Digest`, empty string, nil vs empty bytes; malformed text (odd-length hex, uppercase, non-hex, a legacy `"sha256:hexdigest"` reference → `ErrInvalidDigest`); `Equal` same/different digests and absent-vs-absent (false); `MarshalText`/`UnmarshalText` round-trip; the client hasher's `Validate` rejecting absent and wrong-width digests (`sha256`: 32 bytes) at the store boundary.
 - **Codec/object model:** empty value, all-zero struct, nested/edge values; `Unmarshal(Marshal(v))==v`; versioned names (`type@1`/`type@2`), legacy unversioned (`@1`), unknown → `ErrUnknownType`.
@@ -68,7 +68,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 7. **HTTP** — `httptest` for CAS API handlers (role matrix, 429, streaming, OpenAPI) and viewer routes (login, session, CSRF, fragments) — every route/status per §2/§3.
 8. **Backends** — unit/property/fuzz default to in-memory `memory` (fast, deterministic); the CAS laws and §3 are table-driven over **both** `memory` and `fs` (all fan layouts), so fs atomic-write/fan-out/`.tmp` behavior stays covered where it differs.
 
-## 5. Layout, coverage gate & CI
+## 5. Layout, coverage gate and CI
 
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).

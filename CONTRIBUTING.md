@@ -27,10 +27,10 @@ repository.
 | `examples/`          | Runnable example programs (`examples.md`)                   |
 | `docs/specs/` | The specification set (21 files: 19 spec files + AGENT.md + index.md) |
 
-### Design decisions & constraints
+### Design decisions and constraints
 
 Before changing structure, APIs, or scope, read the README's *Design
-principles & grounding* and the owning specs. The constraints that shape
+principles and grounding* and the owning specs. The constraints that shape
 every change:
 
 - **Single-host kit**: no network JSON API, no SDK, no server binary
@@ -87,7 +87,7 @@ Rules from the specs that always apply:
 ### Changing a spec
 
 Spec changes follow the same flow, plus `docs/specs/AGENT.md`'s maintenance
-checklist (§10 "Editing & maintenance checklist"): frontmatter rules,
+checklist (§10 "Editing and maintenance checklist"): frontmatter rules,
 terminology (§6), cross-reference updates, version bumps, and registration of
 new files in the file inventory `docs/specs/index.md` + `AGENTS.md`'s related
 specs. Run the folder audit (frontmatter, file refs, diagram balance) before

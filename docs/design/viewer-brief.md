@@ -73,7 +73,7 @@ Explicitly out of scope: buckets overview, upload dialog, settings, user managem
 1. **Structure-only pass** (this brief; no CSS/JS): normalize each view to the component grammar, reusing existing templates/fragment ids (`#object-table`, `#inspector`, `#integrity`, `#hexdump`, `#stats-panel`); make every view URL-as-state with `HX-Push-Url`; add empty/error states and reset-filters.
 2. **CSS step** (after explicit rule relaxation): token set, master-detail layout with responsive collapse, radio-tab panes, sticky headers, tags/pills, focus states.
 3. **Polish**: selected-row affordance, reduced-motion, keyboard focus order.
-4. **Fold-in & retire**: as outcomes are implemented, merge accepted results into `viewer-design.md` (version bump) and **delete this brief** — it is a proposal for a planned iteration, not a permanent spec.
+4. **Fold-in and retire**: as outcomes are implemented, merge accepted results into `viewer-design.md` (version bump) and **delete this brief** — it is a proposal for a planned iteration, not a permanent spec.
 
 ## 8. Checklist
 

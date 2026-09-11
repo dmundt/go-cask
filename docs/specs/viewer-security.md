@@ -9,7 +9,7 @@ version: v7
 
 Security requirements for the embedded technical viewer. **Nothing may weaken this file** (AGENT.md §8 precedence); the viewer design and HTTP surface MUST comply. Related: `viewer-design.md` (the UI it protects), `api-design.md`.
 
-## 1. Project context & intent
+## 1. Project context and intent
 
 The viewer is an object-store inspection/integrity tool for **developers, operators, and troubleshooting** (list/inspect/verify). It is **not intended to be publicly accessible** and MUST always be secure-by-default.
 

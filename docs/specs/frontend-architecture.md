@@ -9,7 +9,7 @@ version: v5
 
 Governs the browser-facing architecture of go-cask (applies to the viewer and any future frontend). Concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (no CSS/JS, templates+htmx), api-design.
 
-## 1. Purpose & scope
+## 1. Purpose and scope
 
 - The frontend is everything the browser receives: **HTML pages and htmx fragments**, all server-rendered by `html/template`.
 - Deliberately **not** an SPA: no client framework, no client-side state, no JSON between browser and server, no JS-generated DOM. The browser is a hypermedia client (links, form submits, htmx fragment swaps).
@@ -45,18 +45,18 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 - `hx-target`/`hx-swap` always target a semantic container — `#object-list` (search), `#object-table`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
 - No custom events, no `_hyperscript`, no Alpine, no hand-written JS — htmx attributes only (coding-guidelines §4).
 
-## 5. Navigation & state
+## 5. Navigation and state
 
 - **URLs are the state:** `hx-push-url` keeps navigation in the address bar; refresh and back/forward work; no client-side state to lose or rehydrate.
 - Identity from the server session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS — viewer-security); the browser never holds tokens/secrets.
 - Fragments reachable both standalone and as parts of full pages — the URL always identifies the resource, not a client-side view.
 
-## 6. Assets & embedding
+## 6. Assets and embedding
 
 - Single binary: templates + vendored htmx embedded via `embed.FS`.
 - No npm, no build step, no static asset pipeline (coding-guidelines §10). Only script in the runtime is **htmx** (one pinned, vendored file).
 
-## 7. Semantics & accessibility
+## 7. Semantics and accessibility
 
 - Raw semantic HTML: `<main>`, `<nav>`, `<table>` with `<caption>`/`<th scope>`, `<dl>` for metadata, `<pre>` for bytes, `<form>`/`<label>` for input — no `<div>` soup, no inline `style`.
 - Accessibility: labels on all inputs, `alt` text, logical heading order, keyboard-operable links/forms. htmx keeps native elements native (progressive enhancement), so focus/semantics survive.

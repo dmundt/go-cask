@@ -7,37 +7,36 @@
 A generic, Git-like **content-addressable store** for Go: store any bytes once under the digest of their content, reference them by digest, and build typed object graphs on top — reusable across apps and domains.
 
 - **Content-addressable** — same bytes ⇒ same digest ⇒ stored once (dedup).
-- **Immutable & verifiable** — objects never change; `Verify` detects corruption.
+- **Immutable and verifiable** — objects never change; `Verify` detects corruption.
 - **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
 - **Composable** — codecs and storage backends (filesystem + memory ship) plug in behind one `Backend` contract, and the client injects its hash algorithm (`cas/hash/sha256` ships as go-cask's default; the core names none).
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
-- **Policy matters** — the core is generic and format-agnostic; the project recommends `SHA-256` + JSON for durable work, `SHA-512/256` as a fast secure alternative, and supports a compact custom binary payload codec (`cas/codec/binary`) for explicit per-type layouts when compactness matters. Legacy/compatibility choices such as `gob`, MD5 and SHA-1 are marked as migration-only or Go-only compatibility options.
+- **Policy matters** — the core is generic and format-agnostic; the project recommends `SHA-256` + JSON for durable work, `SHA-512/256` as a fast secure alternative, and supports a compact custom binary payload codec (`cas/codec/binary`) for explicit per-type layouts when compactness matters. Legacy/compatibility choices such as `cas/codec/gob`, MD5 and SHA-1 are marked as migration-only or Go-only compatibility options.
 
 ## Design decisions
 
 A **single-host content-addressable store kit**. Each named spec is the normative contract:
-- **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern (`examples/api`) — backend-architecture §1.
-- **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports `examples/` (viewer-design §7, coding-guidelines §9).
-- **Dependencies one-directional** — `cas`/`internal`/`cmd` never import `examples/`; examples are self-contained except the shared `gitlike` library.
-- **Lean generic core** — app-agnostic `cas` that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends and a JSON codec; only the cas-core §7.1 surface is stable.
+- **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
+- **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports [examples/](examples/) (viewer-design §7, coding-guidelines §9).
+- **Dependencies one-directional** — [cas/](cas/), [internal/](internal/), [cmd/](cmd/) never import [examples/](examples/); examples are self-contained except the shared `gitlike` library.
+- **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends and a JSON codec; only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
-- **Examples teach; `gitlike/` is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
+- **Examples teach; the `gitlike` package is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
 
 ## Repository layout
 
-```text
-cas/       core library (package cas) — generic, app-agnostic, public
-internal/  implementation detail: web (the viewer), index
-gitlike/  shared reference object-model library (package gitlike)
-examples/  runnable example programs
-benchmarks/  benchmark suite (bench_test.go + scale_bench_test.go) + README.md
-cmd/       entry point: cask (CLI store ops; `cask web` starts the embedded viewer)
-docs/specs/  the specification set (19 specs + AGENT.md)
-docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
-AGENTS.md  the agent aggregator at the repo root
-.github/   CI only
-```
+- [cas/](cas/) — the public core library (package `cas`): generic, app-agnostic, stable surface.
+- [internal/](internal/) — implementation details: viewer, index, and local helpers not meant to be imported outside the module.
+- [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs.
+- [examples/](examples/) — runnable example programs showing how to use the core and the reference model.
+- [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
+- [cmd/](cmd/) — CLI entry point: `cask` store operations and the embedded viewer (`cask web`).
+- [docs/specs/](docs/specs/) — the normative specification set; start at [docs/specs/AGENT.md](docs/specs/AGENT.md) and [docs/index.md](docs/index.md).
+- [docs/design/](docs/design/) — non-normative design/background material.
+- [AGENTS.md](AGENTS.md) — repo-root agent instructions and rule index entry point.
+- [.github/](.github/) — CI configuration and automation only.
+
 
 ## Core interfaces at a glance
 
@@ -109,7 +108,7 @@ Use cryptographic hashes for object identity and integrity. For new data, prefer
 
 Current patch release: `v1.3.1`. This is a maintenance release that adds the compact binary codec docs and resolves the small generic constructor warning in the binary codec tests; it does not change the storage format or object layout.
 
-`v1.3.0` is a **breaking MINOR**: the core is hash-agnostic (`cas.Hash` → `cas.Digest` + a client-injected `cas.Hasher`), `gitlike.NewRepository` takes a `gitlike.Codecs` set, object invariants moved to `cas.Validator`, and the filesystem layout lost its algorithm directory. Read the `[v1.3.0]` section of [CHANGELOG.md](CHANGELOG.md) and `docs/specs/operations.md` §5 before pointing this build at an existing store — objects written by `v1.2.0` are not migrated.
+`v1.3.0` is a **breaking MINOR**: the core is hash-agnostic (`cas.Hash` → `cas.Digest` + a client-injected `cas.Hasher`), `gitlike.NewRepository` takes a `gitlike.Codecs` set, object invariants moved to `cas.Validator`, and the filesystem layout lost its algorithm directory. Read the `[v1.3.0]` section of [CHANGELOG.md](CHANGELOG.md) and [docs/specs/operations.md](docs/specs/operations.md) §5 before pointing this build at an existing store — objects written by `v1.2.0` are not migrated.
 
 ## Quick start
 
@@ -131,7 +130,7 @@ repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
     Commit: jsoncodec.New[*gitlike.Commit](),
     Tag:    jsoncodec.New[*gitlike.Tag](),
 })
-d, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
+d, _ := repo.Blobs.Put(ctx, andgitlike.Blob{Data: []byte("hello")})
 blob, _ := repo.Blobs.Get(ctx, d)                 // *gitlike.Blob
 ```
 
@@ -144,9 +143,18 @@ raw := mem.New() // fast, deterministic, not persistent
 
 ## The specification set
 
-`docs/specs/` is the complete design contract: core architecture, coding guidelines, library design, performance, testing, consistency (GC/pruning), viewer HTTP surface, viewer design & security, versioning, defaults, examples, extensions. Read `docs/specs/AGENT.md` (its meta-guide) before editing any spec; the full inventory is in `AGENT.md` §10. Non-normative material lives in `docs/design/`. Agents auto-load the repo-root `AGENTS.md`, which points at the full set.
+[docs/specs/](docs/specs/) is the complete design contract: core architecture, coding guidelines, library design, performance, testing, consistency (GC/pruning), viewer HTTP surface, viewer design and security, versioning, defaults, examples, and extensions.
 
-## Building & testing
+Note: the documentation tree under [docs/](docs/) follows the OKF frontmatter layout (`type`, `title`, `description`, `version` for each document, with `docs/index.md` as the top-level rule index).
+
+Key references:
+- [docs/index.md](docs/index.md) — path-to-spec lookup and rule mapping
+- [docs/design/](docs/design/) — background and design notes
+- [benchmarks/README.md](benchmarks/README.md) — benchmark suite guide and results
+
+Use [docs/index.md](docs/index.md) to find the matching spec for a change area.
+
+## Building and testing
 
 ```text
 go build ./...
@@ -155,7 +163,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (toolchain self-managing; library baseline Go 1.24+, needed for the `omitzero` JSON tags used by `cas.Digest` reference fields). See `CONTRIBUTING.md` for the workflow, and `benchmarks/README.md` for running/reading the benchmarks.
+Requires Go 1.27 (toolchain self-managing; library baseline Go 1.24+, needed for the `omitzero` JSON tags used by `cas.Digest` reference fields). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and [benchmarks/README.md](benchmarks/README.md) for running/reading the benchmarks.
 
 ## License
 

@@ -9,11 +9,11 @@ version: v51
 
 The authoritative specification of the **`cas` core library** — the foundation every extension, client, example, and HTTP/API layer builds on. Origin: the DeepSeek design conversation (final converged state); the repo-root `AGENTS.md` points here. Related: `library-design.md` (lean-core, errors, compatibility), `performance.md`, `testing-strategy.md`, `examples.md`, `backend-architecture.md`.
 
-## 1. Purpose & scope
+## 1. Purpose and scope
 
 CASK is a reusable Go **content-addressable store**: blobs stored once under the digest of their content, as immutable objects referencing each other by digest. Git-like (blob/tree/commit/tag) but **generic across apps and domains** — the storage core knows nothing about application object types, and it **names no hash algorithm**: the client injects one as a `Hasher` (§4.2), so the storage layer keys blobs by an opaque digest (the OCI/Docker split) while the code that knows the algorithm stays outside it. Apps layer typed objects on top and may share one physical store. Scope: layered architecture, every component's contract, data flows, concurrency model, extension contract. The `cas` package is **generic only**; application models (e.g. `gitlike`) live outside it (§4.12).
 
-## 2. Core concepts & invariants
+## 2. Core concepts and invariants
 
 1. **Digest-addressed.** The storage key is the digest of the content; no mutable addressing — to "change" an object, store a new one (new digest).
 2. **Immutability.** Stored objects are never mutated in place.
@@ -68,7 +68,7 @@ Dependency rule: byte depends on nothing; typed depends on byte; application dep
 
 **Why three layers.** The non-generic byte layer lets any backend swap in without touching app code; the generic typed layer lets any app type work without touching the core; the injection seam lets any hash algorithm work without touching either; the application layer owns the domain model. Extensions/clients interact mostly with the typed layer and the stable surface (§7.1).
 
-**References & graphs.** Objects reference each other by plain `Digest` (`Commit.Tree`, `TreeEntry.Hash`, …). The core never interprets them; `Object[T].References()` is the single source of which digests an object points to — powering `Walker[T]`, cache preloading, and GC reachability. A reference is a bare digest with no algorithm, so it is meaningful only to a client using the algorithm that produced it (§4.2).
+**References and graphs.** Objects reference each other by plain `Digest` (`Commit.Tree`, `TreeEntry.Hash`, …). The core never interprets them; `Object[T].References()` is the single source of which digests an object points to — powering `Walker[T]`, cache preloading, and GC reachability. A reference is a bare digest with no algorithm, so it is meaningful only to a client using the algorithm that produced it (§4.2).
 
 ### 3.3 Aspect diagrams
 
@@ -305,7 +305,7 @@ type Hasher interface {
   `Hasher.Digest` streams `io.Copy` into sha256 and never buffers; `Hasher.Validate` requires a present digest of exactly `Size` bytes. `Parse` accepts the prefixed and the bare form and rejects anything else — including another algorithm's prefix — with `ErrInvalidDigest`. `Format` is the client's printable form; the digest itself never carries the name. Any short/preview rendering is the core's `Digest.Prefix(n)` (§4.1), not a per-algorithm helper. `cmd/cask`, `internal/web`, `gitlike` and the examples all construct this hasher (`sha256.New()`) and pass it to `cas.New`.
 - **There is no registry.** No `RegisterHash`, no mutexed algorithm map, no init-order coupling, no one-shot/streaming duality, and no runtime-chosen name that must double as a path element — the failure modes the registry had cannot exist, because there is nothing to register and nothing to name. Replacing "recognize the address's algorithm" is the client's own knowledge: a `Hasher` validates the width it expects, so reading a store with the wrong algorithm fails loudly — a wrong-width key is `ErrInvalidDigest`, and a right-width key from another algorithm does not name the stored objects at all (`Get` → `ErrNotFound`; only the client can know the addresses are foreign).
 
-**Algorithm change & single-format stores:**
+**Algorithm change and single-format stores:**
 - Because no algorithm travels with a digest, the core cannot enumerate "another algorithm's objects" and `Stats` has no per-algorithm breakdown (§4.11): a store's contents are interpretable only by a client that knows which algorithm wrote them. Mixing algorithms in one store is therefore not a supported configuration — the model is Git's: one object format per repository.
 - Changing the algorithm is a **format transition, not a configuration change**: every object is re-digested and rewritten under its new address, exactly as Git's object-format transition works. `operations.md` §5 records the procedure (list → read → re-hash → write → VERIFY each → delete the source only after verification). Keeping `cas/hash/sha256` for go-cask's own clients is the default, not a core rule.
 
@@ -455,7 +455,7 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error
 - Traversal is **iterative with an explicit stack and a visited set** keyed by `d.String()`: each digest is visited at most once, a shared subgraph is visited once rather than once per path, and a very deep graph terminates instead of exhausting the goroutine stack. A cycle is not constructible through the public API — an object's address is derived from the bytes that would have to contain it.
 - Mixed-type traversal is the app's job (`gitlike` resolver, §4.12).
 
-### 4.10 Caching & lazy loading
+### 4.10 Caching and lazy loading
 
 **`memory.CachedObject[T]`** — lazy proxy for one digest (`cas/cache/mem`): fields `digest`, a pointer to the underlying `Store[T]`, a metrics pointer, `sync.RWMutex`, `obj`, `loaded`, `err`. `Load(ctx)` uses **double-checked locking**, loads exactly once, memoizes object AND error. `IsLoaded()` reports state without loading; `Digest()` returns the address it is memoized for.
 
@@ -564,7 +564,7 @@ type ResolvedObject struct {
 - **Cross-process model (grace, Git-style):** concurrent readers and concurrent same-digest `Put`s are safe by construction (atomic rename, unique temps) — writers and the viewer may run in several processes on one store. What needs coordination is a maintenance sweep racing another process's writes: the `cask` CLI takes the store's exclusive `.cask.lock` (one sweep at a time) and reclaims only objects older than a grace `--min-age` (default 1h); a forced `--min-age 0` sweep is the dangerous variant (prints a warning). Embedding apps MUST provide equivalent coordination if they sweep from >1 process per store dir.
 - Callers must close every `io.ReadCloser` from `Backend.Get`. Prefetchers must never block the hot path (queue full → skip; prefetch in a goroutine with a timeout).
 
-## 7. Consuming & extending the core
+## 7. Consuming and extending the core
 
 Contract for adjacent extensions (backends, codecs, caches) and clients.
 
@@ -595,13 +595,13 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 
 **Add maintenance ops:** add methods on `fs.Backend`; keep `Stats`/`Verify`/`GC` semantics from §4.11.
 
-### 7.3 Compatibility & contracts
+### 7.3 Compatibility and contracts
 
 - Never break the stable surface within a major (library-design §5); HTTP API versioning is independent.
 - Sentinel errors are the wire between core and clients: map to HTTP statuses in the API layer (api-design §6), never string-compare.
 - Performance contracts (lock-free reads, one-pass hashing, bounded allocations) per performance.md; the CAS laws are the correctness contract (testing-strategy §1).
 
-## 8. Decisions & follow-ups
+## 8. Decisions and follow-ups
 
 Resolved decisions (so implementation never re-litigates them):
 1. **Serialization — RESOLVED: TLV envelope** (`cas/envelope.go`):

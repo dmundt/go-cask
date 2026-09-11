@@ -22,7 +22,7 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 
 - A route's prefix decides its contract; never mix prefixes or content types across surfaces. Same grammar (naming, errors, codes, middleware) on all — only content type and auth differ. The viewer is the only shipped surface.
 
-## 3. Naming & URL conventions
+## 3. Naming and URL conventions
 
 - Plural resource nouns for collections (`/objects`, `/stats`).
 - Sub-resources by nesting: `/objects/{hash}/meta|raw|verify` (one level).
@@ -30,7 +30,7 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 - Path segments lowercase, hyphen-separated when multi-word. Query params short/lowercase (`q`, `limit`, `offset`), documented defaults/bounds.
 - Hash params always named `{hash}`, accepted as the printable `sha256:hexdigest` form or bare lowercase hex and parsed with the client's `sha256.Parse` (malformed → 400). The core's `Digest` carries no algorithm name.
 
-## 4. Methods & semantics
+## 4. Methods and semantics
 
 | Method | Use | Body | Success |
 |---|---|---|---|
@@ -83,13 +83,13 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 - Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible).
 - Never trust client input — header, query, and body all validated (viewer-security).
 
-## 10. Pagination & filtering
+## 10. Pagination and filtering
 
 - Cursor-free offset pagination: `?limit=<1..max>&offset=<0..>`, documented defaults.
 - Envelope `{"total": <int>, "<items>": [...]}` (`<items>` = plural resource name); `total` semantics documented per endpoint.
 - Filters are query params (`q` for the viewer's hash/type search); filters change only the set, never the item shape.
 
-## 11. Streaming & binary payloads
+## 11. Streaming and binary payloads
 
 - Binary bodies `application/octet-stream` — **never base64 in JSON**.
 - Binary metadata in `X-CAS-*` headers (`X-CAS-Algorithm`, `X-CAS-Size`); no `X-CAS-Type` (byte layer has no envelope type) — `meta` may sniff it best-effort from the envelope.
@@ -101,7 +101,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 - The viewer is unversioned — htmx fragments evolve with the UI.
 - Versioning is in the URL, never headers.
 
-## 13. Documentation & OpenAPI
+## 13. Documentation and OpenAPI
 
 - A JSON surface's endpoints MUST be documented in an OpenAPI document it serves (`examples/api` serves `/api/cas/v1/openapi.yaml`).
 - OpenAPI MUST live in separate files — an `openapi.yaml` next to the serving code, embedded via `//go:embed` + `embed.FS`; never an inline Go string (the doc is data, must be diffable/lintable natively).

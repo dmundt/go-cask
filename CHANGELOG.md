@@ -20,6 +20,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
   supported codec and hasher combinations.
 - Documented the benchmark policy split between the regular perf suite and the
   scale probes, and froze the benchmark rules in [benchmarks/AGENT.md](benchmarks/AGENT.md).
+- Audited the documentation tree under [docs/](docs/) for the OKF frontmatter layout and
+  confirmed the three index files are the intentional exception to the standard
+  `type`/`title`/`description`/`version` pattern.
 
 ### Changed
 
@@ -29,6 +32,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Synced the benchmark docs and [docs/specs/performance.md](docs/specs/performance.md)
   so the README reflects the current benchmark coverage and measured winner-by-size
   guidance.
+- Trimmed redundant specification references in [README.md](README.md) and kept the
+  landing page limited to the core entry points and the docs index.
 
 ## [v1.3.1] - 2026-09-11
 
@@ -603,7 +608,7 @@ to the public `cas` core API, its semantics, or the on-disk format.
 Patch release: documentation and CI additions on top of the frozen `v1.0.0`
 surface. No change to the public `cas` API, semantics, or the on-disk format.
 
-### Docs & tests
+### Docs and tests
 
 - Added runnable, `// Output`-verified godoc `Example` functions for the `cas`
   core and `gitlike` (package-level and per-symbol: `ExampleHashBytes`,
@@ -626,7 +631,7 @@ Patch release: documentation and test-only additions on top of the frozen
 `v1.0.0` surface. No change to the public `cas` API, semantics, or the on-disk
 format.
 
-### Docs & tests
+### Docs and tests
 
 - Expanded the package doc comments for `cas/cache/{mem,lru,prefetch}` and
   `cas/codec/{json,gob}` (godoc), and added a runnable, `// Output`-verified
