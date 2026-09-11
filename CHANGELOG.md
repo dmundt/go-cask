@@ -10,20 +10,22 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
-### Documentation
+No unreleased changes.
 
+## [v1.3.1] - 2026-09-11
+
+### Added
+
+- Added the generic `cas/codec/binary` package for compact, caller-defined
+  binary payloads. It remains object-agnostic and expects the client to provide
+  a stable per-type binary layout and versioning strategy.
+- Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
+  to compare `sha256` and `sha512_256` in the same benchmark family.
 - Reworked the `cas` subtree READMEs to a consistent package style: short
   package summaries, direct implementation links, and explicit policy notes.
 - Added the package-local [cas/AGENT.md](cas/AGENT.md) guide with documentation
   rules, default policy wording, and README-link conventions for the `cas`
   subtree.
-- Kept the root and layer docs aligned on the same policy: the `cas` core stays
-  generic and algorithm-agnostic, while the project recommends `SHA-256` + JSON
-  for durable storage and `SHA-512/256` as a fast secure alternative.
-- Clarified the compatibility role of `cas/codec/gob`, documenting it as Go-only
-  and opt-in rather than the default or canonical long-term CAS format.
-- Documented MD5 and SHA-1 as legacy or migration-only choices, not new CAS
-  defaults.
 - Added direct README links down to the concrete subpackages (`fs`, `mem`,
   `lru`, `prefetch`, `json`, `gob`, `sha256`, `sha512_256`) and back to the
   parent package docs.
@@ -31,16 +33,19 @@ first-cycle exceptions recorded in `versioning.md` §1.
   to match the actual option-based API and clarified in the backend docs that
   each backend defines its own `With...` functions over the shared
   `backend.Option` contract.
-- Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
-  to compare `sha256` and `sha512_256` in the same benchmark family.
-- Added the generic `cas/codec/binary` package for compact, caller-defined
-  binary payloads. It remains object-agnostic and expects the client to provide
-  a stable per-type binary layout and versioning strategy.
 - Tightened the `cas/codec/binary` README to document the intended `Blob` and
   `Tree`-style binary layouts as app-defined schemas, with compact marshal/
   unmarshal sketches that stay generic at the `cas` layer.
 
-## [v1.3.1] - 2026-09-11
+### Documentation
+
+- Kept the root and layer docs aligned on the same policy: the `cas` core stays
+  generic and algorithm-agnostic, while the project recommends `SHA-256` + JSON
+  for durable storage and `SHA-512/256` as a fast secure alternative.
+- Clarified the compatibility role of `cas/codec/gob`, documenting it as Go-only
+  and opt-in rather than the default or canonical long-term CAS format.
+- Documented MD5 and SHA-1 as legacy or migration-only choices, not new CAS
+  defaults.
 
 ### Fixed
 
