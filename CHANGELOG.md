@@ -10,7 +10,25 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Added focused benchmark families in [benchmarks/bench_test.go](benchmarks/bench_test.go):
+  `BenchmarkCodecMarshalUnmarshal` isolates pure serialization cost and
+  `BenchmarkHasherDigest` isolates raw hash throughput.
+- Added benchmark tables and recommendation text to [benchmarks/README.md](benchmarks/README.md),
+  including isolated codec/hash summaries and the median-of-5 interpretation for the
+  supported codec and hasher combinations.
+- Documented the benchmark policy split between the regular perf suite and the
+  scale probes, and froze the benchmark rules in [benchmarks/AGENT.md](benchmarks/AGENT.md).
+
+### Changed
+
+- Expanded the regular performance matrix to cover a broader size range and
+  normalized the benchmark naming and summary reporting around the supported
+  `json`/`gob`/`binary` and `sha256`/`sha512_256` combinations.
+- Synced the benchmark docs and [docs/specs/performance.md](docs/specs/performance.md)
+  so the README reflects the current benchmark coverage and measured winner-by-size
+  guidance.
 
 ## [v1.3.1] - 2026-09-11
 

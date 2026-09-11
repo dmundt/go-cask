@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v15
+version: v16
 ---
 
 # Performance — go-cask
@@ -41,10 +41,12 @@ Serialize once: `Store.Put` marshals the envelope into one buffer, digests that 
 
 ## 5. Benchmark suite
 
-Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); `fs`-backend Put/Get (same sizes, flat vs fan-out); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gob`/`binary` × `sha256`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
 
-- Every benchmark calls `b.ReportAllocs()` and `b.SetBytes()`.
+- Every timed benchmark calls `b.ReportAllocs()`. Non-timed layout/economics probes MAY omit it.
+- Benchmarks call `b.SetBytes()` only when one operation processes one payload of known size; operations such as `Exists`, `Delete`, `List`, `Stats`, digest parsing, and mixed concurrent workloads MUST NOT invent a byte count.
 - Store-logic benchmarks run against the in-memory `memory` backend (deterministic, no disk noise); disk behavior is covered by the `fs`-backend cases.
+- The codec/hash matrix MUST apply identical objects, sizes, backend, and Put+Get work to every combination. It is a comparative end-to-end benchmark, not a standalone codec or hash microbenchmark.
 - No committed baseline and **no CI gate** (shared CI runners are too noisy; allocation regressions are caught by P-03 and review). No other document may promise a "benchstat gate" — `nightly.yml` only records `-bench` output. Run on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
 - **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`) prefill a store to N, time the op at that size, and log a projection for 10^10 objects. Not part of CI twice over (CI runs no `-bench`, and each skips unless `CASK_SCALE_OBJECTS` is set), e.g. `CASK_SCALE_OBJECTS=1000000 go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v`.
 - The lock-free claim is exercised by `-race` tests and `BenchmarkParallelPutGet`.
@@ -140,7 +142,7 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 
 - [x] `Get`/`Exists`/`List`/`Stats` are lock-free
 - [x] hash-on-write in a single pass (CLI/HTTP: `io.MultiWriter` + `io.Copy`; core: marshal once, digest, stream)
-- [x] benchmarks with `ReportAllocs` + `SetBytes` for small and large cases
+- [x] timed benchmarks report allocations; payload-defined operations report bytes
 - [x] `-race` concurrent Put/Get/Delete test green
 - [x] no reflection/`unsafe`/external speed dependencies
 - [x] profiling workflow documented and reproducible
