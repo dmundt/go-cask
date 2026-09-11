@@ -1,29 +1,32 @@
-# cas — core package
+# cas
 
-The `cas` package is the generic, app-agnostic content-addressable store core. It stores raw bytes by digest, exposes the typed object layer on top, and intentionally leaves algorithm choice, codec choice, and backend choice to the caller.
+`cas` is the generic, app-agnostic core of the CASK library. It stores raw bytes by digest, exposes a typed object layer above the byte store, and leaves hash choice, codec choice, and backend choice to the caller.
 
-## Architecture
+## Package overview
 
-- `Digest` + `Backend` — byte layer and object identity
-- `Hasher` — caller-supplied hash algorithm
-- `Codec[T]` + `Store[T]` + `Object[T]` — typed layer over the byte store
-- `Walker[T]` + cache wrappers — traversal and performance extensions
+- `Digest` and `Backend` define the byte layer.
+- `Hasher` is the caller-supplied algorithm seam.
+- `Codec[T]`, `Store[T]`, and `Object[T]` define the typed layer.
+- `Walker[T]` and the cache wrappers add traversal and read optimization.
+- Local agent notes: [AGENT.md](./AGENT.md)
 
-## Recommended defaults
+## Default policy
 
-- Hash: `SHA-256` (`cas/hash/sha256`)
-- Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
-- Codec: JSON (`cas/codec/json`) for readable, portable data
-- Backend: `fs` (`cas/backend/fs`) for durable storage; `mem` (`cas/backend/mem`) for tests and ephemeral workloads
-- Legacy/compatibility choices: `gob` (`cas/codec/gob`) is Go-only and opt-in; MD5 and SHA-1 are migration-only, not new CAS defaults
+- Preferred hash: `SHA-256` via [hash/sha256](./hash/sha256/README.md)
+- Fast secure alternative: `SHA-512/256` via [hash/sha512_256](./hash/sha512_256/README.md)
+- Preferred codec: JSON via [codec/json](./codec/json/README.md)
+- Durable backend: [backend/fs](./backend/fs/README.md)
+- Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
+- Compatibility-only codec: [codec/gob](./codec/gob/README.md)
+- Legacy-only choices: MD5 and SHA-1; not for new content-addressed data
 
-## Sub-layer docs
+## Layer index
 
-- [backend/README.md](./backend/README.md)
-- [cache/README.md](./cache/README.md)
-- [codec/README.md](./codec/README.md)
-- [hash/README.md](./hash/README.md)
+- [backend](./backend/README.md) — [fs](./backend/fs/README.md), [mem](./backend/mem/README.md)
+- [cache](./cache/README.md) — [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
+- [codec](./codec/README.md) — [json](./codec/json/README.md), [gob](./codec/gob/README.md)
+- [hash](./hash/README.md) — [sha256](./hash/sha256/README.md), [sha512_256](./hash/sha512_256/README.md)
 
 ## Policy
 
-The core stays generic and format-agnostic. Applications should pick a hash algorithm, a codec, and a backend that match their durability, interoperability, and performance needs; the core should not encode those choices into the library surface.
+Keep the core generic and format-agnostic. Applications choose the algorithm, codec, and backend that match their durability, interoperability, and performance needs. The storage core should not hard-code those decisions.

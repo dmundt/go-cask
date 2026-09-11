@@ -12,20 +12,25 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Documentation
 
-- Added package-level READMEs for the `cas` root, the backend/cache layers,
-  the codec policy, the hash layer, and the example set.
-- Added direct navigation links from each layer README to the concrete
-  subpackages (`fs`, `mem`, `lru`, `prefetch`, `json`, `gob`, `sha256`,
-  `sha512_256`) and back to the root package README.
-- Clarified the repo policy for supported vs recommended choices: the `cas`
-  core stays hash- and codec-agnostic, while the project recommends
-  `SHA-256` + JSON for durable storage and `SHA-512/256` as a fast secure
-  alternative.
-- Kept `cas/codec/gob` as an explicit opt-in compatibility codec, but described
-  it as Go-only and not suitable as the default or canonical long-term CAS
-  format.
-- Documented that MD5 and SHA-1 remain legacy or migration-only choices, not a
-  default recommendation for new content-addressed data.
+- Reworked the `cas` subtree READMEs to a consistent package style: short
+  package summaries, direct implementation links, and explicit policy notes.
+- Added the package-local [cas/AGENT.md](cas/AGENT.md) guide with documentation
+  rules, default policy wording, and README-link conventions for the `cas`
+  subtree.
+- Kept the root and layer docs aligned on the same policy: the `cas` core stays
+  generic and algorithm-agnostic, while the project recommends `SHA-256` + JSON
+  for durable storage and `SHA-512/256` as a fast secure alternative.
+- Clarified the compatibility role of `cas/codec/gob`, documenting it as Go-only
+  and opt-in rather than the default or canonical long-term CAS format.
+- Documented MD5 and SHA-1 as legacy or migration-only choices, not new CAS
+  defaults.
+- Added direct README links down to the concrete subpackages (`fs`, `mem`,
+  `lru`, `prefetch`, `json`, `gob`, `sha256`, `sha512_256`) and back to the
+  parent package docs.
+- Renamed the shared backend config shim to [cas/backend/options.go](cas/backend/options.go)
+  to match the actual option-based API and clarified in the backend docs that
+  each backend defines its own `With...` functions over the shared
+  `backend.Option` contract.
 - Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
   to compare `sha256` and `sha512_256` in the same benchmark family.
 

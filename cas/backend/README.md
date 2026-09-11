@@ -1,38 +1,26 @@
-# Backend layer — go-cask
+# backend
 
-See also: [cas/README.md](../README.md) and [cas/README.md](../README.md) for the wider package layout.
+The backend layer is the non-generic byte store beneath the typed `cas` API. It stores raw object bytes by `cas.Digest`, exposes the filesystem and in-memory implementations, and stays independent from any app object model or hash algorithm.
 
-The backend layer is the non-generic byte store beneath the typed `cas` API. It owns raw object bytes keyed by `cas.Digest`, provides the filesystem and in-memory implementations, and is intentionally independent from any application object model or hash algorithm.
+## Included implementations
 
-## What lives here
-
-- [fs/](./fs) — durable filesystem backend
-- [mem/](./mem) — in-memory backend for tests and ephemeral workloads
-
-Other common backend patterns that follow the same byte-level contract include:
-- local object storage such as S3-compatible object stores or MinIO
-- embedded key/value stores such as Pebble, Badger, or Bolt
-- a SQLite-backed backend for simple single-host persistence
-- a journaled or append-only backend for streaming writes and crash recovery
-- a networked backend over an RPC or gRPC layer
-
-These are valid extensions of the byte-layer contract, but they all must preserve the same semantics: store bytes by digest, handle atomic writes correctly, and support the `Backend` API without introducing a typed object model into the storage layer.
+- [fs](./fs/README.md) — durable filesystem backend
+- [mem](./mem/README.md) — in-memory backend for tests and ephemeral workloads
 
 ## Policy
 
-- The core stays agnostic: a backend stores bytes by digest only.
-- The application chooses the hash algorithm through `cas.Hasher`.
-- The application chooses the codec through `Codec[T]`.
-- The backend is deliberately not the place where object identity semantics or serialization format are decided.
+- The byte layer stores raw bytes by digest only.
+- Hash choice stays with the caller via `cas.Hasher`.
+- Codec choice stays with the caller via `Codec[T]`.
+- A backend does not define object identity semantics or serialization format.
+- Backends use the shared [options.go](./options.go) contract: each backend defines its own `With...` setters, all returning the common `backend.Option` type.
 
-## Recommended use
+## Typical use
 
 - Use `fs` for durable persistent storage.
-- Use `mem` for tests, benchmarks, quick examples, and transient in-process workloads.
-- Do not nest stores under the same base or keep scratch temp files under a `cas` backend root; the backend owns the object namespace beneath its base directory.
+- Use `mem` for tests, benchmarks, and quick examples.
+- Keep the backend root dedicated to object data; do not nest stores or keep scratch temp files under it.
 
 ## Notes
 
-- `fs` is the stable default for durable storage.
-- `mem` is not persistent and is not a replacement for a durable backend.
-- This layer speaks in bytes and digests; it does not know about JSON, gob, or any typed object model.
+This layer speaks only in bytes and digests. It does not know about JSON, gob, or any typed object model.

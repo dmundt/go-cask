@@ -1,26 +1,25 @@
-# Codec policy — go-cask
+# codec
 
-See also: [cas/README.md](../README.md) for the wider package architecture and the project defaults.
+The codec layer defines how typed values are serialized before they are stored and recovered after they are read. The `cas` core stays format-agnostic; the caller picks the codec.
 
-The `cas` core is codec-agnostic: it stores raw bytes and lets the caller choose how typed values are encoded. The choice belongs in the app layer, not in `package cas`.
+## Included implementations
 
-## Recommended defaults
+- [json](./json/README.md) — recommended default for readable, portable data
+- [gob](./gob/README.md) — Go-only compatibility codec
 
-- JSON: recommended default for durable, readable, portable data
-- CBOR / MessagePack / Protobuf: good for compact binary interchange when the app needs a binary format
-- gob: opt-in compatibility only for Go-only workflows
-- gzip-wrapped payloads: compression layer, not a primary serialization format
+## Policy
 
-## Do not use as a default
+- Keep the core format-agnostic.
+- Prefer JSON for durable, portable object data.
+- Treat gob as a compatibility option for Go-only workflows.
+- Treat compression-encryption wrappers as transport or storage layers, not as the canonical object format.
 
-- gob for long-term object storage
-- MD5 or SHA-1 for new content-addressed data
+## Typical use
 
-A codec is valid if it matches the storage contract and the app's compatibility needs. A codec is not a good default if it is Go-only, unstable across versions, or unsuitable for durable object identity.
+- Use JSON for readable object payloads and easy interop.
+- Use gob only for explicit Go-to-Go compatibility or migration cases.
+- Keep custom codecs explicit when the app needs a different binary or domain-specific format.
 
-## Policy summary
+## Notes
 
-- `cas` core: format-agnostic
-- [json/](./json): recommended default
-- [gob/](./gob): Go-only compatibility codec
-- custom codec packages: allowed when the app's format needs are explicit
+A good codec matches the app's durability, portability, and compatibility requirements. A codec is not the right default if it is Go-only, unstable across versions, or unsuitable for long-lived object identity.
