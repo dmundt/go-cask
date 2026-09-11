@@ -15,6 +15,7 @@
 - Preferred hash: `SHA-256` via [hash/sha256](./hash/sha256/README.md)
 - Fast secure alternative: `SHA-512/256` via [hash/sha512_256](./hash/sha512_256/README.md)
 - Preferred codec: JSON via [codec/json](./codec/json/README.md)
+- Compact custom option: [codec/binary](./codec/binary/README.md) for stable per-type binary payloads
 - Durable backend: [backend/fs](./backend/fs/README.md)
 - Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
 - Compatibility-only codec: [codec/gob](./codec/gob/README.md)
@@ -24,7 +25,7 @@
 
 - [backend](./backend/README.md) — [fs](./backend/fs/README.md), [mem](./backend/mem/README.md)
 - [cache](./cache/README.md) — [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
-- [codec](./codec/README.md) — [json](./codec/json/README.md), [gob](./codec/gob/README.md)
+- [codec](./codec/README.md) — [json](./codec/json/README.md), [binary](./codec/binary/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — [sha256](./hash/sha256/README.md), [sha512_256](./hash/sha512_256/README.md)
 
 ## Policy

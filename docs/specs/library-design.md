@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v25
+version: v26
 ---
 
 # Library Design — go-cask
@@ -13,7 +13,7 @@ The `cas` package must be small, obvious, and hard to misuse. Related: `cas-core
 
 - `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 LOC and ≤ ~40 exported identifiers (re-baselined 2026-09 to the frozen surface after the pre-v1.0.0 audit). Every exported name must earn its place; if it can live in a subpackage or an example, it does. Advisory ceiling for additions, not a shrinking target.
 - **Stable core surface** (the API docs promise — cas-core §7.1): `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` (the client's algorithm seam), `Backend` (byte interface), `Stats`, `Codec[T]` (interface), `Object`, `Validator` (the optional object-invariant contract the store enforces), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `Envelope`, `EnvelopeFromBytes`, and the five sentinel `Err*` values — all in `package cas`.
-- Byte backends, typed codecs, the shipped hasher and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); the client hasher `sha256.New()` / `sha256.Of` / `sha256.Parse` / `sha256.Format` (`cas/hash/sha256` — the default go-cask's own clients wire in, and nothing in `cas` imports it; a short display form is `cas.Digest.Prefix(n)`, not a client helper); codecs `json.New[T]()` and `gob.New[T]()` (there is no `JSONCodec`/`GobCodec` type) — objects declare plain `cas.Digest` reference fields, which render themselves through `encoding.TextMarshaler` (`MarshalText`/`UnmarshalText`), so no hash JSON code lives anywhere; caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
+- Byte backends, typed codecs, the shipped hasher and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); the client hasher `sha256.New()` / `sha256.Of` / `sha256.Parse` / `sha256.Format` (`cas/hash/sha256` — the default go-cask's own clients wire in, and nothing in `cas` imports it; a short display form is `cas.Digest.Prefix(n)`, not a client helper); codecs `json.New[T]()`, `gob.New[T]()` and `binary.New[T](marshal, unmarshal)` (there is no `JSONCodec`/`GobCodec`/`BinaryCodec` type) — objects declare plain `cas.Digest` reference fields, which render themselves through `encoding.TextMarshaler` (`MarshalText`/`UnmarshalText`), so no hash JSON code lives anywhere; caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
 - Optional machinery stays out of the core: prefetch-on-access and cache-monitor recipes are demonstrated by `examples/notes` and `examples/artifacts` — never part of `package cas`; record the decision in `AGENTS.md` when made.
 - The `gitlike` layer is NOT part of `cas`.
 

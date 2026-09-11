@@ -33,6 +33,12 @@ first-cycle exceptions recorded in `versioning.md` §1.
   `backend.Option` contract.
 - Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
   to compare `sha256` and `sha512_256` in the same benchmark family.
+- Added the generic `cas/codec/binary` package for compact, caller-defined
+  binary payloads. It remains object-agnostic and expects the client to provide
+  a stable per-type binary layout and versioning strategy.
+- Tightened the `cas/codec/binary` README to document the intended `Blob` and
+  `Tree`-style binary layouts as app-defined schemas, with compact marshal/
+  unmarshal sketches that stay generic at the `cas` layer.
 
 ## [v1.3.0] - 2026-09-10
 

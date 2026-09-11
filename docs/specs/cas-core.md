@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v50
+version: v51
 ---
 
 # CAS Core — go-cask
@@ -393,11 +393,11 @@ type Codec[T any] interface {
 }
 ```
 
-- Default: the JSON codec `json.New[T]()` (`cas/codec/json`), wrapping std-lib `encoding/json`.
+- Default: the JSON codec `json.New[T]()` (`cas/codec/json`), wrapping std-lib `encoding/json`; a client MAY also opt into the compact binary codec `binary.New[T](marshal, unmarshal)` (`cas/codec/binary`) when a stable, app-defined binary payload is preferable to JSON.
 - Compression/encryption/protobuf are additional `Codec[T]` impls; they never change the byte layer.
 - Contract: `Unmarshal(Marshal(v)) == v` (round-trip) for all storable values.
 - **A reference field is a plain `cas.Digest` — there is no codec-side hash type.** `Digest` implements `encoding.TextMarshaler`/`TextUnmarshaler` (§4.1), so `encoding/json` renders a present reference as **one lowercase-hex JSON string** and decodes one back; an absent field renders as `""` unless it is tagged **`omitzero`** (Go 1.24 floor, still required: an older standard library ignores the unknown tag option and would emit `""` instead of omitting, silently changing the stored bytes and the object's address). An object type therefore writes `Ref cas.Digest \`json:"…,omitzero"\`` and nothing else — no wrapper to construct, no unwrapping call, no hand-written `MarshalJSON` for rendering. See §4.12 for a working object model.
-- **Rationale:** rendering a digest as hex is generic (no algorithm, no JSON), so it belongs to the type in the core rather than to one codec; the core still imports no `encoding/json`. A non-JSON codec carries no hash handling at all — `gob` encodes the `Digest` byte slice directly.
+- **Rationale:** rendering a digest as hex is generic (no algorithm, no JSON), so it belongs to the type in the core rather than to one codec; the core still imports no `encoding/json`. A non-JSON codec carries no hash handling at all — `gob` encodes the `Digest` byte slice directly, and a custom binary codec encodes only the app-defined payload layout the caller supplies.
 
 ### 4.7 `Object[T]` — self-describing typed object
 
@@ -574,7 +574,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 |---|---|
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` |
-| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`) |
+| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`; codecs `json.New[T]()` (`cas/codec/json`), `gob.New[T]()` (`cas/codec/gob`), `binary.New[T](marshal, unmarshal)` (`cas/codec/binary`) |
 | Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` (any short/display form is `cas.Digest.Prefix`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` |
