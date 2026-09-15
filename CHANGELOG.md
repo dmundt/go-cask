@@ -8,6 +8,19 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [Unreleased]
+
+### Changed
+
+- Normalized the benchmark suite into subsystem-specific files and tightened the benchmark names to distinguish setup cost, steady-state cost, hot/cold access patterns, and mixed workloads.
+- Added a realistic graph-traversal benchmark alongside the store workflow cases, and kept the benchmark matrix focused around a small canonical size ladder and anchor baselines.
+- Refreshed the benchmark README guidance to explain how to compare same-machine runs, when a baseline is valid, and how to interpret noisy outliers without over-reading a single `ns/op` figure.
+
+### Fixed
+
+- Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
+- Ran repository gofmt on the Go source tree without touching the external module cache.
+
 ## [v1.4.3] - 2026-09-15
 
 ### Changed
