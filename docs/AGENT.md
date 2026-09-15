@@ -9,6 +9,17 @@ version: v9
 
 Governs all non-instruction docs in `docs/`. The instruction specs under `docs/specs/` have their own `AGENT.md`. **Before any change**, read `docs/index.md` first (path → spec table), then this file (or `docs/specs/AGENT.md`) for detailed conventions.
 
+## Table of contents
+
+- [Format — OKF v0.2](#1-format--okf-v02)
+- [Trimming](#2-trimming)
+- [Adding a file](#3-adding-a-file)
+- [Removing/renaming a file](#4-removingrenaming-a-file)
+- [Versioning](#5-versioning)
+- [Constructor naming](#6-constructor-naming-in-example-code)
+- [Diagram and formatting rules](#7-diagram-and-formatting-rules)
+- [Editing and maintenance checklist](#8-editing-and-maintenance-checklist)
+
 ## 1. Format — OKF v0.2
 
 Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.

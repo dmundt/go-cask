@@ -9,6 +9,14 @@ version: v12
 
 The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; [`AGENT.md`](./AGENT.md) freezes package-local benchmark rules; this file is the operator's run-and-read guide.
 
+## Table of contents
+
+- [Benchmark layout](#1-benchmark-layout)
+- [Common flags](#2-common-flags)
+- [Regular perf suite](#3-regular-perf-suite)
+- [Bloom filter benchmark results](#32-bloom-filter-benchmark-results)
+- [How to use benchmark data](#4-how-to-use-benchmark-data)
+
 ## 1. Benchmark layout
 
 The suite is split by subsystem so each family keeps a coherent ownership boundary.

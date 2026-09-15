@@ -6,6 +6,16 @@
 
 A generic, Git-like **content-addressable store** for Go: store any bytes once under the digest of their content, reference them by digest, and build typed object graphs on top — reusable across apps and domains.
 
+## Table of contents
+
+- [Design decisions](#design-decisions)
+- [Repository layout](#repository-layout)
+- [Core interfaces at a glance](#core-interfaces-at-a-glance)
+- [Recommended defaults](#recommended-defaults)
+- [Security note](#security-note)
+- [Getting started](#getting-started)
+- [Documentation map](#documentation-map)
+
 - **Content-addressable** — same bytes ⇒ same digest ⇒ stored once (dedup).
 - **Immutable and verifiable** — objects never change; `Verify` detects corruption.
 - **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).

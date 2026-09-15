@@ -25,6 +25,16 @@ version: v22
 > enters context a few lines later by reading that spec file. This ensures
 > you never miss a rule that applies to your change.
 
+## Table of contents
+
+- [Project context](#project-context)
+- [Architecture](#architecture)
+- [Design principles](#design-principles)
+- [Reference implementation](#reference-implementation)
+- [Usage example](#usage-example)
+- [Extension guide](#extension-guide)
+- [Constraints and conventions](#constraints-and-conventions)
+
 ---
 
 ## Project Context

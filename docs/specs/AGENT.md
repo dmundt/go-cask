@@ -11,6 +11,17 @@ status: stable
 
 Governs the other files in this folder. Every agent (Copilot, other AI tooling) and every human maintainer editing any `docs/specs/*.md` MUST follow it so the folder stays one coherent specification set. Scope: the normative specs (core architecture, coding style, security, APIs, viewer design, examples, performance, testing, operations). The repo-root `AGENTS.md` is the aggregator pointing at them (outside this folder; follows the same style where applicable).
 
+## Table of contents
+
+- [Purpose and scope](#1-purpose-and-scope)
+- [File naming](#2-file-naming)
+- [Frontmatter](#3-frontmatter-required)
+- [Document structure](#4-document-structure)
+- [Normative language and tone](#5-normative-language-and-tone)
+- [Terminology](#6-terminology-shared-glossary)
+- [Cross-referencing](#7-cross-referencing)
+- [Maintenance checklist](#8-maintenance-checklist)
+
 ## 1. Purpose and scope
 
 - The folder is the **single source of truth** for how go-cask is designed, built, secured, tested, and operated.
@@ -18,6 +29,8 @@ Governs the other files in this folder. Every agent (Copilot, other AI tooling) 
 - New files only when a real gap exists (cf. examples.md §5); prefer extending an existing file.
 
 ## 2. File naming
+
+Long docs in this folder may add a shallow table of contents directly under the H1 when the file has multiple numbered sections. Keep it short and stable: 3–8 links, no deep nesting, and only for documents that are long enough to benefit from scanning.
 
 - Pattern `<Topic>.md`, one topic per file, lowercase kebab-case domain noun. These files are the instruction set under `docs/specs/`, so filenames carry **no** `.instructions` suffix.
 - Topics are domain nouns: `api-design`, `backend-architecture`, `branch-naming`, `cas-core`, `cli`, `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`, `frontend-architecture`, `library-design`, `object-versioning`, `operations`, `performance`, `testing-strategy`, `versioning`, `viewer-design`, `viewer-security`.
