@@ -177,6 +177,28 @@ func TestPackBackendRejectsInvalidDigestAndCloseIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPackBackendRotatesByByteLimit(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "bytes")
+	b, err := New(base, WithEnabled(), WithPackMaxBytes(64), WithPackMaxEntries(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	for _, d := range []cas.Digest{cas.NewDigest([]byte("one")), cas.NewDigest([]byte("two"))} {
+		if err := b.Put(ctx, d, bytesReader([]byte("payload"))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(b.index) != 2 {
+		t.Fatalf("index len = %d, want 2", len(b.index))
+	}
+	if b.packEntries == 0 {
+		t.Fatal("packEntries should be > 0 after byte-based rotation")
+	}
+}
+
 func bytesReader(data []byte) io.Reader {
 	return bytes.NewReader(data)
 }
