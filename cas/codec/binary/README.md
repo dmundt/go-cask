@@ -13,8 +13,21 @@ This package is intentionally object-agnostic. It does not encode `Blob`, `Tree`
 
 ## Typical use
 
+The package follows the repo's single codec-stack model: a wrapper codec keeps an optional inner codec and transforms the serialized bytes without changing the `cas` object model.
+
 ```go
-codec := binary.New[MyType](
+codec := binary.New(
+    json.New[MyType](),
+    func(data []byte) ([]byte, error) { /* binary transport transform */ },
+    func(data []byte) ([]byte, error) { /* reverse transform */ },
+)
+store := cas.New(raw, codec, sha256.New())
+```
+
+For a direct custom binary payload without an inner codec, use `binary.NewRaw`:
+
+```go
+codec := binary.NewRaw(
     func(v MyType) ([]byte, error) { /* custom binary layout */ },
     func(data []byte) (MyType, error) { /* parse it back */ },
 )

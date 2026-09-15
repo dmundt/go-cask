@@ -144,7 +144,7 @@ var benchCodecs = []struct {
 	{name: "flate", new: func() cas.Codec[testNote] { return flatecodec.New(jsoncodec.New[testNote]()) }},
 	{name: "gob", new: func() cas.Codec[testNote] { return gobcodec.New[testNote]() }},
 	{name: "binary", new: func() cas.Codec[testNote] {
-		return binarycodec.New(marshalBinaryNote, unmarshalBinaryNote)
+		return binarycodec.NewRaw(marshalBinaryNote, unmarshalBinaryNote)
 	}},
 }
 

@@ -2,8 +2,11 @@ package binary
 
 import (
 	"bytes"
+	"errors"
 	"reflect"
 	"testing"
+
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 type sample struct {
@@ -14,7 +17,7 @@ type sample struct {
 }
 
 func TestCodecRoundTrip(t *testing.T) {
-	codec := New(
+	codec := NewRaw(
 		func(v sample) ([]byte, error) {
 			var buf bytes.Buffer
 			buf.WriteByte(1)
@@ -83,8 +86,36 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCodecCascadeRoundTrip(t *testing.T) {
+	codec := New(jsoncodec.New[sample](), func(data []byte) ([]byte, error) {
+		return append([]byte("BIN:"), data...), nil
+	}, func(data []byte) ([]byte, error) {
+		if !bytes.HasPrefix(data, []byte("BIN:")) {
+			return nil, errors.New("missing binary prefix")
+		}
+		return data[4:], nil
+	})
+
+	want := sample{Name: "demo", Count: 7, Enabled: true, Data: []byte{0x1, 0x2, 0x3}}
+	data, err := codec.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !bytes.HasPrefix(data, []byte("BIN:")) {
+		t.Fatalf("wrapped payload missing prefix: %q", data)
+	}
+
+	got, err := codec.Unmarshal(data)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
+	}
+}
+
 func TestCodecErrorsWhenCallbacksMissing(t *testing.T) {
-	codec := New[sample](nil, nil)
+	codec := New[sample](nil, nil, nil)
 	if _, err := codec.Marshal(sample{Name: "demo"}); err == nil {
 		t.Fatal("Marshal with nil function returned nil error, want non-nil")
 	}

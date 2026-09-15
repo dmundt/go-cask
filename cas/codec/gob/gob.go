@@ -14,16 +14,43 @@ package gob
 import (
 	"bytes"
 	"encoding/gob"
+
+	"github.com/dmundt/go-cask/cas"
 )
 
-// Codec[T] serializes values with encoding/gob: compact binary output.
-type Codec[T any] struct{}
+// Codec[T] serializes values with encoding/gob. If a wrapped codec is supplied,
+// the value is serialized through that codec first and then gob-encoded as a
+// transport layer. This keeps the shape of the object graph unchanged while
+// allowing codec stacks to be composed transparently.
+type Codec[T any] struct {
+	next cas.Codec[T]
+}
 
-// New returns a gob codec for type T.
-func New[T any]() Codec[T] { return Codec[T]{} }
+// New returns a gob codec for type T. When a wrapped codec is supplied, gob
+// becomes the outermost layer in a cascade.
+func New[T any](next ...cas.Codec[T]) Codec[T] {
+	var wrapped cas.Codec[T]
+	if len(next) > 0 {
+		wrapped = next[0]
+	}
+	return Codec[T]{next: wrapped}
+}
 
-// Marshal gob-encodes v.
-func (Codec[T]) Marshal(v T) ([]byte, error) {
+// Marshal gob-encodes v directly or, when wrapped, the bytes produced by the
+// inner codec.
+func (c Codec[T]) Marshal(v T) ([]byte, error) {
+	if c.next != nil {
+		payload, err := c.next.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var buf bytes.Buffer
+		if err := gob.NewEncoder(&buf).Encode(payload); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(v); err != nil {
 		return nil, err
@@ -31,8 +58,18 @@ func (Codec[T]) Marshal(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Unmarshal gob-decodes data into a fresh T.
-func (Codec[T]) Unmarshal(data []byte) (T, error) {
+// Unmarshal gob-decodes data into a fresh T, or into the wrapped payload bytes
+// when the codec is composed with an inner layer.
+func (c Codec[T]) Unmarshal(data []byte) (T, error) {
+	var zero T
+	if c.next != nil {
+		var payload []byte
+		if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&payload); err != nil {
+			return zero, err
+		}
+		return c.next.Unmarshal(payload)
+	}
+
 	var v T
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&v); err != nil {
 		return v, err

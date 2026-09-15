@@ -8,6 +8,14 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [v1.4.3] - 2026-09-15
+
+### Changed
+
+- Unified the codec wrapper model around a single stack pattern: outer codecs wrap an inner codec and transform only serialized bytes, with `binary.New(inner, wrap, unwrap)` and `binary.NewRaw(marshal, unmarshal)` as the canonical constructors.
+- Kept every codec wrapper cascadeable by design and refreshed the docs to state the stack pattern explicitly across the package docs, specs, and agent guidance.
+- Synced the benchmark and documentation set to the final wrapper API so the examples, root docs, and specs describe the same stack contract.
+
 ## [v1.4.2] - 2026-09-15
 
 ### Changed

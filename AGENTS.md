@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v21
+version: v22
 ---
 
 # Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
@@ -395,8 +395,7 @@ repository): switching algorithms means re-digesting and rewriting every object
 `cas/hash/sha256` for go-cask's own clients is the default, not a core rule.
 
 **Add a codec** (gzip, protobuf, msgpack, encrypted):
-Implement `Codec[T]` (e.g. wrap the JSON codec `json.New[T]` with
-compression/encryption) and pass it to `cas.New`. Do not change `Backend`.
+Implement `Codec[T]` as a stack wrapper: the codec keeps an optional inner codec, serializes through it first, and then performs the outer representation transform (compression/encryption). The stack shape is a policy: wrappers MUST be cascadeable by design, and callers SHOULD compose them as `outer.New(inner)` or `binary.New(inner, wrap, unwrap)`. Do not change `Backend`.
 
 **Add cache policy**: extend `CachedStore[T]` or add a new wrapper; keep the
 `CachedObject[T]` lazy-load contract and metrics counters.

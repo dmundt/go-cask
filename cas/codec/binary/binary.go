@@ -10,12 +10,21 @@
 // stable per-type binary layout and a versioning strategy.
 package binary
 
-import "errors"
+import (
+	"errors"
 
-// Codec[T] serializes values with caller-supplied binary marshal/unmarshal
-// functions. It is intentionally object-agnostic: callers define the actual
-// binary layout for each type they store.
+	"github.com/dmundt/go-cask/cas"
+)
+
+// Codec[T] serializes values as a codec stack: the inner codec owns the value
+// representation, and the binary layer may wrap those bytes with an explicit
+// binary transport transformation. This keeps the stack model uniform across the
+// codec family while still allowing an app-defined raw binary format when the
+// inner codec is nil.
 type Codec[T any] struct {
+	next      cas.Codec[T]
+	wrap      func([]byte) ([]byte, error)
+	unwrap    func([]byte) ([]byte, error)
 	marshal   func(T) ([]byte, error)
 	unmarshal func([]byte) (T, error)
 }
@@ -25,23 +34,53 @@ var (
 	errNilUnmarshal = errors.New("binarycodec: unmarshal is nil")
 )
 
-// New returns a binary codec for type T using the provided marshal and
-// unmarshal functions.
-func New[T any](marshal func(T) ([]byte, error), unmarshal func([]byte) (T, error)) Codec[T] {
+// New builds a binary codec stack around an inner codec. The inner codec
+// serializes the value; the binary wrapper can then transform those bytes to a
+// custom binary representation. When no inner codec is supplied, New behaves as
+// a direct raw custom-binary codec.
+func New[T any](next cas.Codec[T], wrap func([]byte) ([]byte, error), unwrap func([]byte) ([]byte, error)) Codec[T] {
+	return Codec[T]{next: next, wrap: wrap, unwrap: unwrap}
+}
+
+// NewRaw returns a direct custom-binary codec for T without an inner codec.
+func NewRaw[T any](marshal func(T) ([]byte, error), unmarshal func([]byte) (T, error)) Codec[T] {
 	return Codec[T]{marshal: marshal, unmarshal: unmarshal}
 }
 
-// Marshal calls the caller's marshal function.
+// Marshal executes the stack: if an inner codec is present, it serializes the
+// value through that codec first and then passes the result through the binary
+// transform. Otherwise it uses the raw custom binary marshaller.
 func (c Codec[T]) Marshal(v T) ([]byte, error) {
+	if c.next != nil {
+		if c.wrap == nil {
+			return nil, errNilMarshal
+		}
+		payload, err := c.next.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return c.wrap(payload)
+	}
 	if c.marshal == nil {
 		return nil, errNilMarshal
 	}
 	return c.marshal(v)
 }
 
-// Unmarshal calls the caller's unmarshal function.
+// Unmarshal reverses the stack by restoring the inner payload and then decoding
+// through the inner codec when one is present.
 func (c Codec[T]) Unmarshal(data []byte) (T, error) {
 	var zero T
+	if c.next != nil {
+		if c.unwrap == nil {
+			return zero, errNilUnmarshal
+		}
+		payload, err := c.unwrap(data)
+		if err != nil {
+			return zero, err
+		}
+		return c.next.Unmarshal(payload)
+	}
 	if c.unmarshal == nil {
 		return zero, errNilUnmarshal
 	}

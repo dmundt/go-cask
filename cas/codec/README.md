@@ -28,6 +28,16 @@ The codec layer defines how typed values are serialized before they are stored a
 - Use gob only for explicit Go-to-Go compatibility or migration cases.
 - Keep custom codecs explicit when the app needs a different binary or domain-specific format.
 
+## Cascading codec layers
+
+Compression codecs are wrappers, not replacements: they can be stacked around a base codec to produce a new transitive codec while leaving the core `cas` semantics unchanged.
+
+```go
+codec := flate.New(gzip.New(json.New[MyType]()))
+```
+
+The inner codec owns the value serialization, and each outer layer adds another representation step. This makes it easy to combine portable object encoding with a chosen compression policy without altering the store or object identity model.
+
 ## Notes
 
 A good codec matches the app's durability, portability, and compatibility requirements. A codec is not the right default if it is Go-only, unstable across versions, or unsuitable for long-lived object identity.

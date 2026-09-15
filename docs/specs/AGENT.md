@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v21
+version: v22
 tags: [go-cask]
 status: stable
 ---
@@ -49,6 +49,7 @@ version: v5
 5. Closing `## N. Checklist` of acceptance items derived from the body.
 
 - Requirements stated once and referenced, never duplicated with drift. Tables for enumerations/contracts; fenced code (`go`, `yaml`, `text`, `mermaid`) for concrete shapes; prose for rationale. Reference the shared glossary (§6); do not redefine terms.
+- **Codec wrappers are cascadeable by design.** Any new `Codec[T]` wrapper MUST preserve the single-stack rule: an outer codec wraps an inner codec and transforms only the serialized bytes. Set the canonical pattern in docs and tests; do not add constructor variants that break composition.
 
 ## 5. Normative language and tone
 

@@ -3,7 +3,9 @@ package gob_test
 import (
 	"testing"
 
+	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 	"github.com/dmundt/go-cask/cas/codec/gob"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 type obj struct {
@@ -14,6 +16,22 @@ type obj struct {
 func TestRoundTrip(t *testing.T) {
 	c := gob.New[obj]()
 	orig := obj{Title: "gob", Body: "test"}
+	data, err := c.Marshal(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Unmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != orig {
+		t.Fatalf("round-trip: %+v != %+v", got, orig)
+	}
+}
+
+func TestCascadeRoundTrip(t *testing.T) {
+	c := gob.New(flatecodec.New(jsoncodec.New[obj]()))
+	orig := obj{Title: "gob", Body: "cascaded"}
 	data, err := c.Marshal(orig)
 	if err != nil {
 		t.Fatal(err)
