@@ -17,7 +17,7 @@ import (
 )
 
 func bloomDigest(i int) cas.Digest {
-	return sha256.Of([]byte(fmt.Sprintf("bloom-%08d", i)))
+	return sha256.Of(fmt.Appendf(nil, "bloom-%08d", i))
 }
 
 func bloomDigests(n int) []cas.Digest {
@@ -55,6 +55,23 @@ func BenchmarkBloomStandardContainsHit(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		_ = f.Contains(items[i%len(items)])
 	}
+}
+
+func BenchmarkBloomStandardContainsHitBaseline(b *testing.B) {
+	items := bloomDigests(128 * 1024)
+	f, err := standard.New(uint64(len(items)), 0.01)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, d := range items {
+		f.Add(d)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		_ = f.Contains(items[0])
+	}
+	benchmarkSummary(b, "bloom/baseline/standard-contains-hit", len(items))
 }
 
 func BenchmarkBloomStandardContainsMiss(b *testing.B) {
@@ -153,4 +170,3 @@ func BenchmarkBloomGuardExists(b *testing.B) {
 		}
 	}
 }
-

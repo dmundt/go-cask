@@ -12,7 +12,11 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 
 ## Suite boundaries
 
-- Keep fixed-size microbenchmarks in `bench_test.go`.
+- Keep shared benchmark helpers in `shared_test.go`.
+- Keep fixed-size microbenchmarks grouped by concern in package-local files such as
+  `store_bench_test.go`, `backend_bench_test.go`, `codec_bench_test.go`,
+  `hash_bench_test.go`, `cache_bench_test.go`, `bloom_bench_test.go`, and
+  `verify_bench_test.go`.
 - Keep opt-in state-scaling probes in `scale_bench_test.go`.
 - Run typed store benchmarks on the memory backend to avoid disk noise.
 - Measure filesystem behavior only in explicit `FSBackend` cases using
@@ -27,8 +31,12 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 - Call `b.SetBytes()` only when one operation processes one payload of known
   size. Do not invent byte counts for `Exists`, `Delete`, `List`, `Stats`,
   digest parsing, concurrent mixed operations, or layout probes.
-- Complete setup before `b.ResetTimer()`. Stop the timer before reports,
-  projections, or cleanup that are not part of the measured operation.
+- Complete setup before `b.ResetTimer()`. Move one-time temp-dir creation,
+  prefill, and object setup outside the measured loop when they are not part of
+  the operation under test. Stop the timer before reports, projections, or
+  cleanup that are not part of the measured operation.
+- Keep benchmark output clean by default. Emit detailed summary logs only when
+  `CASK_BENCH_SUMMARY=1` is set; otherwise use the standard Go benchmark output.
 - Consume returned readers fully and close them; fail the benchmark on read or
   close errors.
 - Use deterministic payloads. Put benchmarks MUST vary content when measuring

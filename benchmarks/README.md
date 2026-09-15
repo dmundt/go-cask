@@ -1,22 +1,31 @@
 ---
 type: Guide
 title: Benchmarks — go-cask
-description: How to run and read the go-cask benchmarks — the regular performance suite (benchmarks/bench_test.go) and the on-demand state-scaling probes (benchmarks/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v11
+description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
+version: v12
 ---
 
 # Benchmarks — go-cask
 
 The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; [`AGENT.md`](./AGENT.md) freezes package-local benchmark rules; this file is the operator's run-and-read guide.
 
-## 1. The two suites
+## 1. Benchmark layout
 
-| Suite | File | Measures | Gate |
-|---|---|---|---|
-| Regular perf | `benchmarks/bench_test.go` | Per-op cost at fixed, small object counts (64 B – 1 MiB, flat vs. fan-out) | none (manual) |
-| Scale probes | `benchmarks/scale_bench_test.go` | Per-op cost as the store already holds **N objects** (state scaling), projected to a 10^10-object store | skips unless `CASK_SCALE_OBJECTS` set |
+The suite is split by subsystem so each family keeps a coherent ownership boundary.
 
-Both live in `benchmarks/` and use standard `go test -bench`. Every timed benchmark reports allocations. `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput is reported only where one payload of known size defines each operation; benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
+| File | Role |
+|---|---|
+| [`shared_test.go`](./shared_test.go) | Shared benchmark scaffolding: `testNote`, size matrix, codec/hasher matrix, summary helper |
+| [`store_bench_test.go`](./store_bench_test.go) | Core store API benchmarks (`Put`, `Get`, round-trip) |
+| [`backend_bench_test.go`](./backend_bench_test.go) | Raw backend write/read path for in-memory and fs backends |
+| [`codec_bench_test.go`](./codec_bench_test.go) | Codec-only and full codec+hasher round-trip benchmarks |
+| [`hash_bench_test.go`](./hash_bench_test.go) | Hasher digest and parse benchmarks |
+| [`cache_bench_test.go`](./cache_bench_test.go) | Cache hit-path benchmarks |
+| [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard benchmarks |
+| [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, and concurrency checks |
+| [`scale_bench_test.go`](./scale_bench_test.go) | On-demand state-scaling probes |
+
+All files live in `benchmarks/` and use standard `go test -bench`. Every timed benchmark reports allocations. `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput is reported only where one payload of known size defines each operation; benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
 
 ## 2. Common flags
 
@@ -31,27 +40,42 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `-count <n>` | Repeats (≥ 5 for stable numbers) |
 | `-v` | Shows the scale probes' projection lines |
 | `-timeout <dur>` | Whole-run timeout (default 10 min); `-timeout 0` for long prefills |
+| `CASK_BENCH_SUMMARY=1` | Emits the extra summary logs used for manual comparison and diagnosis; default output stays standard Go benchmark output |
 
 ## 3. Regular perf suite
 
 ### 3.1 Benchmarks
 
-| Benchmark | Cases | Tells you |
-|---|---|---|
-| `BenchmarkStorePut` | 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Typed `Store[T].Put`: codec + hashing + write |
-| `BenchmarkStoreGet` | 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Typed `Store[T].Get`: decode + read |
-| `BenchmarkMemBackendPut/Get` | 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 256 KiB, 1 MiB | Raw memory-backend byte path |
-| `BenchmarkFSBackendPut/Get` | `flat` vs `fan-out` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 256 KiB, 1 MiB | Real-disk `fs` behavior |
-| `BenchmarkStoreCodecHashRoundTrip` | `json`/`gzip`/`zlib`/`flate`/`gob`/`binary` × `sha256`/`sha512`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Comparable end-to-end codec/hash combinations |
-| `BenchmarkCodecMarshalUnmarshal` | `json`/`gzip`/`zlib`/`flate`/`gob`/`binary` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Codec-only marshal/unmarshal cost |
-| `BenchmarkHasherDigest` | `sha256`/`sha512`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Hash-only throughput and allocation profile |
-| `BenchmarkRoundTrip` | Put + Get | End-to-end cycle |
-| `BenchmarkVerify` | intact object | Integrity scan cost |
-| `BenchmarkParseDigest` | `valid`/`invalid` | Digest parsing (`sha256.Parse`: printable form + bare hex) |
-| `BenchmarkParallelPutGet` | concurrent | Lock-free reads + mutex writes |
-| `BenchmarkBloomStandard*` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | hot-path membership + update + guard checks | Bloom filter cost profile for advisory CAS pre-checks |
+The regular perf suite is split across the subsystem files listed above. The canonical comparisons are grouped by concern, not by a single monolithic file.
 
-Store cases run against the in-memory `memory` backend (deterministic); the `fs` cases write to an auto-cleaned temp dir.
+| Benchmark | File | Cases | Tells you |
+|---|---|---|---|
+| `BenchmarkStorePut` | [`store_bench_test.go`](./store_bench_test.go) | `steady-state` + `cold-start` across 64 B–1 MiB | Typed `Store[T].Put` cost under different setup assumptions |
+| `BenchmarkStoreGetHot` / `BenchmarkStoreGetCold` / `BenchmarkStoreGetMixed` | [`store_bench_test.go`](./store_bench_test.go) | hot, cold-start, and mixed hot/cold read patterns | Whether reads are dominated by object locality or one-time setup |
+| `BenchmarkStoreBaselineJSONSHA256` | [`store_bench_test.go`](./store_bench_test.go) | 1 KiB anchor | Single canonical comparison point for JSON + SHA-256 |
+| `BenchmarkStoreWorkflowWriteReadVerify` | [`store_bench_test.go`](./store_bench_test.go) | fixed-size write/read/verify workflow | Realistic end-to-end object lifecycle | 
+| `BenchmarkRoundTrip` | [`store_bench_test.go`](./store_bench_test.go) | one fixed-size cycle | Minimal store round-trip cost |
+| `BenchmarkBackendWriteRead` / `BenchmarkBackendWriteReadBaseline` | [`backend_bench_test.go`](./backend_bench_test.go) | `mem` + `fs` across the same size ladder | Raw backend byte-path behavior and a clean baseline |
+| `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageMarshalUnmarshal` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | codec/hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations |
+| `BenchmarkHashPackageDigest` / `BenchmarkHashPackageParse` / `BenchmarkHashPackageDigestBaseline` | [`hash_bench_test.go`](./hash_bench_test.go) | `sha256`/`sha512`/`sha512_256` × sizes + valid/invalid parse | Hash-only throughput and parsing costs |
+| `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost and a clean single-object reference |
+| `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile and a stable reference for hit-path checks |
+| `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, parse, concurrency | Integrity, parsing, and hot/cold parallel access |
+
+Store cases run against the in-memory backend (deterministic); the `fs` cases write to an auto-cleaned temp dir. The suite intentionally distinguishes steady-state, warm, cold, and baseline cases so the developer can tell whether a change affects the core path or just the one-time setup path.
+
+### 3.1.1 How to read benchmark numbers
+
+Read benchmark output by workload, not by a single aggregated `ns/op` value.
+
+- Compare like with like: same machine, same Go version, same payload mix, same backend, same codec+hasher combination, and a repeated run (`-count=5` or more).
+- Separate setup cost from steady-state cost: `setup/cold-start` includes object creation or temp-dir creation; `steady-state` measures the repeated operation after setup is done.
+- Prefer anchors: a baseline case such as JSON + SHA-256 is a reference point, not a universal winner. Use it to judge deltas within the same family.
+- Keep hot and cold measurements distinct: a mixed hot/cold benchmark is not a substitute for a true cold-start or steady-state read. A mixed run should document the hot-set size and cold ratio in its name or comment.
+- Noise guard: if a single benchmark is more than ~2x away from the median on the same machine, rerun before interpreting it as a real regression. A noisy outlier is usually a scheduling or cache-state artifact, not a trustworthy result.
+- Do not over-interpret one machine run. Small deltas can be noise; large deltas only matter when the workload and payload mix are the same.
+
+The benchmark matrix stays intentionally narrow: a small set of anchor sizes and one reference case per family keeps the suite diagnosable without turning it into a wall of unanchored numbers.
 
 ### 3.2 Bloom filter benchmark results
 
