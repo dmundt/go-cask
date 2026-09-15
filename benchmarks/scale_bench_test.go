@@ -38,6 +38,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
 	sha512_256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 )
 
@@ -104,6 +105,7 @@ func scaleHashers() []struct {
 		of   scaleHashFunc
 	}{
 		{name: "sha256", of: sha256.Of},
+		{name: "sha512", of: sha512.Of},
 		{name: "sha512_256", of: sha512_256.Of},
 	}
 }

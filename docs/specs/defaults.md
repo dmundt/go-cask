@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v21
+version: v22
 ---
 
 # Defaults and Behavior — go-cask
@@ -28,7 +28,8 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Fan-out layout | `FanOut=2`, `FanLevels=1` → `<base>/<fan-out dirs>/<full hex digest>`; no algorithm directory; file name always the full digest | cas-core §4.4 |
 | Fan-out bound | `FanLevels × FanOut ≤ 64` | cas-core §4.4 |
 | Dir / file perms | `0o755` / `0o644` | cas-core §4.4 |
-| Default codec | JSON (`json.New[T]()`) | cas-core §4.6 |
+| Default codec | JSON (`json.New[T]()`), compressed by default with `flate` for size-sensitive payloads | cas-core §4.6 |
+| Default compression codec | `flate` (`cas/codec/flate`) as the default compression wrapper for durable payloads | cas-core §4.6 |
 | Compact binary codec | Optional app-defined payload codec (`binary.New[T](marshal, unmarshal)`) for stable, compact binary payloads | cas-core §4.6 |
 | Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |

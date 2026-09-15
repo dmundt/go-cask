@@ -1,0 +1,70 @@
+// Package zlib provides a Codec[T] that wraps another codec and compresses its
+// serialized bytes with the standard library's compress/zlib package.
+package zlib
+
+import (
+	"bytes"
+	"compress/zlib"
+	"errors"
+	"io"
+
+	"github.com/dmundt/go-cask/cas"
+)
+
+// Codec[T] wraps a base codec and compresses bytes with zlib before storing or
+// after reading them back.
+type Codec[T any] struct {
+	next cas.Codec[T]
+}
+
+var errNilCodec = errors.New("zlibcodec: next codec is nil")
+
+// New returns a zlib-compressing codec for type T.
+func New[T any](next cas.Codec[T]) Codec[T] {
+	return Codec[T]{next: next}
+}
+
+// Marshal serializes v with the wrapped codec and then zlib-compresses the
+// result.
+func (c Codec[T]) Marshal(v T) ([]byte, error) {
+	if c.next == nil {
+		return nil, errNilCodec
+	}
+
+	payload, err := c.next.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	w := zlib.NewWriter(&buf)
+	if _, err := w.Write(payload); err != nil {
+		_ = w.Close()
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Unmarshal inflates the incoming data and then decodes it with the wrapped
+// codec.
+func (c Codec[T]) Unmarshal(data []byte) (T, error) {
+	var zero T
+	if c.next == nil {
+		return zero, errNilCodec
+	}
+
+	r, err := zlib.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return zero, err
+	}
+	defer r.Close()
+
+	payload, err := io.ReadAll(r)
+	if err != nil {
+		return zero, err
+	}
+	return c.next.Unmarshal(payload)
+}

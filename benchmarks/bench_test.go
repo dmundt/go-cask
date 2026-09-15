@@ -18,9 +18,13 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	binarycodec "github.com/dmundt/go-cask/cas/codec/binary"
+	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 	gobcodec "github.com/dmundt/go-cask/cas/codec/gob"
+	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	zlibcodec "github.com/dmundt/go-cask/cas/codec/zlib"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
 	sha512_256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 )
 
@@ -135,6 +139,9 @@ var benchCodecs = []struct {
 	new  func() cas.Codec[testNote]
 }{
 	{name: "json", new: func() cas.Codec[testNote] { return jsoncodec.New[testNote]() }},
+	{name: "gzip", new: func() cas.Codec[testNote] { return gzipcodec.New(jsoncodec.New[testNote]()) }},
+	{name: "zlib", new: func() cas.Codec[testNote] { return zlibcodec.New(jsoncodec.New[testNote]()) }},
+	{name: "flate", new: func() cas.Codec[testNote] { return flatecodec.New(jsoncodec.New[testNote]()) }},
 	{name: "gob", new: func() cas.Codec[testNote] { return gobcodec.New[testNote]() }},
 	{name: "binary", new: func() cas.Codec[testNote] {
 		return binarycodec.New(marshalBinaryNote, unmarshalBinaryNote)
@@ -146,6 +153,7 @@ var benchHashers = []struct {
 	new  func() cas.Hasher
 }{
 	{name: "sha256", new: func() cas.Hasher { return sha256.New() }},
+	{name: "sha512", new: func() cas.Hasher { return sha512.New() }},
 	{name: "sha512_256", new: func() cas.Hasher { return sha512_256.New() }},
 }
 

@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmarks — the regular performance suite (benchmarks/bench_test.go) and the on-demand state-scaling probes (benchmarks/scale_bench_test.go); commands, parameters, purpose, and how to interpret the output.
-version: v10
+version: v11
 ---
 
 # Benchmarks — go-cask
@@ -42,9 +42,9 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `BenchmarkStoreGet` | 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Typed `Store[T].Get`: decode + read |
 | `BenchmarkMemBackendPut/Get` | 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 256 KiB, 1 MiB | Raw memory-backend byte path |
 | `BenchmarkFSBackendPut/Get` | `flat` vs `fan-out` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 256 KiB, 1 MiB | Real-disk `fs` behavior |
-| `BenchmarkStoreCodecHashRoundTrip` | `json`/`gob`/`binary` × `sha256`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Comparable end-to-end codec/hash combinations |
-| `BenchmarkCodecMarshalUnmarshal` | `json`/`gob`/`binary` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Codec-only marshal/unmarshal cost |
-| `BenchmarkHasherDigest` | `sha256`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Hash-only throughput and allocation profile |
+| `BenchmarkStoreCodecHashRoundTrip` | `json`/`gzip`/`zlib`/`flate`/`gob`/`binary` × `sha256`/`sha512`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Comparable end-to-end codec/hash combinations |
+| `BenchmarkCodecMarshalUnmarshal` | `json`/`gzip`/`zlib`/`flate`/`gob`/`binary` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Codec-only marshal/unmarshal cost |
+| `BenchmarkHasherDigest` | `sha256`/`sha512`/`sha512_256` × 64 B, 256 B, 1 KiB, 8 KiB, 64 KiB, 1 MiB | Hash-only throughput and allocation profile |
 | `BenchmarkRoundTrip` | Put + Get | End-to-end cycle |
 | `BenchmarkVerify` | intact object | Integrity scan cost |
 | `BenchmarkParseDigest` | `valid`/`invalid` | Digest parsing (`sha256.Parse`: printable form + bare hex) |
@@ -86,235 +86,72 @@ In practice, the standard filter is the best default for a hot-path `Exists` pre
 
 ### 3.3 Codec/hash matrix
 
-`BenchmarkStoreCodecHashRoundTrip` keeps the object type and the in-memory store
-backend constant while sweeping the payload size, codec, and hasher. The matrix
-covers:
+The raw round-trip matrix now lives in [`data/store-codec-hash-roundtrip.json`](./data/store-codec-hash-roundtrip.json). The README keeps the dense narrative summary; the JSON file is the canonical, queryable source for deeper slicing by codec, hasher, payload size, or runner metadata.
+
+The matrix covers:
 
 - sizes: `64B`, `256B`, `1KiB`, `8KiB`, `64KiB`, `1MiB`
-- codecs: `json`, `gob`, `binary`
-- hashers: `sha256`, `sha512_256`
+- codecs: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`
+- hashers: `sha256`, `sha512`, `sha512_256`
 
-The sub-benchmark naming format is:
+Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark measures full typed-store round trips: codec marshal/unmarshal, envelope, hashing, and memory-backend Put/Get. It does not isolate codec or hash cost by itself. Gob remains the Go-compatibility comparison; JSON remains the portable default; binary is the compact caller-defined format.
 
-```text
-BenchmarkStoreCodecHashRoundTrip/<codec>/<hasher>/<size>
-```
-
-Examples:
-
-```text
-BenchmarkStoreCodecHashRoundTrip/json/sha256/1KiB
-BenchmarkStoreCodecHashRoundTrip/json/sha512_256/1KiB
-BenchmarkStoreCodecHashRoundTrip/gob/sha256/1KiB
-BenchmarkStoreCodecHashRoundTrip/gob/sha512_256/1KiB
-BenchmarkStoreCodecHashRoundTrip/binary/sha256/1KiB
-BenchmarkStoreCodecHashRoundTrip/binary/sha512_256/1KiB
-```
-
-This measures full typed-store round trips: codec marshal/unmarshal, envelope,
-hashing, and memory-backend Put/Get. It does not isolate codec or hash cost in
-isolation. Gob remains a Go-only compatibility comparison; JSON is the portable
-default; binary uses the benchmark's stable caller-defined layout.
-
-Run only this matrix:
+The JSON file also records runner metadata and the `winner` list used below so future analyses can be repeated without re-editing the README by hand.
 
 ```powershell
 go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=5
 ```
 
-### 3.4 Observed results (median of 5 runs)
-
 #### Winner by payload size
+
+This is the canonical winner list from the JSON matrix, using the median of 5 runs for each `codec + hasher + payload` cell. Read `ns/op` first, then check `MB/s` and `allocs/op` together.
 
 | Payload size | Winner | ns/op | MB/s | B/op | allocs/op |
 |---|---|---:|---:|---:|---:|
-| 64B | `binary` + `sha256` | 1481 | 43.22 | 1976 | 25 |
-| 256B | `binary` + `sha256` | 2092 | 122.35 | 2920 | 28 |
-| 1KiB | `json` + `sha256` | 6442 | 158.97 | 8554 | 27 |
-| 8KiB | `json` + `sha256` | 47109 | 173.89 | 65898 | 39 |
-| 64KiB | `binary` + `sha256` | 364266 | 179.91 | 620961 | 58 |
-| 1MiB | `binary` + `sha256` | 2685813 | 390.41 | 9224386 | 74 |
+| 64B | `binary` + `sha512_256` | 1479 | 43.28 | 2072 | 25 |
+| 256B | `binary` + `sha256` | 2270 | 112.78 | 2920 | 28 |
+| 1KiB | `json` + `sha256` | 6533 | 156.74 | 8553 | 27 |
+| 8KiB | `binary` + `sha256` | 41771 | 196.12 | 78744 | 46 |
+| 64KiB | `binary` + `sha512` | 318732 | 205.61 | 621151 | 58 |
+| 1MiB | `binary` + `sha256` | 3334822 | 314.43 | 9224400 | 74 |
 
-#### Full matrix by payload size
+The main pattern is clear:
 
-##### 64B
+- `binary` wins the very small and large end of the matrix, with `sha512_256` or `sha256` depending on the exact size band.
+- `json` + `sha256` still wins at `1KiB`, which is the throughput sweet spot for the portable default payload format.
+- Compression codecs (`gzip`, `zlib`, `flate`) remain much slower in this end-to-end round-trip path, even though they shrink the payload bytes on disk. The cost is dominated by compression overhead and allocator churn, not by hashing alone.
+- `gob` remains the compatibility-only slow path and is not a good default choice for performance-sensitive workloads.
 
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | `sha256` | 1656 | 38.64 | 1870 | 21 |
-| `json` | `sha512_256` | 1690 | 37.86 | 1966 | 21 |
-| `gob` | `sha256` | 11408 | 5.61 | 10200 | 192 |
-| `gob` | `sha512_256` | 11550 | 5.54 | 10296 | 192 |
-| **`binary`** | **`sha256`** | **1481** | **43.22** | **1976** | **25** |
-| `binary` | `sha512_256` | 1662 | 38.50 | 2072 | 25 |
+`ns/op` is the headline summary for this section because it directly measures the end-to-end round-trip cost; `MB/s` and `allocs/op` are companion views for throughput and allocation pressure. Use them together when choosing a default, not one metric alone.
 
-##### 256B
+#### How to choose a codec + hasher for a real workload
 
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | `sha256` | 2398 | 106.75 | 2448 | 21 |
-| `json` | `sha512_256` | 2606 | 98.24 | 2544 | 21 |
-| `gob` | `sha256` | 11734 | 21.82 | 11288 | 193 |
-| `gob` | `sha512_256` | 12272 | 20.86 | 11384 | 193 |
-| **`binary`** | **`sha256`** | **2092** | **122.35** | **2920** | **28** |
-| `binary` | `sha512_256` | 2364 | 108.28 | 3016 | 28 |
+There is no single universal winner. Use the choice that matches the payload size and the portability/compatibility requirements of the workload.
 
-##### 1KiB
+| Workload shape | Best measured choice | Why | Use when |
+|---|---|---|---|
+| Very small objects (`64B`–`256B`) | `binary` + `sha256` or `binary` + `sha512_256` | lowest end-to-end `ns/op` in the tiny-size region; `binary` avoids JSON overhead | compact binary payloads, internal storage, tiny objects, low-latency hot paths |
+| Small-to-medium portable objects (`~1KiB`) | `json` + `sha256` | best in the middle size band while staying human-readable and interoperable | objects that may be inspected, logged, or exchanged across tools |
+| Moderate objects (`8KiB` and up) | `binary` + `sha256` | lowest cost in the tested middle-to-large range; lower allocation/serialization overhead | app-local binary blobs, compact metadata, large internal object graphs |
+| Large objects (`64KiB`–`1MiB`) | `binary` + `sha512` or `binary` + `sha256` | keeps the fastest end-to-end path while avoiding compression overhead | large payloads, caches, media chunks, archival data |
+| Portable/default policy | `flate` + `sha256` | project default for durable payloads: compressed JSON/portable data with SHA-256 identity | default for general-purpose CAS objects |
+| Compression-heavy workflow | `gzip`/`zlib`/`flate` only when size reduction matters more than speed | they can be acceptable when payloads are highly compressible and storage budget is tight | use only when the application explicitly prefers compressed size over raw throughput |
 
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| **`json`** | **`sha256`** | **6442** | **158.97** | **8554** | **27** |
-| `json` | `sha512_256` | 7178 | 142.66 | 8651 | 27 |
-| `gob` | `sha256` | 15747 | 65.03 | 19720 | 199 |
-| `gob` | `sha512_256` | 16797 | 60.96 | 19816 | 199 |
-| `binary` | `sha256` | 7388 | 138.60 | 10200 | 34 |
-| `binary` | `sha512_256` | 7313 | 140.02 | 10296 | 34 |
+A practical default policy:
 
-##### 8KiB
+- Use `flate` + `sha256` as the project default when you want a durable, compact, interoperable configuration.
+- Use `binary` + `sha256` when the payload is compact/structured and speed matters more than human readability.
+- Use `binary` + `sha512` (or `sha512_256`) for larger binary payloads when the workload favors raw throughput and the caller is comfortable with a non-portable compact format.
+- Use `json` + `sha256` as a debugging- or interoperability-oriented choice when the payload is mostly small/medium and the cost of compression is not desired.
+- The benchmark matrix still shows that `json` and `binary` often outperform compression wrappers in strict end-to-end runtime; `flate` is the chosen default policy for durability and compactness, not necessarily the fastest microbenchmark winner.
 
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| **`json`** | **`sha256`** | **47109** | **173.89** | **65898** | **39** |
-| `json` | `sha512_256` | 50244 | 163.05 | 66003 | 39 |
-| `gob` | `sha256` | 65324 | 125.41 | 97992 | 211 |
-| `gob` | `sha512_256` | 67651 | 121.09 | 98088 | 211 |
-| `binary` | `sha256` | 49999 | 163.84 | 78745 | 46 |
-| `binary` | `sha512_256` | 52444 | 156.21 | 78840 | 46 |
-
-##### 64KiB
-
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | `sha256` | 388523 | 168.68 | 526798 | 53 |
-| `json` | `sha512_256` | 398853 | 164.31 | 526271 | 53 |
-| `gob` | `sha256` | 438682 | 149.39 | 710863 | 223 |
-| `gob` | `sha512_256` | 475039 | 137.96 | 710959 | 223 |
-| **`binary`** | **`sha256`** | **364266** | **179.91** | **620961** | **58** |
-| `binary` | `sha512_256` | 393598 | 166.51 | 621055 | 58 |
-
-##### 1MiB
-
-| Codec | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | `sha256` | 3823624 | 274.24 | 9022783 | 80 |
-| `json` | `sha512_256` | 4471169 | 234.52 | 8967757 | 79 |
-| `gob` | `sha256` | 2831201 | 370.36 | 10534892 | 239 |
-| `gob` | `sha512_256` | 3521372 | 297.77 | 10534980 | 239 |
-| **`binary`** | **`sha256`** | **2685813** | **390.41** | **9224386** | **74** |
-| `binary` | `sha512_256` | 3216106 | 326.04 | 9224481 | 74 |
-
-#### Full matrix ordered by codec
-
-##### `json`
-
-| Size | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| **64B** | **`sha256`** | **1656** | **38.64** | **1870** | **21** |
-| `64B` | `sha512_256` | 1690 | 37.86 | 1966 | 21 |
-| **256B** | **`sha256`** | **2398** | **106.75** | **2448** | **21** |
-| `256B` | `sha512_256` | 2606 | 98.24 | 2544 | 21 |
-| **1KiB** | **`sha256`** | **6442** | **158.97** | **8554** | **27** |
-| `1KiB` | `sha512_256` | 7178 | 142.66 | 8651 | 27 |
-| **8KiB** | **`sha256`** | **47109** | **173.89** | **65898** | **39** |
-| `8KiB` | `sha512_256` | 50244 | 163.05 | 66003 | 39 |
-| **64KiB** | **`sha256`** | **388523** | **168.68** | **526798** | **53** |
-| `64KiB` | `sha512_256` | 398853 | 164.31 | 526271 | 53 |
-| **1MiB** | **`sha256`** | **3823624** | **274.24** | **9022783** | **80** |
-| `1MiB` | `sha512_256` | 4471169 | 234.52 | 8967757 | 79 |
-
-##### `gob`
-
-| Size | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| **64B** | **`sha256`** | **11408** | **5.61** | **10200** | **192** |
-| `64B` | `sha512_256` | 11550 | 5.54 | 10296 | 192 |
-| **256B** | **`sha256`** | **11734** | **21.82** | **11288** | **193** |
-| `256B` | `sha512_256` | 12272 | 20.86 | 11384 | 193 |
-| **1KiB** | **`sha256`** | **15747** | **65.03** | **19720** | **199** |
-| `1KiB` | `sha512_256` | 16797 | 60.96 | 19816 | 199 |
-| **8KiB** | **`sha256`** | **65324** | **125.41** | **97992** | **211** |
-| `8KiB` | `sha512_256` | 67651 | 121.09 | 98088 | 211 |
-| **64KiB** | **`sha256`** | **438682** | **149.39** | **710863** | **223** |
-| `64KiB` | `sha512_256` | 475039 | 137.96 | 710959 | 223 |
-| **1MiB** | **`sha256`** | **2831201** | **370.36** | **10534892** | **239** |
-| `1MiB` | `sha512_256` | 3521372 | 297.77 | 10534980 | 239 |
-
-##### `binary`
-
-| Size | Hash | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| **64B** | **`sha256`** | **1481** | **43.22** | **1976** | **25** |
-| `64B` | `sha512_256` | 1662 | 38.50 | 2072 | 25 |
-| **256B** | **`sha256`** | **2092** | **122.35** | **2920** | **28** |
-| `256B` | `sha512_256` | 2364 | 108.28 | 3016 | 28 |
-| `1KiB` | `sha256` | 7388 | 138.60 | 10200 | 34 |
-| **1KiB** | **`sha512_256`** | **7313** | **140.02** | **10296** | **34** |
-| **8KiB** | **`sha256`** | **49999** | **163.84** | **78745** | **46** |
-| `8KiB` | `sha512_256` | 52444 | 156.21 | 78840 | 46 |
-| **64KiB** | **`sha256`** | **364266** | **179.91** | **620961** | **58** |
-| `64KiB` | `sha512_256` | 393598 | 166.51 | 621055 | 58 |
-| **1MiB** | **`sha256`** | **2685813** | **390.41** | **9224386** | **74** |
-| `1MiB` | `sha512_256` | 3216106 | 326.04 | 9224481 | 74 |
-
-#### Full matrix ordered by hash
-
-##### `sha256`
-
-| Codec | Size | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | 64B | 1656 | 38.64 | 1870 | 21 |
-| `gob` | 64B | 11408 | 5.61 | 10200 | 192 |
-| **`binary`** | **64B** | **1481** | **43.22** | **1976** | **25** |
-| `json` | 256B | 2398 | 106.75 | 2448 | 21 |
-| `gob` | 256B | 11734 | 21.82 | 11288 | 193 |
-| **`binary`** | **256B** | **2092** | **122.35** | **2920** | **28** |
-| **`json`** | **1KiB** | **6442** | **158.97** | **8554** | **27** |
-| `gob` | 1KiB | 15747 | 65.03 | 19720 | 199 |
-| `binary` | 1KiB | 7388 | 138.60 | 10200 | 34 |
-| **`json`** | **8KiB** | **47109** | **173.89** | **65898** | **39** |
-| `gob` | 8KiB | 65324 | 125.41 | 97992 | 211 |
-| `binary` | 8KiB | 49999 | 163.84 | 78745 | 46 |
-| `json` | 64KiB | 388523 | 168.68 | 526798 | 53 |
-| `gob` | 64KiB | 438682 | 149.39 | 710863 | 223 |
-| **`binary`** | **64KiB** | **364266** | **179.91** | **620961** | **58** |
-| `json` | 1MiB | 3823624 | 274.24 | 9022783 | 80 |
-| `gob` | 1MiB | 2831201 | 370.36 | 10534892 | 239 |
-| **`binary`** | **1MiB** | **2685813** | **390.41** | **9224386** | **74** |
-
-##### `sha512_256`
-
-| Codec | Size | ns/op | MB/s | B/op | allocs/op |
-|---|---|---:|---:|---:|---:|
-| `json` | 64B | 1690 | 37.86 | 1966 | 21 |
-| `gob` | 64B | 11550 | 5.54 | 10296 | 192 |
-| **`binary`** | **64B** | **1662** | **38.50** | **2072** | **25** |
-| `json` | 256B | 2606 | 98.24 | 2544 | 21 |
-| `gob` | 256B | 12272 | 20.86 | 11384 | 193 |
-| **`binary`** | **256B** | **2364** | **108.28** | **3016** | **28** |
-| **`json`** | **1KiB** | **7178** | **142.66** | **8651** | **27** |
-| `gob` | 1KiB | 16797 | 60.96 | 19816 | 199 |
-| `binary` | 1KiB | 7313 | 140.02 | 10296 | 34 |
-| **`json`** | **8KiB** | **50244** | **163.05** | **66003** | **39** |
-| `gob` | 8KiB | 67651 | 121.09 | 98088 | 211 |
-| `binary` | 8KiB | 52444 | 156.21 | 78840 | 46 |
-| `json` | 64KiB | 398853 | 164.31 | 526271 | 53 |
-| `gob` | 64KiB | 475039 | 137.96 | 710959 | 223 |
-| **`binary`** | **64KiB** | **393598** | **166.51** | **621055** | **58** |
-| `json` | 1MiB | 4471169 | 234.52 | 8967757 | 79 |
-| `gob` | 1MiB | 3521372 | 297.77 | 10534980 | 239 |
-| **`binary`** | **1MiB** | **3216106** | **326.04** | **9224481** | **74** |
-
-Interpretation:
-
-- `sha256` generally wins or ties `sha512_256` on the same codec/path.
-- `gob` remains the slowest and most alloc-heavy path.
-- `json` is the most balanced choice in the middle of the payload range.
-- `binary` is the best compact-format option for tiny and very large object sizes.
-- The benchmark still measures end-to-end store round trips, not codec-only cost.
+This summary is intentionally short. For deeper analysis, use the JSON matrix directly: filter by `payload`, `codec`, `hasher`, or compare how the `winner` set changes across size bands without reformatting a huge markdown table by hand.
 
 #### Focused isolation benchmarks (median of 5 runs)
 
 `BenchmarkCodecMarshalUnmarshal` isolates pure serialization cost without hashing or store I/O. `BenchmarkHasherDigest` isolates pure hash throughput without encoding or backend work.
+
+These are diagnostic benchmarks, not product defaults. They help answer: “is the slowdown mostly codec cost or hash cost?” They do not replace the end-to-end matrix above.
 
 Recommendation: prefer `sha256` for hashing and `json` for the default portable payload codec, unless a workload is dominated by very small or very large object sizes, in which case `binary` is the better compact-format choice. `gob` remains the compatibility-only slow path and should not be the default selection.
 

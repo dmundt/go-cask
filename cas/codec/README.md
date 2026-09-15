@@ -6,6 +6,8 @@ The codec layer defines how typed values are serialized before they are stored a
 
 - [json](./json/README.md) — recommended default for readable, portable data
 - [gzip](./gzip/README.md) — optional compression wrapper for large or repetitive payloads
+- [zlib](./zlib/README.md) — stdlib zlib compression wrapper for a slightly different compression surface
+- [flate](./flate/README.md) — stdlib flate compression wrapper for fast, compact payloads
 - [binary](./binary/README.md) — compact custom payload codec built from caller-supplied marshal/unmarshal functions
 - [gob](./gob/README.md) — Go-only compatibility codec
 
@@ -13,7 +15,7 @@ The codec layer defines how typed values are serialized before they are stored a
 
 - Keep the core format-agnostic.
 - Prefer JSON for durable, portable object data.
-- Use gzip as an opt-in compression layer for large or compressible payloads; it changes representation, not the object identity or store semantics.
+- Use gzip, zlib, or flate as opt-in compression layers for large or compressible payloads; they change representation, not the object identity or store semantics.
 - Use binary only when compactness and a versioned custom layout are worth the extra app-level definition work.
 - Treat gob as a compatibility option for Go-only workflows.
 - Treat compression-encryption wrappers as transport or storage layers, not as the canonical object format.
@@ -21,7 +23,7 @@ The codec layer defines how typed values are serialized before they are stored a
 ## Typical use
 
 - Use JSON for readable object payloads and easy interop.
-- Use gzip when a payload is large or repetitive and a transparent compression layer is useful.
+- Use gzip, zlib, or flate when a payload is large or repetitive and a transparent compression layer is useful.
 - Use binary when you want a compact payload and you are willing to define a stable per-type schema.
 - Use gob only for explicit Go-to-Go compatibility or migration cases.
 - Keep custom codecs explicit when the app needs a different binary or domain-specific format.

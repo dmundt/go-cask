@@ -8,6 +8,14 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [v1.4.2] - 2026-09-15
+
+### Changed
+
+- Documented the project default policy as `SHA-256` with `flate` compression for durable, compact object payloads while leaving JSON and binary as explicit alternatives for workloads that value portability or raw speed.
+- Refreshed the benchmark docs to distinguish the default policy from the measured winner-by-payload results, and kept the canonical benchmark data in JSON.
+- Synced the repository docs so the default behavior and benchmark guidance stay consistent with the actual benchmark matrix and the codec/hash extension set.
+
 ## [v1.4.1] - 2026-09-15
 
 ### Added

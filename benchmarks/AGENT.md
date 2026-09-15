@@ -41,14 +41,35 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 ## Codec and hash matrix
 
 - `BenchmarkStoreCodecHashRoundTrip` is the canonical codec/hash comparison.
-- Keep supported payload codecs represented: `json`, `gob`, and `binary`.
-- Keep supported hashers represented: `sha256` and `sha512_256`.
+- Keep supported payload codecs represented: `json`, `gzip`, `zlib`, `flate`, `gob`, and `binary`.
+- Keep supported hashers represented: `sha256`, `sha512`, and `sha512_256`.
 - Use the same `testNote`, payload sizes, memory backend, and Put+Get operation
   for every matrix cell. Do not add codec- or hasher-specific fast paths.
 - Treat gob as a compatibility comparison, JSON as the portable default, and
   binary as the caller-defined compact format.
+- The canonical benchmark data lives in `benchmarks/data/*.json` as the source of truth.
+  The README is a narrative summary; the JSON is the queryable record.
+- Keep the raw matrix in JSON rather than duplicating a giant markdown table in
+  the README. Use README tables only for winners, key deltas, and interpretive
+  highlights.
+- When the matrix changes, update the JSON file first, then update the README summary
+  and any affected spec notes in the same change.
 - Adding or removing a supported codec or hasher requires updating the matrix,
   [`README.md`](./README.md), and the applicable specs in the same change.
+
+## Benchmark workflow
+
+- Validate benchmark logic with the smallest relevant scope: run the exact bench family
+  before broad sweeps. For the matrix, use `go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=5`.
+- After a benchmark run, check the JSON file parses cleanly (`python -m json.tool` or
+  equivalent) before publishing it as the canonical result.
+- Preserve runner metadata in the JSON (`go version`, OS/arch, CPU, timestamp,
+  median-of-N, and benchmark name) so later queries distinguish local results
+  from cross-machine claims.
+- Keep the README summary consistent with the JSON. Do not hand-edit the raw matrix
+  numbers in markdown when the JSON already contains them.
+- Keep markdown summaries table-driven and concise; avoid adding chart blocks unless a
+  later requirement explicitly requires them.
 
 ## Scale probes
 
@@ -83,4 +104,9 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
   duplicating fragile function counts.
 - Update documentation whenever benchmark names, matrices, environment
   variables, sizes, or measurement semantics change.
+- When benchmark data is summarized in markdown, keep it table-driven and based on the
+  JSON results. Use the JSON as the source of truth and keep markdown summaries compact,
+  precise, and easy to query by size/codec/hasher.
+- If a visual aid is ever needed, prefer a plain markdown table or a small,
+  deliberately curated excerpt of the canonical JSON values rather than a chart block.
 

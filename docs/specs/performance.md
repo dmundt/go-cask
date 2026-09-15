@@ -41,7 +41,7 @@ Serialize once: `Store.Put` marshals the envelope into one buffer, digests that 
 
 ## 5. Benchmark suite
 
-Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gob`/`binary` × `sha256`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; optional `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gzip`/`zlib`/`flate`/`gob`/`binary` × `sha256`/`sha512`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; optional `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
 
 ### 5.1 Optional Bloom acceleration
 

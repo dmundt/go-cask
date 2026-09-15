@@ -10,9 +10,9 @@ A generic, Git-like **content-addressable store** for Go: store any bytes once u
 - **Immutable and verifiable** — objects never change; `Verify` detects corruption.
 - **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
 - **Composable** — codecs and storage backends (filesystem + memory ship) plug in behind one `Backend` contract, and the client injects its hash algorithm (`cas/hash/sha256` ships as go-cask's default; the core names none).
-- **Acceleration** — optional bloom layer under (`cas/bloom`) for hot-path absence checks and an opt-in gzip codec wrapper (`cas/codec/gzip`) for compressible payloads.
+- **Acceleration** — optional bloom layer under (`cas/bloom`) for hot-path absence checks and opt-in compression wrappers (`cas/codec/gzip`, `cas/codec/zlib`, `cas/codec/flate`) for compressible payloads.
 - **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
-- **Policy matters** — the core is generic and format-agnostic; the project recommends `SHA-256` + JSON for durable work, `SHA-512/256` as a fast secure alternative, and supports a compact custom binary payload codec (`cas/codec/binary`) plus an opt-in gzip wrapper (`cas/codec/gzip`) for large or repetitive payloads. Legacy/compatibility choices such as `cas/codec/gob`, MD5 and SHA-1 are marked as migration-only or Go-only compatibility options.
+- **Policy matters** — the core is generic and format-agnostic; the project default policy for durable work is `SHA-256` + `flate` compression, with `SHA-512/256` as a fast secure alternative. The repo still supports JSON and compact binary payload styles (`cas/codec/json`, `cas/codec/binary`) and keeps `gzip`/`zlib` as additional compression options (`cas/codec/gzip`, `cas/codec/zlib`, `cas/codec/flate`) for workloads that need different size/speed trade-offs. Additional helper packages such as `cas/chunk` and `cas/manifest` support large-object and sidecar metadata workflows without changing the object identity model. Legacy/compatibility choices such as `cas/codec/gob`, MD5 and SHA-1 are marked as migration-only or Go-only compatibility options.
 
 ## Design decisions
 
@@ -91,12 +91,15 @@ classDiagram
 
 ## Recommended defaults
 
-`cas` stays hash- and codec-agnostic by design, but the repo recommends a safe default for new durable data:
+`cas` stays hash- and codec-agnostic by design, but the repo recommends a practical default policy for new durable data:
 
-- Recommended hash: `SHA-256` (`cas/hash/sha256`)
+- Default hash: `SHA-256` (`cas/hash/sha256`)
+- Default compression: `flate` (`cas/codec/flate`) for compressed object payloads
+- Recommended object format: JSON (`cas/codec/json`) for readability and portability, layered behind the default `flate` compression when size reduction matters
 - Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
-- Recommended object format: JSON (`cas/codec/json`) for readability and portability
-- Opt-in compression wrapper: gzip (`cas/codec/gzip`) for large or compressible payloads without changing the object model
+- Additional supported compression wrappers: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for workloads that prefer a different compression profile
+- Fixed-size chunk helper: `cas/chunk` for splitting and reassembling large payloads in app-level workflows
+- Sidecar metadata helper: `cas/manifest` for JSON metadata files adjacent to a store
 - Compact custom option: binary payloads via `cas/codec/binary` when a stable per-type binary layout is required
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 
@@ -108,7 +111,7 @@ Use cryptographic hashes for object identity and integrity. For new data, prefer
 
 ## Upgrading
 
-Current patch release: `v1.4.1`. This maintenance patch adds the opt-in gzip codec wrapper (`cas/codec/gzip`), dedicated fuzz coverage for the digest/core, pack backend, and example helpers, tightens example-side JSON validation, and fixes the pack backend close-edge case while keeping the storage format and object layout intact.
+Current patch release: `v1.4.2`. This maintenance release documents the default policy as `SHA-256` + `flate` compression for durable payloads, refreshes the benchmark guidance to keep benchmark winners distinct from the project default, and keeps the canonical benchmark matrix in JSON for review and future analysis.
 
 `v1.3.0` is a **breaking MINOR**: the core is hash-agnostic (`cas.Hash` → `cas.Digest` + a client-injected `cas.Hasher`), `gitlike.NewRepository` takes a `gitlike.Codecs` set, object invariants moved to `cas.Validator`, and the filesystem layout lost its algorithm directory. Read the `[v1.3.0]` section of [CHANGELOG.md](CHANGELOG.md) and [docs/specs/operations.md](docs/specs/operations.md) §5 before pointing this build at an existing store — objects written by `v1.2.0` are not migrated.
 

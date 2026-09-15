@@ -5,6 +5,7 @@ The hash layer is the client-side algorithm seam for the generic `cas` core. The
 ## Included implementations
 
 - [sha256](./sha256/README.md) — recommended default for new durable CAS data
+- [sha512](./sha512/README.md) — full-width standard-library SHA-512 option
 - [sha512_256](./sha512_256/README.md) — fast secure alternative with a 256-bit output size
 
 ## Policy
