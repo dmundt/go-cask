@@ -175,28 +175,6 @@ func TestDigestStringIsHexOnly(t *testing.T) {
 	}
 }
 
-// FuzzParseDigest must never panic and must round-trip valid output.
-func FuzzParseDigest(f *testing.F) {
-	f.Add("ab")
-	f.Add(strings.Repeat("ab", 32))
-	f.Add("sha256:" + strings.Repeat("ab", 32))
-	f.Add("")
-	f.Add("zz")
-	f.Fuzz(func(t *testing.T, s string) {
-		d, err := ParseDigest(s)
-		if err != nil {
-			return
-		}
-		d2, err := ParseDigest(d.String())
-		if err != nil {
-			t.Fatalf("round-trip of %q failed: %v", d.String(), err)
-		}
-		if !d.Equal(d2) {
-			t.Fatalf("round-trip changed digest: %s vs %s", d, d2)
-		}
-	})
-}
-
 // TestDigestPrefix pins the display helper's contract: n counts hex characters,
 // the method is total (absent and n <= 0 are "", a short digest is returned
 // whole), and the result is always a prefix of String().

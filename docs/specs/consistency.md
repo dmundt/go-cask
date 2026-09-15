@@ -77,7 +77,7 @@ Costs: full `Verify` O(bytes); reference scan O(refs) lock-free lookups; GC O(ob
 | S3 lifecycle | age-based object expiration |
 | Docker registry | manifest digests as roots; GC walks manifests |
 
-Deliberately **not** adopted (yet): persisted refcounts, bloom-filter tracing, chunked pack GC (deferred with packfiles, performance §9), distributed GC coordination.
+Deliberately **not** adopted (yet): persisted refcounts, bloom filters as a GC or reachability authority, chunked pack GC (deferred with packfiles, performance §9), distributed GC coordination. Optional advisory bloom pre-checks are allowed as a front-end optimization, but they never replace the store's reachability graph or `Verify`-driven correctness model.
 
 ## 8. Anti-over-engineering
 

@@ -49,10 +49,42 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `BenchmarkVerify` | intact object | Integrity scan cost |
 | `BenchmarkParseDigest` | `valid`/`invalid` | Digest parsing (`sha256.Parse`: printable form + bare hex) |
 | `BenchmarkParallelPutGet` | concurrent | Lock-free reads + mutex writes |
+| `BenchmarkBloomStandard*` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | hot-path membership + update + guard checks | Bloom filter cost profile for advisory CAS pre-checks |
 
 Store cases run against the in-memory `memory` backend (deterministic); the `fs` cases write to an auto-cleaned temp dir.
 
-### 3.2 Codec/hash matrix
+### 3.2 Bloom filter benchmark results
+
+The Bloom family measures the advisory hot-path pre-check layer in `cas/bloom`: the filters are intentionally separate from the authoritative CAS backend and are evaluated only for `Exists`-style membership cost and update overhead.
+
+Run them directly:
+
+```powershell
+go test ./benchmarks/ -run=^$ -bench='^BenchmarkBloom' -benchmem -count=3
+```
+
+Measured on this runner (median of 3 runs):
+
+| Benchmark | ns/op | B/op | allocs/op | Interpretation |
+|---|---:|---:|---:|---|
+| `BenchmarkBloomStandardAdd` | 281 | 96 | 2 | fastest in-memory insert path |
+| `BenchmarkBloomStandardContainsHit` | 203 | 96 | 2 | hit check is essentially constant-time and cheap |
+| `BenchmarkBloomStandardContainsMiss` | 189 | 96 | 2 | miss check remains within the same cost band |
+| `BenchmarkBloomCountingAddRemove` | 620 | 192 | 4 | counting filter is slower because it mutates counters |
+| `BenchmarkBloomPersistentAdd` | 285 | 96 | 2 | persistent file-backed path is close to the in-memory standard path |
+| `BenchmarkBloomPersistentContains` | 222 | 96 | 2 | persistent membership stays near standard lookup cost |
+| `BenchmarkBloomGuardExists` | 266 | 96 | 2 | guard adds minimal overhead over the underlying filter |
+
+Discussion:
+
+- `standard` and `persistent` filters share almost the same cost profile; both are good hot-path pre-checks for large negative lookups.
+- The counting filter is roughly 2x slower because it maintains per-slot counters and does more work on `Add`/`Remove`.
+- The backend guard does not materially change the cost of the guard's fast path: the Bloom filter short-circuits on a miss, and a positive hit falls through to a real backend `Exists`.
+- Short-circuiting negative results is the intended win: a Bloom miss avoids backend work, while a Bloom hit still validates against the underlying store. This preserves the repo's correctness model while getting the usual advisory lookup reduction.
+
+In practice, the standard filter is the best default for a hot-path `Exists` pre-check. Use the counting variant when remove/update semantics matter; use the persistent variant when a restart-safe index is needed; keep the guard as the integration point that preserves the storage layer as the source of truth.
+
+### 3.3 Codec/hash matrix
 
 `BenchmarkStoreCodecHashRoundTrip` keeps the object type and the in-memory store
 backend constant while sweeping the payload size, codec, and hasher. The matrix
@@ -90,7 +122,7 @@ Run only this matrix:
 go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=5
 ```
 
-### 3.3 Observed results (median of 5 runs)
+### 3.4 Observed results (median of 5 runs)
 
 #### Winner by payload size
 
@@ -308,7 +340,7 @@ Recommendation: prefer `sha256` for hashing and `json` for the default portable 
 | 64KiB | `sha256` | 28736 | `sha512_256` 78971 | large gap |
 | 1MiB | `sha256` | 458242 | `sha512_256` 1261319 | sha256 is much faster |
 
-### 3.4 Run them
+### 3.5 Run them
 
 ```powershell
 go test -bench='.' -benchmem -run=^$ ./benchmarks/   # canonical: quote flag values

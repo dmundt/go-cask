@@ -13,10 +13,10 @@ package lru
 import (
 	"container/list"
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
+	cachepkg "github.com/dmundt/go-cask/cas/cache"
 	"github.com/dmundt/go-cask/cas/cache/mem"
 )
 
@@ -33,8 +33,8 @@ type Cache[T cas.Object[T]] struct {
 
 // New wraps store in a size-bounded cache. maxSize must be > 0.
 func New[T cas.Object[T]](store *cas.Store[T], maxSize int) (*Cache[T], error) {
-	if maxSize <= 0 {
-		return nil, fmt.Errorf("cache: LRU maxSize must be > 0, got %d", maxSize)
+	if err := cachepkg.ValidateMaxSize(maxSize, "cache/lru"); err != nil {
+		return nil, err
 	}
 	cs := memory.New(store)
 	c := &Cache[T]{

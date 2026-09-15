@@ -17,13 +17,12 @@ package sha256
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	hashtype "hash"
 	"io"
-	"strings"
 
 	"github.com/dmundt/go-cask/cas"
+	hashutil "github.com/dmundt/go-cask/cas/hash"
 )
 
 // Name is the algorithm name used in the printable digest form.
@@ -51,13 +50,7 @@ func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 // Validate implements cas.Hasher: a digest must be present and exactly Size
 // bytes, otherwise it cannot name a stored object.
 func (Hasher) Validate(d cas.Digest) error {
-	if d.IsZero() {
-		return fmt.Errorf("%w: absent digest", cas.ErrInvalidDigest)
-	}
-	if len(d) != Size {
-		return fmt.Errorf("%w: digest is %d bytes, want %d", cas.ErrInvalidDigest, len(d), Size)
-	}
-	return nil
+	return hashutil.ValidateDigestSize(d, Name, Size)
 }
 
 // NewHasher returns a streaming sha256 hasher as the standard library
@@ -74,29 +67,12 @@ func Of(data []byte) cas.Digest {
 // Format renders a digest in the printable "sha256:hexdigest" form, and the
 // absent digest as "".
 func Format(d cas.Digest) string {
-	if d.IsZero() {
-		return ""
-	}
-	return Name + ":" + hex.EncodeToString(d)
+	return hashutil.FormatDigest(Name, d)
 }
 
 // Parse accepts the printable "sha256:hexdigest" form and the bare hex form,
 // and rejects anything else (including another algorithm's prefix) with
 // cas.ErrInvalidDigest.
 func Parse(s string) (cas.Digest, error) {
-	body, ok := strings.CutPrefix(s, Name+":")
-	if !ok {
-		if strings.Contains(s, ":") {
-			return nil, fmt.Errorf("%w: %q is not a %s digest", cas.ErrInvalidDigest, s, Name)
-		}
-		body = s
-	}
-	d, err := cas.ParseDigest(body)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
-	}
-	if err := New().Validate(d); err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
-	}
-	return d, nil
+	return hashutil.ParseDigest(Name, s, Size)
 }
