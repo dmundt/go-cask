@@ -4,9 +4,9 @@ import "testing"
 
 func TestValidateMaxSize(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		maxSize  int
-		wantErr  bool
+		name    string
+		maxSize int
+		wantErr bool
 	}{
 		{name: "positive", maxSize: 10, wantErr: false},
 		{name: "zero", maxSize: 0, wantErr: true},

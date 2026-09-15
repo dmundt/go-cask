@@ -11,7 +11,7 @@ import (
 
 type customCodec struct{}
 
-func (customCodec) Marshal(v string) ([]byte, error) { return []byte(v), nil }
+func (customCodec) Marshal(v string) ([]byte, error)      { return []byte(v), nil }
 func (customCodec) Unmarshal(data []byte) (string, error) { return string(data), nil }
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {

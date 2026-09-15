@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
+	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
-	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 )
 
 type sample struct {

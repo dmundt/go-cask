@@ -37,11 +37,15 @@ func FuzzDigestJSONRoundTrip(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		d := NewDigest(raw)
-		payload, err := json.Marshal(struct{ Ref Digest `json:"ref"` }{d})
+		payload, err := json.Marshal(struct {
+			Ref Digest `json:"ref"`
+		}{d})
 		if err != nil {
 			t.Fatalf("json.Marshal() = %v, want nil", err)
 		}
-		var back struct{ Ref Digest `json:"ref"` }
+		var back struct {
+			Ref Digest `json:"ref"`
+		}
 		if err := json.Unmarshal(payload, &back); err != nil {
 			t.Fatalf("json.Unmarshal(%s) = %v, want nil", payload, err)
 		}

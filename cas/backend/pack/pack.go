@@ -20,8 +20,8 @@ import (
 
 // Config is the opt-in pack backend configuration.
 type config struct {
-	enabled       bool
-	packMaxBytes  int64
+	enabled        bool
+	packMaxBytes   int64
 	packMaxEntries int
 }
 
@@ -68,17 +68,17 @@ type manifest struct {
 // backend and optionally mirrors them into an append-only pack file plus a small
 // JSON index that points to the payload offset within the pack.
 type Backend struct {
-	mu             sync.Mutex
-	base           string
-	loose          *fsbackend.Backend
-	manifestPath   string
-	packDir        string
-	packFilePath   string
-	packFile       *os.File
-	packBytes      int64
-	packEntries    int
-	cfg            config
-	index          map[string]packRecord
+	mu           sync.Mutex
+	base         string
+	loose        *fsbackend.Backend
+	manifestPath string
+	packDir      string
+	packFilePath string
+	packFile     *os.File
+	packBytes    int64
+	packEntries  int
+	cfg          config
+	index        map[string]packRecord
 }
 
 var _ cas.Backend = (*Backend)(nil)
