@@ -8,7 +8,7 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
-## [Unreleased]
+## [v1.4.0] - 2026-09-15
 
 ### Added
 
@@ -43,6 +43,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
   guidance.
 - Trimmed redundant specification references in [README.md](README.md) and kept the
   landing page limited to the core entry points and the docs index.
+
+## [Unreleased]
 
 ## [v1.3.1] - 2026-09-11
 
