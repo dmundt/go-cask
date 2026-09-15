@@ -4,7 +4,16 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-A generic, Git-like **content-addressable store** for Go: store any bytes once under the digest of their content, reference them by digest, and build typed object graphs on top — reusable across apps and domains.
+CASK is a Git-like, content-addressable store for Go: bytes are keyed by their content digest, objects stay immutable, and typed application models sit on top of the generic core.
+
+- **Deduplicated by content** — identical bytes map to the same digest and are stored once.
+- **Typed on top** — the `cas` core stays generic; each app defines its own `Object[T]` and `Store[T]` model.
+- **Composable** — backends and codecs plug in behind the `Backend` and `Codec[T]` contracts; the client supplies the hash algorithm (`sha256` is the default).
+- **Fast by default** — lock-free reads, streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
+- **Optional acceleration** — `cas/bloom` adds hot-path absence checks; `gzip`, `zlib`, and `flate` wrappers compress payloads when the workload benefits.
+- **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
+- **Extensible helpers** — `cas/chunk` and `cas/manifest` support large-object and metadata workflows without changing the identity model.
+- **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
 
 ## Table of contents
 
@@ -15,14 +24,6 @@ A generic, Git-like **content-addressable store** for Go: store any bytes once u
 - [Security note](#security-note)
 - [Getting started](#getting-started)
 - [Documentation map](#documentation-map)
-
-- **Content-addressable** — same bytes ⇒ same digest ⇒ stored once (dedup).
-- **Immutable and verifiable** — objects never change; `Verify` detects corruption.
-- **Generic core, typed apps** — the `cas` core knows nothing about your types; each app layers its own `Object[T]` model on top (the `gitlike` package is the shared reference object model).
-- **Composable** — codecs and storage backends (filesystem + memory ship) plug in behind one `Backend` contract, and the client injects its hash algorithm (`cas/hash/sha256` ships as go-cask's default; the core names none).
-- **Acceleration** — optional bloom layer under (`cas/bloom`) for hot-path absence checks and opt-in compression wrappers (`cas/codec/gzip`, `cas/codec/zlib`, `cas/codec/flate`) for compressible payloads.
-- **Simple, fast, powerful** — lock-free reads, streaming I/O, multi-process-safe writers, semver-versioned object models, GC from roots with a Git-style grace period.
-- **Policy matters** — the core is generic and format-agnostic; the project default policy for durable work is `SHA-256` + `flate` compression, with `SHA-512/256` as a fast secure alternative. All codec wrappers are cascadeable by design: each outer wrapper keeps an inner codec and transforms only the serialized bytes (`gzip.New(inner)`, `flate.New(inner)`, `zlib.New(inner)`, `gob.New(inner)`, `binary.New(inner, wrap, unwrap)`). The repo still supports JSON and compact binary payload styles (`cas/codec/json`, `cas/codec/binary`) and keeps `gzip`/`zlib` as additional compression options (`cas/codec/gzip`, `cas/codec/zlib`, `cas/codec/flate`) for workloads that need different size/speed trade-offs. Additional helper packages such as `cas/chunk` and `cas/manifest` support large-object and sidecar metadata workflows without changing the object identity model. Legacy/compatibility choices such as `cas/codec/gob`, MD5 and SHA-1 are marked as migration-only or Go-only compatibility options.
 
 ## Design decisions
 
