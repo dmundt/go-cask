@@ -82,3 +82,13 @@ func TestCodecRoundTrip(t *testing.T) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
 	}
 }
+
+func TestCodecErrorsWhenCallbacksMissing(t *testing.T) {
+	codec := New[sample](nil, nil)
+	if _, err := codec.Marshal(sample{Name: "demo"}); err == nil {
+		t.Fatal("Marshal with nil function returned nil error, want non-nil")
+	}
+	if _, err := codec.Unmarshal([]byte("bad")); err == nil {
+		t.Fatal("Unmarshal with nil function returned nil error, want non-nil")
+	}
+}

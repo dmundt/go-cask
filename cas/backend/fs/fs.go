@@ -196,7 +196,7 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		f.Close()
 		os.Remove(tmp)
 	}
-	if _, err := io.Copy(f, ctxReader{ctx: ctx, r: r}); err != nil {
+	if _, err := io.Copy(f, backend.ContextReader{Ctx: ctx, R: r}); err != nil {
 		cleanup()
 		return fmt.Errorf("cas: write object: %w", err)
 	}
@@ -226,21 +226,6 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		}
 	}
 	return nil
-}
-
-// ctxReader aborts a copy once ctx is canceled, so a canceled Put does not
-// keep streaming and publishing an object it no longer needs (Get honors
-// context at entry only, because a returned reader outlives the call).
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (c ctxReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
 }
 
 // createTempExcl creates a uniquely named temp file for an object write.

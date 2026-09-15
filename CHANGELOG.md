@@ -12,6 +12,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Added
 
+- Added an optional, advisory Bloom layer under [cas/bloom/](cas/bloom/) with standard, counting, and persistent variants, plus a backend guard (`bloom.Guard`) that short-circuits absent lookups without changing the CAS identity model.
 - Added focused benchmark families in [benchmarks/bench_test.go](benchmarks/bench_test.go):
   `BenchmarkCodecMarshalUnmarshal` isolates pure serialization cost and
   `BenchmarkHasherDigest` isolates raw hash throughput.
@@ -26,6 +27,14 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Switched the default Bloom index implementation to a fast `hash/maphash`-based
+  stream so the advisory pre-check stays cheap in memory, while keeping the
+  contract that callers may override it with a deterministic custom `IndexHash`
+  for restart-stable or cross-process use.
+- Refreshed the Bloom benchmark results and operator notes so the measured cost
+  profile matches the current code: `standard` remains the fastest default,
+  `persistent` stays close behind, and `counting` remains the slower
+  update-heavy variant.
 - Expanded the regular performance matrix to cover a broader size range and
   normalized the benchmark naming and summary reporting around the supported
   `json`/`gob`/`binary` and `sha256`/`sha512_256` combinations.

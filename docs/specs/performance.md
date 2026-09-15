@@ -41,7 +41,18 @@ Serialize once: `Store.Put` marshals the envelope into one buffer, digests that 
 
 ## 5. Benchmark suite
 
-Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gob`/`binary` × `sha256`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gob`/`binary` × `sha256`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; optional `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
+
+### 5.1 Optional Bloom acceleration
+
+The `cas/bloom` layer is an optional, advisory optimization and MUST NOT change the storage-core correctness model. Bloom filters are allowed for hot-path absence checks and duplicate suppression in front-end indexes, but they are never the source of truth for object existence or reachability.
+
+- A negative Bloom result is definitive for a well-formed filter and may short-circuit a lookup.
+- A positive Bloom result is only a hint: the wrapped backend/store must still verify the digest's real existence.
+- Standard, counting, and persistent variants are all production-safe only as advisory front ends; they do not participate in `Verify`, `GC`, or `Prune` semantics.
+- The Bloom filter's bit-index derivation is independent from the CAS digest algorithm: the object hash remains the caller-owned `cas.Hasher` contract, while the Bloom filter chooses bit positions in its own bitmap.
+
+This rule keeps the optional optimization layer outside the core invariants while still allowing a large store to skip wasted backend lookups in the hot path.
 
 - Every timed benchmark calls `b.ReportAllocs()`. Non-timed layout/economics probes MAY omit it.
 - Benchmarks call `b.SetBytes()` only when one operation processes one payload of known size; operations such as `Exists`, `Delete`, `List`, `Stats`, digest parsing, and mixed concurrent workloads MUST NOT invent a byte count.

@@ -4,10 +4,11 @@ The `examples/` directory contains runnable reference programs that show how to 
 
 ## Included examples
 
-- [api/README.md](./api/README.md) — small HTTP-exposure pattern for a CAS-backed service
-- [artifacts/README.md](./artifacts/README.md) — example of storing typed artifact objects with codecs and caching
-- [files/README.md](./files/README.md) — example of a file-oriented object store on top of the byte backend
-- [notes/README.md](./notes/README.md) — minimal note/object graph example using the Git-like reference model
+- [api](./api/README.md) — small HTTP-exposure pattern for a CAS-backed service
+- [artifacts](./artifacts/README.md) — example of storing typed artifact objects with codecs and caching
+- [bloom](./bloom/README.md) — optional Bloom-guard example for fast negative existence checks
+- [files](./files/README.md) — example of a file-oriented object store on top of the byte backend
+- [notes](./notes/README.md) — minimal note/object graph example using the Git-like reference model
 
 ## Design
 
