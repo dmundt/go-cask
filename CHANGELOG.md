@@ -46,6 +46,17 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Added
+
+- Added dedicated fuzz coverage for the root digest logic and the pack backend, keeping each fuzz target in its own file for package-local discovery and isolation.
+- Added example-focused fuzz tests for the API demo, artifact gzip round-trips, and the file example's digest-printing helper.
+
+### Fixed
+
+- Fixed the pack backend's close semantics so a second `Close()` call is idempotent and no longer fails after the active pack handle is already closed.
+- Hardened the API demo by validating JSON field types and removing brittle direct type assertions from the user-facing example.
+- Expanded example and backend tests around pack rotation, invalid digest rejection, and end-to-end example behavior to keep the feature set stable.
+
 ## [v1.3.1] - 2026-09-11
 
 ### Added
