@@ -25,7 +25,7 @@
 
 The core stack is intentionally layered: the storage layer stays authoritative, and optional optimization layers sit above it. When an optional layer is not enabled, the underlying store behaves exactly as before.
 
-- [backend](./backend/README.md) — storage primitives: [fs](./backend/fs/README.md), [mem](./backend/mem/README.md)
+- [backend](./backend/README.md) — storage primitives: [fs](./backend/fs/README.md), [mem](./backend/mem/README.md), [pack](./backend/pack/README.md)
 - [bloom](./bloom/README.md) — optional advisory bloom layer: [standard](./bloom/standard/README.md), [counting](./bloom/counting/README.md), [persistent](./bloom/persistent/README.md)
 - [cache](./cache/README.md) — optional read-through caching and prefetch wrappers: [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [binary](./codec/binary/README.md), [gob](./codec/gob/README.md)
