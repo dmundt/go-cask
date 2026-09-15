@@ -47,9 +47,18 @@ func main() {
 	}
 	req.Header.Set("Authorization", "Bearer "+*token)
 	req.Header.Set("Content-Type", "application/octet-stream")
-	m := doJSON(req, "put")
-	h := m["hash"].(string)
-	dedup := m["deduplicated"].(bool)
+	m, err := doJSON(req, "put")
+	if err != nil {
+		fatal(err)
+	}
+	h, err := mustString(m, "hash")
+	if err != nil {
+		fatal(fmt.Errorf("put response: %w", err))
+	}
+	dedup, err := mustBool(m, "deduplicated")
+	if err != nil {
+		fatal(fmt.Errorf("put response: %w", err))
+	}
 
 	// GET /objects/{hash} — stream back.
 	resp, err := http.NewRequestWithContext(ctx, http.MethodGet, *api+"/api/cas/v1/objects/"+h, nil)
@@ -61,8 +70,14 @@ func main() {
 	fmt.Printf("fetched %d bytes\n", len(got))
 
 	// GET meta + stats.
-	meta := doJSON(mustReq(ctx, http.MethodGet, *api+"/api/cas/v1/objects/"+h+"/meta", *token), "meta")
-	stats := doJSON(mustReq(ctx, http.MethodGet, *api+"/api/cas/v1/stats", *token), "stats")
+	meta, err := doJSON(mustReq(ctx, http.MethodGet, *api+"/api/cas/v1/objects/"+h+"/meta", *token), "meta")
+	if err != nil {
+		fatal(err)
+	}
+	stats, err := doJSON(mustReq(ctx, http.MethodGet, *api+"/api/cas/v1/stats", *token), "stats")
+	if err != nil {
+		fatal(err)
+	}
 	fmt.Printf("stored %s deduplicated=%v size=%v\n", h, dedup, num(meta, "size"))
 	fmt.Printf("stats: %v objects, %v bytes\n", num(stats, "object_count"), num(stats, "total_size"))
 }
@@ -76,23 +91,47 @@ func mustReq(ctx context.Context, method, url, token string) *http.Request {
 	return req
 }
 
-// doJSON executes a request and decodes the JSON response, extracting the
-// hash field for PUT and printing the response for the others.
-func doJSON(req *http.Request, what string) map[string]any {
+// doJSON executes a request and decodes the JSON response, returning a map for
+// the caller to validate instead of assuming a specific layout.
+func doJSON(req *http.Request, what string) (map[string]any, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fatal(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		b, _ := io.ReadAll(resp.Body)
-		fatal(fmt.Errorf("%s: status %d: %s", what, resp.StatusCode, strings.TrimSpace(string(b))))
+		return nil, fmt.Errorf("%s: status %d: %s", what, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	var m map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		fatal(fmt.Errorf("%s: decode: %w", what, err))
+		return nil, fmt.Errorf("%s: decode: %w", what, err)
 	}
-	return m
+	return m, nil
+}
+
+func mustString(m map[string]any, key string) (string, error) {
+	v, ok := m[key]
+	if !ok {
+		return "", fmt.Errorf("missing %q field", key)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("field %q is %T, want string", key, v)
+	}
+	return s, nil
+}
+
+func mustBool(m map[string]any, key string) (bool, error) {
+	v, ok := m[key]
+	if !ok {
+		return false, fmt.Errorf("missing %q field", key)
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, fmt.Errorf("field %q is %T, want bool", key, v)
+	}
+	return b, nil
 }
 
 func doRaw(req *http.Request) []byte {
