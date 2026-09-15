@@ -41,9 +41,9 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 ### 3.2 `examples/artifacts` — content-addressable build artifact cache
 
-**Goal:** cache build outputs under their content digest with a custom codec (gzip), bounded caching, metrics, mark-and-sweep GC.
-**Aspects:** custom `Codec[T]` (gzip-wrapped JSON), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
-**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (gzipCodec[T]), `main_test.go`, `README.md`.
+**Goal:** cache build outputs under their content digest with an opt-in gzip codec wrapper, bounded caching, metrics, mark-and-sweep GC.
+**Aspects:** `cas/codec/gzip` (gzip-wrapped JSON), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
+**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (the example-local gzip wrapper or the generic `cas/codec/gzip` package usage), `main_test.go`, `README.md`.
 **Behaviors:** `put` stores the artifact under the client's `sha256` digest, prints it with `deduplicated: true/false`; manifests reference artifact digests (`[]cas.Digest`). `get` serves from `lru.Cache`, `CacheMonitor` prints hit rate on exit. `gc` mark-and-sweeps (unreferenced-from-any-manifest objects deleted); `stats` before/after shows it.
 **Acceptance:** same bytes → same digest → `deduplicated: true`; second `get` hits cache (hit rate > 0); `gc` deletes only unreferenced artifacts, leaves manifest-referenced intact.
 

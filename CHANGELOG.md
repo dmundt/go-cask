@@ -12,6 +12,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Added
 
+- Added the opt-in gzip codec wrapper in [cas/codec/gzip/](cas/codec/gzip/) as a codec-layer compression implementation that leaves the CAS object model and content-address semantics unchanged.
 - Added dedicated fuzz coverage for the root digest logic and the pack backend, keeping each fuzz target in its own file for package-local discovery and isolation.
 - Added example-focused fuzz tests for the API demo, artifact gzip round-trips, and the file example's digest-printing helper.
 - Expanded the example test surface to cover the demo and helper invariants without introducing new library dependencies.

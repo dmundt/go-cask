@@ -15,6 +15,7 @@
 - Preferred hash: `SHA-256` via [hash/sha256](./hash/sha256/README.md)
 - Fast secure alternative: `SHA-512/256` via [hash/sha512_256](./hash/sha512_256/README.md)
 - Preferred codec: JSON via [codec/json](./codec/json/README.md)
+- Optional compression layer: [codec/gzip](./codec/gzip/README.md) for large or repetitive payloads
 - Compact custom option: [codec/binary](./codec/binary/README.md) for stable per-type binary payloads
 - Durable backend: [backend/fs](./backend/fs/README.md)
 - Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
@@ -28,7 +29,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [backend](./backend/README.md) — storage primitives: [fs](./backend/fs/README.md), [mem](./backend/mem/README.md), [pack](./backend/pack/README.md)
 - [bloom](./bloom/README.md) — optional advisory bloom layer: [standard](./bloom/standard/README.md), [counting](./bloom/counting/README.md), [persistent](./bloom/persistent/README.md)
 - [cache](./cache/README.md) — optional read-through caching and prefetch wrappers: [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
-- [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [binary](./codec/binary/README.md), [gob](./codec/gob/README.md)
+- [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [binary](./codec/binary/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512_256](./hash/sha512_256/README.md)
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.
