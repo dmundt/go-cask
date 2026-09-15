@@ -141,4 +141,3 @@ func (f *Filter) Sync() error {
 	}
 	return os.WriteFile(f.path, f.data, 0o644)
 }
-
