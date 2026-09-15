@@ -107,7 +107,7 @@ Use cryptographic hashes for object identity and integrity. For new data, prefer
 
 ## Upgrading
 
-Current patch release: `v1.3.1`. This is a maintenance release that adds the compact binary codec docs and resolves the small generic constructor warning in the binary codec tests; it does not change the storage format or object layout.
+Current patch release: `v1.4.1`. This maintenance patch adds dedicated fuzz coverage for the digest/core, pack backend, and example helpers, tightens example-side JSON validation, and fixes the pack backend close-edge case while keeping the storage format and object layout intact.
 
 `v1.3.0` is a **breaking MINOR**: the core is hash-agnostic (`cas.Hash` → `cas.Digest` + a client-injected `cas.Hasher`), `gitlike.NewRepository` takes a `gitlike.Codecs` set, object invariants moved to `cas.Validator`, and the filesystem layout lost its algorithm directory. Read the `[v1.3.0]` section of [CHANGELOG.md](CHANGELOG.md) and [docs/specs/operations.md](docs/specs/operations.md) §5 before pointing this build at an existing store — objects written by `v1.2.0` are not migrated.
 

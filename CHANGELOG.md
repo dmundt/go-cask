@@ -8,6 +8,24 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [v1.4.1] - 2026-09-15
+
+### Added
+
+- Added dedicated fuzz coverage for the root digest logic and the pack backend, keeping each fuzz target in its own file for package-local discovery and isolation.
+- Added example-focused fuzz tests for the API demo, artifact gzip round-trips, and the file example's digest-printing helper.
+- Expanded the example test surface to cover the demo and helper invariants without introducing new library dependencies.
+
+### Changed
+
+- Hardened the API demo by validating JSON field types and removing brittle direct type assertions from the public example code.
+- Kept the changelog and release notes aligned with the `v1.4.1` patch release as the current project baseline.
+
+### Fixed
+
+- Fixed the pack backend's close semantics so a second `Close()` call is idempotent and no longer fails after the active pack handle is already closed.
+- Expanded example and backend tests around pack rotation, invalid digest rejection, and end-to-end example behavior to keep the feature set stable.
+
 ## [v1.4.0] - 2026-09-15
 
 ### Added
@@ -43,19 +61,6 @@ first-cycle exceptions recorded in `versioning.md` §1.
   guidance.
 - Trimmed redundant specification references in [README.md](README.md) and kept the
   landing page limited to the core entry points and the docs index.
-
-## [Unreleased]
-
-### Added
-
-- Added dedicated fuzz coverage for the root digest logic and the pack backend, keeping each fuzz target in its own file for package-local discovery and isolation.
-- Added example-focused fuzz tests for the API demo, artifact gzip round-trips, and the file example's digest-printing helper.
-
-### Fixed
-
-- Fixed the pack backend's close semantics so a second `Close()` call is idempotent and no longer fails after the active pack handle is already closed.
-- Hardened the API demo by validating JSON field types and removing brittle direct type assertions from the user-facing example.
-- Expanded example and backend tests around pack rotation, invalid digest rejection, and end-to-end example behavior to keep the feature set stable.
 
 ## [v1.3.1] - 2026-09-11
 

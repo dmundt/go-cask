@@ -30,6 +30,7 @@ CASK's value is its invariants (same bytes ⇒ same digest ⇒ stored once, immu
 - Tests MUST NOT depend on execution order or shared mutable state: each builds its own fixture (`t.TempDir`); the core has no registry or other mutable global to share.
 - Assertions are direct (`errors.Is`, exact values/digests); a test passing only by printing or by another test's side effect is a defect.
 - When fuzzing surfaces a real constraint/skipped branch, pin it with an explicit test in the same change.
+- Example packages also contribute fuzz guards for helper invariants (`examples/api/demo/fuzz_test.go`, `examples/artifacts/fuzz_test.go`, `examples/files/fuzz_test.go`), so the documentation examples stay validated even when their logic is intentionally minimal and copyable.
 
 ## 2. Requirement traceability
 
@@ -61,7 +62,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 1. **Unit** — table-driven per component, covering §3.
 2. **Property-style** — deterministic loops over generated digests (the client's `sha256.Of`), varied digest widths, all fan layouts; std-lib only, small explicit generators (no property library).
-3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Unmarshal(Marshal(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail). Commit corpora; seconds in CI, longer nightly.
+3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Unmarshal(Marshal(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail), plus separate package-local fuzz files for `cas/backend/pack` and the example helpers (`examples/api/demo`, `examples/artifacts`, `examples/files`). Commit corpora; seconds in CI, longer nightly.
 4. **Concurrency/race** — `go test -race` concurrent `Put`/`Get`/`Delete`/`List` on one store (proves lock-free reads, double-checked locking).
 5. **Corruption** — flip bytes on disk → `Verify` fails; `Backend.Get` returns corrupted bytes (store MUST NOT silently fix).
 6. **Golden vectors** — the shipped `sha256` hasher's digest bytes are pinned against `crypto/sha256` (`cas/hash/sha256`), and the text forms are asserted exactly: `Digest.String()` is bare lowercase hex, `sha256.Format(d)` is `"sha256:hexdigest"`. The core itself owns no vectors — it names no algorithm.
