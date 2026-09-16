@@ -50,7 +50,7 @@ func New[T cas.Object[T]](store *cas.Store[T], maxSize int) (*Cache[T], error) {
 func (c *Cache[T]) note(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.touchLocked(key)
+	c.touchLocked(key, nil)
 	for c.list.Len() > c.maxSize {
 		last := c.list.Back()
 		if last == nil {
@@ -99,12 +99,14 @@ func (c *Cache[T]) Clear() {
 	c.index = make(map[string]*list.Element)
 }
 
-func (c *Cache[T]) touchLocked(key string) {
+func (c *Cache[T]) touchLocked(key string, co *memory.CachedObject[T]) {
 	if el, ok := c.index[key]; ok {
 		c.list.MoveToFront(el)
 		return
 	}
-	co := c.Lookup(key)
+	if co == nil {
+		co = c.Lookup(key)
+	}
 	if co == nil {
 		return
 	}
@@ -120,7 +122,7 @@ func (c *Cache[T]) Proxy(ctx context.Context, d cas.Digest) (*memory.CachedObjec
 	}
 	key := d.String()
 	c.mu.Lock()
-	c.touchLocked(key)
+	c.touchLocked(key, co)
 	c.mu.Unlock()
 	return co, nil
 }

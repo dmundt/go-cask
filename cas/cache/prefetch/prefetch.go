@@ -58,7 +58,14 @@ func (c *SmartCache[T]) prefetchRecursive(ctx context.Context, obj T, depth int)
 	if depth <= 0 {
 		return
 	}
-	for _, ref := range obj.References() {
+	refs := obj.References()
+	if len(refs) == 0 {
+		return
+	}
+	for _, ref := range refs {
+		if ref.IsZero() {
+			continue
+		}
 		loaded, err := c.store.Get(ctx, ref)
 		if err != nil {
 			continue

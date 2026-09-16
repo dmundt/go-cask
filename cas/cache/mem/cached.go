@@ -66,13 +66,16 @@ func (c *CachedObject[T]) Load(ctx context.Context) (T, error) {
 		return obj, err
 	}
 	c.mu.RUnlock()
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.loaded {
-		return c.obj, c.err
+		obj, err := c.obj, c.err
+		c.mu.Unlock()
+		return obj, err
 	}
 	obj, err := c.store.Get(ctx, c.digest)
 	c.obj, c.err, c.loaded = obj, err, true
+	c.mu.Unlock()
 	if c.metrics != nil {
 		c.metrics.Loads.Add(1)
 	}
