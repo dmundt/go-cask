@@ -53,7 +53,7 @@ func (ErrorObj) References() []cas.Digest { return nil }
 // FailingCodec[T] is a Codec[T] that always fails on Encode.
 type FailingCodec[T any] struct{}
 
-func (FailingCodec[T]) Encode(T) ([]byte, error)   { return nil, errors.New("encode exploded") }
+func (FailingCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode exploded") }
 func (FailingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
 
 // DigestData is a test helper for digesting data with the shipped sha256 hasher.

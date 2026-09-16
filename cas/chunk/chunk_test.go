@@ -26,7 +26,19 @@ func TestCountAndZero(t *testing.T) {
 	if got := chunk.Count(10, 0); got != 1 {
 		t.Fatalf("Count(10,0) = %d, want 1", got)
 	}
+	if got := chunk.Count(15, 4); got != 4 {
+		t.Fatalf("Count(15,4) = %d, want 4", got)
+	}
 	if got := chunk.Split(nil, 8); len(got) != 0 {
 		t.Fatalf("Split(nil) = %#v, want empty slice", got)
+	}
+	if got := chunk.Split([]byte("abc"), 0); len(got) != 1 || string(got[0]) != "abc" {
+		t.Fatalf("Split(data,0) = %#v, want single chunk abc", got)
+	}
+	if got := chunk.Join(nil); got != nil {
+		t.Fatalf("Join(nil) = %#v, want nil", got)
+	}
+	if got := chunk.Join([][]byte{}); got != nil {
+		t.Fatalf("Join(empty) = %#v, want nil", got)
 	}
 }

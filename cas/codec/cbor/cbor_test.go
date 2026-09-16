@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas/codec/cbor"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 type doc struct {

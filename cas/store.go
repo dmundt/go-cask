@@ -172,19 +172,19 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	}
 	typ := obj.Type()
 	if typ == "" {
-		// An empty type name produces an envelope that parseEnvelope rejects,
+		// An empty type name produces an envelope that decodeEnvelope rejects,
 		// i.e. an object Put succeeds on but Get can never read.
 		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
 	}
 	if strings.IndexByte(typ, '@') < 0 {
 		// Object[T].Type MUST return a versioned name "<type>@<major>"
-		// (object.go, object-versioning.md). parseEnvelope reads a legacy
+		// (object.go, object-versioning.md). decodeEnvelope reads a legacy
 		// unversioned name as "@1", so writing one produces an object whose
 		// stored type ("legacy@1") can never equal the decoded Type()
 		// ("legacy"): a write-only object. Reject it at the source instead.
 		return nil, fmt.Errorf("%w: type name %q is not versioned (want \"<type>@<major>\")", ErrUnknownType, typ)
 	}
-	return marshalEnvelope(typ, payload), nil
+	return encodeEnvelope(typ, payload), nil
 }
 
 // Get reads the object at d and returns the concrete T directly — no casts.
@@ -197,7 +197,7 @@ func (s *Store[T]) Get(ctx context.Context, d Digest) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	typeName, payload, err := parseEnvelope(data)
+	typeName, payload, err := decodeEnvelope(data)
 	if err != nil {
 		return zero, err
 	}

@@ -22,11 +22,11 @@ import (
 // codec family while still allowing an app-defined raw binary format when the
 // inner codec is nil.
 type Codec[T any] struct {
-	next   cas.Codec[T]
+	next      cas.Codec[T]
 	transform func([]byte) ([]byte, error)
 	restore   func([]byte) ([]byte, error)
-	encode func(T) ([]byte, error)
-	decode func([]byte) (T, error)
+	encode    func(T) ([]byte, error)
+	decode    func([]byte) (T, error)
 }
 
 var (

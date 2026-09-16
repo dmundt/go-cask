@@ -28,21 +28,22 @@ func New[T any](next cas.Codec[T]) Codec[T] {
 	return Codec[T]{next: next}
 }
 
-// Encode serializes v with the wrapped codec and then gzip-compresses the
-// result.
-func (c Codec[T]) Encode(v T) ([]byte, error) {
-	if c.next == nil {
+func encodeCompressed[T any](next cas.Codec[T], v T, newWriter func(io.Writer) (io.WriteCloser, error)) ([]byte, error) {
+	if next == nil {
 		return nil, errNilCodec
 	}
 
-	payload, err := c.next.Encode(v)
+	payload, err := next.Encode(v)
 	if err != nil {
 		return nil, err
 	}
 
 	var buf bytes.Buffer
 	buf.Grow(len(payload) + len(payload)/8 + 64)
-	w := stdgzip.NewWriter(&buf)
+	w, err := newWriter(&buf)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := w.Write(payload); err != nil {
 		_ = w.Close()
 		return nil, err
@@ -53,15 +54,13 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Decode gunzips the incoming data and then decodes it with the wrapped
-// codec.
-func (c Codec[T]) Decode(data []byte) (T, error) {
+func decodeCompressed[T any](next cas.Codec[T], data []byte, newReader func(io.Reader) (io.ReadCloser, error)) (T, error) {
 	var zero T
-	if c.next == nil {
+	if next == nil {
 		return zero, errNilCodec
 	}
 
-	r, err := stdgzip.NewReader(bytes.NewReader(data))
+	r, err := newReader(bytes.NewReader(data))
 	if err != nil {
 		return zero, err
 	}
@@ -71,5 +70,21 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	return c.next.Decode(payload)
+	return next.Decode(payload)
+}
+
+// Encode serializes v with the wrapped codec and then gzip-compresses the
+// result.
+func (c Codec[T]) Encode(v T) ([]byte, error) {
+	return encodeCompressed(c.next, v, func(w io.Writer) (io.WriteCloser, error) {
+		return stdgzip.NewWriter(w), nil
+	})
+}
+
+// Decode gunzips the incoming data and then decodes it with the wrapped
+// codec.
+func (c Codec[T]) Decode(data []byte) (T, error) {
+	return decodeCompressed(c.next, data, func(r io.Reader) (io.ReadCloser, error) {
+		return stdgzip.NewReader(r)
+	})
 }

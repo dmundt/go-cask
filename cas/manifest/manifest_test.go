@@ -11,7 +11,7 @@ import (
 
 type customCodec struct{}
 
-func (customCodec) Encode(v string) ([]byte, error)      { return []byte(v), nil }
+func (customCodec) Encode(v string) ([]byte, error)    { return []byte(v), nil }
 func (customCodec) Decode(data []byte) (string, error) { return string(data), nil }
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
@@ -87,3 +87,39 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatalf("stat path: %v", err)
 	}
 }
+
+func TestNilCodecDefaultsAndFailures(t *testing.T) {
+	want := "demo"
+	if _, err := manifest.EncodeWith(want, nil); err != nil {
+		t.Fatalf("EncodeWith nil codec should default: %v", err)
+	}
+	if got, err := manifest.DecodeWith[string]([]byte("\"demo\""), nil); err != nil {
+		t.Fatalf("DecodeWith nil codec should default: %v", err)
+	} else if got != want {
+		t.Fatalf("DecodeWith nil codec mismatch: got %q, want %q", got, want)
+	}
+	store := manifest.New[string](filepath.Join(t.TempDir(), "subdir", "meta.json"), nil)
+	if err := store.Save(want); err != nil {
+		t.Fatalf("Store.Save with nil codec: %v", err)
+	}
+	got, err := store.Load()
+	if err != nil {
+		t.Fatalf("Store.Load with nil codec: %v", err)
+	}
+	if got != want {
+		t.Fatalf("Store.Load mismatch: got %q, want %q", got, want)
+	}
+
+	fails := manifest.New[string](filepath.Join(t.TempDir(), "bad", "meta.json"), customFailCodec{})
+	if err := fails.Save(want); err == nil {
+		t.Fatal("Save with failing codec should error")
+	}
+	if _, err := manifest.LoadWith(filepath.Join(t.TempDir(), "missing.json"), customFailCodec{}); err == nil {
+		t.Fatal("LoadWith missing file should error")
+	}
+}
+
+type customFailCodec struct{}
+
+func (customFailCodec) Encode(string) ([]byte, error) { return nil, os.ErrInvalid }
+func (customFailCodec) Decode([]byte) (string, error) { return "", os.ErrInvalid }

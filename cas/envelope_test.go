@@ -11,7 +11,7 @@ import (
 func TestEnvelopeRoundTrip(t *testing.T) {
 	payload := []byte("hello world")
 	typ := "note@1"
-	data := marshalEnvelope(typ, payload)
+	data := encodeEnvelope(typ, payload)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -26,8 +26,8 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 
 func TestEnvelopeLegacyUnversioned(t *testing.T) {
 	payload := []byte("{}")
-	// Legacy form: type without @major — unmarshalEnvelope appends @1.
-	data := marshalEnvelope("mystery", payload)
+	// Legacy form: type without @major — decodeEnvelope appends @1.
+	data := encodeEnvelope("mystery", payload)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestEnvelopeLegacyUnversioned(t *testing.T) {
 }
 
 func TestEnvelopeEmptyPayload(t *testing.T) {
-	data := marshalEnvelope("blob@1", nil)
+	data := encodeEnvelope("blob@1", nil)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -95,14 +95,14 @@ func TestEnvelopeEmptyType(t *testing.T) {
 // TestEnvelopeVersionAppliedToLegacy pins the legacy path end to end: a type
 // name without "@major" reads back with "@1" appended.
 func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
-	env, err := EnvelopeFromBytes(marshalEnvelope("blob", []byte("x")))
+	env, err := EnvelopeFromBytes(encodeEnvelope("blob", []byte("x")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if env.Type != "blob@1" {
 		t.Fatalf("unversioned type name = %q, want blob@1", env.Type)
 	}
-	env, err = EnvelopeFromBytes(marshalEnvelope("blob@2", []byte("x")))
+	env, err = EnvelopeFromBytes(encodeEnvelope("blob@2", []byte("x")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,15 +112,15 @@ func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
 }
 
 func TestEnvelopeMarshalDeterministic(t *testing.T) {
-	a := marshalEnvelope("t", []byte("x"))
-	b := marshalEnvelope("t", []byte("x"))
+	a := encodeEnvelope("t", []byte("x"))
+	b := encodeEnvelope("t", []byte("x"))
 	if !bytes.Equal(a, b) {
 		t.Fatalf("deterministic marshal: %x != %x", a, b)
 	}
 }
 
 func TestEnvelopeFromBytesExported(t *testing.T) {
-	raw := marshalEnvelope("exported@1", []byte("data"))
+	raw := encodeEnvelope("exported@1", []byte("data"))
 	env, err := EnvelopeFromBytes(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestEnvelopeFromBytesExported(t *testing.T) {
 func TestEnvelopeFormatWithPayloadLen(t *testing.T) {
 	typ := "note@1"
 	payload := []byte("abc")
-	data := marshalEnvelope(typ, payload)
+	data := encodeEnvelope(typ, payload)
 	r := bytes.NewReader(data)
 	// [version u8]
 	if v, _ := r.ReadByte(); v != envelopeVersion {

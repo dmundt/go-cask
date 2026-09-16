@@ -2,6 +2,7 @@ package flate_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
@@ -57,6 +58,11 @@ func TestCodecIsCascadeable(t *testing.T) {
 	}
 }
 
+type errCodec[T any] struct{}
+
+func (errCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode boom") }
+func (errCodec[T]) Decode([]byte) (T, error) { var zero T; return zero, errors.New("decode boom") }
+
 func TestCodecRejectsNil(t *testing.T) {
 	var c flatecodec.Codec[sample]
 	if _, err := c.Encode(sample{}); err == nil {
@@ -64,5 +70,23 @@ func TestCodecRejectsNil(t *testing.T) {
 	}
 	if _, err := c.Decode(nil); err == nil {
 		t.Fatal("Decode(nil codec) = nil error, want error")
+	}
+}
+
+func TestCodecPropagatesWrappedErrorsAndRejectsBadInput(t *testing.T) {
+	if _, err := flatecodec.New(errCodec[sample]{}).Encode(sample{}); err == nil {
+		t.Fatal("wrapped encode error should propagate")
+	}
+	if _, err := flatecodec.New(errCodec[sample]{}).Decode([]byte("bad")); err == nil {
+		t.Fatal("wrapped decode error should propagate")
+	}
+	if _, err := flatecodec.New(jsoncodec.New[sample]()).Decode([]byte("bad")); err == nil {
+		t.Fatal("invalid flate payload should error")
+	}
+	if _, err := flatecodec.New(jsoncodec.New[sample]()).Decode(nil); err == nil {
+		t.Fatal("nil flate payload should error")
+	}
+	if _, err := flatecodec.New(jsoncodec.New[sample]()).Encode(sample{ID: 1}); err != nil {
+		t.Fatal("valid flate encode should succeed")
 	}
 }

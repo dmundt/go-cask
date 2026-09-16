@@ -2,6 +2,7 @@ package zlib_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -68,8 +69,31 @@ func TestCodecIsCascadeable(t *testing.T) {
 	}
 }
 
+type errCodec[T any] struct{}
+
+func (errCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode boom") }
+func (errCodec[T]) Decode([]byte) (T, error) { var zero T; return zero, errors.New("decode boom") }
+
 func TestCodecUsesCasDigestSemantics(t *testing.T) {
 	if _, err := cas.ParseDigest("abc"); err == nil {
 		t.Fatal("ParseDigest accepted invalid digest")
+	}
+}
+
+func TestCodecPropagatesWrappedErrorsAndRejectsBadInput(t *testing.T) {
+	if _, err := zlibcodec.New(errCodec[sample]{}).Encode(sample{}); err == nil {
+		t.Fatal("wrapped encode error should propagate")
+	}
+	if _, err := zlibcodec.New(errCodec[sample]{}).Decode([]byte("bad")); err == nil {
+		t.Fatal("wrapped decode error should propagate")
+	}
+	if _, err := zlibcodec.New(jsoncodec.New[sample]()).Decode([]byte("bad")); err == nil {
+		t.Fatal("invalid zlib payload should error")
+	}
+	if _, err := zlibcodec.New(jsoncodec.New[sample]()).Decode(nil); err == nil {
+		t.Fatal("nil zlib payload should error")
+	}
+	if _, err := zlibcodec.New(jsoncodec.New[sample]()).Encode(sample{ID: 1}); err != nil {
+		t.Fatal("valid zlib encode should succeed")
 	}
 }

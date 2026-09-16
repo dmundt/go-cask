@@ -37,11 +37,11 @@ type Envelope struct {
 // envelopeVersion is the current envelope format version.
 const envelopeVersion byte = 1
 
-// marshalEnvelope encodes Type and payload as
+// encodeEnvelope writes Type and payload as
 // [version u8][uvarint typeLen][type][uvarint payloadLen][payload]. The
 // encoded length is known up front, so the whole envelope is written into a
 // single pre-sized allocation (no growing buffer, no final copy).
-func marshalEnvelope(typ string, payload []byte) []byte {
+func encodeEnvelope(typ string, payload []byte) []byte {
 	var lenBuf [binary.MaxVarintLen64]byte
 	nType := binary.PutUvarint(lenBuf[:], uint64(len(typ)))
 	nPayload := binary.PutUvarint(lenBuf[:], uint64(len(payload)))
@@ -57,7 +57,7 @@ func marshalEnvelope(typ string, payload []byte) []byte {
 	return out
 }
 
-// parseEnvelope decodes a TLV envelope from an in-memory buffer, returning the
+// decodeEnvelope decodes a TLV envelope from an in-memory buffer, returning the
 // versioned type name (an absent major version reads as "@1",
 // object-versioning §2) and the codec payload. The payload is returned as a
 // zero-copy sub-slice of data — the caller must not retain it past data's
@@ -68,7 +68,7 @@ func marshalEnvelope(typ string, payload []byte) []byte {
 // Bytes after the declared payload are ignored (the field is self-delimiting):
 // readers tolerate a frame extension that appends fields without breaking
 // existing objects, while the writer never emits a trailer.
-func parseEnvelope(data []byte) (string, []byte, error) {
+func decodeEnvelope(data []byte) (string, []byte, error) {
 	if len(data) < 1 {
 		return "", nil, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)
 	}
@@ -106,7 +106,7 @@ func parseEnvelope(data []byte) (string, []byte, error) {
 // The returned Envelope.Data is an independent copy of the payload, so callers
 // may retain it beyond the input buffer's lifetime.
 func EnvelopeFromBytes(data []byte) (Envelope, error) {
-	typ, payload, err := parseEnvelope(data)
+	typ, payload, err := decodeEnvelope(data)
 	if err != nil {
 		return Envelope{}, err
 	}

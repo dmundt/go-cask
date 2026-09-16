@@ -122,4 +122,21 @@ func TestCodecErrorsWhenCallbacksMissing(t *testing.T) {
 	if _, err := codec.Decode([]byte("bad")); err == nil {
 		t.Fatal("Decode with nil function returned nil error, want non-nil")
 	}
+
+	wrapped := New(jsoncodec.New[sample](), nil, nil)
+	if _, err := wrapped.Encode(sample{Name: "demo"}); err == nil {
+		t.Fatal("wrapped Encode with nil transform should error")
+	}
+	if _, err := wrapped.Decode([]byte("bad")); err == nil {
+		t.Fatal("wrapped Decode with nil restore should error")
+	}
+
+	restoreErr := New(jsoncodec.New[sample](), func(data []byte) ([]byte, error) { return data, nil }, func(data []byte) ([]byte, error) { return nil, errors.New("restore boom") })
+	if _, err := restoreErr.Decode([]byte("bad")); err == nil {
+		t.Fatal("restore failure should propagate")
+	}
+	transformErr := New(jsoncodec.New[sample](), func(data []byte) ([]byte, error) { return nil, errors.New("transform boom") }, func(data []byte) ([]byte, error) { return data, nil })
+	if _, err := transformErr.Encode(sample{Name: "demo"}); err == nil {
+		t.Fatal("transform failure should propagate")
+	}
 }

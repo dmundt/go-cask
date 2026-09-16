@@ -331,7 +331,7 @@ func encodeInt64Into(dst []byte, v int64) ([]byte, error) {
 	if v >= 0 {
 		return appendMajor(dst, 0, uint64(v)), nil
 	}
-	return appendMajor(dst, 1, uint64(-(v+1))), nil
+	return appendMajor(dst, 1, uint64(-(v + 1))), nil
 }
 
 func encodeUint64Into(dst []byte, v uint64) ([]byte, error) {
@@ -437,6 +437,37 @@ func decodeOne(data []byte) (any, []byte, error) {
 	b := data[0]
 	major := b >> 5
 	addl := b & 0x1f
+
+	if major == 7 {
+		switch addl {
+		case 20:
+			return false, data[1:], nil
+		case 21:
+			return true, data[1:], nil
+		case 22:
+			return nil, data[1:], nil
+		case 25:
+			if len(data) < 3 {
+				return nil, nil, fmt.Errorf("cbor: truncated float16")
+			}
+			bits := binary.BigEndian.Uint16(data[1:3])
+			return float64(math.Float32frombits(uint32(bits))), data[3:], nil
+		case 26:
+			if len(data) < 5 {
+				return nil, nil, fmt.Errorf("cbor: truncated float32")
+			}
+			bits := binary.BigEndian.Uint32(data[1:5])
+			return float64(math.Float32frombits(bits)), data[5:], nil
+		case 27:
+			if len(data) < 9 {
+				return nil, nil, fmt.Errorf("cbor: truncated float64")
+			}
+			return math.Float64frombits(binary.BigEndian.Uint64(data[1:9])), data[9:], nil
+		default:
+			return nil, nil, fmt.Errorf("cbor: unsupported simple value %d", addl)
+		}
+	}
+
 	pos := 1
 	length, err := readLength(data[1:], &pos, addl)
 	if err != nil {
@@ -494,33 +525,6 @@ func decodeOne(data []byte) (any, []byte, error) {
 			cursor = len(data) - len(rest2)
 		}
 		return m, data[cursor:], nil
-	case 7:
-		switch addl {
-		case 20:
-			return false, data[headerLen:], nil
-		case 21:
-			return true, data[headerLen:], nil
-		case 22:
-			return nil, data[headerLen:], nil
-		case 25:
-			if len(data[headerLen:]) < 2 {
-				return nil, nil, fmt.Errorf("cbor: truncated float16")
-			}
-			return float64(math.Float32frombits(uint32(binary.BigEndian.Uint16(data[headerLen:headerLen+2])))), data[headerLen+2:], nil
-		case 26:
-			if len(data[headerLen:]) < 4 {
-				return nil, nil, fmt.Errorf("cbor: truncated float32")
-			}
-			bits := binary.BigEndian.Uint32(data[headerLen : headerLen+4])
-			return float64(math.Float32frombits(bits)), data[headerLen+4:], nil
-		case 27:
-			if len(data[headerLen:]) < 8 {
-				return nil, nil, fmt.Errorf("cbor: truncated float64")
-			}
-			return math.Float64frombits(binary.BigEndian.Uint64(data[headerLen : headerLen+8])), data[headerLen+8:], nil
-		default:
-			return nil, nil, fmt.Errorf("cbor: unsupported simple value %d", addl)
-		}
 	default:
 		return nil, nil, fmt.Errorf("cbor: unsupported major type %d", major)
 	}

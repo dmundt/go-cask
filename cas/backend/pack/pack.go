@@ -64,6 +64,21 @@ type manifest struct {
 	Entries map[string]packRecord `json:"entries"`
 }
 
+var (
+	mkdirAllFn   = os.MkdirAll
+	openFileFn   = os.OpenFile
+	readFileFn   = os.ReadFile
+	writeFileFn  = os.WriteFile
+	renameFn     = os.Rename
+	openFn       = os.Open
+	loosePutFn   = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error { return loose.Put(ctx, d, r) }
+	looseGetFn   = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) { return loose.Get(ctx, d) }
+	looseExistsFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) { return loose.Exists(ctx, d) }
+	looseDeleteFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error { return loose.Delete(ctx, d) }
+	looseListFn  = func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) { return loose.List(ctx) }
+	looseStatsFn = func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) { return loose.Stats(ctx) }
+)
+
 // Backend is a filesystem-backed pack extension. It stores objects in a loose
 // backend and optionally mirrors them into an append-only pack file plus a small
 // JSON index that points to the payload offset within the pack.
@@ -90,11 +105,11 @@ func New(basePath string, opts ...backend.Option) (*Backend, error) {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	if err := os.MkdirAll(basePath, 0o755); err != nil {
+	if err := mkdirAllFn(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack base: %w", err)
 	}
 	packDir := filepath.Join(basePath, "packs")
-	if err := os.MkdirAll(packDir, 0o755); err != nil {
+	if err := mkdirAllFn(packDir, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack dir: %w", err)
 	}
 	loose, err := fsbackend.New(filepath.Join(basePath, "loose"))
@@ -119,7 +134,7 @@ func New(basePath string, opts ...backend.Option) (*Backend, error) {
 }
 
 func (b *Backend) loadIndex() error {
-	data, err := os.ReadFile(b.manifestPath)
+	data, err := readFileFn(b.manifestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -144,10 +159,10 @@ func (b *Backend) persistIndex() error {
 		return fmt.Errorf("cas: encode pack manifest: %w", err)
 	}
 	tmp := b.manifestPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := writeFileFn(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("cas: write pack manifest: %w", err)
 	}
-	return os.Rename(tmp, b.manifestPath)
+	return renameFn(tmp, b.manifestPath)
 }
 
 func (b *Backend) ensurePackFile() error {
@@ -155,7 +170,7 @@ func (b *Backend) ensurePackFile() error {
 		return nil
 	}
 	path := filepath.Join(b.packDir, "current.pack")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+	f, err := openFileFn(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: open pack file: %w", err)
 	}
@@ -175,7 +190,7 @@ func (b *Backend) rotatePackFile() error {
 		b.packFile = nil
 	}
 	path := filepath.Join(b.packDir, fmt.Sprintf("pack-%d.pack", time.Now().UnixNano()))
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+	f, err := openFileFn(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: rotate pack file: %w", err)
 	}
@@ -243,7 +258,7 @@ func (b *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("cas: read object: %w", err)
 	}
-	if err := b.loose.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := loosePutFn(ctx, b.loose, d, bytes.NewReader(data)); err != nil {
 		return err
 	}
 	if !b.cfg.enabled {
@@ -263,7 +278,7 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rec, ok := b.index[string(d)]; ok {
-		f, err := os.Open(rec.Pack)
+		f, err := openFn(rec.Pack)
 		if err != nil {
 			return nil, fmt.Errorf("cas: open pack file: %w", err)
 		}
@@ -275,7 +290,7 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 		_ = f.Close()
 		return io.NopCloser(bytes.NewReader(data)), nil
 	}
-	return b.loose.Get(ctx, d)
+	return looseGetFn(ctx, b.loose, d)
 }
 
 // Exists reports whether the object is present in either the pack index or the loose backend.
@@ -291,7 +306,7 @@ func (b *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if _, ok := b.index[string(d)]; ok {
 		return true, nil
 	}
-	return b.loose.Exists(ctx, d)
+	return looseExistsFn(ctx, b.loose, d)
 }
 
 // Delete removes the digest from the loose backend and drops any index record.
@@ -304,7 +319,7 @@ func (b *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if err := b.loose.Delete(ctx, d); err != nil {
+	if err := looseDeleteFn(ctx, b.loose, d); err != nil {
 		return err
 	}
 	delete(b.index, string(d))
@@ -321,7 +336,7 @@ func (b *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	looseList, err := b.loose.List(ctx)
+	looseList, err := looseListFn(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}
@@ -349,11 +364,11 @@ func (b *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	stats, err := b.loose.Stats(ctx)
+	stats, err := looseStatsFn(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}
-	looseList, err := b.loose.List(ctx)
+	looseList, err := looseListFn(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package gzip
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -60,6 +61,11 @@ func TestCodecIsCascadeable(t *testing.T) {
 	}
 }
 
+type errCodec[T any] struct{}
+
+func (errCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encode boom") }
+func (errCodec[T]) Decode([]byte) (T, error) { var zero T; return zero, errors.New("decode boom") }
+
 func TestCodecErrorsWhenWrappedCodecMissing(t *testing.T) {
 	codec := New[sample](nil)
 	if _, err := codec.Encode(sample{Title: "demo"}); err == nil {
@@ -67,5 +73,23 @@ func TestCodecErrorsWhenWrappedCodecMissing(t *testing.T) {
 	}
 	if _, err := codec.Decode([]byte("not gzip")); err == nil {
 		t.Fatal("Decode with nil codec returned nil error, want non-nil")
+	}
+}
+
+func TestCodecPropagatesWrappedErrorsAndRejectsBadInput(t *testing.T) {
+	if _, err := New(errCodec[sample]{}).Encode(sample{Title: "demo"}); err == nil {
+		t.Fatal("wrapped encode error should propagate")
+	}
+	if _, err := New(errCodec[sample]{}).Decode([]byte("bad")); err == nil {
+		t.Fatal("wrapped decode error should propagate")
+	}
+	if _, err := New(jsoncodec.New[sample]()).Decode([]byte("bad")); err == nil {
+		t.Fatal("invalid gzip payload should error")
+	}
+	if _, err := New(jsoncodec.New[sample]()).Decode(nil); err == nil {
+		t.Fatal("nil gzip payload should error")
+	}
+	if _, err := New(jsoncodec.New[sample]()).Encode(sample{}); err != nil {
+		t.Fatal("valid gzip encode should succeed")
 	}
 }

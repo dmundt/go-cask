@@ -59,3 +59,17 @@ func TestMarshalError(t *testing.T) {
 		t.Fatal("encoding an unsupported type must error")
 	}
 }
+
+func TestWrappedDecodeAndErrorBranches(t *testing.T) {
+	c := gob.New(flatecodec.New(jsoncodec.New[obj]()))
+	if _, err := c.Decode([]byte("bad gob")); err == nil {
+		t.Fatal("invalid wrapped payload must error")
+	}
+	wrapped := gob.New[obj](nil)
+	if _, err := wrapped.Decode([]byte("bad gob")); err == nil {
+		t.Fatal("nil wrapped codec still decodes via gob and should fail on invalid payload")
+	}
+	if _, err := wrapped.Encode(obj{Title: "x", Body: "y"}); err != nil {
+		t.Fatal("plain gob encode should succeed")
+	}
+}

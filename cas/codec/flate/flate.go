@@ -24,21 +24,19 @@ func New[T any](next cas.Codec[T]) Codec[T] {
 	return Codec[T]{next: next}
 }
 
-// Encode serializes v with the wrapped codec and then flate-compresses the
-// result.
-func (c Codec[T]) Encode(v T) ([]byte, error) {
-	if c.next == nil {
+func encodeCompressed[T any](next cas.Codec[T], v T, newWriter func(io.Writer, int) (io.WriteCloser, error), level int) ([]byte, error) {
+	if next == nil {
 		return nil, errNilCodec
 	}
 
-	payload, err := c.next.Encode(v)
+	payload, err := next.Encode(v)
 	if err != nil {
 		return nil, err
 	}
 
 	var buf bytes.Buffer
 	buf.Grow(len(payload) + len(payload)/8 + 64)
-	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
+	w, err := newWriter(&buf, level)
 	if err != nil {
 		return nil, err
 	}
@@ -52,20 +50,37 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Decode inflates the incoming data and then decodes it with the wrapped
-// codec.
-func (c Codec[T]) Decode(data []byte) (T, error) {
+func decodeCompressed[T any](next cas.Codec[T], data []byte, newReader func(io.Reader) (io.ReadCloser, error)) (T, error) {
 	var zero T
-	if c.next == nil {
+	if next == nil {
 		return zero, errNilCodec
 	}
 
-	r := flate.NewReader(bytes.NewReader(data))
+	r, err := newReader(bytes.NewReader(data))
+	if err != nil {
+		return zero, err
+	}
 	defer r.Close()
 
 	payload, err := io.ReadAll(r)
 	if err != nil {
 		return zero, err
 	}
-	return c.next.Decode(payload)
+	return next.Decode(payload)
+}
+
+// Encode serializes v with the wrapped codec and then flate-compresses the
+// result.
+func (c Codec[T]) Encode(v T) ([]byte, error) {
+	return encodeCompressed(c.next, v, func(w io.Writer, level int) (io.WriteCloser, error) {
+		return flate.NewWriter(w, level)
+	}, flate.DefaultCompression)
+}
+
+// Decode inflates the incoming data and then decodes it with the wrapped
+// codec.
+func (c Codec[T]) Decode(data []byte) (T, error) {
+	return decodeCompressed(c.next, data, func(r io.Reader) (io.ReadCloser, error) {
+		return flate.NewReader(r), nil
+	})
 }

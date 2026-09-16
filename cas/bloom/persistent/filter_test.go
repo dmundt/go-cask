@@ -1,6 +1,7 @@
 package persistent
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -192,6 +193,95 @@ func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFilterPersistentCustomHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "customhash.bin")
+	f, err := NewFilter(Config{ExpectedItems: 256, FalsePositiveRate: 0.01, Hash: func(data []byte, i int) uint64 { return uint64(i + len(data)) }}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	want := cas.NewDigest([]byte("custom"))
+	f.Add(want)
+	if !f.Contains(want) {
+		t.Fatal("custom hash filter should contain inserted digest")
+	}
+}
+
+func TestFilterPersistentMmapEdgeCases(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mmap-edge.bin")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write([]byte{0x01, 0x02}); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	file, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapped, data, err := mmapBytes(file, 0)
+	if err != nil || mapped || data != nil {
+		t.Fatalf("mmapBytes(0) = (%v, %v, %v), want false, nil, nil", mapped, data, err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := closeMapped(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := closeMapped([]byte{}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := bytes.Repeat([]byte("A"), 64)
+	if err := os.WriteFile(path, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapped, data, err = mmapBytes(file, len(want))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != len(want) {
+		t.Fatalf("mmapBytes(file,%d) len = %d, want %d", len(want), len(data), len(want))
+	}
+	if err := closeMapped(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapped, data, err = mmapBytes(file, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 16 {
+		t.Fatalf("mmapBytes(file,16) len = %d, want 16", len(data))
+	}
+	if mapped {
+		if err := closeMapped(data); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := closeMapped(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

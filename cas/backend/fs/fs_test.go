@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -190,6 +191,41 @@ func TestFSPutReaderError(t *testing.T) {
 	}
 	if leftovers := tmpFilesIn(s, h); len(leftovers) != 0 {
 		t.Fatalf("failed Put left temp files behind: %v", leftovers)
+	}
+}
+
+func TestFSPolicyAndSyncParentDirErrors(t *testing.T) {
+	if err := ValidateBase(""); err == nil {
+		t.Fatal("ValidateBase(empty) should fail")
+	}
+	if err := ValidateBase("."); err == nil {
+		t.Fatal("ValidateBase(\".\") should fail")
+	}
+	if err := EnsureBase(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureBase(""); err == nil {
+		t.Fatal("EnsureBase(empty) should fail")
+	}
+	if err := CleanupTemp(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Fatal("CleanupTemp(missing) should treat missing path as harmless")
+	}
+	base := t.TempDir()
+	tempPath := filepath.Join(base, "stale.tmp")
+	if err := os.WriteFile(tempPath, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanupTemp(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatal("CleanupTemp should remove stale *.tmp files")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("syncParentDir is a no-op on Windows")
+	}
+	if err := syncParentDir(filepath.Join(t.TempDir(), "missing", "file")); err == nil {
+		t.Fatal("syncParentDir(missing dir) should error")
 	}
 }
 
