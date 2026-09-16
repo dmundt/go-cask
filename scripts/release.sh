@@ -4,13 +4,77 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
-new_tag="${1:-}"
-from_tag="${2:-}"
+usage() {
+  cat <<'EOF'
+usage: ./scripts/release.sh <tag> [from-tag] [--dry-run] [--publish]
 
-if [[ -z "$new_tag" ]]; then
-  echo "usage: $0 <new-tag> [from-tag]" >&2
+Generate release notes from CHANGELOG.md and optionally publish a GitHub release.
+If --publish is set, the script uploads the generated notes via `gh release create`.
+EOF
+}
+
+tag=""
+from_tag=""
+dry_run=0
+publish=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --dry-run)
+      dry_run=1
+      ;;
+    --publish)
+      publish=1
+      ;;
+    --from-tag)
+      shift
+      from_tag="${1:-}"
+      ;;
+    *)
+      if [[ -z "$tag" ]]; then
+        tag="$1"
+      elif [[ -z "$from_tag" ]]; then
+        from_tag="$1"
+      else
+        echo "unexpected argument: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "$tag" ]]; then
+  usage >&2
   exit 1
 fi
 
-notes="$(./scripts/release-notes.sh "$new_tag" "$from_tag")"
+if [[ -z "$from_tag" ]]; then
+  from_tag="$(git tag --sort=-version:refname | awk -v tag="$tag" '$0 != tag { print; exit }' || true)"
+fi
+
+notes="$(./scripts/release-notes.sh "$tag" "$from_tag")"
+
+if [[ "$dry_run" -eq 1 ]]; then
+  printf '%s\n' "$notes"
+  exit 0
+fi
+
+if [[ "$publish" -eq 1 ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "gh is required for --publish" >&2
+    exit 1
+  fi
+  tmp_file="$(mktemp)"
+  trap 'rm -f "$tmp_file"' EXIT
+  printf '%s\n' "$notes" > "$tmp_file"
+  gh release create "$tag" --title "$tag" --notes-file "$tmp_file" --verify-tag
+  exit 0
+fi
+
 printf '%s\n' "$notes"

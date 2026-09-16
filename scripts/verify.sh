@@ -53,17 +53,23 @@ if go list -deps ./gitlike | grep -E 'cas/codec' >/dev/null 2>&1; then
 fi
 
 echo "== govulncheck =="
+if ! command -v go >/dev/null 2>&1; then
+  echo "go is required for the security gate" >&2
+  exit 1
+fi
+
 gobin="${GOBIN:-}"
 if [[ -z "$gobin" ]]; then
-  if command -v go >/dev/null 2>&1; then
-    gobin="$(go env GOBIN 2>/dev/null)"
-    if [[ -z "$gobin" ]]; then
-      gobin="$(go env GOPATH 2>/dev/null)/bin"
-    fi
+  gobin="$(go env GOBIN 2>/dev/null || true)"
+fi
+if [[ -z "$gobin" ]]; then
+  gobin="$(go env GOPATH 2>/dev/null || true)"
+  if [[ -n "$gobin" ]]; then
+    gobin="$gobin/bin"
   fi
-  if [[ -z "$gobin" ]]; then
-    gobin="$HOME/bin"
-  fi
+fi
+if [[ -z "$gobin" ]]; then
+  gobin="$HOME/bin"
 fi
 
 gobin="$(printf '%s' "$gobin" | sed 's|\\|/|g')"

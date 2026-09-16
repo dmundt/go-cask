@@ -13,7 +13,7 @@ if [[ -z "$new_tag" ]]; then
 fi
 
 if [[ -z "$from_tag" ]]; then
-  from_tag="$(git tag --sort=-version:refname | grep -v "^${new_tag}$" | head -n 1 || true)"
+  from_tag="$(git tag --sort=-version:refname | awk -v tag="$new_tag" '$0 != tag { print; exit }' || true)"
 fi
 
 if [[ -z "$from_tag" ]]; then

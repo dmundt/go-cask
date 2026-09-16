@@ -63,7 +63,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 1. **Unit** — table-driven per component, covering §3.
 2. **Property-style** — deterministic loops over generated digests (the client's `sha256.Of`), varied digest widths, all fan layouts; std-lib only, small explicit generators (no property library).
-3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Decode(Encode(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail), plus separate package-local fuzz files for `cas/backend/pack`, `cas/bloom`, `cas/cache`, `cas/chunk`, `cas/hash`, `cas/manifest`, and the example helpers (`examples/api/demo`, `examples/artifacts`, `examples/files`). Mock-backed contract tests in `cas/backend/mock_backend_test.go` are the explicit guardrail when a small package needs a deterministic in-memory implementation to exercise the same semantics without a real filesystem backend. Commit corpora; seconds in CI, longer nightly.
+3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Decode(Encode(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail), plus separate package-local fuzz files for `cas/backend/pack`, `cas/bloom`, `cas/cache`, `cas/chunk`, `cas/hash`, `cas/manifest`, and the example helpers (`examples/api/demo`, `examples/artifacts`, `examples/files`). Package-scoped corpora are checked in under `testdata/fuzz` and reviewed whenever a fuzz target changes; they are not treated as disposable output. Mock-backed contract tests in `cas/backend/mock_backend_test.go` are the explicit guardrail when a small package needs a deterministic in-memory implementation to exercise the same semantics without a real filesystem backend. Commit corpora; seconds in CI, longer nightly.
 4. **Concurrency/race** — `go test -race` concurrent `Put`/`Get`/`Delete`/`List` on one store (proves lock-free reads, double-checked locking).
 5. **Corruption** — flip bytes on disk → `Verify` fails; `Backend.Get` returns corrupted bytes (store MUST NOT silently fix).
 6. **Golden vectors** — the shipped `sha256` hasher's digest bytes are pinned against `crypto/sha256` (`cas/hash/sha256`), and the text forms are asserted exactly: `Digest.String()` is bare lowercase hex, `sha256.Format(d)` is `"sha256:hexdigest"`. The core itself owns no vectors — it names no algorithm.
@@ -75,14 +75,14 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
 - **Coverage as high as practical:** `cas/` core and `gitlike/` ≥ **90%** statement coverage (excluding generated); every exported identifier exercised; any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
-- CI runs `go test -coverprofile` per gated package (the list in `.github/workflows/ci.yml`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Fuzz seeds are in-code `f.Add` calls (there is no committed corpus directory) and the four targets run in CI.
+- CI runs `go test -coverprofile` per gated package (the list in `.github/workflows/ci.yml`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
 
 ## 6. Checklist
 
 - [x] all CAS laws in §1 covered
 - [x] every requirement ID (P-01…P-05, sentinel errors, ops, defaults, example-API) tested; the P-IDs are covered by the `benchmarks/` suite (they are spec IDs, not test names — `Test<Component>_P0x_…` naming applies where a test *is* the requirement, e.g. sentinels and ops)
 - [x] §3 corner/error inventory covered per component
-- [x] fuzz targets present with in-code seed corpora, run in CI
+- [x] fuzz targets present with reviewed package-scoped corpora, run in CI
 - [x] `-race` concurrent test green
 - [x] corruption test proves `Verify` fails on a flipped byte
 - [x] golden vectors assert exact digests

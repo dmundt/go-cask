@@ -25,6 +25,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep local scripts and CI behavior aligned. The workflow should call the same helper logic instead of duplicating commands.
 - Run `./scripts/verify.sh` before every commit or release prep pass.
 - Keep `CHANGELOG.md` and GitHub release notes synchronized.
+- Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
+- Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
 

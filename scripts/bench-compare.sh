@@ -4,16 +4,26 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
-baseline="${1:-benchmarks/data/baseline.txt}"
-current="${2:-benchmarks/data/current.txt}"
+archive_dir="$repo_root/benchmarks/data/archive"
+mkdir -p "$archive_dir"
 
-mkdir -p "$(dirname "$baseline")" "$(dirname "$current")"
+baseline="${1:-}"
+current="${2:-$repo_root/benchmarks/data/current.txt}"
+
+mkdir -p "$(dirname "$current")"
 
 ./scripts/bench-baseline.sh "$current"
 
-if [[ ! -f "$baseline" ]]; then
-  echo "baseline not found: $baseline" >&2
-  echo "generate it with: ./scripts/bench-baseline.sh $baseline" >&2
+if [[ -z "$baseline" ]]; then
+  if [[ -f "$repo_root/benchmarks/data/baseline.txt" ]]; then
+    baseline="$repo_root/benchmarks/data/baseline.txt"
+  else
+    baseline="$(ls -1t "$archive_dir"/*.txt 2>/dev/null | head -n 1 || true)"
+  fi
+fi
+
+if [[ -z "$baseline" || ! -f "$baseline" ]]; then
+  echo "baseline not found; generate one with: ./scripts/bench-baseline.sh" >&2
   exit 1
 fi
 
