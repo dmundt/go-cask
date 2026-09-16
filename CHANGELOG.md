@@ -18,12 +18,15 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Normalized the benchmark suite into subsystem-specific files and tightened the benchmark names to distinguish setup cost, steady-state cost, hot/cold access patterns, and mixed workloads.
 - Added a realistic graph-traversal benchmark alongside the store workflow cases, and kept the benchmark matrix focused around a small canonical size ladder and anchor baselines.
 - Refreshed the benchmark README guidance to explain how to compare same-machine runs, when a baseline is valid, and how to interpret noisy outliers without over-reading a single `ns/op` figure.
+- Reduced hot-path overhead across the Bloom, cache, codec, and root CAS layers by trimming redundant lookups, pre-sizing buffers, and collapsing repeated field access churn without changing semantics or the public API.
+- Refreshed the benchmark ladder and canonical JSON snapshot to a denser log-spaced matrix, then updated the evaluation doc and README tables to summarize the current winner-by-payload pattern clearly.
 
 ### Fixed
 
 - Optimized the CBOR hot path in [cas/codec/cbor/cbor.go](cas/codec/cbor/cbor.go) by removing repeated generic re-encoding churn, reducing unnecessary per-element allocation work, and cutting redundant byte copying in the decode path.
 - Refreshed the canonical benchmark JSON and the benchmark README so the current CBOR performance gain and the winner-by-payload summary match the patched implementation.
 - Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
+- Tightened root CAS hot-path checks in [cas/digest.go](cas/digest.go), [cas/envelope.go](cas/envelope.go), [cas/store.go](cas/store.go), and [cas/walker.go](cas/walker.go) to lower allocation churn and repeated conversions while preserving identical behavior.
 - Ran repository gofmt on the Go source tree without touching the external module cache.
 
 ## [v1.4.3] - 2026-09-15
