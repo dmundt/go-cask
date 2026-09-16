@@ -26,4 +26,4 @@ These examples are intentionally application-layer code. They show how to:
 - Examples use secure defaults for new work: `SHA-256` for identity, JSON for readable formats, and `fs` for persistent storage.
 - The examples are not the library core; they are teaching patterns and application wiring.
 
-Run them from the repo root with `go run ./examples/...` or enter a specific example directory and run its main package.
+Run them from the repo root with `./scripts/run-examples.sh` or `go run ./examples/...`; each example also has a one-command `go run ./examples/<name>` path in its README and a short "What it demonstrates" section so the proof point is visible before you run it.

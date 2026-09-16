@@ -26,85 +26,26 @@ jobs:
           # std-lib-only module: no go.sum to key a module cache on
           cache: false
 
-      - name: gofmt (no unformatted files)
+      - name: Verify repo
         if: hashFiles('**/*.go') != ''
-        run: |
-          unformatted="$(gofmt -l .)"
-          test -z "$unformatted" || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
+        run: ./scripts/verify.sh
 
-      - name: go mod tidy (no drift)
-        if: hashFiles('**/*.go') != ''
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod
-          if [ -f go.sum ]; then git diff --exit-code go.sum; fi # std-lib-only module has no go.sum
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
 
-      - name: go vet
-        if: hashFiles('**/*.go') != ''
-        run: go vet ./...
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
 
-      - name: Import boundaries (no product -> examples/gitlike imports)
-        if: hashFiles('**/*.go') != ''
+      - name: Run govulncheck
         run: |
-          if grep -rn "dmundt/go-cask/examples\|dmundt/go-cask/gitlike" cas internal cmd; then
-            echo "cas/, internal/ and cmd/ MUST NOT import examples/ or the gitlike app layer (coding-guidelines §9)"
-            exit 1
-          fi
-
-      - name: gitlike stays codec-agnostic
-        if: hashFiles('**/*.go') != ''
-        run: |
-          # The codec is injected at the call site; the library names none. Test
-          # files MAY inject one (cas-core §4.12), so check the package's
-          # production dependency graph rather than grepping the directory.
-          if go list -deps ./gitlike | grep -E 'cas/codec'; then
-            echo "gitlike MUST NOT depend on a codec package: inject it via gitlike.Codecs (cas-core §4.12)"
-            exit 1
-          fi
-
-      - name: Test -race + coverage gate (cas/ + gitlike >= 90%)
-        if: hashFiles('**/*.go') != ''
-        run: |
-          fail=0
-          # One package per invocation so each package's coverage line is
-          # gated individually (./cas/... would mask cas behind nothing else here).
-          for pkg in ./cas ./cas/backend/fs ./cas/backend/mem ./cas/cache/mem ./cas/cache/lru ./cas/cache/prefetch ./cas/codec/json ./cas/codec/gob ./cas/hash/sha256 ./cas/hash/sha512_256 ./gitlike ./internal/index; do
-            out="$(go test -race -cover "$pkg")"
-            echo "$out"
-            cov="$(echo "$out" | grep -oP 'coverage: \K[0-9.]+(?=%)' | tail -1)"
-            if [ -n "$cov" ] && [ "$(awk -v c="$cov" 'BEGIN{print (c+0 >= 90.0) ? 1 : 0}')" != "1" ]; then
-              echo "coverage $cov% below 90% for $pkg"; fail=1
-            fi
-          done
-          go test -race ./...
-          exit $fail
-
-      - name: Fuzz smoke
-        if: hashFiles('**/*.go') != ''
-        run: |
-          # Each fuzz target lives in its own package; -fuzz runs one target
-          # per invocation as a quick validation gate.
-          go test -run=^$ -fuzz=FuzzParseDigest -fuzztime=5s ./cas/
-          go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/backend/fs/
-          go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/backend/fs/
-          go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
-
-      - name: Doc integrity (docs/specs)
-        run: |
-          cd docs/specs
-          fail=0
-          for f in *.md; do
-            m="$(grep -c '^```mermaid$' "$f" || true)"
-            c="$(grep -c '^```$' "$f" || true)"
-            if [ "$c" -lt "$m" ]; then echo "unbalanced mermaid in $f"; fail=1; fi
-          done
-          for ref in $(grep -rho '[a-z0-9-]*\.md' . | sort -u); do
-            case "$ref" in
-              .md|CHANGELOG.md|README.md|viewer-brief.md) continue ;; # repo-root / pattern-literal tokens, not sibling specs
-            esac
-            [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
-          done
-          exit $fail
+          mkdir -p "$(go env GOPATH)/bin"
+          GOBIN="$(go env GOPATH)/bin" go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
   platform-matrix:
     name: ${{ matrix.name }}

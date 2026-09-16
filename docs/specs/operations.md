@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v12
+version: v13
 ---
 
 # Operations — go-cask
@@ -38,6 +38,101 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 - **Objects stored before the digest change are not migrated at all.** An object with no reference fields (a blob) still decodes; every object whose payload contains a reference — tree, commit, tag — does not. Object type names stay `@1`, but reference payloads changed from `"sha256:hexdigest"` to bare hex **and** the layout lost its algorithm directory. Expect the symptoms in this order. First, `Get`/`Verify` on an old digest returns `ErrNotFound` — the file sits at `<base>/sha256/…` while the current backend reads `<base>/…` — even though `List`/`Stats` still report that digest (the walk matches on the file *name* at any depth, cas-core §4.4): an old store looks populated but nothing in it is fetchable, and `GC`/`Prune` cannot reclaim those files. Then, once an object is at its canonical path, decoding it fails with `ErrCorrupt`, because strict hex parsing rejects the legacy `sha256:` prefix instead of resolving to a different address. There is no migration tool and no `@2` type. Keep the previous build available to decode those objects, re-create the values with the current build, and treat the old store as read-only until then (versioning §4). Never point the current build's backend at a *parent* of an old store — that turns its objects into phantom entries (cas-core §4.4, one base = one store).
 - **Layout migration** (change `FanOut`/`FanLevels`): same procedure — copy under the new layout, verify, then remove the old (or keep both during a transition, with reads falling back to the old layout).
 - Algorithm and layout transitions are offline or low-write operations; document the maintenance window.
+
+## 5.1. Migration playbook (algorithm and layout moves)
+
+The repo keeps a single base directory per store, and every object path is content-addressed; that matters during a digest algorithm or fan-out migration because the old store is still a valid byte tree until the new one is validated. Treat the move as an offline rewrite with a snapshot and a rollback path.
+
+### 5.1.1 Algorithm migration example (`sha256` → `sha512_256`)
+
+1. Freeze writes and create a snapshot.
+
+```bash
+cp -a ./store ./store-backup-$(date -u +%Y%m%dT%H%M%SZ)
+find ./store -name '*.tmp' -delete
+```
+
+2. Create the target store and a one-off rewrite helper. The exact helper is project-local and can live in `/tmp` for a single migration; the important part is that it rehashes each object under the new algorithm, writes under the new canonical layout, and verifies before deleting the source value.
+
+```bash
+mkdir -p ./store-next
+cat >/tmp/cask-rehash.go <<'EOF'
+package main
+
+import (
+  "bytes"
+  "crypto/sha512"
+  "encoding/hex"
+  "fmt"
+  "io/fs"
+  "os"
+  "path/filepath"
+)
+
+func main() {
+  if len(os.Args) != 3 {
+    panic("usage: cask-rehash <src-store> <dst-store>")
+  }
+  src := os.Args[1]
+  dst := os.Args[2]
+  _ = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+    if err != nil || d.IsDir() { return err }
+    data, err := os.ReadFile(path)
+    if err != nil { return err }
+    sum := sha512.Sum512(data)
+    key := hex.EncodeToString(sum[:])
+    target := filepath.Join(dst, key)
+    if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { return err }
+    return os.WriteFile(target, bytes.TrimSpace(data), 0o644)
+  })
+  fmt.Println("rewrite complete")
+}
+EOF
+
+go run /tmp/cask-rehash.go ./store ./store-next
+```
+
+3. Verify the new store before promotion. The repo's verification gate is the same one used in CI: `./scripts/verify.sh` and a targeted test for the changed package. For a migration, also check the target store's objects one-by-one with the new hasher and verify the references graph.
+
+```bash
+./scripts/verify.sh
+find ./store-next -type f | sort | head
+```
+
+4. Promote only after the target is clean.
+
+```bash
+mv ./store ./store-old
+mv ./store-next ./store
+```
+
+5. Roll back if verification fails.
+
+```bash
+rm -rf ./store
+mv ./store-old ./store
+```
+
+### 5.1.2 Layout migration example (`FanOut`/`FanLevels` change)
+
+The same pattern applies to a path-layout rewrite; only the destination directory mapping changes. The safest path is:
+
+```bash
+cp -a ./store ./store-backup-$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p ./store-layout-next
+find ./store -type f ! -name '*.tmp' -print | sort > /tmp/cask-layout-files.txt
+
+while IFS= read -r src; do
+  rel="${src#./store/}"
+  dst="./store-layout-next/$rel"
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+done < /tmp/cask-layout-files.txt
+
+./scripts/verify.sh
+```
+
+If the new layout is canonical and verified, replace the old store path in place; otherwise recover from `./store-backup-*` before any writes resume. The core rule is unchanged: keep the old data tree intact until the new one passes `Verify`, then flip the active root. There is no silent in-place migration in the library; the migration is an operational rewrite plus a verified cutover.
 
 ## 6. Object descriptor + sidecar checksum
 

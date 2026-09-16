@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v12
+version: v13
 ---
 
 # Benchmarks — go-cask
@@ -50,6 +50,14 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `-v` | Shows the scale probes' projection lines |
 | `-timeout <dur>` | Whole-run timeout (default 10 min); `-timeout 0` for long prefills |
 | `CASK_BENCH_SUMMARY=1` | Emits the extra summary logs used for manual comparison and diagnosis; default output stays standard Go benchmark output |
+
+To capture a baseline artifact for a machine or branch, run:
+
+```bash
+./scripts/bench-baseline.sh
+```
+
+The script writes the raw benchmark output to `benchmarks/baseline.txt`. Keep that artifact alongside the machine details and compare future runs against it with `benchstat` or a similar diff tool.
 
 ## 3. Regular perf suite
 

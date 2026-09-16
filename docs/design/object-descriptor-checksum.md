@@ -2,7 +2,7 @@
 type: Design Document
 title: Object Descriptor + Sidecar Checksum — go-cask
 description: Non-normative design note for storing a small object descriptor and optional sidecar checksum outside the object bytes, without changing the digest model or the Backend contract.
-version: v1
+version: v2
 ---
 
 # Object Descriptor + Sidecar Checksum — go-cask

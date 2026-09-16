@@ -32,6 +32,7 @@ version: v12
 | `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
 | `cas/bloom/` | [`performance.md`](specs/performance.md) + [`consistency.md`](specs/consistency.md) + [`cas/bloom/README.md`](/cas/bloom/README.md) |
+| `scripts/` | [`scripts/AGENT.md`](../scripts/AGENT.md) + [`scripts/README.md`](../scripts/README.md) |
 | `benchmarks/` | [`benchmarks/AGENT.md`](/benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
