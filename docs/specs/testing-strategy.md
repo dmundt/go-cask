@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v18
+version: v20
 ---
 
 # Testing Strategy — go-cask
@@ -31,6 +31,7 @@ CASK's value is its invariants (same bytes ⇒ same digest ⇒ stored once, immu
 - Assertions are direct (`errors.Is`, exact values/digests); a test passing only by printing or by another test's side effect is a defect.
 - When fuzzing surfaces a real constraint/skipped branch, pin it with an explicit test in the same change.
 - Example packages also contribute fuzz guards for helper invariants (`examples/api/demo/fuzz_test.go`, `examples/artifacts/fuzz_test.go`, `examples/files/fuzz_test.go`), so the documentation examples stay validated even when their logic is intentionally minimal and copyable.
+- The CAS layer keeps package-local fuzz coverage where the logic is small but operationally meaningful: `cas/bloom/fuzz_test.go`, `cas/cache/fuzz_test.go`, `cas/chunk/fuzz_test.go`, `cas/hash/fuzz_test.go`, and `cas/manifest/fuzz_test.go` cover the direct contracts that are too small for a separate integration harness but too important to leave unguarded. Mock-backed contract tests (`cas/backend/mock_backend_test.go`) are also required when a package needs a deterministic in-memory backend shim without depending on the filesystem or a concrete deployment backend.
 
 ## 2. Requirement traceability
 
@@ -62,7 +63,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 1. **Unit** — table-driven per component, covering §3.
 2. **Property-style** — deterministic loops over generated digests (the client's `sha256.Of`), varied digest widths, all fan layouts; std-lib only, small explicit generators (no property library).
-3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Decode(Encode(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail), plus separate package-local fuzz files for `cas/backend/pack` and the example helpers (`examples/api/demo`, `examples/artifacts`, `examples/files`). Commit corpora; seconds in CI, longer nightly.
+3. **Fuzz** (`go test fuzz`): `FuzzParseDigest` (in `cas`; never panics, valid round-trip), `FuzzPathRoundTrip` (in `cas/backend/fs`; arbitrary digest + layout), `FuzzCodecRoundTrip` (JSON `Decode(Encode(x))==x`), `FuzzVerify` (in `cas/backend/fs`; takes a digest and the injected hasher — corrupt bytes fail), plus separate package-local fuzz files for `cas/backend/pack`, `cas/bloom`, `cas/cache`, `cas/chunk`, `cas/hash`, `cas/manifest`, and the example helpers (`examples/api/demo`, `examples/artifacts`, `examples/files`). Mock-backed contract tests in `cas/backend/mock_backend_test.go` are the explicit guardrail when a small package needs a deterministic in-memory implementation to exercise the same semantics without a real filesystem backend. Commit corpora; seconds in CI, longer nightly.
 4. **Concurrency/race** — `go test -race` concurrent `Put`/`Get`/`Delete`/`List` on one store (proves lock-free reads, double-checked locking).
 5. **Corruption** — flip bytes on disk → `Verify` fails; `Backend.Get` returns corrupted bytes (store MUST NOT silently fix).
 6. **Golden vectors** — the shipped `sha256` hasher's digest bytes are pinned against `crypto/sha256` (`cas/hash/sha256`), and the text forms are asserted exactly: `Digest.String()` is bare lowercase hex, `sha256.Format(d)` is `"sha256:hexdigest"`. The core itself owns no vectors — it names no algorithm.

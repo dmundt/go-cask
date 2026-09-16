@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v10
+version: v12
 ---
 
 # Operations — go-cask
@@ -39,17 +39,71 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 - **Layout migration** (change `FanOut`/`FanLevels`): same procedure — copy under the new layout, verify, then remove the old (or keep both during a transition, with reads falling back to the old layout).
 - Algorithm and layout transitions are offline or low-write operations; document the maintenance window.
 
-## 6. Backup
+## 6. Object descriptor + sidecar checksum
+
+The core does not put a payload checksum inside the TLV envelope. The object digest is already the checksum of the stored bytes. A payload checksum is therefore an optional sidecar descriptor, stored above the `Backend` contract rather than inside the content-addressed payload itself.
+
+### 6.1 Exact shape
+
+The canonical raw object remains the backend bytes keyed by `Digest`, with the exact layout unchanged:
+
+```text
+<base>/<digest path>          // bytes with canonical content-address identity
+<base>/.meta/<digest>.json    // sidecar descriptor, optional and not part of the hash input
+```
+
+A minimal descriptor record is:
+
+```json
+{
+  "version": 1,
+  "digest": "sha256:abcd...",
+  "type": "blob@1",
+  "codec": "json",
+  "payload_checksum": "sha256:abcd...",
+  "payload_size": 4096,
+  "created_at": "2026-09-16T22:45:00Z",
+  "references": ["sha256:dead...", "sha256:beef..."]
+}
+```
+
+Rules:
+
+- `digest` is the object key. It is the authoritative content-address identity.
+- `payload_checksum` is a metadata checksum of the logical payload or of a chunked payload. For a whole-object store it is usually equal to `digest`; the descriptor stores it only so the metadata can be validated without re-decoding the whole content stream.
+- The sidecar does not replace the object digest, does not change the `Digest` of the stored bytes, and does not alter the TLV bytes on disk.
+- `Store[T]` or an app-level descriptor package writes it; `Backend` stores only bytes.
+
+### 6.2 Why not in the TLV?
+
+Putting the checksum into the object bytes would make it part of the object identity. That creates a circular dependency: the checksum must be computed over bytes that contain the checksum itself. The result is a different hash for a different payload and a store where object identity no longer matches the bytes you stored.
+
+The repo therefore keeps the TLV envelope stable and keeps checksum metadata in a sidecar record outside the hash input.
+
+### 6.3 Verification path
+
+When a descriptor is present:
+
+1. `Backend.Get` returns the bytes for `digest`.
+2. the descriptor is read or lazily opened from `/.meta/<digest>.json`.
+3. the payload checksum is recomputed from the logical payload or chunk stream and checked against `payload_checksum`.
+4. the object is decoded and `Validate()` is enforced.
+5. on any mismatch, the object is treated as `ErrCorrupt` and quarantined.
+
+This pattern is useful for app metadata, chunked payload manifests, and large recovery metadata — not for the base object bytes, which are already digest-addressed.
+
+## 7. Backup
 
 - The store is a plain directory tree — back it up with standard tooling (tar/rsync/object-storage sync).
 - Consistent snapshot without quiescing: copy while running, then `Verify` the copy — the atomic-write design guarantees the copy never contains partial objects, only possibly the newest ones.
 - Dedup keeps backups small; consider packfiles (performance §9) before large-scale backup.
 
-## 7. Checklist
+## 8. Checklist
 
 - [x] fsync-before-rename enforced; directory fsync configurable
 - [x] orphan `*.tmp` sweep documented/implemented
 - [x] slog logging for mutations, login-throttle rejections, slow ops, GC runs
 - [x] verify cadence defined; mismatch → quarantine + audit + alert
 - [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
+- [x] object descriptor + sidecar checksum defined as optional metadata above the backend, never in the hash input
 - [x] backup procedure documented

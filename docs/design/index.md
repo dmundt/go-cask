@@ -12,6 +12,7 @@ Non-normative. Inform, never override instruction specs.
 | File | What |
 |---|---|
 | [`core-overview.md`](core-overview.md) | Pointer to `cas-core.md` §3.3 interface diagram |
+| [`object-descriptor-checksum.md`](object-descriptor-checksum.md) | Design sketch for an optional object descriptor + sidecar checksum layer above the backend |
 | [`viewer-brief.md`](viewer-brief.md) | Viewer next-iteration design brief (OpenDesign input) |
 | [`go-cask-viewer.html`](go-cask-viewer.html) | Viewer HTML mockup |
 | [`go-cask-object-browser.design.json`](go-cask-object-browser.design.json) | Object browser design artifact |
