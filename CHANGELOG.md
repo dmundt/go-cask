@@ -32,6 +32,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Fixed the Windows mmap pointer bookkeeping so the Go analyzer no longer reports a possible `unsafe.Pointer` misuse while preserving the correct mapped-view lifecycle and flush/unmap semantics.
 - Removed the Unix-side `unsafe.Pointer` conversion in the mapped-address helpers so `go vet` passes cleanly under the standard analyzer checks while preserving the package’s retry and fallback behavior.
 - Added the required `golang.org/x/sys` dependency for the cross-platform mmap and Win32/Unix syscall support used by the persistent Bloom layer.
+- Expanded the CI platform matrix to cover representative Linux, Windows, and macOS targets, including the new ARM Windows coverage needed for portable validation.
 - Ran repository gofmt on the Go source tree without touching the external module cache.
 
 ## [v1.4.3] - 2026-09-15
