@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -61,6 +62,10 @@ func benchNoteWithSeed(size int, seed int) testNote {
 		Title: benchText(left, seed),
 		Body:  benchText(size-left, seed+1),
 	}
+}
+
+func benchTitle(prefix string, n int) string {
+	return prefix + strconv.Itoa(n)
 }
 
 func marshalBinaryNote(v testNote) ([]byte, error) {

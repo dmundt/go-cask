@@ -2,7 +2,6 @@ package benchmark_test
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -120,7 +119,7 @@ func BenchmarkParallelPutGet(b *testing.B) {
 	// object and reads it once to model a realistic mixed access pattern.
 	var digests []cas.Digest
 	for i := 0; i < objects; i++ {
-		h, err := store.Put(ctx, testNote{Title: fmt.Sprintf("obj-%d", i)})
+		h, err := store.Put(ctx, testNote{Title: benchTitle("obj-", i)})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -136,7 +135,7 @@ func BenchmarkParallelPutGet(b *testing.B) {
 		for pb.Next() {
 			idx := int(i % uint64(objects))
 			if i%coldRatio == 0 {
-				h, err := store.Put(ctx, testNote{Title: fmt.Sprintf("parallel-%d", i)})
+				h, err := store.Put(ctx, testNote{Title: benchTitle("parallel-", int(i))})
 				if err != nil {
 					b.Fatal(err)
 				}

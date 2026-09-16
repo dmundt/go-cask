@@ -2,7 +2,6 @@ package benchmark_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -19,7 +18,7 @@ func BenchmarkCacheMemoryGet(b *testing.B) {
 	count := 256
 	digests := make([]cas.Digest, 0, count)
 	for i := 0; i < count; i++ {
-		d, err := store.Put(ctx, testNote{Title: fmt.Sprintf("cache-%d", i)})
+		d, err := store.Put(ctx, testNote{Title: benchTitle("cache-", i)})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -60,7 +59,7 @@ func BenchmarkCacheLRUGet(b *testing.B) {
 	count := 256
 	digests := make([]cas.Digest, 0, count)
 	for i := 0; i < count; i++ {
-		d, err := store.Put(ctx, testNote{Title: fmt.Sprintf("lru-%d", i)})
+		d, err := store.Put(ctx, testNote{Title: benchTitle("lru-", i)})
 		if err != nil {
 			b.Fatal(err)
 		}
