@@ -26,10 +26,17 @@ version: v22
 > you never miss a rule that applies to your change.
 >
 > **Before every commit/push, complete the repo preflight checklist.** Keep the
-> repo in a releasable state: update `CHANGELOG.md` for any user-visible change,
-> run `gofmt -w .` (or equivalent formatting on the touched files), run
-> `go test ./...`, and verify the CI status after pushing. Treat this as a
-> required operational step for all follow-up work, not an optional cleanup.
+> repo in a releasable state and match the actual CI gates in
+> `.github/workflows/ci.yml`: update `CHANGELOG.md` for any user-visible change,
+> run `gofmt -w .` (or equivalent formatting on the touched files), ensure the
+> current Go module is tidy (`go mod tidy` and a clean `go.mod`/`go.sum` diff),
+> run `go vet ./...`, run `go test ./...`, and verify the GitHub Actions `CI`
+> workflow after pushing. The workflow uses `actions/checkout@v5` and
+> `actions/setup-go@v6`, then runs the `verify` gate (gofmt, module drift,
+> import boundary checks, `gitlike` codec guard, race+coverage checks, fuzz
+> smoke, doc integrity) and the `platform-matrix` job across Linux/Windows/macOS
+> targets. Treat this as a required operational step for all follow-up work,
+> not an optional cleanup.
 
 ## Table of contents
 

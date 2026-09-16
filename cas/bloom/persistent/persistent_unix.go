@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
+
+var mappedViews sync.Map
 
 func mmapBytes(file *os.File, size int) (bool, []byte, error) {
 	if size <= 0 {
