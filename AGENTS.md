@@ -31,7 +31,9 @@ version: v22
 > run `gofmt -w .` (or equivalent formatting on the touched files), ensure the
 > current Go module is tidy (`go mod tidy` and a clean `go.mod`/`go.sum` diff),
 > run `go vet ./...` before each commit, run `go test ./...`, and verify the
-> GitHub Actions `CI` workflow after pushing. The workflow uses
+> GitHub Actions `CI` workflow after pushing. Before every GitHub release,
+> mirror the user-facing `CHANGELOG.md` entries into the release notes and keep
+> the release body aligned with the shipped changelog sections. The workflow uses
 > `actions/checkout@v5` and `actions/setup-go@v6`, then runs the `verify` gate
 > (gofmt, module drift, import boundary checks, `gitlike` codec guard,
 > race+coverage checks, fuzz smoke, doc integrity) and the `platform-matrix` job
