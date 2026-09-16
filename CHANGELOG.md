@@ -12,6 +12,12 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Keep this section empty until the next user-visible release lands.
+
+## [v1.4.4] - 2026-09-16
+
+### Changed
+
 - Normalized the built-in envelope helpers around the project’s `Encode`/`Decode` vocabulary: the TLV frame is encoded/decoded by package-level helpers, while `Envelope` remains a minimal decoded value type and the public surface stays lean.
 - Unified the `cas/codec` package family around a single `Encode`/`Decode` API and consistent constructor patterns: direct codecs use `NewRaw`/`NewValue`/`NewMap`, wrapper codecs accept `next` first, and the byte-transform layer stays separate from the format layer.
 - Standardized the codec stack semantics across the package set and refreshed the package-local AGENT guidance so the direct-vs-wrapper split and nil-check behavior are explicit.
