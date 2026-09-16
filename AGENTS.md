@@ -30,13 +30,13 @@ version: v22
 > `.github/workflows/ci.yml`: update `CHANGELOG.md` for any user-visible change,
 > run `gofmt -w .` (or equivalent formatting on the touched files), ensure the
 > current Go module is tidy (`go mod tidy` and a clean `go.mod`/`go.sum` diff),
-> run `go vet ./...`, run `go test ./...`, and verify the GitHub Actions `CI`
-> workflow after pushing. The workflow uses `actions/checkout@v5` and
-> `actions/setup-go@v6`, then runs the `verify` gate (gofmt, module drift,
-> import boundary checks, `gitlike` codec guard, race+coverage checks, fuzz
-> smoke, doc integrity) and the `platform-matrix` job across Linux/Windows/macOS
-> targets. Treat this as a required operational step for all follow-up work,
-> not an optional cleanup.
+> run `go vet ./...` before each commit, run `go test ./...`, and verify the
+> GitHub Actions `CI` workflow after pushing. The workflow uses
+> `actions/checkout@v5` and `actions/setup-go@v6`, then runs the `verify` gate
+> (gofmt, module drift, import boundary checks, `gitlike` codec guard,
+> race+coverage checks, fuzz smoke, doc integrity) and the `platform-matrix` job
+> across Linux/Windows/macOS targets. Treat this as a required operational
+> step for all follow-up work, not an optional cleanup.
 
 ## Table of contents
 
