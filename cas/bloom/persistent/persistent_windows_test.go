@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"unsafe"
 )
 
 func TestPersistentMmapWindowsBranches(t *testing.T) {
@@ -75,7 +74,7 @@ func TestPersistentWindowsMappedHelpers(t *testing.T) {
 	if !mapped && len(data) == 0 {
 		t.Fatal("expected a mapped view or fallback bytes")
 	}
-	ptr := uintptr(unsafe.Pointer(&data[0]))
+	ptr := slicePtr(data)
 	mappedViews.Store(ptr, true)
 	if err := flushMapped(data); err != nil {
 		_ = err
@@ -129,7 +128,7 @@ func TestPersistentWindowsMappedAddrHelpers(t *testing.T) {
 	_ = closeMappedByAddr(0, 64)
 
 	buf := make([]byte, 32)
-	addr := uintptr(unsafe.Pointer(&buf[0]))
+	addr := slicePtr(buf)
 	mappedViews.Store(addr, true)
 	_ = flushMapped(buf)
 	_ = flushMappedByAddr(addr, len(buf))

@@ -1,6 +1,9 @@
 package persistent
 
-import "os"
+import (
+	"os"
+	"reflect"
+)
 
 type mmapDriver struct {
 	mmapBytes         func(file *os.File, size int) (bool, []byte, error)
@@ -19,3 +22,10 @@ var defaultMmapOps = mmapDriver{
 }
 
 var mmapOps = defaultMmapOps
+
+func slicePtr(data []byte) uintptr {
+	if len(data) == 0 {
+		return 0
+	}
+	return reflect.ValueOf(data).Pointer()
+}

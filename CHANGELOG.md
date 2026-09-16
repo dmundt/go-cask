@@ -29,6 +29,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
 - Tightened root CAS hot-path checks in [cas/digest.go](cas/digest.go), [cas/envelope.go](cas/envelope.go), [cas/store.go](cas/store.go), and [cas/walker.go](cas/walker.go) to lower allocation churn and repeated conversions while preserving identical behavior.
 - Hardened the persistent Bloom mmap layer on Unix and Windows by isolating the platform-specific memory-mapped logic behind a small abstraction, adding deterministic mock hooks, and fixing the Darwin `msync` compatibility issue without changing behavior.
+- Fixed the Windows mmap pointer bookkeeping so the Go analyzer no longer reports a possible `unsafe.Pointer` misuse while preserving the correct mapped-view lifecycle and flush/unmap semantics.
+- Added the required `golang.org/x/sys` dependency for the cross-platform mmap and Win32/Unix syscall support used by the persistent Bloom layer.
 - Ran repository gofmt on the Go source tree without touching the external module cache.
 
 ## [v1.4.3] - 2026-09-15

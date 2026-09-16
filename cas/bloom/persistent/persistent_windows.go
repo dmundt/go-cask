@@ -120,7 +120,7 @@ func mmapBytes(file *os.File, size int) (bool, []byte, error) {
 	}
 
 	view := unsafe.Slice((*byte)(unsafe.Pointer(addr)), size)
-	mappedViews.Store(uintptr(unsafe.Pointer(&view[0])), true)
+	mappedViews.Store(slicePtr(view), true)
 	return true, view, nil
 }
 
@@ -128,7 +128,7 @@ func closeMapped(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	ptr := uintptr(unsafe.Pointer(&data[0]))
+	ptr := slicePtr(data)
 	if _, ok := mappedViews.Load(ptr); !ok {
 		return nil
 	}
@@ -140,7 +140,7 @@ func flushMapped(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	ptr := uintptr(unsafe.Pointer(&data[0]))
+	ptr := slicePtr(data)
 	if _, ok := mappedViews.Load(ptr); !ok {
 		return nil
 	}

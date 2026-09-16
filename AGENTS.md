@@ -24,6 +24,12 @@ version: v22
 > are working on to the corresponding spec file. The detailed convention
 > enters context a few lines later by reading that spec file. This ensures
 > you never miss a rule that applies to your change.
+>
+> **Before every commit/push, complete the repo preflight checklist.** Keep the
+> repo in a releasable state: update `CHANGELOG.md` for any user-visible change,
+> run `gofmt -w .` (or equivalent formatting on the touched files), run
+> `go test ./...`, and verify the CI status after pushing. Treat this as a
+> required operational step for all follow-up work, not an optional cleanup.
 
 ## Table of contents
 

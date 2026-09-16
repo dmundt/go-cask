@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 	"syscall"
-	"unsafe"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/bloom"
@@ -72,7 +71,7 @@ func NewFilter(cfg Config, path string) (*Filter, error) {
 	}
 	mappedAddr := uintptr(0)
 	if mapped && len(data) > 0 {
-		mappedAddr = uintptr(unsafe.Pointer(&data[0]))
+		mappedAddr = slicePtr(data)
 	}
 	return &Filter{file: file, data: data, k: k, m: m, hash: bloom.ResolveIndexHash(cfg.Hash), mapped: mapped, mappedAddr: mappedAddr, path: path}, nil
 }

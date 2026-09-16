@@ -105,3 +105,64 @@ jobs:
             [ -f "$ref" ] || { echo "broken reference: $ref"; fail=1; }
           done
           exit $fail
+
+  platform-matrix:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            runs-on: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            smoke: true
+          - name: linux-x86
+            runs-on: ubuntu-latest
+            goos: linux
+            goarch: 386
+            smoke: false
+          - name: linux-arm64
+            runs-on: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            smoke: true
+          - name: windows-amd64
+            runs-on: windows-latest
+            goos: windows
+            goarch: amd64
+            smoke: true
+          - name: macos-amd64
+            runs-on: macos-13
+            goos: darwin
+            goarch: amd64
+            smoke: true
+          - name: macos-arm64
+            runs-on: macos-latest
+            goos: darwin
+            goarch: arm64
+            smoke: true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build ./...
+
+      - name: Smoke test on native platform
+        if: ${{ matrix.smoke }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go test ./...
