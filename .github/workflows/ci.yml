@@ -83,7 +83,7 @@ jobs:
         if: hashFiles('**/*.go') != ''
         run: |
           # Each fuzz target lives in its own package; -fuzz runs one target
-          # per invocation. Brief smoke only; longer runs in nightly.
+          # per invocation as a quick validation gate.
           go test -run=^$ -fuzz=FuzzParseDigest -fuzztime=5s ./cas/
           go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/backend/fs/
           go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/backend/fs/

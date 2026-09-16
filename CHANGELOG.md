@@ -12,7 +12,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
-- Keep this section empty until the next user-visible release lands.
+- Removed the dedicated nightly GitHub Actions workflow; CI now runs only on push and pull request validation, while the long-running fuzz and benchmark jobs stay local/manual instead of scheduling recurring automation.
 
 ## [v1.4.4] - 2026-09-16
 
