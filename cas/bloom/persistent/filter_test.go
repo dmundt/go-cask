@@ -2,9 +2,12 @@ package persistent
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"unsafe"
 
 	"github.com/dmundt/go-cask/cas"
 )
@@ -197,6 +200,47 @@ func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 	}
 }
 
+func TestFilterPersistentWrapperErrorBranches(t *testing.T) {
+	oldOps := mmapOps
+	defer func() { mmapOps = oldOps }()
+
+	mmapOps = mmapDriver{
+		mmapBytes: func(*os.File, int) (bool, []byte, error) { return false, nil, os.ErrNotExist },
+		closeMapped: func([]byte) error { return nil },
+		flushMapped: func([]byte) error { return nil },
+		closeMappedByAddr: func(uintptr, int) error { return nil },
+		flushMappedByAddr: func(uintptr, int) error { return nil },
+	}
+	_, err := NewFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, filepath.Join(t.TempDir(), "wrapper.bin"))
+	if err == nil {
+		t.Fatal("expected mmap wrapper failure")
+	}
+
+	path := filepath.Join(t.TempDir(), "wrapper-close.bin")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	f := &Filter{file: file, data: []byte("abc"), mapped: false, path: filepath.Join(t.TempDir(), "missing", "close.bin")}
+	mmapOps.closeMappedByAddr = func(uintptr, int) error { return nil }
+	if err := f.Close(); err == nil {
+		t.Fatal("expected Close to error when non-mapped Sync cannot write to invalid path")
+	}
+
+	f = &Filter{file: file, data: []byte("abc"), mappedAddr: uintptr(unsafe.Pointer(&f.data[0])), path: path}
+	mmapOps.flushMappedByAddr = func(uintptr, int) error { return os.ErrInvalid }
+	if err := f.Sync(); err == nil {
+		t.Fatal("expected Sync to fail when mapped flush returns an error")
+	}
+
+	mmapOps.closeMappedByAddr = func(uintptr, int) error { return errors.New("close failure") }
+	f = &Filter{file: file, data: []byte("abc"), mappedAddr: uintptr(unsafe.Pointer(&f.data[0])), path: path}
+	if err := f.Close(); err == nil {
+		t.Fatal("expected Close to fail when mapped close returns an error")
+	}
+}
+
 func TestFilterPersistentCustomHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "customhash.bin")
 	f, err := NewFilter(Config{ExpectedItems: 256, FalsePositiveRate: 0.01, Hash: func(data []byte, i int) uint64 { return uint64(i + len(data)) }}, path)
@@ -284,4 +328,70 @@ func TestFilterPersistentMmapEdgeCases(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestFilterPersistentMappedAddrLifecycle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mapped-addr.bin")
+	f, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.data) == 0 {
+		t.Fatal("expected data buffer to be allocated")
+	}
+	f.mapped = true
+	f.mappedAddr = uintptr(unsafe.Pointer(&f.data[0]))
+	mappedViews.Store(f.mappedAddr, true)
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFilterPersistentExtendedCoverageBranches(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "extended.bin")
+	oldOps := mmapOps
+	defer func() { mmapOps = oldOps }()
+
+	mmapOps = mmapDriver{
+		mmapBytes: func(*os.File, int) (bool, []byte, error) { return true, []byte("abcdef"), nil },
+		closeMapped: func([]byte) error { return nil },
+		flushMapped: func([]byte) error { return nil },
+		closeMappedByAddr: func(uintptr, int) error { return nil },
+		flushMappedByAddr: func(uintptr, int) error { return nil },
+	}
+	f, err := NewFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.mapped || f.mappedAddr == 0 {
+		t.Fatal("expected mapped filter to retain mapped address")
+	}
+	f.data = make([]byte, 1024)
+	f.m = 8192
+	if f.Contains(cas.NewDigest([]byte("missing"))) {
+		t.Fatal("missing digest should not be found")
+	}
+	f.mappedAddr = uintptr(unsafe.Pointer(&f.data[0]))
+	mmapOps.closeMappedByAddr = func(uintptr, int) error { return syscall.EINVAL }
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	mmapOps.closeMappedByAddr = func(uintptr, int) error { return nil }
+
+	data := []byte("xyz")
+	if err := mmapOps.closeMappedByAddr(0, len(data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mmapOps.flushMappedByAddr(0, len(data)); err != nil {
+		t.Fatal(err)
+	}
+	addr := uintptr(unsafe.Pointer(&data[0]))
+	_ = mmapOps.closeMappedByAddr(addr, len(data))
+	_ = mmapOps.flushMappedByAddr(addr, len(data))
 }

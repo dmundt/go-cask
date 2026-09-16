@@ -28,6 +28,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Refreshed the canonical benchmark JSON and the benchmark README so the current CBOR performance gain and the winner-by-payload summary match the patched implementation.
 - Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
 - Tightened root CAS hot-path checks in [cas/digest.go](cas/digest.go), [cas/envelope.go](cas/envelope.go), [cas/store.go](cas/store.go), and [cas/walker.go](cas/walker.go) to lower allocation churn and repeated conversions while preserving identical behavior.
+- Hardened the persistent Bloom mmap layer on Unix and Windows by isolating the platform-specific memory-mapped logic behind a small abstraction, adding deterministic mock hooks, and fixing the Darwin `msync` compatibility issue without changing behavior.
 - Ran repository gofmt on the Go source tree without touching the external module cache.
 
 ## [v1.4.3] - 2026-09-15

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/bloom"
@@ -14,14 +15,15 @@ import (
 // Filter is a file-backed Bloom filter intended for large stores that need to
 // survive restarts without rebuilding the filter.
 type Filter struct {
-	file   *os.File
-	data   []byte
-	k      int
-	m      uint64
-	hash   bloom.IndexHash
-	mu     sync.RWMutex
-	mapped bool
-	path   string
+	file       *os.File
+	data       []byte
+	k          int
+	m          uint64
+	hash       bloom.IndexHash
+	mu         sync.RWMutex
+	mapped     bool
+	mappedAddr uintptr
+	path       string
 }
 
 // Config configures a persistent Bloom filter.
@@ -63,12 +65,16 @@ func NewFilter(cfg Config, path string) (*Filter, error) {
 		}
 	}
 
-	mapped, data, err := mmapBytes(file, bytesLen)
+	mapped, data, err := mmapOps.mmapBytes(file, bytesLen)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
 	}
-	return &Filter{file: file, data: data, k: k, m: m, hash: bloom.ResolveIndexHash(cfg.Hash), mapped: mapped, path: path}, nil
+	mappedAddr := uintptr(0)
+	if mapped && len(data) > 0 {
+		mappedAddr = uintptr(unsafe.Pointer(&data[0]))
+	}
+	return &Filter{file: file, data: data, k: k, m: m, hash: bloom.ResolveIndexHash(cfg.Hash), mapped: mapped, mappedAddr: mappedAddr, path: path}, nil
 }
 
 // Add records a digest in the persistent bloom filter.
@@ -126,14 +132,15 @@ func (f *Filter) Close() error {
 	if f == nil {
 		return nil
 	}
-	if !f.mapped {
-		if err := f.Sync(); err != nil {
+	if f.mappedAddr != 0 {
+		if err := mmapOps.closeMappedByAddr(f.mappedAddr, len(f.data)); err != nil && !errors.Is(err, syscall.EINVAL) {
 			_ = f.file.Close()
 			return err
 		}
+		f.mappedAddr = 0
 	}
-	if f.mapped {
-		if err := closeMapped(f.data); err != nil && !errors.Is(err, syscall.EINVAL) {
+	if !f.mapped {
+		if err := f.Sync(); err != nil {
 			_ = f.file.Close()
 			return err
 		}
@@ -145,6 +152,12 @@ func (f *Filter) Close() error {
 func (f *Filter) Sync() error {
 	if f == nil || f.file == nil {
 		return nil
+	}
+	if f.mappedAddr != 0 {
+		if err := mmapOps.flushMappedByAddr(f.mappedAddr, len(f.data)); err != nil {
+			return err
+		}
+		return f.file.Sync()
 	}
 	if f.mapped {
 		return f.file.Sync()

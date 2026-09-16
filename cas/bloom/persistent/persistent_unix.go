@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 func mmapBytes(file *os.File, size int) (bool, []byte, error) {
@@ -58,4 +61,25 @@ func closeMapped(data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func flushMapped(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	return unix.Msync(data, unix.MS_SYNC)
+}
+
+func closeMappedByAddr(addr uintptr, size int) error {
+	if size <= 0 || addr == 0 {
+		return nil
+	}
+	return closeMapped(unsafe.Slice((*byte)(unsafe.Pointer(addr)), size))
+}
+
+func flushMappedByAddr(addr uintptr, size int) error {
+	if size <= 0 || addr == 0 {
+		return nil
+	}
+	return flushMapped(unsafe.Slice((*byte)(unsafe.Pointer(addr)), size))
 }
