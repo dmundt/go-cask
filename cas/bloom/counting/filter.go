@@ -54,14 +54,21 @@ func (f *Filter) Add(d cas.Digest) {
 	if d.IsZero() {
 		return
 	}
-	positions := bloom.Indices(f.hash, d.Bytes(), f.k, f.m)
-	for _, idx := range positions {
-		f.mu.Lock()
-		if f.counts[idx] < f.mask {
-			f.counts[idx]++
+	data := d.Bytes()
+	hash := f.hash
+	counts := f.counts
+	mask := f.mask
+	m := f.m
+	k := f.k
+
+	f.mu.Lock()
+	for i := 0; i < k; i++ {
+		idx := hash(data, i) % m
+		if counts[idx] < mask {
+			counts[idx]++
 		}
-		f.mu.Unlock()
 	}
+	f.mu.Unlock()
 }
 
 // Remove decrements each counter for the digest.
@@ -69,14 +76,20 @@ func (f *Filter) Remove(d cas.Digest) {
 	if d.IsZero() {
 		return
 	}
-	positions := bloom.Indices(f.hash, d.Bytes(), f.k, f.m)
-	for _, idx := range positions {
-		f.mu.Lock()
-		if f.counts[idx] > 0 {
-			f.counts[idx]--
+	data := d.Bytes()
+	hash := f.hash
+	counts := f.counts
+	m := f.m
+	k := f.k
+
+	f.mu.Lock()
+	for i := 0; i < k; i++ {
+		idx := hash(data, i) % m
+		if counts[idx] > 0 {
+			counts[idx]--
 		}
-		f.mu.Unlock()
 	}
+	f.mu.Unlock()
 }
 
 // Contains reports whether the digest is possibly present.
@@ -84,14 +97,19 @@ func (f *Filter) Contains(d cas.Digest) bool {
 	if d.IsZero() {
 		return false
 	}
-	positions := bloom.Indices(f.hash, d.Bytes(), f.k, f.m)
-	for _, idx := range positions {
-		f.mu.RLock()
-		if f.counts[idx] == 0 {
-			f.mu.RUnlock()
+	data := d.Bytes()
+	hash := f.hash
+	counts := f.counts
+	m := f.m
+	k := f.k
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	for i := 0; i < k; i++ {
+		idx := hash(data, i) % m
+		if counts[idx] == 0 {
 			return false
 		}
-		f.mu.RUnlock()
 	}
 	return true
 }

@@ -74,12 +74,18 @@ func (f *Filter) Add(d cas.Digest) {
 	if d.IsZero() {
 		return
 	}
-	positions := bloom.Indices(f.hash, d.Bytes(), f.k, f.m)
-	for _, idx := range positions {
-		f.mu.Lock()
-		f.data[idx/8] |= 1 << (idx % 8)
-		f.mu.Unlock()
+	data := d.Bytes()
+	hash := f.hash
+	bits := f.data
+	m := f.m
+	k := f.k
+
+	f.mu.Lock()
+	for i := 0; i < k; i++ {
+		idx := hash(data, i) % m
+		bits[idx>>3] |= byte(1) << (idx & 7)
 	}
+	f.mu.Unlock()
 }
 
 // Contains reports whether d may be present.
@@ -87,12 +93,17 @@ func (f *Filter) Contains(d cas.Digest) bool {
 	if d.IsZero() {
 		return false
 	}
-	positions := bloom.Indices(f.hash, d.Bytes(), f.k, f.m)
-	for _, idx := range positions {
-		f.mu.RLock()
-		bit := f.data[idx/8]&(1<<(idx%8)) != 0
-		f.mu.RUnlock()
-		if !bit {
+	data := d.Bytes()
+	hash := f.hash
+	bits := f.data
+	m := f.m
+	k := f.k
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	for i := 0; i < k; i++ {
+		idx := hash(data, i) % m
+		if bits[idx>>3]&(byte(1)<<(idx&7)) == 0 {
 			return false
 		}
 	}
