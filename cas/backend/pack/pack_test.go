@@ -429,7 +429,9 @@ func TestPackBackendLooseOperationErrorBranches(t *testing.T) {
 		t.Fatal("loosePut error should surface from Put")
 	}
 
-	looseGetFn = func(context.Context, *fsbackend.Backend, cas.Digest) (io.ReadCloser, error) { return nil, io.ErrUnexpectedEOF }
+	looseGetFn = func(context.Context, *fsbackend.Backend, cas.Digest) (io.ReadCloser, error) {
+		return nil, io.ErrUnexpectedEOF
+	}
 	if _, err := b.Get(ctx, cas.NewDigest([]byte("get-fail"))); err == nil {
 		t.Fatal("looseGet error should surface from Get")
 	}

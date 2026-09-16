@@ -16,7 +16,7 @@ package json
 
 import "encoding/json"
 
-/// Codec[T] serializes values with encoding/json Encode/Decode semantics.
+// / Codec[T] serializes values with encoding/json Encode/Decode semantics.
 type Codec[T any] struct{}
 
 // New returns a JSON codec for type T.

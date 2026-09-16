@@ -65,18 +65,24 @@ type manifest struct {
 }
 
 var (
-	mkdirAllFn   = os.MkdirAll
-	openFileFn   = os.OpenFile
-	readFileFn   = os.ReadFile
-	writeFileFn  = os.WriteFile
-	renameFn     = os.Rename
-	openFn       = os.Open
-	loosePutFn   = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error { return loose.Put(ctx, d, r) }
-	looseGetFn   = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) { return loose.Get(ctx, d) }
-	looseExistsFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) { return loose.Exists(ctx, d) }
+	mkdirAllFn  = os.MkdirAll
+	openFileFn  = os.OpenFile
+	readFileFn  = os.ReadFile
+	writeFileFn = os.WriteFile
+	renameFn    = os.Rename
+	openFn      = os.Open
+	loosePutFn  = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error {
+		return loose.Put(ctx, d, r)
+	}
+	looseGetFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) {
+		return loose.Get(ctx, d)
+	}
+	looseExistsFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) {
+		return loose.Exists(ctx, d)
+	}
 	looseDeleteFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error { return loose.Delete(ctx, d) }
-	looseListFn  = func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) { return loose.List(ctx) }
-	looseStatsFn = func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) { return loose.Stats(ctx) }
+	looseListFn   = func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) { return loose.List(ctx) }
+	looseStatsFn  = func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) { return loose.Stats(ctx) }
 )
 
 // Backend is a filesystem-backed pack extension. It stores objects in a loose
