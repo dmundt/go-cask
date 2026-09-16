@@ -8,7 +8,6 @@ import (
 	"os"
 	"sync"
 	"syscall"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -77,12 +76,19 @@ func closeMappedByAddr(addr uintptr, size int) error {
 	if size <= 0 || addr == 0 {
 		return nil
 	}
-	return closeMapped(unsafe.Slice((*byte)(unsafe.Pointer(addr)), size))
+	if _, ok := mappedViews.Load(addr); !ok {
+		return nil
+	}
+	mappedViews.Delete(addr)
+	return nil
 }
 
 func flushMappedByAddr(addr uintptr, size int) error {
 	if size <= 0 || addr == 0 {
 		return nil
 	}
-	return flushMapped(unsafe.Slice((*byte)(unsafe.Pointer(addr)), size))
+	if _, ok := mappedViews.Load(addr); !ok {
+		return nil
+	}
+	return nil
 }
