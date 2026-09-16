@@ -24,14 +24,14 @@ func New[T any](next cas.Codec[T]) Codec[T] {
 	return Codec[T]{next: next}
 }
 
-// Marshal serializes v with the wrapped codec and then zlib-compresses the
+// Encode serializes v with the wrapped codec and then zlib-compresses the
 // result.
-func (c Codec[T]) Marshal(v T) ([]byte, error) {
+func (c Codec[T]) Encode(v T) ([]byte, error) {
 	if c.next == nil {
 		return nil, errNilCodec
 	}
 
-	payload, err := c.next.Marshal(v)
+	payload, err := c.next.Encode(v)
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func (c Codec[T]) Marshal(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Unmarshal inflates the incoming data and then decodes it with the wrapped
+// Decode inflates the incoming data and then decodes it with the wrapped
 // codec.
-func (c Codec[T]) Unmarshal(data []byte) (T, error) {
+func (c Codec[T]) Decode(data []byte) (T, error) {
 	var zero T
 	if c.next == nil {
 		return zero, errNilCodec
@@ -66,5 +66,5 @@ func (c Codec[T]) Unmarshal(data []byte) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	return c.next.Unmarshal(payload)
+	return c.next.Decode(payload)
 }

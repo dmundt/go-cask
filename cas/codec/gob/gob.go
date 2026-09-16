@@ -8,7 +8,7 @@
 //
 // New[T]() returns a codec for any storable value T, so a store can be built
 // directly: cas.New(raw, gob.New[T](), algo). It satisfies the codec round-trip
-// contract, Unmarshal(Marshal(v)) == v.
+// contract, Decode(Encode(v)) == v.
 package gob
 
 import (
@@ -36,11 +36,11 @@ func New[T any](next ...cas.Codec[T]) Codec[T] {
 	return Codec[T]{next: wrapped}
 }
 
-// Marshal gob-encodes v directly or, when wrapped, the bytes produced by the
+// Encode gob-encodes v directly or, when wrapped, the bytes produced by the
 // inner codec.
-func (c Codec[T]) Marshal(v T) ([]byte, error) {
+func (c Codec[T]) Encode(v T) ([]byte, error) {
 	if c.next != nil {
-		payload, err := c.next.Marshal(v)
+		payload, err := c.next.Encode(v)
 		if err != nil {
 			return nil, err
 		}
@@ -58,16 +58,16 @@ func (c Codec[T]) Marshal(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Unmarshal gob-decodes data into a fresh T, or into the wrapped payload bytes
+// Decode gob-decodes data into a fresh T, or into the wrapped payload bytes
 // when the codec is composed with an inner layer.
-func (c Codec[T]) Unmarshal(data []byte) (T, error) {
+func (c Codec[T]) Decode(data []byte) (T, error) {
 	var zero T
 	if c.next != nil {
 		var payload []byte
 		if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&payload); err != nil {
 			return zero, err
 		}
-		return c.next.Unmarshal(payload)
+		return c.next.Decode(payload)
 	}
 
 	var v T

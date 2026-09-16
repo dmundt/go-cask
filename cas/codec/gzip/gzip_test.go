@@ -22,17 +22,17 @@ func TestCodecRoundTrip(t *testing.T) {
 		Data:  []byte("compressed payload"),
 	}
 
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("Encode: %v", err)
 	}
 	if len(data) == 0 {
-		t.Fatal("marshal produced empty payload")
+		t.Fatal("Encode produced empty payload")
 	}
 
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("Decode: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
@@ -43,17 +43,17 @@ func TestCodecIsCascadeable(t *testing.T) {
 	codec := New(flatecodec.New(jsoncodec.New[sample]()))
 	want := sample{Title: "hello", Body: "world", Data: []byte("compressed payload")}
 
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("Encode: %v", err)
 	}
 	if len(data) == 0 {
-		t.Fatal("marshal produced empty payload")
+		t.Fatal("Encode produced empty payload")
 	}
 
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("Decode: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
@@ -62,10 +62,10 @@ func TestCodecIsCascadeable(t *testing.T) {
 
 func TestCodecErrorsWhenWrappedCodecMissing(t *testing.T) {
 	codec := New[sample](nil)
-	if _, err := codec.Marshal(sample{Title: "demo"}); err == nil {
-		t.Fatal("Marshal with nil codec returned nil error, want non-nil")
+	if _, err := codec.Encode(sample{Title: "demo"}); err == nil {
+		t.Fatal("Encode with nil codec returned nil error, want non-nil")
 	}
-	if _, err := codec.Unmarshal([]byte("not gzip")); err == nil {
-		t.Fatal("Unmarshal with nil codec returned nil error, want non-nil")
+	if _, err := codec.Decode([]byte("not gzip")); err == nil {
+		t.Fatal("Decode with nil codec returned nil error, want non-nil")
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // FuzzCodecRoundTrip checks the JSON codec round-trip property
-// (Unmarshal(Marshal(v)) == v) over arbitrary string content. Input is
+// (Decode(Encode(v)) == v) over arbitrary string content. Input is
 // restricted to valid UTF-8 because encoding/json deliberately replaces
 // invalid UTF-8 on encode — that documented lossiness is pinned by an
 // explicit test, not by this fuzz target.
@@ -22,13 +22,13 @@ func FuzzCodecRoundTrip(f *testing.F) {
 		}
 		c := json.New[fuzzNote]()
 		v := fuzzNote{Title: s, Body: "fixed"}
-		data, err := c.Marshal(v)
+		data, err := c.Encode(v)
 		if err != nil {
-			t.Fatalf("Marshal: %v", err)
+			t.Fatalf("Encode: %v", err)
 		}
-		got, err := c.Unmarshal(data)
+		got, err := c.Decode(data)
 		if err != nil {
-			t.Fatalf("Unmarshal: %v", err)
+			t.Fatalf("Decode: %v", err)
 		}
 		if got != v {
 			t.Fatalf("round-trip = %+v, want %+v", got, v)

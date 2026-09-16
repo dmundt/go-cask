@@ -20,17 +20,17 @@ func TestCodecRoundTrip(t *testing.T) {
 	codec := zlibcodec.New(jsoncodec.New[sample]())
 	want := sample{ID: 7, Name: "demo", Data: []byte("hello world")}
 
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+		t.Fatalf("Encode: %v", err)
 	}
 	if len(data) == 0 {
-		t.Fatal("Marshal produced empty payload")
+		t.Fatal("Encode produced empty payload")
 	}
 
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+		t.Fatalf("Decode: %v", err)
 	}
 	if got.ID != want.ID || got.Name != want.Name || !bytes.Equal(got.Data, want.Data) {
 		t.Fatalf("round trip mismatch: got %#v, want %#v", got, want)
@@ -39,11 +39,11 @@ func TestCodecRoundTrip(t *testing.T) {
 
 func TestCodecRejectsNil(t *testing.T) {
 	var c zlibcodec.Codec[sample]
-	if _, err := c.Marshal(sample{}); err == nil {
-		t.Fatal("Marshal(nil codec) = nil error, want error")
+	if _, err := c.Encode(sample{}); err == nil {
+		t.Fatal("Encode(nil codec) = nil error, want error")
 	}
-	if _, err := c.Unmarshal(nil); err == nil {
-		t.Fatal("Unmarshal(nil codec) = nil error, want error")
+	if _, err := c.Decode(nil); err == nil {
+		t.Fatal("Decode(nil codec) = nil error, want error")
 	}
 }
 
@@ -51,17 +51,17 @@ func TestCodecIsCascadeable(t *testing.T) {
 	codec := zlibcodec.New(flatecodec.New(jsoncodec.New[sample]()))
 	want := sample{ID: 7, Name: "demo", Data: []byte("hello world")}
 
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+		t.Fatalf("Encode: %v", err)
 	}
 	if len(data) == 0 {
-		t.Fatal("Marshal produced empty payload")
+		t.Fatal("Encode produced empty payload")
 	}
 
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+		t.Fatalf("Decode: %v", err)
 	}
 	if got.ID != want.ID || got.Name != want.Name || !bytes.Equal(got.Data, want.Data) {
 		t.Fatalf("round trip mismatch: got %#v, want %#v", got, want)
