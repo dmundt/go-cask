@@ -12,12 +12,17 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Unified the `cas/codec` package family around a single `Encode`/`Decode` API and consistent constructor patterns: direct codecs use `NewRaw`/`NewValue`/`NewMap`, wrapper codecs accept `next` first, and the byte-transform layer stays separate from the format layer.
+- Standardized the codec stack semantics across the package set and refreshed the package-local AGENT guidance so the direct-vs-wrapper split and nil-check behavior are explicit.
+- Added the compact CBOR codec package to the codec family with explicit conversion functions, deterministic map ordering, and next-codec support for wrapper-style composition.
 - Normalized the benchmark suite into subsystem-specific files and tightened the benchmark names to distinguish setup cost, steady-state cost, hot/cold access patterns, and mixed workloads.
 - Added a realistic graph-traversal benchmark alongside the store workflow cases, and kept the benchmark matrix focused around a small canonical size ladder and anchor baselines.
 - Refreshed the benchmark README guidance to explain how to compare same-machine runs, when a baseline is valid, and how to interpret noisy outliers without over-reading a single `ns/op` figure.
 
 ### Fixed
 
+- Optimized the CBOR hot path in [cas/codec/cbor/cbor.go](cas/codec/cbor/cbor.go) by removing repeated generic re-encoding churn, reducing unnecessary per-element allocation work, and cutting redundant byte copying in the decode path.
+- Refreshed the canonical benchmark JSON and the benchmark README so the current CBOR performance gain and the winner-by-payload summary match the patched implementation.
 - Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
 - Ran repository gofmt on the Go source tree without touching the external module cache.
 

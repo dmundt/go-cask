@@ -128,8 +128,8 @@ func unmarshalCBORNote(data []byte) (testNote, error) {
 	}, nil
 }
 
-// Keep the canonical size ladder intentionally small: a few anchor sizes are
-// enough for comparisons without turning the suite into a broad matrix.
+// Keep the canonical size ladder intentionally small but log-spaced so it covers
+// the real crossover bands without turning the suite into a broad matrix.
 var benchSizes = []struct {
 	name string
 	size int
@@ -137,8 +137,10 @@ var benchSizes = []struct {
 	{"64B", 64},
 	{"256B", 256},
 	{"1KiB", 1024},
-	{"8KiB", 8 * 1024},
+	{"4KiB", 4 * 1024},
+	{"16KiB", 16 * 1024},
 	{"64KiB", 64 * 1024},
+	{"256KiB", 256 * 1024},
 	{"1MiB", 1024 * 1024},
 }
 
@@ -187,7 +189,7 @@ var benchCodecs = []struct {
 		return binarycodec.NewRaw(marshalBinaryNote, unmarshalBinaryNote)
 	}},
 	{name: "cbor", new: func() cas.Codec[testNote] {
-		return cborcodec.New[testNote](marshalCBORNote, unmarshalCBORNote)
+		return cborcodec.NewRaw(marshalCBORNote, unmarshalCBORNote)
 	}},
 }
 

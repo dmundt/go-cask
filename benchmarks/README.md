@@ -15,7 +15,8 @@ The go-cask benchmarks measure the `cas` core's speed and allocations. They are 
 - [Common flags](#2-common-flags)
 - [Regular perf suite](#3-regular-perf-suite)
 - [Bloom filter benchmark results](#32-bloom-filter-benchmark-results)
-- [How to use benchmark data](#4-how-to-use-benchmark-data)
+- [Codec/hash matrix](#33-codechash-matrix)
+- [Scale probes](#4-scale-probes-benchmarkscale)
 
 ## 1. Benchmark layout
 
@@ -122,7 +123,7 @@ The raw round-trip matrix now lives in [`data/store-codec-hash-roundtrip.json`](
 
 The matrix covers:
 
-- sizes: `64B`, `256B`, `1KiB`, `8KiB`, `64KiB`, `1MiB`
+- sizes: `64B`, `256B`, `1KiB`, `4KiB`, `16KiB`, `64KiB`, `256KiB`, `1MiB`
 - codecs: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`, `cbor`
 - hashers: `sha256`, `sha512`, `sha512_256`
 
@@ -131,83 +132,88 @@ Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark
 The JSON file also records runner metadata and the `winner` list used below so future analyses can be repeated without re-editing the README by hand.
 
 ```powershell
-go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=5
+go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=1
 ```
+
+The canonical JSON in this repo is a fresh local snapshot, not a universal cross-machine truth. Use `-count=5` or more when you need a medians-based comparison on a stable machine.
 
 #### Winner by payload size
 
-This is the canonical winner list from the JSON matrix, using the median of 5 runs for each `codec + hasher + payload` cell. Read `ns/op` first, then check `MB/s` and `allocs/op` together.
+This is the current winner list from the JSON matrix on the local runner. Read `ns/op` first, then check `MB/s` and `allocs/op` together.
 
 | Payload size | Winner | ns/op | MB/s | B/op | allocs/op |
 |---|---|---:|---:|---:|---:|
-| 64B | `binary` + `sha512_256` | 1479 | 43.28 | 2072 | 25 |
-| 256B | `binary` + `sha256` | 2270 | 112.78 | 2920 | 28 |
-| 1KiB | `json` + `sha256` | 6533 | 156.74 | 8553 | 27 |
-| 8KiB | `binary` + `sha256` | 41771 | 196.12 | 78744 | 46 |
-| 64KiB | `binary` + `sha512` | 318732 | 205.61 | 621151 | 58 |
-| 1MiB | `binary` + `sha256` | 3334822 | 314.43 | 9224400 | 74 |
+| 64B | `binary` + `sha512_256` | 2079 | 30.79 | 2136 | 27 |
+| 256B | `binary` + `sha512_256` | 2878 | 88.96 | 3528 | 32 |
+| 1KiB | `cbor` + `sha512_256` | 8914 | 114.88 | 12208 | 43 |
+| 4KiB | `cbor` + `sha512_256` | 31696 | 129.23 | 48497 | 53 |
+| 16KiB | `cbor` + `sha256` | 54876 | 298.57 | 178450 | 61 |
+| 64KiB | `cbor` + `sha256` | 152893 | 428.64 | 687126 | 67 |
+| 256KiB | `cbor` + `sha256` | 542588 | 483.14 | 2751524 | 75 |
+| 1MiB | `cbor` + `sha256` | 2200407 | 476.54 | 10511204 | 83 |
 
 The main pattern is clear:
 
-- `binary` wins the very small and large end of the matrix, with `sha512_256` or `sha256` depending on the exact size band.
-- `json` + `sha256` still wins at `1KiB`, which is the throughput sweet spot for the portable default payload format.
-- Compression codecs (`gzip`, `zlib`, `flate`) remain much slower in this end-to-end round-trip path, even though they shrink the payload bytes on disk. The cost is dominated by compression overhead and allocator churn, not by hashing alone.
-- `gob` remains the compatibility-only slow path and is not a good default choice for performance-sensitive workloads.
+- `binary` still wins the tiny end-to-end matrix at `64B` and `256B`, especially with the shorter hashers in this snapshot.
+- `cbor` is now the winner from `1KiB` upward across the current ladder after the hot-path rewrite, with `sha512_256` at `1KiB` and `4KiB` and `sha256` from `16KiB` onward.
+- The crossover is steep and clean: small objects prefer `binary`, while the compact CBOR path takes over once the payload is large enough to amortize its overhead.
+- `json` remains the portable default, but it is not the fastest in the current snapshot.
+- Compression codecs (`gzip`, `zlib`, `flate`) remain much slower in this end-to-end round-trip path; they trade size reduction for a large runtime cost.
 
 `ns/op` is the headline summary for this section because it directly measures the end-to-end round-trip cost; `MB/s` and `allocs/op` are companion views for throughput and allocation pressure. Use them together when choosing a default, not one metric alone.
 
 #### How to choose a codec + hasher for a real workload
 
-There is no single universal winner. Use the choice that matches the payload size and the portability/compatibility requirements of the workload.
+There is no single universal winner. Use the choice that matches the payload size, portability requirements, and the precision of the benchmark you trust.
 
 | Workload shape | Best measured choice | Why | Use when |
 |---|---|---|---|
-| Very small objects (`64B`–`256B`) | `binary` + `sha256` or `binary` + `sha512_256` | lowest end-to-end `ns/op` in the tiny-size region; `binary` avoids JSON overhead | compact binary payloads, internal storage, tiny objects, low-latency hot paths |
-| Small-to-medium portable objects (`~1KiB`) | `json` + `sha256` | best in the middle size band while staying human-readable and interoperable | objects that may be inspected, logged, or exchanged across tools |
-| Moderate objects (`8KiB` and up) | `binary` + `sha256` | lowest cost in the tested middle-to-large range; lower allocation/serialization overhead | app-local binary blobs, compact metadata, large internal object graphs |
-| Large objects (`64KiB`–`1MiB`) | `binary` + `sha512` or `binary` + `sha256` | keeps the fastest end-to-end path while avoiding compression overhead | large payloads, caches, media chunks, archival data |
-| Portable/default policy | `flate` + `sha256` | project default for durable payloads: compressed JSON/portable data with SHA-256 identity | default for general-purpose CAS objects |
+| Very small objects (`64B`–`256B`) | `binary` + `sha512_256` | lowest end-to-end `ns/op` in the current snapshot | compact tiny metadata and low-latency hot paths |
+| Small objects (`~1KiB`–`4KiB`) | `cbor` + `sha512_256` | the optimized CBOR path overtakes binary in this size band | compact metadata and manifest payloads where the value model is known |
+| Medium objects (`~16KiB`–`256KiB`) | `cbor` + `sha256` | the large-object win is consistent across the current mid-range ladder | compact manifest and payload graphs that need the best throughput |
+| Large objects (`~1MiB`) | `cbor` + `sha256` | continues to lead the largest size in the current snapshot | large compact payloads and wider object graphs |
+| Portable/default policy | `json` + `sha256` | readable and broadly interop-friendly | debugging, tooling, exchange formats, human-inspected payloads |
 | Compression-heavy workflow | `gzip`/`zlib`/`flate` only when size reduction matters more than speed | they can be acceptable when payloads are highly compressible and storage budget is tight | use only when the application explicitly prefers compressed size over raw throughput |
 
 A practical default policy:
 
-- Use `flate` + `sha256` as the project default when you want a durable, compact, interoperable configuration.
-- Use `binary` + `sha256` when the payload is compact/structured and speed matters more than human readability.
-- Use `binary` + `sha512` (or `sha512_256`) for larger binary payloads when the workload favors raw throughput and the caller is comfortable with a non-portable compact format.
-- Use `json` + `sha256` as a debugging- or interoperability-oriented choice when the payload is mostly small/medium and the cost of compression is not desired.
-- The benchmark matrix still shows that `json` and `binary` often outperform compression wrappers in strict end-to-end runtime; `flate` is the chosen default policy for durability and compactness, not necessarily the fastest microbenchmark winner.
+- Use `json` + `sha256` as the default portable choice when interoperability and readability matter.
+- Use `binary` + `sha512_256` for the smallest hot objects in the current snapshot.
+- Use `cbor` + `sha512_256` or `cbor` + `sha256` for the larger compact payloads that need the best current end-to-end throughput.
+- Keep `gob` as a compatibility-only benchmark/reference path. It is not a good general-purpose default for CAS payloads.
+- Compression wrappers remain a storage-optimization choice, not the runtime winner in the fresh matrix.
 
 This summary is intentionally short. For deeper analysis, use the JSON matrix directly: filter by `payload`, `codec`, `hasher`, or compare how the `winner` set changes across size bands without reformatting a huge markdown table by hand.
 
 #### Focused isolation benchmarks (median of 5 runs)
 
-`BenchmarkCodecEncodeDecode` isolates pure serialization cost without hashing or store I/O. `BenchmarkHasherDigest` isolates pure hash throughput without encoding or backend work.
+`BenchmarkCodecPackageEncodeDecode` isolates pure serialization cost without hashing or store I/O. `BenchmarkHashPackageDigest` isolates pure hash throughput without encoding or backend work.
 
 These are diagnostic benchmarks, not product defaults. They help answer: “is the slowdown mostly codec cost or hash cost?” They do not replace the end-to-end matrix above.
 
-Recommendation: prefer `sha256` for hashing and `json` for the default portable payload codec, unless a workload is dominated by very small or very large object sizes, in which case `binary` is the better compact-format choice. `gob` remains the compatibility-only slow path and should not be the default selection.
+Recommendation: prefer `sha256` for hashing, but do not assume `json` is the fastest payload format in the current matrix. After the CBOR hot-path rewrite, `cbor` wins the isolation benchmark across the mid/large payload range while `binary` still wins the tiny 64 B case. For portability and debugging, `json` remains the default readable choice. `gob` remains compatibility-only and not a general default.
 
 ##### Codec-only isolation
 
-| Payload | Winner | Median ns/op | Runner-up | Notes |
-|---|---|---:|---:|---|
-| 64B | `binary` | 291 | `json` 666 | binary dominates tiny serialization |
-| 256B | `binary` | 745 | `json` 1083 | binary still best |
-| 1KiB | `json` | 2436 | `binary` 2809 | JSON is best in the middle |
-| 8KiB | `json` | 16571 | `binary` 19309 | JSON stays best at modest sizes |
-| 64KiB | `binary` | 133084 | `json` 138702 | binary regains the lead |
-| 1MiB | `binary` | 1196082 | `gob` 1387775 | binary is fastest on very large payloads |
+| Payload | Winner | Median ns/op | MB/s | Runner-up | Notes |
+|---|---|---:|---:|---:|---|
+| 64B | `binary` | 518.1 | 123.53 | `cbor` 713.7 | binary still wins the tiny-object case |
+| 256B | `cbor` | 1091 | 234.56 | `binary` 1497 | the hot-path rewrite pulls CBOR ahead at small-but-real payloads |
+| 1KiB | `cbor` | 2533 | 404.23 | `binary` 4515 | CBOR is meaningfully faster in the common metadata range |
+| 8KiB | `cbor` | 15272 | 536.42 | `binary` 29740 | the gap grows sharply once payloads are no longer tiny |
+| 64KiB | `cbor` | 118165 | 554.61 | `binary` 181002 | CBOR now dominates the medium/large serialization path |
+| 1MiB | `cbor` | 1747146 | 600.17 | `binary` 3716153 | the optimization removed the previous generic allocation churn |
 
 ##### Hasher-only isolation
 
-| Payload | Winner | Median ns/op | Runner-up | Notes |
-|---|---|---:|---:|---|
-| 64B | `sha256` | 203 | `sha512_256` 322 | sha256 is clearly faster |
-| 256B | `sha256` | 258 | `sha512_256` 622 | same pattern |
-| 1KiB | `sha256` | 577 | `sha512_256` 1498 | strong gap |
-| 8KiB | `sha256` | 3730 | `sha512_256` 10015 | strong gap |
-| 64KiB | `sha256` | 28736 | `sha512_256` 78971 | large gap |
-| 1MiB | `sha256` | 458242 | `sha512_256` 1261319 | sha256 is much faster |
+| Payload | Winner | Median ns/op | MB/s | Runner-up | Notes |
+|---|---|---:|---:|---:|---|
+| 64B | `sha256` | 257.1 | 248.90 | `sha512_256` 394.0 | sha256 is clearly faster |
+| 256B | `sha256` | 571.6 | 447.84 | `sha512_256` 921.0 | same pattern |
+| 1KiB | `sha256` | 1803 | 567.96 | `sha512_256` 2771 | strong gap |
+| 8KiB | `sha256` | 13553 | 604.43 | `sha512_256` 19708 | strong gap |
+| 64KiB | `sha256` | 100440 | 652.49 | `sha512_256` 142514 | large gap |
+| 1MiB | `sha256` | 1683130 | 622.99 | `sha512_256` 2468173 | sha256 is much faster |
 
 ### 3.5 Run them
 
@@ -227,7 +233,7 @@ go test -bench='^BenchmarkRoundTrip$' -benchmem -benchtime=10000x -run=^$ ./benc
 go test -bench=. -benchmem -run=^$ ./benchmarks/
 ```
 
-## 4. Scale probes (`BenchmarkScale*`)
+## 4. Scale probes
 
 ### 4.1 Purpose
 

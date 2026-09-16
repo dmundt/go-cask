@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://go-cask.dev/schemas/store-codec-hash-roundtrip.schema.json",
+  "title": "go-cask benchmark matrix",
+  "description": "Schema for the canonical codec + hasher round-trip benchmark matrix used by benchmarks/data/store-codec-hash-roundtrip.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "benchmark",
+    "generated_at",
+    "statistic",
+    "runner",
+    "payload_sizes",
+    "codecs",
+    "hashers",
+    "winners",
+    "rows"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "go-cask-benchmark-v1"
+    },
+    "benchmark": {
+      "type": "string",
+      "const": "BenchmarkStoreCodecHashRoundTrip"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "statistic": {
+      "type": "string",
+      "enum": [
+        "median_of_1_run",
+        "median_of_3_runs",
+        "median_of_5_runs",
+        "median_of_N_runs"
+      ]
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "go",
+        "notes"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "go": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "payload_sizes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(?:[0-9]+(?:[KMG]i?)?B|[0-9]+(?:[KMG]i?)?B)$"
+      }
+    },
+    "codecs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "json",
+          "gzip",
+          "zlib",
+          "flate",
+          "gob",
+          "binary",
+          "cbor"
+        ]
+      }
+    },
+    "hashers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "sha256",
+          "sha512",
+          "sha512_256"
+        ]
+      }
+    },
+    "winners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/benchmarkRow"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/benchmarkRow"
+      }
+    }
+  },
+  "$defs": {
+    "benchmarkRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "codec",
+        "hasher",
+        "ns_per_op",
+        "mb_per_s",
+        "bytes_per_op",
+        "allocs_per_op"
+      ],
+      "properties": {
+        "payload": {
+          "type": "string"
+        },
+        "codec": {
+          "type": "string"
+        },
+        "hasher": {
+          "type": "string"
+        },
+        "ns_per_op": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "mb_per_s": {
+          "type": "number"
+        },
+        "bytes_per_op": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allocs_per_op": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
