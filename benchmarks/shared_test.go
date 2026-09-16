@@ -13,6 +13,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	binarycodec "github.com/dmundt/go-cask/cas/codec/binary"
+	cborcodec "github.com/dmundt/go-cask/cas/codec/cbor"
 	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 	gobcodec "github.com/dmundt/go-cask/cas/codec/gob"
 	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
@@ -109,6 +110,24 @@ func unmarshalBinaryNote(data []byte) (testNote, error) {
 	return testNote{Title: string(title), Body: string(body)}, nil
 }
 
+func marshalCBORNote(v testNote) ([]byte, error) {
+	return cborcodec.NewMap().Encode(map[string]any{
+		"title": v.Title,
+		"body":  v.Body,
+	})
+}
+
+func unmarshalCBORNote(data []byte) (testNote, error) {
+	m, err := cborcodec.NewMap().Decode(data)
+	if err != nil {
+		return testNote{}, err
+	}
+	return testNote{
+		Title: m["title"].(string),
+		Body:  m["body"].(string),
+	}, nil
+}
+
 // Keep the canonical size ladder intentionally small: a few anchor sizes are
 // enough for comparisons without turning the suite into a broad matrix.
 var benchSizes = []struct {
@@ -166,6 +185,9 @@ var benchCodecs = []struct {
 	{name: "gob", new: func() cas.Codec[testNote] { return gobcodec.New[testNote]() }},
 	{name: "binary", new: func() cas.Codec[testNote] {
 		return binarycodec.NewRaw(marshalBinaryNote, unmarshalBinaryNote)
+	}},
+	{name: "cbor", new: func() cas.Codec[testNote] {
+		return cborcodec.New[testNote](marshalCBORNote, unmarshalCBORNote)
 	}},
 }
 

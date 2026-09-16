@@ -82,8 +82,8 @@ classDiagram
     }
     class Codec~T~ {
         <<interface>>
-        +Marshal(v T) ([]byte, error)
-        +Unmarshal(data []byte) (T, error)
+        +Encode(v T) ([]byte, error)
+        +Decode(data []byte) (T, error)
     }
     class Store~T~ {
         +Put(ctx, obj T) (Digest, error)

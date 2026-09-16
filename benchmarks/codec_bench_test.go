@@ -11,7 +11,7 @@ import (
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-func BenchmarkCodecPackageMarshalUnmarshal(b *testing.B) {
+func BenchmarkCodecPackageEncodeDecode(b *testing.B) {
 	for _, sz := range benchSizes {
 		for _, codec := range benchCodecs {
 			name := codec.name
@@ -25,11 +25,11 @@ func BenchmarkCodecPackageMarshalUnmarshal(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; b.Loop(); i++ {
 					note := benchNoteWithSeed(sz.size, i)
-					data, err := c.Marshal(note)
+					data, err := c.Encode(note)
 					if err != nil {
 						b.Fatal(err)
 					}
-					if _, err := c.Unmarshal(data); err != nil {
+					if _, err := c.Decode(data); err != nil {
 						b.Fatal(err)
 					}
 				}

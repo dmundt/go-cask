@@ -73,13 +73,13 @@ func TestCodecRoundTrip(t *testing.T) {
 	)
 
 	want := sample{Name: "demo", Count: 7, Enabled: true, Data: []byte{0x1, 0x2, 0x3}}
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("encode: %v", err)
 	}
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("decode: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
@@ -97,17 +97,17 @@ func TestCodecCascadeRoundTrip(t *testing.T) {
 	})
 
 	want := sample{Name: "demo", Count: 7, Enabled: true, Data: []byte{0x1, 0x2, 0x3}}
-	data, err := codec.Marshal(want)
+	data, err := codec.Encode(want)
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("encode: %v", err)
 	}
 	if !bytes.HasPrefix(data, []byte("BIN:")) {
 		t.Fatalf("wrapped payload missing prefix: %q", data)
 	}
 
-	got, err := codec.Unmarshal(data)
+	got, err := codec.Decode(data)
 	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("decode: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
@@ -116,10 +116,10 @@ func TestCodecCascadeRoundTrip(t *testing.T) {
 
 func TestCodecErrorsWhenCallbacksMissing(t *testing.T) {
 	codec := New[sample](nil, nil, nil)
-	if _, err := codec.Marshal(sample{Name: "demo"}); err == nil {
-		t.Fatal("Marshal with nil function returned nil error, want non-nil")
+	if _, err := codec.Encode(sample{Name: "demo"}); err == nil {
+		t.Fatal("Encode with nil function returned nil error, want non-nil")
 	}
-	if _, err := codec.Unmarshal([]byte("bad")); err == nil {
-		t.Fatal("Unmarshal with nil function returned nil error, want non-nil")
+	if _, err := codec.Decode([]byte("bad")); err == nil {
+		t.Fatal("Decode with nil function returned nil error, want non-nil")
 	}
 }

@@ -4,7 +4,7 @@
 //
 // New[T]() returns a codec for any storable value T, so a store can be built
 // directly: cas.New(raw, json.New[T](), hasher). It satisfies the codec
-// round-trip contract, Unmarshal(Marshal(v)) == v, for all values with valid
+// round-trip contract, Decode(Encode(v)) == v, for all values with valid
 // UTF-8 content (encoding/json replaces invalid UTF-8 on encode, which is
 // pinned by tests).
 //
@@ -16,17 +16,17 @@ package json
 
 import "encoding/json"
 
-// Codec[T] serializes values with encoding/json Marshal/Unmarshal.
+/// Codec[T] serializes values with encoding/json Encode/Decode semantics.
 type Codec[T any] struct{}
 
 // New returns a JSON codec for type T.
 func New[T any]() Codec[T] { return Codec[T]{} }
 
-// Marshal marshals v to JSON.
-func (Codec[T]) Marshal(v T) ([]byte, error) { return json.Marshal(v) }
+// Encode encodes v to JSON.
+func (Codec[T]) Encode(v T) ([]byte, error) { return json.Marshal(v) }
 
-// Unmarshal unmarshals JSON into a fresh T.
-func (Codec[T]) Unmarshal(data []byte) (T, error) {
+// Decode decodes JSON into a fresh T.
+func (Codec[T]) Decode(data []byte) (T, error) {
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
 		return v, err

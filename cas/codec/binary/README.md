@@ -2,7 +2,7 @@
 
 Package `binary` provides a generic `Codec[T]` for compact, caller-defined binary payloads in the `cas` core.
 
-This package is intentionally object-agnostic. It does not encode `Blob`, `Tree`, or any other app-specific object model. Instead, the caller supplies the exact `marshal` and `unmarshal` functions for the value type they want to store, and the package applies them as a standard `Codec[T]`.
+This package is intentionally object-agnostic. It does not encode `Blob`, `Tree`, or any other app-specific object model. Instead, the caller supplies the exact `encode` and `decode` functions for the value type they want to store, and the package applies them as a standard `Codec[T]`.
 
 ## Policy
 
@@ -59,17 +59,17 @@ type Tree struct {
 }
 ```
 
-The important rule is simple: the `cas` core stays agnostic, while the application chooses the binary wire format for each type and passes the marshal/unmarshal functions to `binary.New[T]`.
+The important rule is simple: the `cas` core stays agnostic, while the application chooses the binary wire format for each type and passes the encode/decode functions to `binary.New[T]`.
 
 ```go
-codec := binary.New[Blob](marshalBlob, unmarshalBlob)
+codec := binary.New[Blob](encodeBlob, decodeBlob)
 store := cas.New(raw, codec, sha256.New())
 ```
 
 A tight tree example:
 
 ```go
-func marshalTree(t Tree) ([]byte, error) {
+func encodeTree(t Tree) ([]byte, error) {
     var b bytes.Buffer
     b.WriteByte(1) // version
     binary.Write(&b, binary.BigEndian, uint32(len(t.Entries)))
@@ -83,7 +83,7 @@ func marshalTree(t Tree) ([]byte, error) {
     return b.Bytes(), nil
 }
 
-func unmarshalTree(data []byte) (Tree, error) {
+func decodeTree(data []byte) (Tree, error) {
     if len(data) == 0 || data[0] != 1 {
         return Tree{}, fmt.Errorf("tree: bad version")
     }

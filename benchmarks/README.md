@@ -7,7 +7,7 @@ version: v12
 
 # Benchmarks — go-cask
 
-The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; [`AGENT.md`](./AGENT.md) freezes package-local benchmark rules; this file is the operator's run-and-read guide.
+The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; this file is the operator's run-and-read guide.
 
 ## Table of contents
 
@@ -64,7 +64,7 @@ The regular perf suite is split across the subsystem files listed above. The can
 | `BenchmarkStoreWorkflowWriteReadVerify` | [`store_bench_test.go`](./store_bench_test.go) | fixed-size write/read/verify workflow | Realistic end-to-end object lifecycle | 
 | `BenchmarkRoundTrip` | [`store_bench_test.go`](./store_bench_test.go) | one fixed-size cycle | Minimal store round-trip cost |
 | `BenchmarkBackendWriteRead` / `BenchmarkBackendWriteReadBaseline` | [`backend_bench_test.go`](./backend_bench_test.go) | `mem` + `fs` across the same size ladder | Raw backend byte-path behavior and a clean baseline |
-| `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageMarshalUnmarshal` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | codec/hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations |
+| `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageEncodeDecode` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | JSON, CBOR, binary + hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations and the lightweight CBOR metadata path |
 | `BenchmarkHashPackageDigest` / `BenchmarkHashPackageParse` / `BenchmarkHashPackageDigestBaseline` | [`hash_bench_test.go`](./hash_bench_test.go) | `sha256`/`sha512`/`sha512_256` × sizes + valid/invalid parse | Hash-only throughput and parsing costs |
 | `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost and a clean single-object reference |
 | `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile and a stable reference for hit-path checks |
@@ -123,10 +123,10 @@ The raw round-trip matrix now lives in [`data/store-codec-hash-roundtrip.json`](
 The matrix covers:
 
 - sizes: `64B`, `256B`, `1KiB`, `8KiB`, `64KiB`, `1MiB`
-- codecs: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`
+- codecs: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`, `cbor`
 - hashers: `sha256`, `sha512`, `sha512_256`
 
-Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark measures full typed-store round trips: codec marshal/unmarshal, envelope, hashing, and memory-backend Put/Get. It does not isolate codec or hash cost by itself. Gob remains the Go-compatibility comparison; JSON remains the portable default; binary is the compact caller-defined format.
+Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark measures full typed-store round trips: codec encode/decode, envelope, hashing, and memory-backend Put/Get. It does not isolate codec or hash cost by itself. Gob remains the Go-compatibility comparison; JSON remains the portable default; binary and CBOR are the compact caller-defined formats.
 
 The JSON file also records runner metadata and the `winner` list used below so future analyses can be repeated without re-editing the README by hand.
 
@@ -181,7 +181,7 @@ This summary is intentionally short. For deeper analysis, use the JSON matrix di
 
 #### Focused isolation benchmarks (median of 5 runs)
 
-`BenchmarkCodecMarshalUnmarshal` isolates pure serialization cost without hashing or store I/O. `BenchmarkHasherDigest` isolates pure hash throughput without encoding or backend work.
+`BenchmarkCodecEncodeDecode` isolates pure serialization cost without hashing or store I/O. `BenchmarkHasherDigest` isolates pure hash throughput without encoding or backend work.
 
 These are diagnostic benchmarks, not product defaults. They help answer: “is the slowdown mostly codec cost or hash cost?” They do not replace the end-to-end matrix above.
 
@@ -320,6 +320,5 @@ Run the same N at a few magnitudes (10k/100k/1M/…) on one machine; flat vs. su
 ## 6. Reference
 
 - `performance.md` §5 (suite contract), §11 (scenario targets).
-- [`AGENT.md`](./AGENT.md) (frozen package-local benchmark rules).
 - `defaults.md` §6 (default targets, e.g. memory small Put/Get ≥ 100k obj/s, ≤ 5 allocs/op).
 - Commands above assume PowerShell (Windows) or bash; the `go test` flags are identical everywhere.

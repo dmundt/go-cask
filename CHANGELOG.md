@@ -62,7 +62,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Added an optional, advisory Bloom layer under [cas/bloom/](cas/bloom/) with standard, counting, and persistent variants, plus a backend guard (`bloom.Guard`) that short-circuits absent lookups without changing the CAS identity model.
 - Added focused benchmark families in [benchmarks/bench_test.go](benchmarks/bench_test.go):
-  `BenchmarkCodecMarshalUnmarshal` isolates pure serialization cost and
+  `BenchmarkCodecEncodeDecode` isolates pure serialization cost and
   `BenchmarkHasherDigest` isolates raw hash throughput.
 - Added benchmark tables and recommendation text to [benchmarks/README.md](benchmarks/README.md),
   including isolated codec/hash summaries and the median-of-5 interpretation for the
@@ -757,7 +757,7 @@ Documentation and editorial release. **No public API or on-disk-format change.**
 - Swept stale pre-refactor identifiers from the example READMEs and a few
   source doc-comments: `FSRawStore`→`fs.Backend`, `RawStore`→`cas.Backend`,
   `JSONCodec[T]`/`GobCodec[T]`→`json.New[T]()`/`gob.New[T]()`,
-  `StoreStats`→`cas.Stats`, `Encode`/`Decode`→`Marshal`/`Unmarshal`. Comment-
+  `StoreStats`→`cas.Stats`, `Encode`/`Decode`→`Encode`/`Decode`. Comment-
   only; no behavior change (4 `.go` files, `gofmt`/`go vet` clean).
 
 ## [v0.1.1] - 2026-09-09
@@ -807,7 +807,7 @@ This release restructures the public API and the on-disk format ahead of
 renamed (its former name in the `cas` root package no longer exists) and
 re-homed under a pluggable `cas/backend` package, codecs moved to `cas/codec/*`
 subpackages with their serialization methods renamed to the standard
-`Marshal`/`Unmarshal` idiom, the caching layer was split into `cas/cache/*`
+`Encode`/`Decode` idiom, the caching layer was split into `cas/cache/*`
 subpackages, and stored objects switched to a versioned TLV envelope. No
 migration path is provided — data written by earlier alphas is incompatible.
 
@@ -823,7 +823,7 @@ migration path is provided — data written by earlier alphas is incompatible.
   and `mem.WithMaxSize(n)` to cap total stored bytes (`0` = unbounded) — the
   in-memory backend.
 - `cas/codec/json` (package `json`) and `cas/codec/gob` (package `gob`):
-  `json.New[T]()` and `gob.New[T]()`, each exposing `Marshal`/`Unmarshal`; a
+  `json.New[T]()` and `gob.New[T]()`, each exposing `Encode`/`Decode`; a
   stdlib `encoding/gob` binary codec joins the relocated JSON one.
 - The versioned **TLV envelope** as the stored-object format
   (`[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`, in
@@ -854,7 +854,7 @@ migration path is provided — data written by earlier alphas is incompatible.
   `cas`, `cas/backend.go`), with concrete implementations living in the
   `cas/backend/*` subpackages — a breaking rename of the core interface.
 - **`Codec[T]` serialization methods renamed to the standard
-  `Marshal`/`Unmarshal` names** used across the `encoding/*` packages — a
+  `Encode`/`Decode` names** used across the `encoding/*` packages — a
   breaking API change.
 - **Stored-object serialization switched to the versioned TLV envelope** — a
   breaking change to on-disk bytes and therefore to the content hashes.
@@ -869,7 +869,7 @@ migration path is provided — data written by earlier alphas is incompatible.
   to `cas/cache/prefetch`.
 - Examples (`files`, `notes`, `artifacts`, `gitlike`), `cmd/cask`, and the
   viewer updated to the new API; codec wrappers now compose `json.New[T]`
-  with `Marshal`/`Unmarshal`.
+  with `Encode`/`Decode`.
 - Tests reorganized per package (cached/LRU/smartcache split; `cas` corner and
   external tests distributed to their owning packages) and coverage lifted
   across the tree (mem backend ~97%, fs backend ~90%, `cas` ~95%, `cas/codec`

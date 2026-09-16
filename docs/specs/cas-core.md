@@ -114,8 +114,8 @@ classDiagram
     }
     class Codec~T~ {
         <<interface>>
-        +Marshal(v T) ([]byte, error)
-        +Unmarshal(data []byte) (T, error)
+        +Encode(v T) ([]byte, error)
+        +Decode(data []byte) (T, error)
     }
     class Store~T~ {
         +Put(ctx, obj T) (Digest, error)
@@ -178,7 +178,7 @@ Typed layer — the generic store:
 classDiagram
     direction LR
     class Object~T~ { +Type() string +References() []Digest }
-    class Codec~T~ { +Marshal(T) ([]byte, error) +Unmarshal([]byte) (T, error) }
+    class Codec~T~ { +Encode(T) ([]byte, error) +Decode([]byte) (T, error) }
     class Hasher { <<interface>> +Digest(r) (Digest, error) +Validate(d) error }
     class Validator { <<interface>> +Validate() error }
     class Store~T~ {
@@ -388,14 +388,14 @@ Keeps objects in `map[string][]byte` keyed by the **raw digest bytes** (`string(
 
 ```go
 type Codec[T any] interface {
-    Marshal(v T) ([]byte, error)
-    Unmarshal(data []byte) (T, error)
+    Encode(v T) ([]byte, error)
+    Decode(data []byte) (T, error)
 }
 ```
 
 - Default: the JSON codec `json.New[T]()` (`cas/codec/json`), wrapping std-lib `encoding/json`; a client MAY also opt into the compact binary codec `binary.NewRaw(marshal, unmarshal)` or the stacked wrapper form `binary.New(inner, wrap, unwrap)` (`cas/codec/binary`) when a stable, app-defined binary payload is preferable to JSON.
 - Compression/encryption/protobuf are additional `Codec[T]` impls; they never change the byte layer.
-- Contract: `Unmarshal(Marshal(v)) == v` (round-trip) for all storable values.
+- Contract: `Decode(Encode(v)) == v` (round-trip) for all storable values.
 - **A reference field is a plain `cas.Digest` — there is no codec-side hash type.** `Digest` implements `encoding.TextMarshaler`/`TextUnmarshaler` (§4.1), so `encoding/json` renders a present reference as **one lowercase-hex JSON string** and decodes one back; an absent field renders as `""` unless it is tagged **`omitzero`** (Go 1.24 floor, still required: an older standard library ignores the unknown tag option and would emit `""` instead of omitting, silently changing the stored bytes and the object's address). An object type therefore writes `Ref cas.Digest \`json:"…,omitzero"\`` and nothing else — no wrapper to construct, no unwrapping call, no hand-written `MarshalJSON` for rendering. See §4.12 for a working object model.
 - **Rationale:** rendering a digest as hex is generic (no algorithm, no JSON), so it belongs to the type in the core rather than to one codec; the core still imports no `encoding/json`. A non-JSON codec carries no hash handling at all — `gob` encodes the `Digest` byte slice directly, and a custom binary codec encodes only the app-defined payload layout the caller supplies.
 
@@ -430,7 +430,7 @@ func New[T Object[T]](raw Backend, codec Codec[T], hasher Hasher) *Store[T]
 
 | Method | Behavior |
 |---|---|
-| `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Marshal(obj)` → TLV envelope → `hasher.Digest` → `raw.Put` → `d` |
+| `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Encode(obj)` → TLV envelope → `hasher.Digest` → `raw.Put` → `d` |
 | `PutDedup` | as `Put`, then `raw.Exists` first; returns `(d, alreadyStored, err)` |
 | `Get` | `raw.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates |
@@ -541,8 +541,8 @@ type ResolvedObject struct {
 
 ## 5. Data flows
 
-- **Write path:** `codec.Marshal(obj)` → TLV envelope (built by `Store.Put`) → `d, err := hasher.Digest(reader)` (the injected client hasher) → `raw.Put(ctx, d, reader)` (atomic fs, idempotent) → return `d`. Optional `PutDedup`: check `raw.Exists(d)` first, skip the write.
-- **Typed read path:** `raw.Get(ctx, d)` → `io.ReadAll` → envelope parse → `codec.Unmarshal(payload)` → `T`; decoded `Type()` matches stored type. A key that is absent or the wrong width for the hasher never reaches the backend (`ErrInvalidDigest`).
+- **Write path:** `codec.Encode(obj)` → TLV envelope (built by `Store.Put`) → `d, err := hasher.Digest(reader)` (the injected client hasher) → `raw.Put(ctx, d, reader)` (atomic fs, idempotent) → return `d`. Optional `PutDedup`: check `raw.Exists(d)` first, skip the write.
+- **Typed read path:** `raw.Get(ctx, d)` → `io.ReadAll` → envelope parse → `codec.Decode(payload)` → `T`; decoded `Type()` matches stored type. A key that is absent or the wrong width for the hasher never reaches the backend (`ErrInvalidDigest`).
 - **Lazy/cached read path:** `CachedStore.Proxy(ctx, d)` → not-yet-loaded `*CachedObject[T]`; on first access `Load(ctx)` → `store.Get` → memoize `(obj, err)`; later access returns the memoized value (double-checked locking).
 - **Cross-type resolution path (gitlike):** `ResolveAny(ctx, d)` → raw bytes → `parseType(data)` → dispatch to `ResolveBlob`/`ResolveTree`/`ResolveCommit`/`ResolveTag` → `ResolvedObject{...}`. The generic core has no equivalent.
 

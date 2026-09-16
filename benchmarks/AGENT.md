@@ -49,7 +49,7 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 ## Codec and hash matrix
 
 - `BenchmarkStoreCodecHashRoundTrip` is the canonical codec/hash comparison.
-- Keep supported payload codecs represented: `json`, `gzip`, `zlib`, `flate`, `gob`, and `binary`.
+- Keep supported payload codecs represented: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`, and `cbor`.
 - Keep supported hashers represented: `sha256`, `sha512`, and `sha512_256`.
 - Use the same `testNote`, payload sizes, memory backend, and Put+Get operation
   for every matrix cell. Do not add codec- or hasher-specific fast paths.

@@ -97,8 +97,8 @@ func ExampleCodec() {
 // every write and silently defeat dedup.
 type gzipCodec[T any] struct{ inner cas.Codec[T] }
 
-func (c gzipCodec[T]) Marshal(v T) ([]byte, error) {
-	plain, err := c.inner.Marshal(v)
+func (c gzipCodec[T]) Encode(v T) ([]byte, error) {
+	plain, err := c.inner.Encode(v)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (c gzipCodec[T]) Marshal(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (c gzipCodec[T]) Unmarshal(data []byte) (T, error) {
+func (c gzipCodec[T]) Decode(data []byte) (T, error) {
 	var zero T
 	zr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
@@ -125,5 +125,5 @@ func (c gzipCodec[T]) Unmarshal(data []byte) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	return c.inner.Unmarshal(plain)
+	return c.inner.Decode(plain)
 }

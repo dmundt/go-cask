@@ -14,12 +14,12 @@ type item struct {
 
 func Example() {
 	c := gzip.New(jsoncodec.New[item]())
-	data, err := c.Marshal(item{Title: "hello", Body: "world"})
+	data, err := c.Encode(item{Title: "hello", Body: "world"})
 	if err != nil {
 		fmt.Println("marshal error:", err)
 		return
 	}
-	got, err := c.Unmarshal(data)
+	got, err := c.Decode(data)
 	if err != nil {
 		fmt.Println("unmarshal error:", err)
 		return

@@ -16,11 +16,11 @@ type obj struct {
 func TestRoundTrip(t *testing.T) {
 	c := gob.New[obj]()
 	orig := obj{Title: "gob", Body: "test"}
-	data, err := c.Marshal(orig)
+	data, err := c.Encode(orig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := c.Unmarshal(data)
+	got, err := c.Decode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +32,11 @@ func TestRoundTrip(t *testing.T) {
 func TestCascadeRoundTrip(t *testing.T) {
 	c := gob.New(flatecodec.New(jsoncodec.New[obj]()))
 	orig := obj{Title: "gob", Body: "cascaded"}
-	data, err := c.Marshal(orig)
+	data, err := c.Encode(orig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := c.Unmarshal(data)
+	got, err := c.Decode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCascadeRoundTrip(t *testing.T) {
 
 func TestDecodeError(t *testing.T) {
 	c := gob.New[obj]()
-	if _, err := c.Unmarshal([]byte("garbage")); err == nil {
+	if _, err := c.Decode([]byte("garbage")); err == nil {
 		t.Fatal("invalid gob must error")
 	}
 }
@@ -55,7 +55,7 @@ func TestDecodeError(t *testing.T) {
 func TestMarshalError(t *testing.T) {
 	// encoding/gob cannot encode a channel, so Marshal must surface the error.
 	c := gob.New[chan int]()
-	if _, err := c.Marshal(make(chan int)); err == nil {
+	if _, err := c.Encode(make(chan int)); err == nil {
 		t.Fatal("encoding an unsupported type must error")
 	}
 }

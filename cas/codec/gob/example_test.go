@@ -9,12 +9,12 @@ import (
 // Example shows the gob codec round-trip (cas-core §4.6).
 func Example() {
 	c := gob.New[obj]()
-	data, err := c.Marshal(obj{Title: "hi", Body: "go"})
+	data, err := c.Encode(obj{Title: "hi", Body: "go"})
 	if err != nil {
 		fmt.Println("marshal error:", err)
 		return
 	}
-	got, err := c.Unmarshal(data)
+	got, err := c.Decode(data)
 	if err != nil {
 		fmt.Println("unmarshal error:", err)
 		return

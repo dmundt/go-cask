@@ -10,11 +10,11 @@ import (
 	"strings"
 )
 
-// Store[T] is the generic, type-safe content-addressable store for objects of
+// Store is the generic, type-safe content-addressable store for objects of
 // type T, over a Backend backend, a Codec[T] and the client's Hasher. Type
 // safety comes from one store per type: Store[Blob] and Store[Commit] are
 // distinct, so passing a commit digest to a blob store is a compile-time error.
-// Store[T] is safe for concurrent use if its Backend is.
+// Store is safe for concurrent use if its Backend is.
 //
 // Stored objects are self-describing: the codec payload is wrapped in the TLV
 // envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
@@ -166,7 +166,7 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 // single serialization authority — the same codec decodes on read (Get). obj
 // is the concrete T (the Store constraint), so no type assertion is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
-	payload, err := s.codec.Marshal(obj)
+	payload, err := s.codec.Encode(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
@@ -201,7 +201,7 @@ func (s *Store[T]) Get(ctx context.Context, d Digest) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	v, err := s.codec.Unmarshal(payload)
+	v, err := s.codec.Decode(payload)
 	if err != nil {
 		return zero, fmt.Errorf("cas: %w: payload decode: %w", ErrCorrupt, err)
 	}

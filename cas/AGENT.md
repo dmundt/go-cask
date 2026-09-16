@@ -12,6 +12,7 @@ This package-local guide applies to the core `cas` subtree.
 - Keep `cas` codec-agnostic. The caller chooses serialization format.
 - Keep the byte layer and typed layer separate.
 - Prefer explicit, typed APIs over reflection or `any` in exported code.
+- Go reflection is forbidden in `cas` and `cas/*` packages; use explicit typed methods, type switches, and codec-specific conversion functions instead.
 - Keep default policy documents consistent with the repo root summary: `SHA-256` is the default recommendation, `SHA-512/256` is the supported fast alternative, and gob is compatibility-only.
 
 ## Documentation rules

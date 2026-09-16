@@ -11,8 +11,8 @@ import (
 
 type customCodec struct{}
 
-func (customCodec) Marshal(v string) ([]byte, error)      { return []byte(v), nil }
-func (customCodec) Unmarshal(data []byte) (string, error) { return string(data), nil }
+func (customCodec) Encode(v string) ([]byte, error)      { return []byte(v), nil }
+func (customCodec) Decode(data []byte) (string, error) { return string(data), nil }
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
 	want := manifest.Data{"kind": "test", "owner": "team-a"}

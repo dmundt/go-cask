@@ -23,7 +23,7 @@
 
 ## Code walkthrough
 
-- `codec.go` — `gzipCodec[T]`: `Marshal` = gzip of the inner JSON codec's output; `Unmarshal` = gunzip then inner decode (pinned gzip mtime).
+- `codec.go` — `gzipCodec[T]`: `Encode` = gzip of the inner JSON codec's output; `Decode` = gunzip then inner decode (pinned gzip mtime).
 - `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact digests as `[]cas.Digest`, which render as one lowercase-hex string each and validate on decode, with no JSON code here), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
   - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's manifest** (delete the previous), so the replaced artifact becomes garbage;
   - `get <hash>` — through the `lru.Cache`, `CacheMonitor` printing snapshots;

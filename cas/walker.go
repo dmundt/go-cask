@@ -2,14 +2,14 @@ package cas
 
 import "context"
 
-// Walker[T] traverses a single-type object graph via References() — the
-// generic core's only graph primitive. It works for any object type with no
-// knowledge of the domain model. Content addressing makes a cycle impossible in
-// an honestly written store: an object's address is derived from its bytes, so
-// no object can reference itself directly or transitively. Traversal
-// nevertheless tracks the digests it has visited — a shared subgraph is walked
-// once, not once per path, and a store written by another tool (a Backend does
-// not re-verify the bytes it is handed) cannot make the walk loop — and uses an
+// Walker traverses a single-type object graph via References() — the generic
+// core's only graph primitive. It works for any object type with no knowledge
+// of the domain model. Content addressing makes a cycle impossible in an
+// honestly written store: an object's address is derived from its bytes, so no
+// object can reference itself directly or transitively. Traversal nevertheless
+// tracks the digests it has visited — a shared subgraph is walked once, not
+// once per path, and a store written by another tool (a Backend does not
+// re-verify the bytes it is handed) cannot make the walk loop — and uses an
 // explicit stack instead of recursion, so a very deep graph terminates instead
 // of exhausting the goroutine stack.
 type Walker[T Object[T]] struct {

@@ -22,7 +22,8 @@
     "zlib",
     "flate",
     "gob",
-    "binary"
+    "binary",
+    "cbor"
   ],
   "hashers": [
     "sha256",
@@ -1057,6 +1058,168 @@
       "mb_per_s": 311.15,
       "bytes_per_op": 9224484,
       "allocs_per_op": 74
+    },
+    {
+      "payload": "64B",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 2144.1,
+      "mb_per_s": 39.71,
+      "bytes_per_op": 2093,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "64B",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 3484.4,
+      "mb_per_s": 24.33,
+      "bytes_per_op": 2310,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "64B",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 2608.1,
+      "mb_per_s": 32.74,
+      "bytes_per_op": 2201,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "256B",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 3142.3,
+      "mb_per_s": 104.57,
+      "bytes_per_op": 2740,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "256B",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 3768.2,
+      "mb_per_s": 89.53,
+      "bytes_per_op": 2956,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "256B",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 3692.3,
+      "mb_per_s": 90.08,
+      "bytes_per_op": 2849,
+      "allocs_per_op": 23
+    },
+    {
+      "payload": "1KiB",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 8516.9,
+      "mb_per_s": 147.34,
+      "bytes_per_op": 9579,
+      "allocs_per_op": 29
+    },
+    {
+      "payload": "1KiB",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 9911.4,
+      "mb_per_s": 131.1,
+      "bytes_per_op": 9796,
+      "allocs_per_op": 29
+    },
+    {
+      "payload": "1KiB",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 9628.1,
+      "mb_per_s": 133.0,
+      "bytes_per_op": 9688,
+      "allocs_per_op": 29
+    },
+    {
+      "payload": "8KiB",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 60208.5,
+      "mb_per_s": 163.02,
+      "bytes_per_op": 73824,
+      "allocs_per_op": 41
+    },
+    {
+      "payload": "8KiB",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 76547.7,
+      "mb_per_s": 133.17,
+      "bytes_per_op": 74094,
+      "allocs_per_op": 41
+    },
+    {
+      "payload": "8KiB",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 69240.9,
+      "mb_per_s": 145.04,
+      "bytes_per_op": 73940,
+      "allocs_per_op": 41
+    },
+    {
+      "payload": "64KiB",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 411668.2,
+      "mb_per_s": 190.15,
+      "bytes_per_op": 588299,
+      "allocs_per_op": 55
+    },
+    {
+      "payload": "64KiB",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 465868.5,
+      "mb_per_s": 174.63,
+      "bytes_per_op": 587960,
+      "allocs_per_op": 55
+    },
+    {
+      "payload": "64KiB",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 456864.5,
+      "mb_per_s": 175.38,
+      "bytes_per_op": 587927,
+      "allocs_per_op": 55
+    },
+    {
+      "payload": "1MiB",
+      "codec": "cbor",
+      "hasher": "sha256",
+      "ns_per_op": 5009201.6,
+      "mb_per_s": 249.91,
+      "bytes_per_op": 10083095,
+      "allocs_per_op": 82
+    },
+    {
+      "payload": "1MiB",
+      "codec": "cbor",
+      "hasher": "sha512",
+      "ns_per_op": 5752080.4,
+      "mb_per_s": 226.2,
+      "bytes_per_op": 9986605,
+      "allocs_per_op": 81
+    },
+    {
+      "payload": "1MiB",
+      "codec": "cbor",
+      "hasher": "sha512_256",
+      "ns_per_op": 5722704.3,
+      "mb_per_s": 223.92,
+      "bytes_per_op": 10081640,
+      "allocs_per_op": 81
     }
   ]
 }

@@ -33,7 +33,7 @@ func EncodeWith[T any](v T, c Codec[T]) ([]byte, error) {
 	if c == nil {
 		c = jsoncodec.New[T]()
 	}
-	return c.Marshal(v)
+	return c.Encode(v)
 }
 
 // DecodeWith deserializes data with a caller-supplied codec.
@@ -41,7 +41,7 @@ func DecodeWith[T any](b []byte, c Codec[T]) (T, error) {
 	if c == nil {
 		c = jsoncodec.New[T]()
 	}
-	return c.Unmarshal(b)
+	return c.Decode(b)
 }
 
 // Store provides a path-bound manifest with a caller-selected codec.
