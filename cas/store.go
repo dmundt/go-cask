@@ -176,7 +176,7 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 		// i.e. an object Put succeeds on but Get can never read.
 		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
 	}
-	if !strings.Contains(typ, "@") {
+	if strings.IndexByte(typ, '@') < 0 {
 		// Object[T].Type MUST return a versioned name "<type>@<major>"
 		// (object.go, object-versioning.md). parseEnvelope reads a legacy
 		// unversioned name as "@1", so writing one produces an object whose

@@ -31,7 +31,7 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	visited := make(map[string]bool)
+	visited := make(map[string]struct{})
 	stack := []Digest{d}
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
@@ -39,10 +39,11 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error {
 		if cur.IsZero() {
 			continue // an absent reference is not a missing object: the zero Digest means "no reference" (cas-core §4.1)
 		}
-		if visited[cur.String()] {
+		key := cur.String()
+		if _, ok := visited[key]; ok {
 			continue
 		}
-		visited[cur.String()] = true
+		visited[key] = struct{}{}
 		obj, err := w.store.Get(ctx, cur)
 		if err != nil {
 			return err

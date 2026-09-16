@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -85,7 +86,7 @@ func parseEnvelope(data []byte) (string, []byte, error) {
 	}
 	typeName := string(data[off : off+int(typeLen)])
 	off += int(typeLen)
-	if !strings.Contains(typeName, "@") {
+	if strings.IndexByte(typeName, '@') < 0 {
 		typeName += "@1" // legacy unversioned type name
 	}
 	payloadLen, n := binary.Uvarint(data[off:])
@@ -109,5 +110,5 @@ func EnvelopeFromBytes(data []byte) (Envelope, error) {
 	if err != nil {
 		return Envelope{}, err
 	}
-	return Envelope{Type: typ, Data: append([]byte(nil), payload...)}, nil
+	return Envelope{Type: typ, Data: bytes.Clone(payload)}, nil
 }

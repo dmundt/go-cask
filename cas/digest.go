@@ -105,7 +105,9 @@ func (d Digest) MarshalText() ([]byte, error) {
 	if len(d) == 0 {
 		return []byte{}, nil
 	}
-	return []byte(hex.EncodeToString(d)), nil
+	out := make([]byte, hex.EncodedLen(len(d)))
+	hex.Encode(out, d)
+	return out, nil
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler. An empty string means the
