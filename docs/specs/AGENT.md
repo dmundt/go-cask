@@ -75,8 +75,8 @@ All files MUST use exactly these terms (forbidden synonyms listed):
 
 | Term | Meaning |
 |---|---|
-| go-cask / CASK | The project (Content Addressable Storage Kit). |
-| CAS / CASK | Acronyms, ALL-CAPS: "CAS" = Content Addressable Storage, "CASK" = Content Addressable Storage Kit. Never lowercase — lowercase `cas` is the Go package (next row). |
+| go-cask / CASK | The project (Content-Addressable Store Kit). |
+| CAS / CASK | Acronyms, ALL-CAPS: "CAS" = Content-Addressable Store, "CASK" = Content-Addressable Store Kit. Never lowercase — lowercase `cas` is the Go package (next row). |
 | `cas` package | The generic core library (`cas/`, `package cas`). |
 | `gitlike` package | Shared reference object-model library at `gitlike/`: Blob/Tree/Commit/Tag, Repository, Resolver. NOT part of `cas`. |
 | the viewer | The embedded technical browser UI (`internal/web/`). Not "debug UI". |

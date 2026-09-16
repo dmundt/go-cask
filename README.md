@@ -1,4 +1,4 @@
-# CASK — Content Addressable Storage Kit
+# CASK — Content-Addressable Store Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
@@ -27,7 +27,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 
 ## Design decisions
 
-A **single-host content-addressable store kit**. Each named spec is the normative contract:
+A **single-host content-addressable store**. Each named spec is the normative contract:
 - **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports [examples/](examples/) (viewer-design §7, coding-guidelines §9).
 - **Dependencies one-directional** — [cas/](cas/), [internal/](internal/), [cmd/](cmd/) never import [examples/](examples/); examples are self-contained except the shared `gitlike` library.
