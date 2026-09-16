@@ -1,9 +1,11 @@
 package persistent
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/bloom"
@@ -131,7 +133,7 @@ func (f *Filter) Close() error {
 		}
 	}
 	if f.mapped {
-		if err := closeMapped(f.data); err != nil {
+		if err := closeMapped(f.data); err != nil && !errors.Is(err, syscall.EINVAL) {
 			_ = f.file.Close()
 			return err
 		}
