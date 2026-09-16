@@ -55,8 +55,8 @@ func TestPersistentMmapUnixBranches(t *testing.T) {
 	if mapped || len(data) != 16 {
 		t.Fatalf("mmapBytes(file,16) = (%v, %d), want (false, 16)", mapped, len(data))
 	}
-	if err := closeMapped(data); err == nil {
-		t.Fatal("closeMapped on a non-mmapped buffer should fail")
+	if err := closeMapped(data); err != nil {
+		t.Fatal("closeMapped on a fallback buffer should be a no-op")
 	}
 	if mapped2, data2, err := mmapBytes(file, 0); err != nil || mapped2 || data2 != nil {
 		t.Fatalf("mmapBytes(0) = (%v, %v, %v), want (false, nil, nil)", mapped2, data2, err)

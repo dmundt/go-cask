@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"unsafe"
 )
 
 func mmapBytes(file *os.File, size int) (bool, []byte, error) {
@@ -51,6 +52,12 @@ func mmapBytes(file *os.File, size int) (bool, []byte, error) {
 
 func closeMapped(data []byte) error {
 	if len(data) == 0 {
+		return nil
+	}
+	if unsafe.Pointer(&data[0]) == nil {
+		return nil
+	}
+	if uintptr(unsafe.Pointer(&data[0]))%uintptr(os.Getpagesize()) != 0 {
 		return nil
 	}
 	return syscall.Munmap(data)

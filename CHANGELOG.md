@@ -938,7 +938,7 @@ migration path is provided — data written by earlier alphas is incompatible.
   §6); across processes, reads and same-hash `Put`s are safe by construction
   while maintenance sweeps must be grace-gated against live writers
   (cas-core v19, backend-architecture v10, consistency v6).
-- Naming: the acronym expansion is **Content Addressable Store (Kit)** and is
+- Naming: the acronym expansion is **Content Addressable Storage (Kit)** and is
   written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
   Go package — replacing the former "Content Addressed Storage (Kit)" wording
   in README, specs, package comments, and example READMEs; the

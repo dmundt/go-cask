@@ -4,7 +4,7 @@ description: The repo-root aggregator for AI agents — project context, archite
 version: v22
 ---
 
-# Agent Instructions — go-cask (CASK: Content Addressable Store Kit)
+# Agent Instructions — go-cask (CASK: Content Addressable Storage Kit)
 
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final

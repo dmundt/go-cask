@@ -1,4 +1,4 @@
-# CASK — Content Addressable Store Kit
+# CASK — Content Addressable Storage Kit
 
 [![CI](https://github.com/dmundt/go-cask/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/go-cask/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
