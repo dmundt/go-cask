@@ -68,6 +68,10 @@ func benchTitle(prefix string, n int) string {
 	return prefix + strconv.Itoa(n)
 }
 
+func benchTitleUint(prefix string, n uint64) string {
+	return prefix + strconv.FormatUint(n, 10)
+}
+
 func marshalBinaryNote(v testNote) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := buf.WriteByte(1); err != nil {

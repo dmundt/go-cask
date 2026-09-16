@@ -135,7 +135,7 @@ func BenchmarkParallelPutGet(b *testing.B) {
 		for pb.Next() {
 			idx := int(i % uint64(objects))
 			if i%coldRatio == 0 {
-				h, err := store.Put(ctx, testNote{Title: benchTitle("parallel-", int(i))})
+				h, err := store.Put(ctx, testNote{Title: benchTitleUint("parallel-", i)})
 				if err != nil {
 					b.Fatal(err)
 				}
