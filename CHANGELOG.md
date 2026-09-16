@@ -12,7 +12,17 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
+- Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
+- Added dated benchmark retention and comparison helpers in [scripts/bench-baseline.sh](scripts/bench-baseline.sh) and [scripts/bench-compare.sh](scripts/bench-compare.sh), with the latest benchmark baseline kept at [benchmarks/data/baseline.txt](benchmarks/data/baseline.txt).
+- Made the package-scoped fuzz corpus rules explicit in [docs/specs/testing-strategy.md](docs/specs/testing-strategy.md) and [scripts/README.md](scripts/README.md): commit reviewed corpora under `testdata/fuzz` whenever a fuzz target changes.
 - Removed the dedicated nightly GitHub Actions workflow; CI now runs only on push and pull request validation, while the long-running fuzz and benchmark jobs stay local/manual instead of scheduling recurring automation.
+
+### Fixed
+
+- Hardened the `govulncheck` installation path to resolve correctly across Go/GOPATH/GOBIN combinations and bash environments.
+- Fixed release automation to detect previous tags and generate a valid changelog section without relying on manual maintenance.
+- Kept benchmark comparison usable even when `benchstat` is unavailable by emitting the explicit manual diff path.
 
 ## [v1.4.4] - 2026-09-16
 
