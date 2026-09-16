@@ -78,60 +78,168 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 }
 
 func encodeAny(v any) ([]byte, error) {
+	return appendEncodedValue(nil, v)
+}
+
+func appendEncodedValue(dst []byte, v any) ([]byte, error) {
 	switch x := v.(type) {
 	case nil:
-		return []byte{0xf6}, nil
+		return append(dst, 0xf6), nil
 	case bool:
 		if x {
-			return []byte{0xf5}, nil
+			return append(dst, 0xf5), nil
 		}
-		return []byte{0xf4}, nil
+		return append(dst, 0xf4), nil
 	case int:
-		return encodeInt64(int64(x))
+		return encodeInt64Into(dst, int64(x))
 	case int8:
-		return encodeInt64(int64(x))
+		return encodeInt64Into(dst, int64(x))
 	case int16:
-		return encodeInt64(int64(x))
+		return encodeInt64Into(dst, int64(x))
 	case int32:
-		return encodeInt64(int64(x))
+		return encodeInt64Into(dst, int64(x))
 	case int64:
-		return encodeInt64(x)
+		return encodeInt64Into(dst, x)
 	case uint:
-		return encodeUint64(uint64(x))
+		return encodeUint64Into(dst, uint64(x))
 	case uint8:
-		return encodeUint64(uint64(x))
+		return encodeUint64Into(dst, uint64(x))
 	case uint16:
-		return encodeUint64(uint64(x))
+		return encodeUint64Into(dst, uint64(x))
 	case uint32:
-		return encodeUint64(uint64(x))
+		return encodeUint64Into(dst, uint64(x))
 	case uint64:
-		return encodeUint64(x)
+		return encodeUint64Into(dst, x)
 	case float32:
-		return encodeFloat64(float64(x))
+		return encodeFloat64Into(dst, float64(x))
 	case float64:
-		return encodeFloat64(x)
+		return encodeFloat64Into(dst, x)
 	case string:
-		return encodeStringBytes([]byte(x))
+		return appendStringBytes(dst, []byte(x)), nil
 	case []byte:
-		return encodeBytes(x)
+		return appendBytes(dst, x), nil
 	case []string:
 		items := make([]any, len(x))
 		for i, s := range x {
 			items[i] = s
 		}
-		return encodeArray(items)
+		return appendArrayValue(dst, items)
 	case []any:
-		return encodeArray(x)
+		return appendArrayValue(dst, x)
 	case map[string]any:
-		return encodeMapValue(x)
+		return appendMapValue(dst, x)
 	case map[string]string:
 		items := make(map[string]any, len(x))
 		for k, v := range x {
 			items[k] = v
 		}
-		return encodeMapValue(items)
+		return appendMapValue(dst, items)
 	default:
 		return nil, fmt.Errorf("cbor: unsupported value type %T", v)
+	}
+}
+
+func encodeMapValue(v map[string]any) ([]byte, error) {
+	return appendMapValue(nil, v)
+}
+
+func estimateAnySize(v any) (int, error) {
+	switch x := v.(type) {
+	case nil:
+		return 1, nil
+	case bool:
+		return 1, nil
+	case int:
+		if x >= 0 {
+			return lenMajorHeader(0, uint64(x)), nil
+		}
+		return lenMajorHeader(1, uint64(-(x + 1))), nil
+	case int8:
+		if x >= 0 {
+			return lenMajorHeader(0, uint64(x)), nil
+		}
+		return lenMajorHeader(1, uint64(-(x + 1))), nil
+	case int16:
+		if x >= 0 {
+			return lenMajorHeader(0, uint64(x)), nil
+		}
+		return lenMajorHeader(1, uint64(-(x + 1))), nil
+	case int32:
+		if x >= 0 {
+			return lenMajorHeader(0, uint64(x)), nil
+		}
+		return lenMajorHeader(1, uint64(-(x + 1))), nil
+	case int64:
+		if x >= 0 {
+			return lenMajorHeader(0, uint64(x)), nil
+		}
+		return lenMajorHeader(1, uint64(-(x + 1))), nil
+	case uint:
+		return lenMajorHeader(0, uint64(x)), nil
+	case uint8:
+		return lenMajorHeader(0, uint64(x)), nil
+	case uint16:
+		return lenMajorHeader(0, uint64(x)), nil
+	case uint32:
+		return lenMajorHeader(0, uint64(x)), nil
+	case uint64:
+		return lenMajorHeader(0, x), nil
+	case float32:
+		return 9, nil
+	case float64:
+		return 9, nil
+	case string:
+		return lenMajorHeader(3, uint64(len(x))) + len(x), nil
+	case []byte:
+		return lenMajorHeader(2, uint64(len(x))) + len(x), nil
+	case []string:
+		total := lenMajorHeader(4, uint64(len(x)))
+		for _, s := range x {
+			total += lenMajorHeader(3, uint64(len(s))) + len(s)
+		}
+		return total, nil
+	case []any:
+		total := lenMajorHeader(4, uint64(len(x)))
+		for _, item := range x {
+			sz, err := estimateAnySize(item)
+			if err != nil {
+				return 0, err
+			}
+			total += sz
+		}
+		return total, nil
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for key := range x {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		total := lenMajorHeader(5, uint64(len(keys)))
+		for _, key := range keys {
+			encodedKey := appendMajor(nil, 3, uint64(len(key)))
+			total += len(encodedKey) + len(key)
+			sz, err := estimateAnySize(x[key])
+			if err != nil {
+				return 0, err
+			}
+			total += sz
+		}
+		return total, nil
+	case map[string]string:
+		keys := make([]string, 0, len(x))
+		for key := range x {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		total := lenMajorHeader(5, uint64(len(keys)))
+		for _, key := range keys {
+			encodedKey := appendMajor(nil, 3, uint64(len(key)))
+			total += len(encodedKey) + len(key)
+			total += lenMajorHeader(3, uint64(len(x[key]))) + len(x[key])
+		}
+		return total, nil
+	default:
+		return 0, fmt.Errorf("cbor: unsupported value type %T", v)
 	}
 }
 
@@ -146,28 +254,26 @@ func decodeAny(data []byte) (any, error) {
 	return value, nil
 }
 
-func encodeMapValue(v map[string]any) ([]byte, error) {
+func appendMapValue(dst []byte, v map[string]any) ([]byte, error) {
+	if v == nil {
+		return appendMajor(dst, 5, 0), nil
+	}
 	keys := make([]string, 0, len(v))
 	for key := range v {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
-	items := make([]byte, 0, 64)
+	dst = appendMajor(dst, 5, uint64(len(keys)))
 	for _, key := range keys {
-		encodedKey, err := encodeStringBytes([]byte(key))
+		dst = appendStringBytes(dst, []byte(key))
+		var err error
+		dst, err = appendEncodedValue(dst, v[key])
 		if err != nil {
 			return nil, err
 		}
-		encodedValue, err := encodeAny(v[key])
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, encodedKey...)
-		items = append(items, encodedValue...)
 	}
-	out := appendMajor(nil, 5, uint64(len(keys)))
-	return append(out, items...), nil
+	return dst, nil
 }
 
 func decodeMapValue(data []byte) (map[string]any, error) {
@@ -182,22 +288,66 @@ func decodeMapValue(data []byte) (map[string]any, error) {
 	return m, nil
 }
 
-func encodeArray(items []any) ([]byte, error) {
-	buf := make([]byte, 0, 64)
+func appendArrayValue(dst []byte, items []any) ([]byte, error) {
+	dst = appendMajor(dst, 4, uint64(len(items)))
 	for _, item := range items {
-		encoded, err := encodeAny(item)
+		var err error
+		dst, err = appendEncodedValue(dst, item)
 		if err != nil {
 			return nil, err
 		}
-		buf = append(buf, encoded...)
 	}
-	out := appendMajor(nil, 4, uint64(len(items)))
-	return append(out, buf...), nil
+	return dst, nil
+}
+
+func encodeArray(items []any) ([]byte, error) {
+	totalSize := lenMajorHeader(4, uint64(len(items)))
+	for _, item := range items {
+		sz, err := estimateAnySize(item)
+		if err != nil {
+			return nil, err
+		}
+		totalSize += sz
+	}
+	out := make([]byte, 0, totalSize)
+	return appendArrayValue(out, items)
 }
 
 func encodeBytes(data []byte) ([]byte, error) {
-	out := appendMajor(nil, 2, uint64(len(data)))
-	return append(out, data...), nil
+	return appendBytes(nil, data), nil
+}
+
+func appendBytes(dst []byte, data []byte) []byte {
+	dst = appendMajor(dst, 2, uint64(len(data)))
+	return append(dst, data...)
+}
+
+func appendStringBytes(dst []byte, data []byte) []byte {
+	dst = appendMajor(dst, 3, uint64(len(data)))
+	return append(dst, data...)
+}
+
+func encodeInt64Into(dst []byte, v int64) ([]byte, error) {
+	if v >= 0 {
+		return appendMajor(dst, 0, uint64(v)), nil
+	}
+	return appendMajor(dst, 1, uint64(-(v+1))), nil
+}
+
+func encodeUint64Into(dst []byte, v uint64) ([]byte, error) {
+	return appendMajor(dst, 0, v), nil
+}
+
+func encodeFloat64Into(dst []byte, v float64) ([]byte, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil, fmt.Errorf("cbor: unsupported float value %v", v)
+	}
+	bits := math.Float64bits(v)
+	buf := make([]byte, 8)
+	for i := range buf {
+		buf[i] = byte(bits >> (8 * (7 - i)))
+	}
+	return append(append(dst, 0xfb), buf...), nil
 }
 
 func encodeStringBytes(data []byte) ([]byte, error) {
@@ -226,6 +376,22 @@ func encodeFloat64(v float64) ([]byte, error) {
 		buf[i] = byte(bits >> (8 * (7 - i)))
 	}
 	return append([]byte{0xfb}, buf...), nil
+}
+
+func lenMajorHeader(mt byte, length uint64) int {
+	if length < 24 {
+		return 1
+	}
+	if length <= math.MaxUint8 {
+		return 2
+	}
+	if length <= math.MaxUint16 {
+		return 3
+	}
+	if length <= math.MaxUint32 {
+		return 5
+	}
+	return 9
 }
 
 func appendMajor(dst []byte, mt byte, length uint64) []byte {
@@ -289,8 +455,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 		if payloadEnd > len(data) {
 			return nil, nil, fmt.Errorf("cbor: truncated value")
 		}
-		payload := append([]byte(nil), data[payloadStart:payloadEnd]...)
-		return payload, data[payloadEnd:], nil
+		return data[payloadStart:payloadEnd], data[payloadEnd:], nil
 	case 3:
 		payloadEnd := payloadStart + int(length)
 		if payloadEnd > len(data) {

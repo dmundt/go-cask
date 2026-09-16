@@ -41,6 +41,7 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
+	buf.Grow(len(payload) + len(payload)/8 + 64)
 	w := stdgzip.NewWriter(&buf)
 	if _, err := w.Write(payload); err != nil {
 		_ = w.Close()

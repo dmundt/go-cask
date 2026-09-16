@@ -37,6 +37,7 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
+	buf.Grow(len(payload) + len(payload)/8 + 64)
 	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
 	if err != nil {
 		return nil, err

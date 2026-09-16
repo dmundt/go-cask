@@ -1,6 +1,6 @@
 # cbor — minimal embedded CBOR codec
 
-Package `cbor` provides a `Codec[T]` for the generic `cas` core using a small, embedded-friendly CBOR subset. It supports the scalar, array, map, byte-string, and string values most often used in metadata, manifests, and compact structured payloads without adding a heavy external dependency.
+Package `cbor` provides a `Codec[T]` for the generic `cas` core using a small, embedded-friendly CBOR subset consistent with RFC 8949. It supports the scalar, array, map, byte-string, and string values most often used in metadata, manifests, and compact structured payloads without adding a heavy external dependency.
 
 ## Package overview
 

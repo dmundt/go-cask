@@ -44,15 +44,15 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		var buf bytes.Buffer
-		if err := gob.NewEncoder(&buf).Encode(payload); err != nil {
+		buf := bytes.NewBuffer(make([]byte, 0, len(payload)+64))
+		if err := gob.NewEncoder(buf).Encode(payload); err != nil {
 			return nil, err
 		}
 		return buf.Bytes(), nil
 	}
 
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(v); err != nil {
+	buf := bytes.NewBuffer(make([]byte, 0, 64))
+	if err := gob.NewEncoder(buf).Encode(v); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
