@@ -28,7 +28,7 @@ jobs:
 
       - name: Verify repo
         if: hashFiles('**/*.go') != ''
-        run: ./scripts/verify.sh
+        run: bash ./scripts/verify.sh
 
   security:
     runs-on: ubuntu-latest
