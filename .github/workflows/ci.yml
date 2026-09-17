@@ -48,7 +48,7 @@ jobs:
           "$(go env GOPATH)/bin/govulncheck" ./...
 
   platform-matrix:
-    needs: verify
+    needs: [verify, security]
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     strategy:
