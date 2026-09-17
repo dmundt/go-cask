@@ -140,7 +140,7 @@ import re
 import sys
 
 root = pathlib.Path(sys.argv[1]) / 'docs' / 'specs'
-pat = re.compile(r'\[[^\]]+\]\((?P<target>[^)]+)\)|^\[[^\]]+\]:\s*(?P<target2>\S+)')
+pat = re.compile(r'(?<!\!)\[[^\]]+\]\((?P<target>[^)\s]+)\)|^\[[^\]]+\]:\s*(?P<target2>\S+)')
 errors = []
 for path in sorted(root.glob('*.md')):
     text = path.read_text(encoding='utf-8', errors='ignore')
@@ -152,7 +152,7 @@ for path in sorted(root.glob('*.md')):
         if target.startswith('/'):
             target = root.parent.parent / target.lstrip('/')
         else:
-            target = (path.parent / target)
+            target = path.parent / target
         if not target.exists():
             errors.append(target.as_posix())
 for ref in sorted(set(errors)):
