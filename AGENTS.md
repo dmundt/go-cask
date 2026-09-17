@@ -25,11 +25,12 @@ version: v22
 > enters context a few lines later by reading that spec file. This ensures
 > you never miss a rule that applies to your change.
 >
-> **Before every commit/push, complete the repo preflight checklist.** Keep the
-> repo in a releasable state and match the actual CI gates in
+> **Before every commit and before every push, complete the repo preflight checklist.**
+> Keep the repo in a releasable state and match the actual CI gates in
 > `.github/workflows/ci.yml`: update `CHANGELOG.md` for any user-visible change,
-> run `./scripts/verify.sh` before each commit, and ensure the GitHub Actions
-> `CI` workflow remains green after pushing. Before every GitHub release,
+> run `./scripts/verify.sh` before each commit and before each push, and do not
+> commit or push until it passes. Ensure the GitHub Actions `CI` workflow remains
+> green after pushing. Before every GitHub release,
 > mirror the user-facing `CHANGELOG.md` entries into the release notes by
 > running `./scripts/release-notes.sh <new-tag> <previous-tag>`, include the
 > full changelog link used by prior releases (`Full Changelog:` + compare URL),
