@@ -160,8 +160,32 @@ func (b *Backend) loadIndex() error {
 	if m.Entries == nil {
 		m.Entries = make(map[string]packRecord)
 	}
-	b.index = m.Entries
+	filtered := make(map[string]packRecord, len(m.Entries))
+	for key, rec := range m.Entries {
+		if rec.Pack == "" {
+			continue
+		}
+		if _, err := os.Stat(rec.Pack); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+		}
+		filtered[key] = rec
+	}
+	b.index = filtered
 	return nil
+}
+
+func (b *Backend) pruneMissingPackEntriesLocked() {
+	for key, rec := range b.index {
+		if rec.Pack == "" {
+			delete(b.index, key)
+			continue
+		}
+		if _, err := os.Stat(rec.Pack); err != nil && os.IsNotExist(err) {
+			delete(b.index, key)
+		}
+	}
 }
 
 func (b *Backend) persistIndex() error {
@@ -290,17 +314,28 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rec, ok := b.index[string(d)]; ok {
-		f, err := openFn(rec.Pack)
-		if err != nil {
-			return nil, fmt.Errorf("cas: open pack file: %w", err)
-		}
-		data := make([]byte, rec.Size)
-		if _, err := io.NewSectionReader(f, rec.Offset, rec.Size).Read(data); err != nil && err != io.EOF {
+		if _, err := os.Stat(rec.Pack); err != nil {
+			if os.IsNotExist(err) {
+				delete(b.index, string(d))
+				if persistErr := b.persistIndex(); persistErr != nil {
+					return nil, persistErr
+				}
+			} else {
+				return nil, fmt.Errorf("cas: open pack file: %w", err)
+			}
+		} else {
+			f, err := openFn(rec.Pack)
+			if err != nil {
+				return nil, fmt.Errorf("cas: open pack file: %w", err)
+			}
+			data := make([]byte, rec.Size)
+			if _, err := io.NewSectionReader(f, rec.Offset, rec.Size).Read(data); err != nil && err != io.EOF {
+				_ = f.Close()
+				return nil, fmt.Errorf("cas: read pack entry: %w", err)
+			}
 			_ = f.Close()
-			return nil, fmt.Errorf("cas: read pack entry: %w", err)
+			return io.NopCloser(bytes.NewReader(data)), nil
 		}
-		_ = f.Close()
-		return io.NopCloser(bytes.NewReader(data)), nil
 	}
 	return looseGetFn(ctx, b.loose, d)
 }
@@ -315,7 +350,18 @@ func (b *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, ok := b.index[string(d)]; ok {
+	if rec, ok := b.index[string(d)]; ok {
+		if _, err := os.Stat(rec.Pack); err != nil {
+			if os.IsNotExist(err) {
+				delete(b.index, string(d))
+				if persistErr := b.persistIndex(); persistErr != nil {
+					return false, persistErr
+				}
+			} else {
+				return false, err
+			}
+			return false, nil
+		}
 		return true, nil
 	}
 	return looseExistsFn(ctx, b.loose, d)
@@ -376,6 +422,7 @@ func (b *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.pruneMissingPackEntriesLocked()
 	stats, err := looseStatsFn(ctx, b.loose)
 	if err != nil {
 		return nil, err
