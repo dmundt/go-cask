@@ -31,6 +31,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Restored the missing `objectPath` helper in [examples/files/main.go](examples/files/main.go) so the CRC32 sidecar path matches the fs backend fan-out layout and the example binary remains buildable under the repo's verification pipeline.
 - Restricted the doc-integrity gate to actual Markdown links so prose mentions of `.md` files no longer trigger false broken-reference failures.
 - Fixed the GitHub Actions CI verification step by ensuring the repository shell script is runnable on Linux runners and the workflow invokes it through bash reliably.
 - Gated the platform matrix on the verify and security gates to avoid wasting OS-target builds when the main CI checks already fail.

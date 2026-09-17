@@ -90,6 +90,10 @@ func (a *app) currentTree() (cas.Digest, error) { return a.readRef(a.index) }
 
 func (a *app) headCommit() (cas.Digest, error) { return a.readRef(a.head) }
 
+func objectPath(dir, h string) string {
+	return filepath.Join(dir, h[:2], h)
+}
+
 func (a *app) sidecarPath(d cas.Digest) string {
 	return objectPath(a.dir, d.String()) + ".crc32"
 }

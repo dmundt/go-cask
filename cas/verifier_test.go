@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -23,19 +23,21 @@ func (b getErrorBackend) Get(context.Context, cas.Digest) (io.ReadCloser, error)
 	return nil, b.err
 }
 func (b getErrorBackend) Exists(context.Context, cas.Digest) (bool, error) { return false, nil }
-func (b getErrorBackend) Delete(context.Context, cas.Digest) error           { return nil }
-func (b getErrorBackend) List(context.Context) ([]cas.Digest, error)        { return nil, nil }
-func (b getErrorBackend) Stats(context.Context) (*cas.Stats, error)         { return &cas.Stats{}, nil }
+func (b getErrorBackend) Delete(context.Context, cas.Digest) error         { return nil }
+func (b getErrorBackend) List(context.Context) ([]cas.Digest, error)       { return nil, nil }
+func (b getErrorBackend) Stats(context.Context) (*cas.Stats, error)        { return &cas.Stats{}, nil }
 
 type validateErrorHasher struct{}
 
 func (validateErrorHasher) Digest(io.Reader) (cas.Digest, error) { return nil, nil }
-func (validateErrorHasher) Validate(cas.Digest) error             { return errors.New("validate failed") }
+func (validateErrorHasher) Validate(cas.Digest) error            { return errors.New("validate failed") }
 
 type digestErrorHasher struct{}
 
-func (digestErrorHasher) Digest(io.Reader) (cas.Digest, error) { return nil, errors.New("digest failed") }
-func (digestErrorHasher) Validate(cas.Digest) error             { return nil }
+func (digestErrorHasher) Digest(io.Reader) (cas.Digest, error) {
+	return nil, errors.New("digest failed")
+}
+func (digestErrorHasher) Validate(cas.Digest) error { return nil }
 
 func TestVerifierDetectsCorruption(t *testing.T) {
 	ctx := context.Background()

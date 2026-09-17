@@ -265,9 +265,9 @@ func TestPackBackendPrunesStaleIndexEntriesOnLoad(t *testing.T) {
 	manifest := map[string]any{
 		"entries": map[string]any{
 			string(d): map[string]any{
-				"pack": filepath.Join(base, "packs", "missing.pack"),
+				"pack":   filepath.Join(base, "packs", "missing.pack"),
 				"offset": 0,
-				"size": 7,
+				"size":   7,
 			},
 		},
 	}
