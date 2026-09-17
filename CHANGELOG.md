@@ -20,6 +20,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Fixed the GitHub Actions CI verification step by ensuring the repository shell script is runnable on Linux runners and the workflow invokes it through bash reliably.
 - Hardened the `govulncheck` installation path to resolve correctly across Go/GOPATH/GOBIN combinations and bash environments.
 - Fixed release automation to detect previous tags and generate a valid changelog section without relying on manual maintenance.
 - Kept benchmark comparison usable even when `benchstat` is unavailable by emitting the explicit manual diff path.
