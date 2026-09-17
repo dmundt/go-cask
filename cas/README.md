@@ -31,9 +31,19 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [cache](./cache/README.md) — optional read-through caching and prefetch wrappers: [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [zlib](./codec/zlib/README.md), [flate](./codec/flate/README.md), [binary](./codec/binary/README.md), [cbor](./codec/cbor/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
-- [pack](./pack/README.md) — canonical chunk + manifest layer for staged payload workflows
+- [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
+- [backend/pack](./backend/pack/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.
+
+## Layering note
+
+`cas/pack` and `cas/backend/pack` cover adjacent but distinct concerns:
+
+- `cas/pack` is a small utility layer for splitting payloads and encoding/decoding manifest metadata.
+- `cas/backend/pack` is a concrete storage backend that persists objects in append-only pack files and maintains an index.
+
+The helper layer is not a backend, and the backend is not a codec or object model. They are complementary, but their responsibilities are intentionally different.
 
 ## Policy
 

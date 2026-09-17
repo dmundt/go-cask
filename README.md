@@ -13,6 +13,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Optional acceleration** — `cas/bloom` adds hot-path absence checks; `gzip`, `zlib`, and `flate` wrappers compress payloads when the workload benefits.
 - **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
+- **Layering stays clear** — `cas/pack` is the helper layer for chunking and manifests; `cas/backend/pack` is the optional packfile backend. They solve different problems and should not be confused.
 - **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
 
 ## Table of contents
