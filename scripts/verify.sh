@@ -134,15 +134,36 @@ for f in *.md; do
     fail_doc=1
   fi
 done
-for ref in $(grep -rhoE '(/|\./|\.\./)[A-Za-z0-9_./-]*\.md|[A-Za-z0-9_./-]+/[A-Za-z0-9_./-]*\.md' . | sort -u); do
-  case "$ref" in
-    .md|CHANGELOG.md|README.md|viewer-brief.md) continue ;;
-  esac
-  if [[ ! -f "$ref" ]]; then
-    echo "broken reference: $ref" >&2
-    fail_doc=1
-  fi
-done
+python3 - "$repo_root" <<'PY'
+import pathlib
+import re
+import sys
+
+root = pathlib.Path(sys.argv[1]) / 'docs' / 'specs'
+pat = re.compile(r'\[[^\]]+\]\((?P<target>[^)]+)\)|^\[[^\]]+\]:\s*(?P<target2>\S+)')
+errors = []
+for path in sorted(root.glob('*.md')):
+    text = path.read_text(encoding='utf-8', errors='ignore')
+    for match in pat.finditer(text):
+        target = (match.group('target') or match.group('target2') or '').strip()
+        if not target or target.startswith(('http://', 'https://', 'mailto:', '#')):
+            continue
+        target = target.split('#', 1)[0].split('?', 1)[0]
+        if target.startswith('/'):
+            target = root.parent.parent / target.lstrip('/')
+        else:
+            target = (path.parent / target)
+        if not target.exists():
+            errors.append(target.as_posix())
+for ref in sorted(set(errors)):
+    try:
+        rel = pathlib.Path(ref).resolve().relative_to(root.parent.parent.resolve())
+        label = rel.as_posix()
+    except ValueError:
+        label = pathlib.Path(ref).as_posix()
+    print(f'broken reference: {label}', file=sys.stderr)
+    sys.exit(1)
+PY
 cd "$repo_root"
 if [[ "$fail_doc" -ne 0 ]]; then
   exit 1
