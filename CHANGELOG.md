@@ -20,6 +20,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Made the package-scoped fuzz corpus rules explicit in [docs/specs/testing-strategy.md](docs/specs/testing-strategy.md) and [scripts/README.md](scripts/README.md): commit reviewed corpora under `testdata/fuzz` whenever a fuzz target changes.
 - Removed the dedicated nightly GitHub Actions workflow; CI now runs only on push and pull request validation, while the long-running fuzz and benchmark jobs stay local/manual instead of scheduling recurring automation.
 - Added the example-level AGENT guidance in [examples/AGENT.md](examples/AGENT.md) and expanded the pack example to teach the typed `Chunk`/`Manifest` model directly in [examples/pack/main.go](examples/pack/main.go).
+- Clarified the layering boundary between the helper package in [cas/pack/README.md](cas/pack/README.md) and the optional backend in [cas/backend/pack/README.md](cas/backend/pack/README.md): the helper layer splits payloads and serializes manifest metadata, while the backend persists append-only packfile data under the CAS digest model.
 - Expanded the canonical pack coverage and example coverage to full statements-based validation in [cas/pack/pack_test.go](cas/pack/pack_test.go) and [examples/pack/main_test.go](examples/pack/main_test.go), keeping the helper-level and example-level behavior fully exercised.
 
 ### Fixed
