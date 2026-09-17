@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Codec is the shared codec contract used by the pack layer.
