@@ -1,3 +1,6 @@
+// Package pack provides small helper functions for payload chunking and
+// manifest encoding. It is a helper layer, not a storage backend and not a
+// codec; the content-addressed byte model remains in the cas core.
 package pack
 
 import (

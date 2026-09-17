@@ -2,12 +2,26 @@
 
 Package `pack` groups the lightweight, app-level helpers that operate on packed payloads: fixed-size chunk splitting and a JSON sidecar manifest for metadata. It is intentionally a small, reusable layer above the core `cas` store rather than a new hash, codec, or object model.
 
+The project’s canonical distinction is: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+
 ## Policy
 
 - The core `cas` package remains hash-agnostic and codec-agnostic.
 - `pack` is the canonical helper layer for chunking and manifest metadata, not a replacement for the typed `Store[T]` abstraction.
 - The layer is designed for streaming or staged payload workflows where data is partitioned and annotated without changing the underlying content-addressed identity rules.
-- This is a helper package, not a storage backend. For append-only stored objects, see [../backend/pack](../backend/pack/README.md).
+- This is a helper package, not a storage backend. For append-only stored objects, see [../backend/packfs](../backend/packfs/README.md).
+
+## Helper vs backend
+
+```go
+// helper layer: split payloads and write a sidecar manifest
+parts := pack.Split(payload, 1024)
+_ = pack.Save("./state/manifest.json", pack.Data{"kind": "artifact"})
+
+// backend layer: persist digests in an append-only packfile backend
+raw, _ := packfs.New("./store", packfs.WithEnabled())
+_ = raw
+```
 
 ## Chunking example
 

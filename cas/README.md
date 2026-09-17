@@ -26,24 +26,25 @@
 
 The core stack is intentionally layered: the storage layer stays authoritative, and optional optimization layers sit above it. When an optional layer is not enabled, the underlying store behaves exactly as before.
 
-- [backend](./backend/README.md) — storage primitives: [fs](./backend/fs/README.md), [mem](./backend/mem/README.md), [pack](./backend/pack/README.md)
+- [backend](./backend/README.md) — storage primitives: [fs](./backend/fs/README.md), [mem](./backend/mem/README.md), [packfs](./backend/packfs/README.md)
 - [bloom](./bloom/README.md) — optional advisory bloom layer: [standard](./bloom/standard/README.md), [counting](./bloom/counting/README.md), [persistent](./bloom/persistent/README.md)
 - [cache](./cache/README.md) — optional read-through caching and prefetch wrappers: [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [zlib](./codec/zlib/README.md), [flate](./codec/flate/README.md), [binary](./codec/binary/README.md), [cbor](./codec/cbor/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
 - [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
-- [backend/pack](./backend/pack/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
+- [backend/packfs](./backend/packfs/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.
 
 ## Layering note
 
-`cas/pack` and `cas/backend/pack` cover adjacent but distinct concerns:
+The project uses one canonical sentence: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 
+- `cas/backend/fs` is the authoritative raw byte store.
+- `cas/backend/packfs` is a concrete storage policy that adds pack files and a private index on top of that byte store.
 - `cas/pack` is a small utility layer for splitting payloads and encoding/decoding manifest metadata.
-- `cas/backend/pack` is a concrete storage backend that persists objects in append-only pack files and maintains an index.
 
-The helper layer is not a backend, and the backend is not a codec or object model. They are complementary, but their responsibilities are intentionally different.
+The helper layer is not a backend, and the backend is not a codec or object model.
 
 ## Policy
 
