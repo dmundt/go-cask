@@ -20,7 +20,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
-- Fixed documentation integrity validation so Markdown links resolve from their source document and prose mentions of `.md` files are not reported as broken references.
+- Restricted the doc-integrity gate to actual Markdown links so prose mentions of `.md` files no longer trigger false broken-reference failures.
 - Fixed the GitHub Actions CI verification step by ensuring the repository shell script is runnable on Linux runners and the workflow invokes it through bash reliably.
 - Hardened the `govulncheck` installation path to resolve correctly across Go/GOPATH/GOBIN combinations and bash environments.
 - Fixed release automation to detect previous tags and generate a valid changelog section without relying on manual maintenance.
