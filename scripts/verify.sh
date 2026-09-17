@@ -134,7 +134,7 @@ for f in *.md; do
     fail_doc=1
   fi
 done
-for ref in $(grep -rhoE '[A-Za-z0-9_-]*\.md' . | sort -u); do
+for ref in $(grep -rhoE '(/|\./|\.\./)[A-Za-z0-9_./-]*\.md|[A-Za-z0-9_./-]+/[A-Za-z0-9_./-]*\.md' . | sort -u); do
   case "$ref" in
     .md|CHANGELOG.md|README.md|viewer-brief.md) continue ;;
   esac
