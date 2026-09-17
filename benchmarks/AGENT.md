@@ -15,8 +15,8 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 - Keep shared benchmark helpers in `shared_test.go`.
 - Keep fixed-size microbenchmarks grouped by concern in package-local files such as
   `store_bench_test.go`, `backend_bench_test.go`, `codec_bench_test.go`,
-  `hash_bench_test.go`, `cache_bench_test.go`, `bloom_bench_test.go`, and
-  `verify_bench_test.go`.
+  `hash_bench_test.go`, `cache_bench_test.go`, `pack_bench_test.go`,
+  `bloom_bench_test.go`, and `verify_bench_test.go`.
 - Keep opt-in state-scaling probes in `scale_bench_test.go`.
 - Run typed store benchmarks on the memory backend to avoid disk noise.
 - Measure filesystem behavior only in explicit `FSBackend` cases using

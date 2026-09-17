@@ -15,8 +15,12 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
 - Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
 - Added dated benchmark retention and comparison helpers in [scripts/bench-baseline.sh](scripts/bench-baseline.sh) and [scripts/bench-compare.sh](scripts/bench-compare.sh), with the latest benchmark baseline kept at [benchmarks/data/baseline.txt](benchmarks/data/baseline.txt).
+- Consolidated the shared payload helper surface into [cas/pack/README.md](cas/pack/README.md): fixed-size chunking and sidecar manifest logic live in one canonical package, with no compatibility-only duplicate package layer.
+- Added the canonical pack-layer benchmark family in [benchmarks/pack_bench_test.go](benchmarks/pack_bench_test.go) to cover chunking, manifest round-trips, and file-based save/load behavior directly under the public helper package.
 - Made the package-scoped fuzz corpus rules explicit in [docs/specs/testing-strategy.md](docs/specs/testing-strategy.md) and [scripts/README.md](scripts/README.md): commit reviewed corpora under `testdata/fuzz` whenever a fuzz target changes.
 - Removed the dedicated nightly GitHub Actions workflow; CI now runs only on push and pull request validation, while the long-running fuzz and benchmark jobs stay local/manual instead of scheduling recurring automation.
+- Added the example-level AGENT guidance in [examples/AGENT.md](examples/AGENT.md) and expanded the pack example to teach the typed `Chunk`/`Manifest` model directly in [examples/pack/main.go](examples/pack/main.go).
+- Expanded the canonical pack coverage and example coverage to full statements-based validation in [cas/pack/pack_test.go](cas/pack/pack_test.go) and [examples/pack/main_test.go](examples/pack/main_test.go), keeping the helper-level and example-level behavior fully exercised.
 
 ### Fixed
 

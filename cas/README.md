@@ -31,8 +31,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [cache](./cache/README.md) — optional read-through caching and prefetch wrappers: [lru](./cache/lru/README.md), [mem](./cache/mem/README.md), [prefetch](./cache/prefetch/README.md)
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [zlib](./codec/zlib/README.md), [flate](./codec/flate/README.md), [binary](./codec/binary/README.md), [cbor](./codec/cbor/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
-- [chunk](./chunk/README.md) — fixed-size payload splitting/reassembly helper for large-object workflows
-- [manifest](./manifest/README.md) — JSON sidecar metadata for app-level workflow hints
+- [pack](./pack/README.md) — canonical chunk + manifest layer for staged payload workflows
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.
 

@@ -9,6 +9,7 @@ The `examples/` directory contains runnable reference programs that show how to 
 - [bloom](./bloom/README.md) — optional Bloom-guard example for fast negative existence checks
 - [files](./files/README.md) — example of a file-oriented object store on top of the byte backend
 - [notes](./notes/README.md) — minimal note/object graph example using the Git-like reference model
+- [pack](./pack/README.md) — fixed-size chunking and manifest metadata helper example
 
 ## Design
 

@@ -36,8 +36,7 @@ Designed but deliberately deferred — not part of the core; SHALL be built as e
 |---|---|---|
 | **Packfiles** | Git-style packing: group small loose objects into immutable `pack-<ts>.pack` + `.idx` index — O(packs) `List`/`Stats`, pack-level GC, streaming reads via `io.SectionReader` | cas-core §8 (follow-up 4); performance §9 |
 | **Compression layer** | Implemented as opt-in `Codec[T]` wrappers in `cas/codec/gzip`, `cas/codec/zlib`, and `cas/codec/flate`: compress serialized bytes without changing `Digest`, object types, or the core store semantics | cas-core §8 (follow-up 5); §4.6 |
-| **Chunking helpers** | `cas/chunk` provides fixed-size payload splitting and reassembly for large-object workflows without changing object identity | performance §10 |
-| **Manifest metadata** | `cas/manifest` provides JSON sidecar metadata for labels, retention hints, and app-level workflow context without becoming part of the content graph | cas-core §7.2 |
+| **Pack helpers** | `cas/pack` provides fixed-size payload splitting and JSON sidecar metadata for large-object and operational workflows without changing object identity | performance §10 + cas-core §7.2 |
 | **Encryption layer** | `EncryptedCodec[T]` wrapping `Codec[T]` with AES-256-GCM; app supplies the key — the core never generates/stores keys | cas-core §8 (follow-up 8); §4.6/§7.2 |
 | **Content-defined chunking** | Rolling-hash chunking of very large blobs for chunk-granular dedup | performance §10 |
 

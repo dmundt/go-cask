@@ -12,7 +12,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Fast by default** — lock-free reads, streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
 - **Optional acceleration** — `cas/bloom` adds hot-path absence checks; `gzip`, `zlib`, and `flate` wrappers compress payloads when the workload benefits.
 - **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
-- **Extensible helpers** — `cas/chunk` and `cas/manifest` support large-object and metadata workflows without changing the identity model.
+- **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
 - **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
 
 ## Table of contents
@@ -109,8 +109,7 @@ classDiagram
 - Recommended object format: JSON (`cas/codec/json`) for readability and portability, layered behind the default `flate` compression when size reduction matters
 - Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
 - Additional supported compression wrappers: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for workloads that prefer a different compression profile
-- Fixed-size chunk helper: `cas/chunk` for splitting and reassembling large payloads in app-level workflows
-- Sidecar metadata helper: `cas/manifest` for JSON metadata files adjacent to a store
+- Shared pack helper: `cas/pack` for fixed-size chunking and sidecar metadata workflows in app-level storage patterns
 - Compact custom option: binary payloads via `cas/codec/binary` when a stable per-type binary layout is required
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 

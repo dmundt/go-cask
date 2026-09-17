@@ -30,6 +30,7 @@ The suite is split by subsystem so each family keeps a coherent ownership bounda
 | [`codec_bench_test.go`](./codec_bench_test.go) | Codec-only and full codec+hasher round-trip benchmarks |
 | [`hash_bench_test.go`](./hash_bench_test.go) | Hasher digest and parse benchmarks |
 | [`cache_bench_test.go`](./cache_bench_test.go) | Cache hit-path benchmarks |
+| [`pack_bench_test.go`](./pack_bench_test.go) | Pack-layer chunking and sidecar metadata benchmarks |
 | [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard benchmarks |
 | [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, and concurrency checks |
 | [`scale_bench_test.go`](./scale_bench_test.go) | On-demand state-scaling probes |
@@ -76,6 +77,7 @@ The regular perf suite is split across the subsystem files listed above. The can
 | `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageEncodeDecode` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | JSON, CBOR, binary + hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations and the lightweight CBOR metadata path |
 | `BenchmarkHashPackageDigest` / `BenchmarkHashPackageParse` / `BenchmarkHashPackageDigestBaseline` | [`hash_bench_test.go`](./hash_bench_test.go) | `sha256`/`sha512`/`sha512_256` × sizes + valid/invalid parse | Hash-only throughput and parsing costs |
 | `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost and a clean single-object reference |
+| `BenchmarkPackSplitJoin` / `BenchmarkPackManifestRoundTrip` / `BenchmarkPackManifestSaveLoadFile` | [`pack_bench_test.go`](./pack_bench_test.go) | chunking and metadata round-trip cases | Pack-layer throughput and file-sidecar overhead without changing the CAS object model |
 | `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile and a stable reference for hit-path checks |
 | `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, parse, concurrency | Integrity, parsing, and hot/cold parallel access |
 
