@@ -1,3 +1,5 @@
+// Package cache holds shared cache validation helpers and small, implementation-
+// agnostic policy checks used by the cache family.
 package cache
 
 import "fmt"

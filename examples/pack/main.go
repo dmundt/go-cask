@@ -1,3 +1,7 @@
+// Package main demonstrates the public chunking helper in the pack package.
+//
+// The example focuses on splitting, reassembling, and saving/loading chunked
+// payloads using the canonical helper API rather than a backend-specific format.
 package main
 
 import (

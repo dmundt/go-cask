@@ -1,3 +1,7 @@
+// Package hash provides shared digest helpers for named hash algorithms.
+//
+// The helpers in this package focus on validation and formatting for concrete
+// algorithm families and keep this logic separate from the core CAS digest type.
 package hash
 
 import (

@@ -1,3 +1,8 @@
+// Package cbor provides a compact CBOR codec layer for CAS payloads.
+//
+// The package follows the repo's codec-stack model: a CBOR codec can wrap an
+// inner codec and also define the explicit value-to-bytes conversion for the
+// concrete T being serialized.
 package cbor
 
 import (
