@@ -27,7 +27,7 @@ This note summarizes the canonical benchmark matrix in [`store-codec-hash-roundt
 | Statistic | median of 1 local run |
 | Runner note | Fresh single-run snapshot from the current local machine; not a portable cross-machine claim |
 
-The benchmark is the canonical comparison for codec + hasher performance across the same object lifecycle. The result file records the winning combination per payload size plus the full per-row matrix.
+The benchmark is the canonical comparison for codec + hasher performance across the same object lifecycle. The result file records the winning combination per payload size plus the full per-row matrix. The same suite also includes the maintenance verification helper family (`BenchmarkVerifyMaintenanceChecks`), which compares the cost of stronger object-address validation (`sha256`) against auxiliary checks (`crc32`, `crc64`, `adler32`) without changing the underlying storage model.
 
 ## Executive summary
 

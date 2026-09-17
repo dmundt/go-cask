@@ -10,6 +10,9 @@ import (
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	adler32 "github.com/dmundt/go-cask/cas/verify/adler32"
+	crc32 "github.com/dmundt/go-cask/cas/verify/crc32"
+	crc64 "github.com/dmundt/go-cask/cas/verify/crc64"
 )
 
 func BenchmarkVerify(b *testing.B) {
@@ -80,6 +83,43 @@ func BenchmarkVerifyBaseline(b *testing.B) {
 		}
 	}
 	benchmarkSummary(b, "verify/baseline/valid", len(data))
+}
+
+func BenchmarkVerifyMaintenanceChecks(b *testing.B) {
+	ctx := context.Background()
+	data := strings.Repeat("verify", 1024)
+	for _, tc := range []struct {
+		name   string
+		hasher cas.Hasher
+	}{
+		{name: "sha256", hasher: sha256.New()},
+		{name: "crc32", hasher: crc32.New()},
+		{name: "crc64", hasher: crc64.New()},
+		{name: "adler32", hasher: adler32.New()},
+	} {
+		b.Run("verify/maintenance/"+tc.name, func(b *testing.B) {
+			raw, err := fs.New(b.TempDir())
+			if err != nil {
+				b.Fatal(err)
+			}
+			h, err := tc.hasher.Digest(strings.NewReader(data))
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := raw.Put(ctx, h, strings.NewReader(data)); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(len(data)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; b.Loop(); i++ {
+				if err := cas.Verify(ctx, raw, h, tc.hasher); err != nil {
+					b.Fatal(err)
+				}
+			}
+			benchmarkSummary(b, "verify/maintenance/"+tc.name, len(data))
+		})
+	}
 }
 
 func BenchmarkParseDigest(b *testing.B) {

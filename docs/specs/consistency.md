@@ -24,7 +24,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 
 ## 2. Detecting broken objects (`Verify`)
 
-- `Verify(ctx, d, hasher)` re-reads the bytes and recomputes the digest with the injected `Hasher` (the client owns the algorithm; a digest carries none); mismatch → `ErrDigestMismatch`.
+- `cas.Verify(ctx, raw, d, hasher)` or `cas.NewVerifier(raw, hasher).Verify(ctx, d)` re-reads the bytes and recomputes the digest with the injected `Hasher` (the client owns the algorithm; a digest carries none); mismatch → `ErrDigestMismatch`.
 - Variants (pick by cost): **full scan** (every object; scheduled nightly or on demand; definitive), **sampled scan** (random subset on `List`; cheap coverage), **on-read** (verify while streaming; strongest but most expensive; critical objects only).
 - Handling (operations §4): report → **quarantine** (move the file aside) → audit-log → alert. The store never "fixes" a broken object — correct content must be re-`Put` (a new, valid hash).
 
@@ -81,7 +81,7 @@ Deliberately **not** adopted (yet): persisted refcounts, bloom filters as a GC o
 
 ## 8. Anti-over-engineering
 
-The entire consistency surface is **five operations**: `Verify(ctx, d, hasher)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored: object count and total size — the core cannot group by algorithm, since a digest carries none).
+The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, hasher)` / `(*cas.Verifier).Verify(ctx, d)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored: object count and total size — the core cannot group by algorithm, since a digest carries none).
 
 - No persisted refcounts, no incremental GC index, no automatic background GC, no GC-vs-write transactions, no distributed coordination.
 - Content addressing + atomic writes remove most consistency problems by construction; the rest is detection + explicit reclamation.

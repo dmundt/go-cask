@@ -79,9 +79,11 @@ The regular perf suite is split across the subsystem files listed above. The can
 | `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost and a clean single-object reference |
 | `BenchmarkPackSplitJoin` / `BenchmarkPackManifestRoundTrip` / `BenchmarkPackManifestSaveLoadFile` | [`pack_bench_test.go`](./pack_bench_test.go) | chunking and metadata round-trip cases | Pack-layer throughput and file-sidecar overhead without changing the CAS object model |
 | `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile and a stable reference for hit-path checks |
-| `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, parse, concurrency | Integrity, parsing, and hot/cold parallel access |
+| `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkVerifyMaintenanceChecks` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, maintenance checksum validators, parse, concurrency | Integrity, maintenance-layer checksum cost, and hot/cold parallel access |
 
 Store cases run against the in-memory backend (deterministic); the `fs` cases write to an auto-cleaned temp dir. The suite intentionally distinguishes steady-state, warm, cold, and baseline cases so the developer can tell whether a change affects the core path or just the one-time setup path.
+
+The maintenance verification family is intentionally separate from the canonical digest path: `BenchmarkVerifyMaintenanceChecks` measures `sha256`, `crc32`, `crc64`, and `adler32` checks against the same payload so the caller can compare the cost of an auxiliary consistency check without conflating it with the object-address algorithm.
 
 ### 3.1.1 How to read benchmark numbers
 

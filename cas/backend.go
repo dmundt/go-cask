@@ -14,9 +14,10 @@ import (
 //
 // Integrity is provided by the key: the digest IS the content's digest, so any
 // conflict is impossible by construction. Backends store and return bytes
-// without recomputing the digest — an explicit integrity check is the caller's
-// job (cas.Verify / fs.Backend.Verify with the client's Hasher), which
-// recomputes it and reports ErrDigestMismatch on corruption.
+// without recomputing the digest — explicit integrity validation is a separate
+// maintenance layer (cas.Verify / cas.NewVerifier / fs.Backend.Verify with the
+// client's Hasher), which recomputes the digest and reports ErrDigestMismatch
+// on corruption.
 //
 // Implementations must be safe for concurrent use.
 //

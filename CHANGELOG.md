@@ -12,6 +12,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Added a public integrity-verification layer in [cas/verifier.go](cas/verifier.go): `cas.Verify` and `cas.NewVerifier` keep object identity and storage semantics separate from corruption checks while preserving the backend contract as a raw `Digest -> bytes` layer.
 - Made the architecture boundary intentionally boring and stable: the generic core stays in [cas/](cas/), storage backends remain in [cas/backend/](cas/backend/), helper/manifest logic remains in [cas/pack/](cas/pack/), and higher-level object models stay layered on top instead of blurring into the core. This is now called out explicitly in [AGENTS.md](AGENTS.md) and [docs/index.md](docs/index.md) so future edits do not silently reintroduce boundary drift.
 - Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
 - Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
@@ -25,6 +26,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Normalized the backend naming to the package-scoped file convention in [cas/backend/packfs/packfs.go](cas/backend/packfs/packfs.go) and [cas/backend/packfs/packfs_test.go](cas/backend/packfs/packfs_test.go), while keeping the runtime on-disk pack artifacts generic (`index.json`, `current.pack`, `pack-*.pack`) so the storage format remains stable and the package boundary stays explicit.
 - Expanded the canonical pack coverage and example coverage to full statements-based validation in [cas/pack/pack_test.go](cas/pack/pack_test.go) and [examples/pack/main_test.go](examples/pack/main_test.go), keeping the helper-level and example-level behavior fully exercised.
 - Added package doc comments to the public Go packages that lacked explicit godoc declarations, including the cache helpers, CBOR codec package, digest helper package, and the pack example entry point, keeping the package-level documentation consistent with the repo's Go API conventions.
+- Refined the `cas/codec` package docs and README messaging to read like the Go stdlib for compression codecs while keeping the repo's architecture boundary explicit: the compression wrappers remain in `cas/codec` as representation-layer codecs, not as a new storage or object-address layer.
 
 ### Fixed
 

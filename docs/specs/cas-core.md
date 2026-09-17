@@ -286,7 +286,7 @@ type Hasher interface {
 }
 ```
 
-- The core names no algorithm and implements none. `Store` asks its `Hasher` for the digest of the bytes it is about to store and asks it to validate every digest a caller hands in (§4.8); `fs.Backend.Verify` recomputes through the same interface (§4.11). Implementations MUST be deterministic (identical bytes, identical digest), pure, and **safe for concurrent use** — one instance serves every operation of a `Store`.
+- The core names no algorithm and implements none. `Store` asks its `Hasher` for the digest of the bytes it is about to store and asks it to validate every digest a caller hands in (§4.8); the public `cas.Verify` / `cas.NewVerifier` layer recomputes through the same interface (§4.11). Implementations MUST be deterministic (identical bytes, identical digest), pure, and **safe for concurrent use** — one instance serves every operation of a `Store`.
 - **The shipped default is the client-side package `cas/hash/sha256`** — nothing in `cas` imports it:
 
   ```go
@@ -335,7 +335,7 @@ Per-method contracts (every backend MUST honor):
 | `List` | Every stored digest — **no algorithm filter**: the backend cannot know which algorithm produced a key (§4.2). The shipped backends return them sorted |
 | `Stats` | Total stored bytes and object count (§4.11) |
 
-Every implementation rejects an absent digest with `ErrInvalidDigest` instead of addressing an object that cannot exist, and none of them recomputes a digest: content addressing makes a conflict impossible by construction, so an explicit integrity check is the caller's job (`fs.Backend.Verify`, §4.11). **`Verify` is deliberately NOT part of this interface** — it is a maintenance operation of the filesystem backend, which owns the bytes on disk and takes the client's `Hasher` explicitly.
+Every implementation rejects an absent digest with `ErrInvalidDigest` instead of addressing an object that cannot exist, and none of them recomputes a digest: content addressing makes a conflict impossible by construction, so an explicit integrity check is the caller's job (`cas.Verify(ctx, raw, d, hasher)` / `cas.NewVerifier(raw, hasher).Verify(ctx, d)`, §4.11). **`Verify` is deliberately NOT part of this interface** — it is a separate maintenance-layer concern that reads bytes from the backend and takes the client's `Hasher` explicitly.
 
 This interface is the **backend extension point** — any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2).
 
@@ -468,7 +468,7 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 ### 4.11 Maintenance
 
 - **`Backend.Stats(ctx)`** → `*cas.Stats` (`TotalSize`, `ObjectCount`) with `String()` rendering `"N objects, M bytes"`; part of the `Backend` interface so **every backend** reports it (fs walks the tree; mem recomputes from its map). **There is no per-algorithm breakdown** — the core does not know which algorithm produced a digest (§4.2), so it cannot group objects by one; a client that needs that groups its own digests. `Verify`, `GC`, `Prune`, `Clean`, `Size` and the tree walk are fs-specific.
-- **`fs.Backend.Verify(ctx, d Digest, hasher Hasher) error`** — re-reads the object and recomputes its digest with the injected hasher, streaming so a large object is never buffered; it checks `d` (`CheckDigest` + `hasher.Validate`) first and reports `ErrDigestMismatch` when the stored bytes no longer digest to `d`.
+- **`cas.Verify(ctx, raw Backend, d Digest, hasher Hasher) error`** and **`(*cas.Verifier).Verify(ctx, d Digest) error`** — re-read the object and recompute its digest with the injected hasher, streaming so a large object is never buffered; they check `d` (`CheckDigest` + `hasher.Validate`) first and report `ErrDigestMismatch` when the stored bytes no longer digest to `d`. The filesystem backend still exposes `Verify(ctx, d, hasher)` as a thin compatibility wrapper that delegates to this shared verifier layer.
 - **`fs.Backend.GC(ctx, reachable map[string]bool) error`** — mark-and-sweep: deletes every object whose `d.String()` is not in `reachable`; the caller computes the reachable set.
 - **`fs.Backend.Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool) ([]Digest, error)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); returns the doomed digests, or the would-be-deleted set when `dryRun` is set. Detection/consistency in `consistency.md`.
 - **`fs.Backend.Clean(ctx, olderThan time.Duration) (int, error)`** — sweeps orphan temp files older than the threshold and returns the count.

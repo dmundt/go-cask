@@ -4,8 +4,8 @@
 //
 // Reachability is marked from HEAD (the store's only root): objects the
 // commit graph cannot reach are orphaned (GC candidates). Integrity is
-// checked per object with FSBackend.Verify unless -no-verify is given,
-// in which case reachable objects are simply "unverified".
+// checked per object with the explicit cas.Verifier layer unless -no-verify is
+// given, in which case reachable objects are simply "unverified".
 package main
 
 import (
@@ -15,7 +15,6 @@ import (
 	"sort"
 
 	"github.com/dmundt/go-cask/cas"
-	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -61,7 +60,7 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		reach := reachable[key]
 		state := stateVerified
 		if !noVerify {
-			if err := a.raw.Verify(ctx, h, sha256.New()); err != nil {
+			if err := a.verifyOne(ctx, h); err != nil {
 				state = stateCorrupt // corruption outranks orphaned: report it first
 			} else if !reach {
 				state = stateOrphaned

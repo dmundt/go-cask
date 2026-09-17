@@ -12,9 +12,10 @@
 | `gitlike.Blob`/`Tree`/`Commit` — `Object[T]`; `Commit.Validate` (a commit must name a tree) | `add`, `commit` |
 | `Repository.Blobs/Trees/Commits.Put`, `Get` | store/read objects |
 | `Resolver.ResolveAny` / `WalkGraph` | `cat`, `graph`, `audit` reachability |
-| `fs.Backend.Verify` / `List` / `Stats` (`cas.Stats`) | `verify`, `audit`, `stats` |
+| `cas.NewVerifier(raw, hasher)` / `cas.Verify` / `List` / `Stats` (`cas.Stats`) | `verify`, `audit`, `stats` |
 | `cas.Digest` / `sha256.Parse` / `sha256.Format` | ref files (`HEAD`, `INDEX`) and digest args |
-| `sha256.New()` (the client's `cas.Hasher`) | the `gitlike.Repository` and every `Verify` call |
+| `sha256.New()` (the client's `cas.Hasher`) | the `gitlike.Repository` object addresses |
+| `crc32.New()` (maintenance-layer `cas.Hasher`) | the stored sidecar checksum used by the example's `verify`/`audit` checks |
 | `cas.Validator` (`Commit.Validate`, enforced by `Store.Put`/`Get`) | writing and reading commits |
 
 ## What it extends
@@ -27,17 +28,17 @@ Nothing — a pure consumer; `cas` and `gitlike` are untouched. Only app additio
   - `add <file...>` — `repo.Blobs.Put` (dedup by content digest), builds a `gitlike.Tree`, `Trees.Put`, writes `INDEX`;
   - `commit -m <msg>` — reads `INDEX`, creates a `Commit` (parent = old `HEAD`), `Commits.Put`, advances `HEAD`;
   - `log` — walks the `Commit.Parent` chain; `cat <hash>` — `ResolveAny` → `Blob.Data`; `graph` — `WalkGraph` from `HEAD`;
-  - `audit [-no-verify]` — classifies every stored object (below); `verify`/`stats` — `fs.Backend.Verify` per object / `Stats`.
-- `audit.go` — the derived-state report: `List` → mark the reachable set from `HEAD` via `References()` (`markReachable`) → `Verify` each → assign a state:
+  - `audit [-no-verify]` — classifies every stored object (below); `verify`/`stats` — `cas.NewVerifier(raw, sha256.New()).Verify` plus a persisted `*.crc32` sidecar check per object / `Stats`.
+- `audit.go` — the derived-state report: `List` → mark the reachable set from `HEAD` via `References()` (`markReachable`) → `cas.Verifier.Verify` each with the CRC32 maintenance hasher → assign a state:
 
   | State | Meaning |
   |---|---|
   | `verified` | intact and reachable from `HEAD` |
   | `orphaned` | intact but unreachable — a GC candidate (consistency §4) |
-  | `corrupt` | `Verify` failed — reported even if orphaned |
+  | `corrupt` | object digest or persisted CRC32 sidecar failed verification — reported even if orphaned |
   | `unverified` | reachable but not checked (`-no-verify`) |
 
-  States are **derived, never stored** — the point-in-time result of `Verify` + reachability, not store metadata (consistency §8). `-no-verify` skips integrity for a fast orphan scan.
+  States are **derived, never stored** — the point-in-time result of `Verify` + reachability, not store metadata (consistency §8). The persisted CRC32 sidecar is maintenance metadata that sits next to the object, while the canonical object address remains SHA-256. `-no-verify` skips integrity for a fast orphan scan.
 
 ```mermaid
 flowchart TB

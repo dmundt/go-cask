@@ -489,29 +489,13 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 // Hasher, streaming so a large object never buffered. It reports
 // ErrDigestMismatch when the stored bytes no longer digest to d.
 func (s *Backend) Verify(ctx context.Context, d cas.Digest, hasher cas.Hasher) error {
-	if err := ctx.Err(); err != nil {
-		return err
+	if s == nil {
+		return fmt.Errorf("cas: verify: nil backend")
 	}
 	if err := s.checkKey(d, "fs: verify"); err != nil {
 		return err
 	}
-	if err := hasher.Validate(d); err != nil {
-		return err
-	}
-	rc, err := s.Get(ctx, d)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-
-	actual, err := hasher.Digest(rc)
-	if err != nil {
-		return fmt.Errorf("cas: verify read: %w", err)
-	}
-	if !actual.Equal(d) {
-		return fmt.Errorf("%w: %s", cas.ErrDigestMismatch, d)
-	}
-	return nil
+	return cas.Verify(ctx, s, d, hasher)
 }
 
 // GC performs mark-and-sweep garbage collection.

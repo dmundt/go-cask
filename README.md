@@ -10,10 +10,11 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Typed on top** — the `cas` core stays generic; each app defines its own `Object[T]` and `Store[T]` model.
 - **Composable** — backends and codecs plug in behind the `Backend` and `Codec[T]` contracts; the client supplies the hash algorithm (`sha256` is the default).
 - **Fast by default** — lock-free reads, streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
-- **Optional acceleration** — `cas/bloom` adds hot-path absence checks; `gzip`, `zlib`, and `flate` wrappers compress payloads when the workload benefits.
+- **Optional acceleration** — `cas/bloom` adds hot-path absence checks; the stdlib-style `gzip`, `zlib`, and `flate` codec wrappers compress payloads when the workload benefits.
 - **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
 - **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+- **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate object identity from validation, re-reading the bytes with the caller-supplied `Hasher` while the backend itself stays a storage-only `Digest -> bytes` layer.
 - **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
 
 ## Table of contents
@@ -106,10 +107,10 @@ classDiagram
 `cas` stays hash- and codec-agnostic by design, but the repo recommends a practical default policy for new durable data:
 
 - Default hash: `SHA-256` (`cas/hash/sha256`)
-- Default compression: `flate` (`cas/codec/flate`) for compressed object payloads
+- Default compression codec: `flate` (`cas/codec/flate`) for compressed object payloads
 - Recommended object format: JSON (`cas/codec/json`) for readability and portability, layered behind the default `flate` compression when size reduction matters
 - Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
-- Additional supported compression wrappers: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for workloads that prefer a different compression profile
+- Additional supported compression codecs: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for workloads that prefer a different compression profile
 - Shared pack helper: `cas/pack` for fixed-size chunking and sidecar metadata workflows in app-level storage patterns
 - Compact custom option: binary payloads via `cas/codec/binary` when a stable per-type binary layout is required
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage

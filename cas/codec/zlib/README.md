@@ -1,8 +1,8 @@
-# zlib — optional compression wrapper
+# zlib — compression codec
 
-Package `zlib` provides a `Codec[T]` that wraps another `cas.Codec[T]` and applies the standard-library `compress/zlib` format to the serialized bytes.
+Package `zlib` implements a `Codec[T]` that wraps another `cas.Codec[T]` and applies the standard-library `compress/zlib` format to the encoded bytes.
 
-This is an opt-in compression layer for payloads that are large, repetitive, or otherwise expensive to keep uncompressed. It leaves the CAS identity model unchanged: the wrapped codec still owns serialization, and the zlib layer only changes representation.
+This is a stdlib-style compression wrapper for payloads that are large, repetitive, or otherwise expensive to keep uncompressed. It leaves the CAS identity model unchanged: the wrapped codec still owns serialization, and the zlib layer remains a representation-layer optimization.
 
 ## Policy
 

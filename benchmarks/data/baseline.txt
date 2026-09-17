@@ -367,5 +367,9 @@ BenchmarkVerifyBaseline-20                                                      
 BenchmarkParseDigest/valid-20                                                                      	 1658678	       713.4 ns/op	  99.52 MB/s	      96 B/op	       2 allocs/op
 BenchmarkParseDigest/invalid-20                                                                    	 3001548	       394.1 ns/op	  35.53 MB/s	     224 B/op	       7 allocs/op
 BenchmarkParallelPutGet-20                                                                         	 1565251	       771.7 ns/op	 331.72 MB/s	     774 B/op	       8 allocs/op
+BenchmarkVerifyMaintenanceChecks/verify/maintenance/sha256-20                              	   31310	     37863 ns/op	 162.27 MB/s	   34115 B/op	     12 allocs/op
+BenchmarkVerifyMaintenanceChecks/verify/maintenance/crc32-20                              	   27308	     44532 ns/op	 137.97 MB/s	   33703 B/op	      9 allocs/op
+BenchmarkVerifyMaintenanceChecks/verify/maintenance/crc64-20                              	   21655	     50672 ns/op	 121.25 MB/s	   33723 B/op	      9 allocs/op
+BenchmarkVerifyMaintenanceChecks/verify/maintenance/adler32-20                            	   27296	     38768 ns/op	 158.48 MB/s	   33691 B/op	      9 allocs/op
 PASS
-ok  	github.com/dmundt/go-cask/benchmarks	471.941s
+ok   	github.com/dmundt/go-cask/benchmarks	471.941s

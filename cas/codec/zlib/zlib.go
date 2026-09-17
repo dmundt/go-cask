@@ -1,5 +1,8 @@
-// Package zlib provides a Codec[T] that wraps another codec and compresses its
-// serialized bytes with the standard library's compress/zlib package.
+// Package zlib implements a codec that wraps another codec and applies the
+// standard library's compress/zlib format to the encoded bytes.
+//
+// The zlib codec is a representation-layer optimization: it compresses
+// serialized payloads without changing object identity or store semantics.
 package zlib
 
 import (

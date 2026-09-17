@@ -17,6 +17,7 @@
 - Preferred codec: JSON via [codec/json](./codec/json/README.md)
 - Optional compression layers: [codec/gzip](./codec/gzip/README.md), [codec/zlib](./codec/zlib/README.md), and [codec/flate](./codec/flate/README.md) for large or repetitive payloads
 - Compact custom option: [codec/binary](./codec/binary/README.md) for stable per-type binary payloads
+- Maintenance validation layer: [verify](./verify/README.md) with [crc32](./verify/crc32/README.md) for explicit, cheap consistency checks
 - Durable backend: [backend/fs](./backend/fs/README.md)
 - Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
 - Compatibility-only codec: [codec/gob](./codec/gob/README.md)
@@ -32,6 +33,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [zlib](./codec/zlib/README.md), [flate](./codec/flate/README.md), [binary](./codec/binary/README.md), [cbor](./codec/cbor/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
 - [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
+- [verify](./verify/README.md) — optional integrity/checksum helpers layered above the store: [crc32](./verify/crc32/README.md)
 - [backend/packfs](./backend/packfs/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.

@@ -1,8 +1,8 @@
-# gzip — optional compression wrapper
+# gzip — compression codec
 
-Package `gzip` provides a `Codec[T]` that wraps any other `cas.Codec[T]` and compresses its serialized bytes with Go's standard `compress/gzip` package.
+Package `gzip` implements a `Codec[T]` that wraps another `cas.Codec[T]` and applies Go's standard `compress/gzip` format to the encoded bytes.
 
-This is an opt-in storage optimization for large or repetitive payloads. It does not change object identity, graph semantics, or the authoritative `cas` store contract: the wrapped codec still owns serialization, and the gzip layer is only a representation layer.
+This is a stdlib-style compression wrapper for large or repetitive payloads. It does not change object identity, graph semantics, or the authoritative `cas` store contract: the wrapped codec still owns serialization, and the gzip layer remains a representation-layer optimization.
 
 ## Policy
 

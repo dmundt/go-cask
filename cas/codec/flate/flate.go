@@ -1,5 +1,8 @@
-// Package flate provides a Codec[T] that wraps another codec and compresses its
-// serialized bytes with the standard library's compress/flate package.
+// Package flate implements a codec that wraps another codec and applies the
+// standard library's compress/flate format to the encoded bytes.
+//
+// The flate codec is a representation-layer optimization: it compresses
+// serialized payloads without changing object identity or store semantics.
 package flate
 
 import (

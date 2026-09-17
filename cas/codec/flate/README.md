@@ -1,8 +1,8 @@
-# flate — optional compression wrapper
+# flate — compression codec
 
-Package `flate` provides a `Codec[T]` that wraps another `cas.Codec[T]` and applies the standard-library `compress/flate` format to the serialized bytes.
+Package `flate` implements a `Codec[T]` that wraps another `cas.Codec[T]` and applies the standard-library `compress/flate` format to the encoded bytes.
 
-This fits the same opt-in compression strategy as the other stdlib codec wrappers: it reduces storage cost for large or repetitive payloads without changing the CAS object model or the canonical identity semantics.
+This follows the same stdlib-style compression strategy as the other codec wrappers: it reduces storage cost for large or repetitive payloads without changing the CAS object model or canonical identity semantics.
 
 ## Policy
 

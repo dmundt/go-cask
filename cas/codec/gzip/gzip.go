@@ -1,8 +1,8 @@
-// Package gzip provides a Codec[T] that wraps another codec and compresses its
-// serialized bytes with the standard library's compress/gzip (cas-core §4.6).
-// This keeps the CAS object model unchanged while making storage cheaper for
-// large or repetitive payloads. It is an optional codec-layer optimization, not
-// a new object type or a semantic change to the store.
+// Package gzip implements a codec that wraps another codec and applies the
+// standard library's compress/gzip format to the encoded bytes.
+//
+// The gzip codec is a representation-layer optimization: it compresses the
+// serialized payload without changing object identity or store semantics.
 package gzip
 
 import (

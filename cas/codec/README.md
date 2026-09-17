@@ -1,16 +1,16 @@
 # codec
 
-The codec layer defines how typed values are serialized before they are stored and recovered after they are read. The `cas` core stays format-agnostic; the caller picks the codec.
+Package `codec` defines the encoding boundary between typed values and their stored representation. A codec turns a value of type `T` into bytes and back again; the `cas` core remains format-agnostic, and callers choose the codec that matches the workload.
 
 ## Included implementations
 
-- [json](./json/README.md) — recommended default for readable, portable data
-- [gzip](./gzip/README.md) — optional compression wrapper for large or repetitive payloads
-- [zlib](./zlib/README.md) — stdlib zlib compression wrapper for a slightly different compression surface
-- [flate](./flate/README.md) — stdlib flate compression wrapper for fast, compact payloads
+- [json](./json/README.md) — the default for readable, portable data
+- [gzip](./gzip/README.md) — gzip-compression codec for large or repetitive payloads
+- [zlib](./zlib/README.md) — zlib-compression codec with the stdlib `compress/zlib` format
+- [flate](./flate/README.md) — flate-compression codec with the stdlib `compress/flate` format
 - [binary](./binary/README.md) — compact custom payload codec built from caller-supplied encode/decode functions
 - [gob](./gob/README.md) — Go-only compatibility codec
-- [cbor](./cbor/README.md) — minimal embedded CBOR codec for compact metadata and manifests
+- [cbor](./cbor/README.md) — compact embedded CBOR codec for metadata and manifests
 
 ## Policy
 
@@ -27,20 +27,20 @@ The codec layer defines how typed values are serialized before they are stored a
 - Use gzip, zlib, or flate when a payload is large or repetitive and a transparent compression layer is useful.
 - Use binary when you want a compact payload and you are willing to define a stable per-type schema.
 - Use gob only for explicit Go-to-Go compatibility or migration cases.
-- Use CBOR when a compact, self-describing, embedded metadata format is useful without pulling in a broad external dependency set.
+- Use CBOR when a compact, self-describing format is useful without a broad external dependency set.
 - Keep custom codecs explicit when the app needs a different binary or domain-specific format.
 
 ## Cascading codec layers
 
 Compression codecs are wrappers, not replacements: they can be stacked around a base codec to produce a new transitive codec while leaving the core `cas` semantics unchanged.
 
-Every codec that wraps another codec must support a `next` codec in its constructor. The standard pattern is:
+Every codec that wraps another codec should support a `next` codec in its constructor. The standard pattern is:
 
 ```go
 codec := flate.New(gzip.New(json.New[MyType]()))
 ```
 
-The inner codec owns the value serialization, and each outer layer adds another representation step. This makes it easy to combine portable object encoding with a chosen compression policy without altering the store or object identity model.
+The inner codec owns value serialization, and each outer layer adds another representation step. This makes it easy to combine a portable object encoding with a chosen compression policy without altering the store or object identity model.
 
 ## Notes
 

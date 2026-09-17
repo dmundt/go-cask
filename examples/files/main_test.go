@@ -228,6 +228,46 @@ func TestVerify(t *testing.T) {
 	}
 }
 
+func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
+	ctx := context.Background()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := writeTempFile(t, a.dir, "seed.txt", "crc32 sidecar")
+	if _, err := a.add(ctx, []string{f}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Positive: the stored sidecar matches the object's bytes.
+	digests, err := a.raw.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) == 0 {
+		t.Fatal("no objects stored")
+	}
+	for _, d := range digests {
+		if err := a.verifyCRC32Sidecar(ctx, d); err != nil {
+			t.Fatalf("stored crc32 sidecar mismatch for %s: %v", d, err)
+		}
+	}
+
+	// Negative: mutate the object, leaving the old checksum behind.
+	path := objectPath(a.dir, digests[0].String())
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[0] ^= 0xff
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.verifyCRC32Sidecar(ctx, digests[0]); err == nil {
+		t.Fatal("verifyCRC32Sidecar must reject a mutated object")
+	}
+}
+
 func TestPrintableDigest(t *testing.T) {
 	h, _ := sha256.Parse("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	s := printable(h)

@@ -5,8 +5,9 @@
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
 // Resolver/ResolvedObject, WalkGraph, Store[T] with the JSON codec
-// (json.New[T]()), fs.Backend fan-out, Verify, Stats, derived object-state
-// audit (verified/orphaned/corrupt), and a argument-parsing CLI.
+// (json.New[T]()), fs.Backend fan-out, explicit cas.Verifier integrity checks,
+// Stats, derived object-state audit (verified/orphaned/corrupt), and an
+// argument-parsing CLI.
 //
 // Usage:
 //
@@ -17,6 +18,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -29,6 +31,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	crc32 "github.com/dmundt/go-cask/cas/verify/crc32"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
@@ -87,6 +90,59 @@ func (a *app) currentTree() (cas.Digest, error) { return a.readRef(a.index) }
 
 func (a *app) headCommit() (cas.Digest, error) { return a.readRef(a.head) }
 
+func (a *app) sidecarPath(d cas.Digest) string {
+	return objectPath(a.dir, d.String()) + ".crc32"
+}
+
+func (a *app) writeCRC32Sidecar(ctx context.Context, d cas.Digest) error {
+	r, err := a.raw.Get(ctx, d)
+	if err != nil {
+		return fmt.Errorf("read %s for crc32 sidecar: %w", d, err)
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read %s bytes for crc32 sidecar: %w", d, err)
+	}
+	path := a.sidecarPath(d)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create crc32 sidecar dir for %s: %w", d, err)
+	}
+	return os.WriteFile(path, []byte(crc32.Format(crc32.Of(data))+"\n"), 0o644)
+}
+
+func (a *app) verifyCRC32Sidecar(ctx context.Context, d cas.Digest) error {
+	r, err := a.raw.Get(ctx, d)
+	if err != nil {
+		return fmt.Errorf("load object %s for crc32 check: %w", d, err)
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read object %s bytes for crc32 check: %w", d, err)
+	}
+	want := crc32.Of(data)
+	rawSidecar, err := os.ReadFile(a.sidecarPath(d))
+	if err != nil {
+		return fmt.Errorf("%w: missing crc32 sidecar for %s", cas.ErrNotFound, d)
+	}
+	got, err := crc32.Parse(strings.TrimSpace(string(rawSidecar)))
+	if err != nil {
+		return fmt.Errorf("decode crc32 sidecar for %s: %w", d, err)
+	}
+	if !bytes.Equal(got, want) {
+		return fmt.Errorf("crc32 mismatch for %s: want %s got %s", d, crc32.Format(want), crc32.Format(got))
+	}
+	return nil
+}
+
+func (a *app) verifyOne(ctx context.Context, d cas.Digest) error {
+	if err := cas.NewVerifier(a.raw, sha256.New()).Verify(ctx, d); err != nil {
+		return err
+	}
+	return a.verifyCRC32Sidecar(ctx, d)
+}
+
 // add stores each file as a blob and builds a tree of them; identical
 // content deduplicates (same bytes → same digest → stored once).
 func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
@@ -100,10 +156,16 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := a.writeCRC32Sidecar(ctx, h); err != nil {
+			return nil, err
+		}
 		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: h, Mode: "100644"})
 	}
 	h, err := a.repo.Trees.Put(ctx, &gitlike.Tree{Entries: entries})
 	if err != nil {
+		return nil, err
+	}
+	if err := a.writeCRC32Sidecar(ctx, h); err != nil {
 		return nil, err
 	}
 	if err := a.writeRef(a.index, h); err != nil {
@@ -129,6 +191,9 @@ func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
 	}
 	h, err := a.repo.Commits.Put(ctx, c)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.writeCRC32Sidecar(ctx, h); err != nil {
 		return nil, err
 	}
 	return h, a.writeRef(a.head, h)
@@ -173,7 +238,7 @@ func (a *app) verify(ctx context.Context) error {
 	}
 	bad := 0
 	for _, h := range digests {
-		if err := a.raw.Verify(ctx, h, sha256.New()); err != nil {
+		if err := a.verifyOne(ctx, h); err != nil {
 			fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
 			bad++
 		}
