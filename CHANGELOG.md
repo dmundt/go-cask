@@ -8,7 +8,7 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
-## [Unreleased]
+## [v1.4.5] - 2026-09-17
 
 ### Changed
 
