@@ -12,6 +12,7 @@ version: v12
 | Path | Rule file |
 |---|---|
 | `cas/digest.go`, `cas/hasher.go`; `TestDigest*` / `FuzzParseDigest` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
+| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 + architecture boundary rule: backends stay storage-only; helper packages must not become implicit backends |
 | `cas/hash/sha256/` (the shipped client hasher) | [`cas-core.md`](specs/cas-core.md) §4.2 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |

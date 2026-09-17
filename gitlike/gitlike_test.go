@@ -824,6 +824,36 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 // object that violates its own invariant, so the store reports ErrCorrupt (the
 // rule is Commit.Validate, enforced by the store, so it holds under any codec).
 // A malformed reference still fails earlier, inside the codec.
+func TestRepositoryCorruptionRecovery(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, mem.New())
+	blob := putBlob(t, repo, "hello")
+	tree, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "hello.txt", Hash: ref(blob), Mode: "100644"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := repo.Commits.Put(ctx, &Commit{Tree: ref(tree), Author: "a", Message: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.raw.Put(ctx, commit, strings.NewReader("tampered commit payload")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Commits.Get(ctx, commit); !errors.Is(err, cas.ErrCorrupt) && !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Get on corrupted commit = %v, want ErrCorrupt or ErrUnknownType", err)
+	}
+	if _, err := repo.Commits.Put(ctx, &Commit{Tree: ref(tree), Author: "a", Message: "root"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Commits.Get(ctx, commit)
+	if err != nil {
+		t.Fatalf("re-put valid commit = %v", err)
+	}
+	if got.Message != "root" || !got.Tree.Equal(tree) {
+		t.Fatalf("recovered commit = %+v, want tree=%s message=root", got, tree)
+	}
+}
+
 func TestCommitRequiredTreeDecode(t *testing.T) {
 	ctx := ctxBackground()
 	repo := newRepo(t, mem.New())

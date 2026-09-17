@@ -174,6 +174,29 @@ func TestPutUniqueTempPerWriterFallback(t *testing.T) {
 	}
 }
 
+func TestFSCorruptionRecoveryFallsBackToLooseObject(t *testing.T) {
+	ctx := context.Background()
+	s := mustFS(t)
+	d := digestOf([]byte("recovery object"))
+	if err := s.Put(ctx, d, strings.NewReader("recovery object")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(s.digestPath(d), []byte("tampered"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Verify(ctx, d, sha256.New()); !errors.Is(err, cas.ErrDigestMismatch) {
+		t.Fatalf("Verify(tampered) = %v, want ErrDigestMismatch", err)
+	}
+
+	if err := s.Put(ctx, d, strings.NewReader("recovery object")); err != nil {
+		t.Fatalf("re-put valid bytes = %v", err)
+	}
+	if err := s.Verify(ctx, d, sha256.New()); err != nil {
+		t.Fatalf("Verify(recovered) = %v", err)
+	}
+}
+
 // TestBackendOptionsAreAcceptable pins that the exported options compose, so a
 // caller can build a store with a custom layout and dir sync together.
 func TestBackendOptionsCompose(t *testing.T) {

@@ -214,6 +214,35 @@ func TestStoreEmptyStore(t *testing.T) {
 	}
 }
 
+func TestStoreRecoveryAfterCorruption(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	s := newTestStore(t, raw)
+	obj := test.Note{Title: "before", Body: "payload"}
+
+	d, err := s.Put(ctx, obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Put(ctx, d, strings.NewReader("corrupted envelope")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrUnknownType) && !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(corrupted envelope) = %v, want a corruption error", err)
+	}
+
+	if _, err := s.Put(ctx, obj); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, d)
+	if err != nil {
+		t.Fatalf("Get(rewritten valid object) = %v, want nil", err)
+	}
+	if got.Title != obj.Title || got.Body != obj.Body {
+		t.Fatalf("Get(rewritten valid object) = %+v, want %+v", got, obj)
+	}
+}
+
 func TestStoreTypeSafety(t *testing.T) {
 	// A node store must NOT decode a note object as a node: wrong-type
 	// payloads fail loudly rather than producing garbage.

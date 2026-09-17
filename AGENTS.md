@@ -79,6 +79,14 @@ AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/specs/
 ```
 
+Architecture boundary rule: keep the layer boundaries boringly obvious and
+stable. The core stays generic (`cas/`), concrete storage backends live under
+`cas/backend/*`, helper/manifest logic stays in `cas/pack` or similar app-facing
+helpers, and repository/object-model packages such as `gitlike/` remain layered
+on top rather than inside the core. If a package boundary becomes subtle,
+clarify it in package names, docs, and README text before touching behavior; do
+not silently blur the distinction and then rely on one-off exceptions.
+
 Related specs that also constrain work in this repo:
 
 - `docs/specs/cas-core.md` — the canonical core

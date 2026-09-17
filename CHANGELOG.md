@@ -12,6 +12,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Made the architecture boundary intentionally boring and stable: the generic core stays in [cas/](cas/), storage backends remain in [cas/backend/](cas/backend/), helper/manifest logic remains in [cas/pack/](cas/pack/), and higher-level object models stay layered on top instead of blurring into the core. This is now called out explicitly in [AGENTS.md](AGENTS.md) and [docs/index.md](docs/index.md) so future edits do not silently reintroduce boundary drift.
 - Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
 - Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
 - Added dated benchmark retention and comparison helpers in [scripts/bench-baseline.sh](scripts/bench-baseline.sh) and [scripts/bench-compare.sh](scripts/bench-compare.sh), with the latest benchmark baseline kept at [benchmarks/data/baseline.txt](benchmarks/data/baseline.txt).

@@ -91,6 +91,46 @@ func TestMemoryBackendMissing(t *testing.T) {
 	}
 }
 
+func TestMemoryBackendCorruptionRecovery(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	h := sha256.Of([]byte("corruptible"))
+	if err := b.Put(ctx, h, strings.NewReader("corruptible")); err != nil {
+		t.Fatal(err)
+	}
+
+	b.mu.Lock()
+	b.objects[string(h)] = []byte("tampered")
+	b.mu.Unlock()
+
+	rc, err := b.Get(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readAllAndClose(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "tampered" {
+		t.Fatalf("Get after direct mutation = %q, want %q", got, "tampered")
+	}
+
+	if err := b.Put(ctx, h, strings.NewReader("corruptible")); err != nil {
+		t.Fatalf("re-put correct bytes = %v", err)
+	}
+	rc, err = b.Get(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = readAllAndClose(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "corruptible" {
+		t.Fatalf("recovered payload = %q, want %q", got, "corruptible")
+	}
+}
+
 type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }

@@ -3,6 +3,7 @@ package packfs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -241,6 +242,102 @@ func TestPackBackendManifestFallbackAndStatsReads(t *testing.T) {
 	}
 }
 
+func TestPackBackendPrunesStaleIndexEntriesOnLoad(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "stale-load")
+	b, err := New(base, WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	d := cas.NewDigest([]byte("stale-load-object"))
+	if err := b.Put(ctx, d, bytesReader([]byte("payload"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(filepath.Join(base, "packs", "current.pack")); err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]any{
+		"entries": map[string]any{
+			string(d): map[string]any{
+				"pack": filepath.Join(base, "packs", "missing.pack"),
+				"offset": 0,
+				"size": 7,
+			},
+		},
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "packs", "index.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(base, WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+
+	if _, ok := reopened.index[string(d)]; ok {
+		t.Fatal("stale pack index entries should be pruned during load")
+	}
+	reader, err := reopened.Get(ctx, d)
+	if err != nil {
+		t.Fatal("stale pack index should fall back to the loose object")
+	}
+	defer reader.Close()
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != "payload" {
+		t.Fatalf("recovered payload = %q, want %q", string(payload), "payload")
+	}
+}
+
+func TestPackBackendCorruptionRecoveryAfterIndexMismatch(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "corruption-recovery")
+	b, err := New(base, WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	d := cas.NewDigest([]byte("corrupt-pack-object"))
+	if err := b.Put(ctx, d, bytesReader([]byte("payload"))); err != nil {
+		t.Fatal(err)
+	}
+
+	b.index[string(d)] = packRecord{Pack: filepath.Join(b.packDir, "missing.pack"), Offset: 0, Size: 7}
+	reader, err := b.Get(ctx, d)
+	if err != nil {
+		t.Fatal("stale entry should recover using the loose object")
+	}
+	defer reader.Close()
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != "payload" {
+		t.Fatalf("payload = %q, want %q", string(payload), "payload")
+	}
+	if _, ok := b.index[string(d)]; ok {
+		t.Fatal("stale index entry should be removed after recovery")
+	}
+	ok, err := b.Exists(ctx, d)
+	if err != nil || !ok {
+		t.Fatalf("Exists() = (%v, %v), want (true, nil)", ok, err)
+	}
+}
+
 func TestPackBackendAppendAndCloseEdgeCases(t *testing.T) {
 	ctx := context.Background()
 	base := filepath.Join(t.TempDir(), "edges")
@@ -471,8 +568,13 @@ func TestPackBackendGetAndStatsAfterIndexMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.index[string(first)] = packRecord{Pack: filepath.Join(b.packDir, "missing.pack"), Offset: 0, Size: 0}
-	if _, err := b.Get(ctx, first); err == nil {
-		t.Fatal("Get should fail when index points to a missing pack file")
+	reader, err := b.Get(ctx, first)
+	if err != nil {
+		t.Fatal("Get should recover from a stale pack index and use the loose object")
+	}
+	defer reader.Close()
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Fatal(err)
 	}
 	stats, err := b.Stats(ctx)
 	if err != nil {
