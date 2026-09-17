@@ -21,10 +21,10 @@ func writeTempFile(t *testing.T, dir, name, content string) string {
 	return p
 }
 
-// objectPath rebuilds the on-disk path for a digest under the default (2,1)
+// testObjectPath rebuilds the on-disk path for a digest under the default (2,1)
 // fan-out layout: <dir>/<2 hex>/<full hex>. There is no algorithm directory:
 // the backend does not know the client's hash algorithm.
-func objectPath(dir string, h string) string {
+func testObjectPath(dir string, h string) string {
 	return filepath.Join(dir, h[:2], h)
 }
 
@@ -155,7 +155,7 @@ func TestAuditStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := objectPath(a.dir, digests[0].String())
+	path := testObjectPath(a.dir, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestVerify(t *testing.T) {
 	if len(digests) == 0 {
 		t.Fatal("no objects stored")
 	}
-	path := objectPath(a.dir, digests[0].String())
+	path := testObjectPath(a.dir, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +254,7 @@ func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
 	}
 
 	// Negative: mutate the object, leaving the old checksum behind.
-	path := objectPath(a.dir, digests[0].String())
+	path := testObjectPath(a.dir, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

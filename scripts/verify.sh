@@ -1,6 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Git Bash/WSL often do not inherit the Go installation path from the parent
+# shell. Resolve the toolchain before any gofmt/go commands run.
+if ! command -v go >/dev/null 2>&1; then
+  for candidate in \
+    "/usr/local/go/bin" \
+    "/usr/lib/go/bin" \
+    "/c/Program Files/Go/bin" \
+    "/c/Program Files (x86)/Go/bin" \
+    "/mnt/c/Program Files/Go/bin" \
+    "/mnt/c/Program Files (x86)/Go/bin" \
+    "$HOME/go/bin" \
+    "/mnt/c/Users/${USER:-$(id -un)}/go/bin"
+  do
+    for exe in "$candidate/go" "$candidate/go.exe"; do
+      if [[ -x "$exe" ]]; then
+        export PATH="$(dirname "$exe"):$PATH"
+        break 2
+      fi
+    done
+  done
+fi
+if ! command -v gofmt >/dev/null 2>&1 && command -v go >/dev/null 2>&1; then
+  go_bin="$(dirname "$(command -v go)")"
+  if [[ -x "$go_bin/gofmt" || -x "$go_bin/gofmt.exe" ]]; then
+    export PATH="$go_bin:$PATH"
+  fi
+fi
+
 export CGO_ENABLED="${CGO_ENABLED:-1}"
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -73,6 +101,13 @@ if [[ -z "$gobin" ]]; then
 fi
 
 gobin="$(printf '%s' "$gobin" | sed 's|\\|/|g')"
+case "$gobin" in
+  [A-Za-z]:*)
+    drive="${gobin%%:*}"
+    rest="${gobin#*:}"
+    gobin="/mnt/${drive,,}${rest}"
+    ;;
+esac
 mkdir -p "$gobin"
 export PATH="$gobin:$PATH"
 if ! command -v govulncheck >/dev/null 2>&1; then
