@@ -27,6 +27,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Expanded the canonical pack coverage and example coverage to full statements-based validation in [cas/pack/pack_test.go](cas/pack/pack_test.go) and [examples/pack/main_test.go](examples/pack/main_test.go), keeping the helper-level and example-level behavior fully exercised.
 - Added package doc comments to the public Go packages that lacked explicit godoc declarations, including the cache helpers, CBOR codec package, digest helper package, and the pack example entry point, keeping the package-level documentation consistent with the repo's Go API conventions.
 - Refined the `cas/codec` package docs and README messaging to read like the Go stdlib for compression codecs while keeping the repo's architecture boundary explicit: the compression wrappers remain in `cas/codec` as representation-layer codecs, not as a new storage or object-address layer.
+- Expanded the CLI, embedded viewer, and Bloom example coverage with direct execution and branch-path tests covering parsing, maintenance flows, auth/CSRF helpers, and the example demo path without broadening the project surface.
 
 ### Fixed
 

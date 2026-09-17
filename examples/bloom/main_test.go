@@ -46,3 +46,9 @@ func TestBloomExample(t *testing.T) {
 		t.Fatalf("guard.Exists(%s) = (%v, %v), want (false, nil)", missing, ok, err)
 	}
 }
+
+func TestBloomDemo(t *testing.T) {
+	if err := demo(); err != nil {
+		t.Fatalf("demo() = %v, want nil", err)
+	}
+}

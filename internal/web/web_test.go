@@ -436,6 +436,53 @@ func TestThrottleConcurrentBudget(t *testing.T) {
 	}
 }
 
+func TestSessionAndRoleHelpers(t *testing.T) {
+	t.Run("roleAllows", func(t *testing.T) {
+		if !roleAllows(RoleAdmin, RoleViewer) {
+			t.Fatal("admin should satisfy viewer")
+		}
+		if roleAllows(RoleViewer, RoleAdmin) {
+			t.Fatal("viewer should not satisfy admin")
+		}
+	})
+
+	t.Run("resolveToken", func(t *testing.T) {
+		srv, err := New(nil, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{"viewer-tok": RoleViewer}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if role, ok := srv.resolveToken(testStartupToken); !ok || role != RoleAdmin {
+			t.Fatalf("resolveToken startup token = (%q, %v), want (admin, true)", role, ok)
+		}
+		if role, ok := srv.resolveToken("viewer-tok"); !ok || role != RoleViewer {
+			t.Fatalf("resolveToken role token = (%q, %v), want (viewer, true)", role, ok)
+		}
+		if _, ok := srv.resolveToken(""); ok {
+			t.Fatal("empty token must not resolve")
+		}
+	})
+
+	t.Run("csrf and session cookie helpers", func(t *testing.T) {
+		sess := &Session{ID: "abc", CSRF: "csrf-token"}
+		req := httptest.NewRequest(http.MethodPost, "/viewer/gc", strings.NewReader(url.Values{"csrf": {"csrf-token"}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if !csrfOK(req, sess) {
+			t.Fatal("csrfOK accepted matching token")
+		}
+		if csrfOK(req, &Session{CSRF: "other"}) {
+			t.Fatal("csrfOK should reject mismatched token")
+		}
+		rec := httptest.NewRecorder()
+		setSessionCookie(rec, sess, true)
+		if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != sessionCookie || c[0].Value != "abc" {
+			t.Fatalf("setSessionCookie = %#v, want one secure session cookie", c)
+		}
+		if got := sessionID(req); got != "" {
+			t.Fatalf("sessionID without cookie = %q, want empty", got)
+		}
+	})
+}
+
 func csrfFromPage(page string) string {
 	// <input type="hidden" name="csrf" value="...">
 	idx := strings.Index(page, `name="csrf" value="`)

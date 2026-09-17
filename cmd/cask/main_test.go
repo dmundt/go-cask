@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -254,6 +257,130 @@ func TestClean(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "removed 0") {
 		t.Fatalf("clean = (%q, %d)", out, code)
 	}
+}
+
+func TestParseGlobalAndMaintenanceOps(t *testing.T) {
+	t.Run("parseGlobal", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			args    []string
+			wantMF  modeFlags
+			wantCmd string
+			wantErr bool
+		}{
+			{name: "command no store", args: []string{"put", "file.bin"}, wantMF: modeFlags{}, wantCmd: "put"},
+			{name: "store option", args: []string{"-store", "/tmp/repo", "list"}, wantMF: modeFlags{store: "/tmp/repo"}, wantCmd: "list"},
+			{name: "missing store arg", args: []string{"-store"}, wantErr: true},
+			{name: "no command", args: nil, wantErr: true},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				gotMF, gotCmd, _, err := parseGlobal(tc.args)
+				if tc.wantErr {
+					if err == nil {
+						t.Fatal("parseGlobal() error = nil, want error")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("parseGlobal() unexpected error: %v", err)
+				}
+				if gotMF != tc.wantMF || gotCmd != tc.wantCmd {
+					t.Fatalf("parseGlobal(%v) = (%+v, %q), want (%+v, %q)", tc.args, gotMF, gotCmd, tc.wantMF, tc.wantCmd)
+				}
+			})
+		}
+	})
+
+	t.Run("maintenanceOp", func(t *testing.T) {
+		for _, tc := range []struct {
+			cmd  string
+			want bool
+		}{
+			{"gc", true},
+			{"prune", true},
+			{"clean", true},
+			{"put", false},
+			{"list", false},
+		} {
+			if got := maintenanceOp(tc.cmd); got != tc.want {
+				t.Fatalf("maintenanceOp(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		}
+	})
+}
+
+func TestLocalPutDedupAndDigestParsing(t *testing.T) {
+	mf := localMF(t)
+	t.Run("localPut dedups", func(t *testing.T) {
+		raw, err := fs.New(mf.store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := strings.NewReader("same bytes")
+		h1, dup1, err := localPut(context.Background(), raw, content)
+		if err != nil || dup1 {
+			t.Fatalf("first localPut = (%v, %v, %v), want (hash, false, nil)", h1, dup1, err)
+		}
+		h2, dup2, err := localPut(context.Background(), raw, strings.NewReader("same bytes"))
+		if err != nil || !dup2 || h1.String() != h2.String() {
+			t.Fatalf("second localPut = (%v, %v, %v), want equal digest and dedup true", h2, dup2, err)
+		}
+	})
+
+	t.Run("parseDigests rejects bad input", func(t *testing.T) {
+		if _, err := parseDigests([]string{"bad-digest"}); err == nil {
+			t.Fatal("parseDigests accepted invalid digest")
+		}
+	})
+}
+
+func TestVersionAndWebHelpers(t *testing.T) {
+	t.Run("version", func(t *testing.T) {
+		out := captureStdout(t, func() { runVersion() })
+		if !strings.Contains(out, "cask") || !strings.Contains(out, "go ") {
+			t.Fatalf("version output = %q, want cask + go line", out)
+		}
+	})
+
+	t.Run("bind and token helpers", func(t *testing.T) {
+		if !isLoopbackBind("127.0.0.1:8080") {
+			t.Fatal("127.0.0.1 should be treated as loopback")
+		}
+		if isLoopbackBind("0.0.0.0:8080") {
+			t.Fatal("0.0.0.0 should not be treated as loopback")
+		}
+		if tok := randomToken(); len(tok) == 0 || strings.Count(tok, "-") != 2 {
+			t.Fatalf("randomToken() = %q, want 3 groups separated by dashes", tok)
+		}
+	})
+
+	t.Run("runWeb", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			<-time.After(150 * time.Millisecond)
+			cancel()
+		}()
+		runWeb(ctx, modeFlags{store: t.TempDir()}, []string{"-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"})
+	})
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	fn()
+	w.Close()
+	os.Stdout = old
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func TestPruneRequiresRoot(t *testing.T) {
