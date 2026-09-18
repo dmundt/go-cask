@@ -137,6 +137,25 @@ type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
+type errWriter struct{ err error }
+
+func (w errWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type shortWriter struct {
+	writes int
+}
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	w.writes++
+	if w.writes == 1 {
+		return 1, nil
+	}
+	return 0, io.ErrShortWrite
+}
+
 // TestMemoryBackendSuite covers the in-memory backend contract directly:
 // round-trip, idempotence, listing, error paths, and canceled contexts.
 func TestMemoryBackendSuite(t *testing.T) {
@@ -144,6 +163,19 @@ func TestMemoryBackendSuite(t *testing.T) {
 	ctx := context.Background()
 	h1 := sha256.Of([]byte("alpha"))
 	h2 := sha256.Of([]byte("beta"))
+	var zero cas.Digest
+	if err := m.Put(ctx, zero, strings.NewReader("invalid")); err == nil {
+		t.Fatal("Put with zero digest must fail")
+	}
+	if _, err := m.Get(ctx, zero); err == nil {
+		t.Fatal("Get with zero digest must fail")
+	}
+	if _, err := m.Exists(ctx, zero); err == nil {
+		t.Fatal("Exists with zero digest must fail")
+	}
+	if err := m.Delete(ctx, zero); err == nil {
+		t.Fatal("Delete with zero digest must fail")
+	}
 
 	if err := m.Put(ctx, h1, strings.NewReader("alpha")); err != nil {
 		t.Fatal(err)
@@ -286,6 +318,92 @@ func TestMemoryBackendSnapshotRoundTripAndDeterminism(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("restored %s = %q, want %q", digest, got, want)
 		}
+	}
+}
+
+func TestMemoryBackendSnapshotErrors(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	digest := sha256.Of([]byte("value"))
+	if err := b.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Snapshot(ctx, nil); err == nil {
+		t.Fatal("Snapshot with nil writer must fail")
+	}
+	if err := b.Snapshot(ctx, errWriter{err: io.ErrClosedPipe}); !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("Snapshot with failing writer = %v, want io.ErrClosedPipe", err)
+	}
+	if err := b.Snapshot(ctx, &shortWriter{}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("Snapshot with short writer = %v, want io.ErrShortWrite", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := b.Snapshot(canceled, &bytes.Buffer{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Snapshot with canceled context = %v, want context.Canceled", err)
+	}
+
+	if err := b.Restore(ctx, nil); err == nil {
+		t.Fatal("Restore with nil reader must fail")
+	}
+	if err := b.Restore(ctx, strings.NewReader("short")); err == nil {
+		t.Fatal("Restore with truncated header must fail")
+	}
+	if err := b.Restore(canceled, bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Restore with canceled context = %v, want context.Canceled", err)
+	}
+}
+
+func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	digest := sha256.Of([]byte("value"))
+	if err := source.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		edit func([]byte)
+	}{
+		{"version", func(data []byte) {
+			binary.BigEndian.PutUint16(data[8:10], snapshotVersion+1)
+		}},
+		{"count too large", func(data []byte) {
+			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt())+1)
+		}},
+		{"declared total too large", func(data []byte) {
+			binary.BigEndian.PutUint64(data[18:26], uint64(maxInt())+1)
+		}},
+		{"digest size zero", func(data []byte) {
+			binary.BigEndian.PutUint64(data[26:34], 0)
+		}},
+		{"digest size too large", func(data []byte) {
+			binary.BigEndian.PutUint64(data[26:34], maxSnapshotDigestSize+1)
+		}},
+		{"payload size too large", func(data []byte) {
+			binary.BigEndian.PutUint64(data[34:42], uint64(maxInt())+1)
+		}},
+		{"payload exceeds declared total", func(data []byte) {
+			binary.BigEndian.PutUint64(data[18:26], 0)
+		}},
+		{"total size mismatch", func(data []byte) {
+			binary.BigEndian.PutUint64(data[18:26], 6)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data := append([]byte(nil), snapshot.Bytes()...)
+			tc.edit(data)
+			if err := New().Restore(ctx, bytes.NewReader(data)); err == nil {
+				t.Fatal("Restore must reject malformed metadata")
+			}
+		})
 	}
 }
 

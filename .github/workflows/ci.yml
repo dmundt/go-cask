@@ -41,12 +41,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
-          if [[ -n "$changed" ]] && ! grep -qvE '(^|/)([^/]+\.md)$|^docs/|^website/|^mkdocs\.yml$|^requirements-docs(\.lock)?\.txt$'; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docs_only=$(bash ./scripts/docs-only.sh "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
 
       - name: Verify repo
         if: steps.scope.outputs.docs_only != 'true' && hashFiles('**/*.go') != ''
@@ -71,10 +66,7 @@ jobs:
           cache: false
 
       - name: Run govulncheck
-        run: |
-          mkdir -p "$(go env GOPATH)/bin"
-          GOBIN="$(go env GOPATH)/bin" go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
-          "$(go env GOPATH)/bin/govulncheck" ./...
+        run: bash ./scripts/security.sh
 
   platform-matrix:
     needs: [verify, security]
