@@ -47,6 +47,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
   interface.
 - Audited exported Go APIs and completed identifier-led GoDoc for public
   types, fields, constants, functions, and methods across the repository.
+- Applied tiered coverage gates: 90% for core storage packages and 80% for
+  supporting caches, codecs, hash clients, `gitlike`, and `internal/index`.
 
 ## [v1.4.6] - 2026-09-18
 
