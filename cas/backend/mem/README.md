@@ -17,3 +17,23 @@ raw := mem.New()
 ```
 
 This backend is excellent for local experiments, benchmark baselines, and unit tests that need a clean store without disk I/O.
+
+## Snapshots
+
+Use `Snapshot` and `Restore` to capture and replay raw backend state:
+
+```go
+var snapshot bytes.Buffer
+if err := raw.Snapshot(ctx, &snapshot); err != nil {
+    // handle error
+}
+if err := raw.Restore(ctx, &snapshot); err != nil {
+    // handle error
+}
+```
+
+The snapshot format is deterministic, versioned, binary, and specific to this
+backend. Records contain raw digests and payloads; typed codecs and hashers are
+not involved. `Restore` validates the complete input before replacing state,
+and a configured `WithMaxSize` limit applies. Treat snapshots as test,
+replay, and diagnostic artifacts, not as a cross-version backup format.

@@ -40,6 +40,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
   [`.github/AGENT.md`](.github/AGENT.md).
 - Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
 - Removed raw HTML from Markdown documentation and templates.
+- Added deterministic binary `mem.Backend.Snapshot` and `Restore` methods for
+  test fixtures, replay, and state preservation.
 
 ## [v1.4.6] - 2026-09-18
 
