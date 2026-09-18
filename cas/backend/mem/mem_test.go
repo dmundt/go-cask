@@ -1,7 +1,9 @@
 package memory
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -221,6 +223,7 @@ func TestMemoryBackendWithMaxSize(t *testing.T) {
 	if err := b.Put(ctx, h1, strings.NewReader("hello")); err != nil {
 		t.Fatalf("Put within cap = %v", err)
 	}
+
 	// A second distinct object pushes over the cap -> rejected.
 	h2 := sha256.Of([]byte("world")) // another 5 bytes
 	if err := b.Put(ctx, h2, strings.NewReader("world")); err == nil {
@@ -236,6 +239,107 @@ func TestMemoryBackendWithMaxSize(t *testing.T) {
 	}
 	if err := b.Put(ctx, h2, strings.NewReader("world")); err != nil {
 		t.Fatalf("Put after delete freeing space = %v", err)
+	}
+}
+
+func TestMemoryBackendSnapshotRoundTripAndDeterminism(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	first := sha256.Of([]byte("first"))
+	second := sha256.Of([]byte("second"))
+	if err := source.Put(ctx, second, strings.NewReader("second")); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Put(ctx, first, strings.NewReader("first")); err != nil {
+		t.Fatal(err)
+	}
+
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	var repeat bytes.Buffer
+	if err := source.Snapshot(ctx, &repeat); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(snapshot.Bytes(), repeat.Bytes()) {
+		t.Fatal("repeated snapshots must be byte-identical")
+	}
+
+	restored := New()
+	if err := restored.Restore(ctx, bytes.NewReader(snapshot.Bytes())); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		digest cas.Digest
+		want   string
+	}{{first, "first"}, {second, "second"}} {
+		digest, want := tc.digest, tc.want
+		rc, err := restored.Get(ctx, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := readAllAndClose(rc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != want {
+			t.Fatalf("restored %s = %q, want %q", digest, got, want)
+		}
+	}
+}
+
+func TestMemoryBackendRestoreIsAtomicOnInvalidSnapshot(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	original := sha256.Of([]byte("original"))
+	if err := b.Put(ctx, original, strings.NewReader("original")); err != nil {
+		t.Fatal(err)
+	}
+
+	var snapshot bytes.Buffer
+	if err := New().Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := append([]byte(nil), snapshot.Bytes()...)
+	corrupt[0] ^= 0xff
+	if err := b.Restore(ctx, bytes.NewReader(corrupt)); err == nil {
+		t.Fatal("Restore with invalid magic must fail")
+	}
+	ok, err := b.Exists(ctx, original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("failed Restore must preserve existing state")
+	}
+}
+
+func TestMemoryBackendRestoreValidatesLimitsAndDuplicates(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	digest := sha256.Of([]byte("value"))
+	if err := source.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	limited := New(WithMaxSize(1))
+	if err := limited.Restore(ctx, bytes.NewReader(snapshot.Bytes())); err == nil {
+		t.Fatal("Restore over max size must fail")
+	}
+
+	duplicate := append([]byte(nil), snapshot.Bytes()...)
+	count := binary.BigEndian.Uint64(duplicate[10:18])
+	binary.BigEndian.PutUint64(duplicate[10:18], count+1)
+	total := binary.BigEndian.Uint64(duplicate[18:26])
+	binary.BigEndian.PutUint64(duplicate[18:26], total*2)
+	duplicate = append(duplicate, snapshot.Bytes()[snapshotHeaderSize:]...)
+	if err := New().Restore(ctx, bytes.NewReader(duplicate)); err == nil {
+		t.Fatal("Restore with duplicate digest must fail")
 	}
 }
 
