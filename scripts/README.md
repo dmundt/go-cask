@@ -25,6 +25,9 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep local scripts and CI behavior aligned. The workflow should call the same helper logic instead of duplicating commands.
 - Run `./scripts/verify.sh` before every commit or release prep pass.
 - Keep `CHANGELOG.md` and GitHub release notes synchronized.
+- `release.sh --publish` resolves either `gh` or `gh.exe`, so it works in
+  POSIX shells on Windows as well as native Linux and macOS shells, and pipes
+  release notes instead of passing a shell-specific temporary-file path.
 - Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.

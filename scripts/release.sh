@@ -66,14 +66,13 @@ if [[ "$dry_run" -eq 1 ]]; then
 fi
 
 if [[ "$publish" -eq 1 ]]; then
-  if ! command -v gh >/dev/null 2>&1; then
+  gh_bin="$(command -v gh || command -v gh.exe || true)"
+  if [[ -z "$gh_bin" ]]; then
     echo "gh is required for --publish" >&2
     exit 1
   fi
-  tmp_file="$(mktemp)"
-  trap 'rm -f "$tmp_file"' EXIT
-  printf '%s\n' "$notes" > "$tmp_file"
-  gh release create "$tag" --title "$tag" --notes-file "$tmp_file" --verify-tag
+  printf '%s\n' "$notes" |
+    "$gh_bin" release create "$tag" --title "$tag" --notes-file - --verify-tag
   exit 0
 fi
 

@@ -10,6 +10,11 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made `scripts/release.sh --publish` resolve the Windows `gh.exe` command when
+  invoked through a POSIX shell.
+
 ## [v1.4.6] - 2026-09-18
 
 ### Added
