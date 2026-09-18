@@ -20,10 +20,13 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Kept the repo’s normative implementation guidance in [AGENTS.md](AGENTS.md) and narrowed the public docs to user-facing explanation, while clarifying that the source-of-truth docs remain in [docs/specs/](docs/specs/) and the public website is a companion layer.
 - Updated the website guidance in [AGENTS.md](AGENTS.md) to prefer Mermaid diagrams and maintain clear architecture boundaries between the generic core, object-model layer, and storage backends.
+- Refined the public landing page and supporting docs in [website/](website/) to better serve GitHub, pkg.go.dev, and AI-driven discovery with clearer product framing, sharper technical language, and stronger calls to action.
 
 ### Fixed
 
+- Removed the unsupported macOS arm64 runner from the CI platform matrix so the cross-platform validation set matches the repo's supported targets and avoids unnecessary OS churn in GitHub Actions.
 - Confirmed the MkDocs build passes with the Mermaid configuration enabled so the public docs site renders cleanly in CI.
+- Reworked the Mermaid diagrams across [website/](website/) to use balanced, valid flow syntax and more legible architecture explanations without brittle or malformed rendering.
 
 ## [v1.4.5] - 2026-09-17
 

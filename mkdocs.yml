@@ -1,5 +1,5 @@
-site_name: CASK
-site_description: Git-like content-addressable storage for Go
+site_name: go-cask
+site_description: Content-addressable storage for Go
 site_url: https://dmundt.github.io/go-cask/
 repo_url: https://github.com/dmundt/go-cask
 repo_name: dmundt/go-cask
@@ -22,7 +22,7 @@ nav:
   - Specifications:
       - Overview: specifications/index.md
       - Object format: specifications/object-format.md
-      - Landing page: specs.md
+      - Project specs: specs.md
   - Recipes:
       - Custom codec: recipes/custom-codec.md
       - Filesystem backend: recipes/filesystem-backend.md
@@ -44,12 +44,12 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
+      primary: teal
       accent: blue
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: cyan
+      primary: teal
+      accent: blue
 
 plugins:
   - search

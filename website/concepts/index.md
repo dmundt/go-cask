@@ -1,32 +1,32 @@
 # Concepts
 
-CASK is a content-addressable storage library for Go. The essential idea is simple: the hash of the bytes is the identity of the object.
+go-cask is a content-addressable storage library for Go. The central idea is simple: the digest of the bytes is the object's identity.
 
 ## Why the model matters
 
-- a byte sequence maps to one stable digest
-- identical data is stored once
-- object identity is content-based, not location-based
-- integrity checks can be performed independently of the storage backend
+- identical content resolves to the same reference
+- object identity stays stable even when names or paths change
+- the byte layer stays independent from application types
+- integrity checks are explicit and easy to validate
 
-## Main building blocks
+## The building blocks
 
 - `Digest` — the content address
 - `Hasher` — the algorithm used to derive a digest
+- `Codec[T]` — serializes Go values to bytes and back
 - `Backend` — the storage engine for bytes
-- `Codec[T]` — serialization for typed values
-- `Store[T]` — typed access on top of storage
+- `Store[T]` — typed access on top of the storage layer
 
 ## Mental model
 
 ```mermaid
-flowchart TB
-    A[Application object] --> B[Codec[T]]
-    B --> C[Bytes]
-    C --> D[Hash algorithm]
-    D --> E[Digest]
-    E --> F[Backend]
-    F --> G[Stored content]
+flowchart LR
+    A["Application value"] --> B["Codec[T]"]
+    B --> C["Bytes"]
+    C --> D["Hasher"]
+    D --> E["Digest"]
+    E --> F["Backend"]
+    F --> G["Stored object"]
 ```
 
-This is what makes CASK flexible: the hash, codec, and backend are separate seams.
+The model is intentionally thin: hash the bytes, keep the digest as identity, and let the application choose the codec and backend.

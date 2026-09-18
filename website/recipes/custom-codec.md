@@ -1,6 +1,13 @@
 # Custom codec recipe
 
-A custom codec is a good fit when your application wants a compact or domain-specific representation.
+A custom codec is useful when your application wants a compact or domain-specific representation without changing the storage contract.
+
+## When to use it
+
+- the native object format is not a good fit for JSON
+- payload size matters
+- you want a stable binary wire format for a domain model
+- you want to layer compression or encryption on top of an existing codec
 
 ## Pattern
 
@@ -23,9 +30,9 @@ func (c *Codec) Decode(data []byte) (MyType, error) {
 ## Why this helps
 
 - the storage layer stays unchanged
-- the app owns the representation policy
-- you can stack wrapping codecs and compression on top of each other
+- the application owns the representation policy
+- wrapping codecs can be composed cleanly
 
 ## Envelope design
 
-Keep the byte-level contract explicit. The storage model should remain stable even when the application representation changes.
+Keep the byte-level contract explicit. The storage model should remain stable even as the application representation changes.

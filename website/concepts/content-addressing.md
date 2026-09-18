@@ -1,9 +1,9 @@
 # Content addressing
 
-Content-addressable storage means the value of the bytes determines the key.
+Content-addressable storage means the bytes determine the key. A value is identified by what it contains, not by where it lives.
 
 ```text
-content -> hash -> digest -> object identity
+bytes -> hash -> digest -> object identity
 ```
 
 A store can therefore answer questions like:
@@ -12,25 +12,24 @@ A store can therefore answer questions like:
 - what is the canonical byte sequence for this value?
 - can I deduplicate data automatically?
 
-## Why it is useful
+## Why it matters
 
 - identical payloads deduplicate naturally
 - data is immutable by default
-- object identity is stable across copies
-- the data model stays simple and auditable
+- object identity stays stable across copies and renames
+- the data model remains simple and easy to audit
 
-## The model in one diagram
+## A simple diagram
 
 ```mermaid
 flowchart LR
-    A[Bytes] --> B[Hash function]
-    B --> C[Digest]
-    C --> D[Object identity]
-    D --> E[Stored content]
-    E --> F[Deduplicated bytes]
+    A["Bytes"] --> B["Hash function"]
+    B --> C["Digest"]
+    C --> D["Stable identity"]
+    D --> E["Stored object"]
 ```
 
-## In CASK
+## In go-cask
 
 The core stores bytes behind a digest. The object identity is not a database row or filename; it is the content-derived key. The application can then layer typed JSON, binary, or custom representations on top without altering the storage model itself.
 

@@ -70,11 +70,6 @@ jobs:
             goos: windows
             goarch: amd64
             smoke: true
-          - name: macos-arm64
-            runs-on: macos-latest
-            goos: darwin
-            goarch: arm64
-            smoke: true
 
     steps:
       - uses: actions/checkout@v5

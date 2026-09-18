@@ -2,6 +2,12 @@
 
 The filesystem backend is the simplest durable backend for local development and production use.
 
+## When to use it
+
+- you want a local, persistent object store
+- you are building a developer tool or CLI that needs durable artifacts
+- you want the simplest backend to reason about before adding custom storage
+
 ## Example
 
 ```go

@@ -1,24 +1,32 @@
 # Backends
 
-A backend is the storage engine for raw bytes.
+A backend is the storage engine for raw bytes. It owns persistence and retrieval, but not object semantics.
 
 ## Common backends
 
-- filesystem backend — durable, local, and easy to reason about
-- in-memory backend — useful for tests and examples
-- custom backends — can plug into the same `Backend` contract
+- filesystem backend — durable and straightforward for local storage
+- in-memory backend — fast, test-friendly, and easy to reason about
+- custom backends — any storage engine that satisfies the byte contract
 
-## Contract
+## Responsibilities
 
 A backend should support:
 
 - storing bytes under a digest
 - retrieving bytes by digest
 - checking whether an object exists
-- listing objects
-- reporting stats
-- deleting an object when needed
+- listing stored digests
+- reporting simple storage stats
+- deleting objects when needed
 
 ## Design goal
 
-The storage backend does not need to know about object types, JSON, codec wrappers, or application invariants. It is intentionally simple: put bytes, get bytes, list them, and report storage metadata.
+The backend is intentionally small. It does not need to know about JSON, codec wrappers, or application invariants. That separation keeps the core library flexible and easy to extend.
+
+```mermaid
+flowchart LR
+    A["Digest"] --> B["Backend"]
+    B --> C["Bytes"]
+    C --> D["Codec"]
+    D --> E["Application value"]
+```

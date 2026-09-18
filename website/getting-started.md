@@ -1,13 +1,16 @@
 # Getting started
 
+go-cask gives Go applications stable, content-derived object identities. You can store typed data, verify integrity, and swap storage backends without rewriting your application model.
+
 ## Install
 
 ```bash
-go mod init example.com/myapp
 go get github.com/dmundt/go-cask
 ```
 
 ## Minimal example
+
+This example creates a filesystem-backed store and stores a Git-like blob object.
 
 ```go
 package main
@@ -45,7 +48,19 @@ func main() {
 }
 ```
 
+## Important mental model
+
+The core idea is straightforward:
+
+- content determines object identity
+- the digest is the object key
+- the codec owns serialization
+- the backend owns storage
+- the application owns semantics
+
 ## Run the examples
+
+The repository includes a few runnable examples that show different patterns.
 
 ```bash
 go run ./examples/files --help
@@ -53,12 +68,19 @@ go run ./examples/bloom
 go run ./examples/notes
 ```
 
+## Next steps
+
+- read the [architecture overview](architecture.md)
+- review the [concepts](concepts/index.md)
+- browse the [specifications](specs.md)
+- start from a small local backend and grow into custom codecs or hash policies as needed
+
 ## CI and verification
 
-The project includes a repository verification gate:
+Before committing meaningful changes, run the project verification gate:
 
 ```bash
 bash ./scripts/verify.sh
 ```
 
-Use this before committing significant changes.
+This keeps the repository in a releasable state and catches common breakage early.
