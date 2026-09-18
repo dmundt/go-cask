@@ -33,6 +33,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Removed the empty Material header bar so documentation opens directly into its navigation and content.
 - Removed Material footer controls and metadata from the bottom of published
   documentation.
+- Matched the documentation search field background to the page surface.
 - Wrap long code lines in documentation blocks instead of displaying horizontal
   scrollbars.
 - Restored natural browser table sizing after fixed column widths caused

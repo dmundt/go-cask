@@ -29,6 +29,14 @@ body {
   background: var(--md-default-bg-color);
 }
 
+.md-search__form,
+.md-search__input,
+.md-search__output,
+.md-search-result,
+.md-search-result__meta {
+  background: var(--md-default-bg-color);
+}
+
 .md-header,
 .md-tabs,
 .md-footer {
