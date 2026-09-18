@@ -36,6 +36,10 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
 - `verify.sh` installs `govulncheck v1.8.0` so local and CI vulnerability scans are reproducible. Update the pinned version deliberately in both the script and CI workflow.
 - The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
+- Documentation CI installs [requirements-docs.lock](../requirements-docs.lock) with
+  hash verification. Regenerate it with the command recorded in
+  [requirements-docs.txt](../requirements-docs.txt) after updating a direct
+  documentation dependency.
 
 ## Typical commands
 

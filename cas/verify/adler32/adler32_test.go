@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -41,6 +42,17 @@ func TestFormatParse(t *testing.T) {
 	if !parsed.Equal(d) {
 		t.Fatalf("Parse = %x, want %x", parsed, d)
 	}
+	if _, err := adler32.Parse(d.String()); err != nil {
+		t.Fatalf("Parse(bare digest) = %v", err)
+	}
+	for _, input := range []string{"sha256:abcd", "xyz", "abcd"} {
+		if _, err := adler32.Parse(input); err == nil {
+			t.Fatalf("Parse(%q) = nil, want error", input)
+		}
+	}
+	if got := adler32.Format(nil); got != "" {
+		t.Fatalf("Format(nil) = %q, want empty", got)
+	}
 }
 
 func TestVerifyIntegration(t *testing.T) {
@@ -61,3 +73,27 @@ func TestVerifyIntegration(t *testing.T) {
 		t.Fatalf("Verify(tampered) = %v, want ErrDigestMismatch", err)
 	}
 }
+
+func TestHasherErrorAndHelpers(t *testing.T) {
+	if _, err := adler32.New().Digest(errReader{err: io.ErrUnexpectedEOF}); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("Digest(read error) = %v, want wrapped read error", err)
+	}
+	for _, d := range []cas.Digest{nil, cas.NewDigest([]byte{1, 2, 3}), cas.NewDigest([]byte{1, 2, 3, 4, 5})} {
+		if err := adler32.New().Validate(d); !errors.Is(err, cas.ErrInvalidDigest) {
+			t.Fatalf("Validate(%x) = %v, want ErrInvalidDigest", d, err)
+		}
+	}
+	h := adler32.NewHasher()
+	if _, err := h.Write([]byte("helper")); err != nil {
+		t.Fatal(err)
+	}
+	if h.Sum32() == 0 {
+		t.Fatal("NewHasher returned an empty checksum")
+	}
+}
+
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
+var _ io.Reader = errReader{}

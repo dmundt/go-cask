@@ -7,6 +7,7 @@ on:
       - website/**
       - mkdocs.yml
       - requirements-docs.txt
+      - requirements-docs.lock
       - README.md
       - CHANGELOG.md
   workflow_dispatch:
@@ -33,7 +34,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements-docs.txt
+        run: python -m pip install --require-hashes -r requirements-docs.lock
 
       - name: Build site
         run: mkdocs build --strict

@@ -99,6 +99,8 @@ opening the PR.
 - Bugs: include the Go version, the backend in use, and a minimal repro;
   note which CAS law or spec contract is violated.
 - Design questions: point at the relevant instruction file and section.
+- Security vulnerabilities: use the private reporting process in
+  [SECURITY.md](SECURITY.md); do not disclose them in public issues.
 
 ## License
 

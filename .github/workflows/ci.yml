@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 env:
   GOVULNCHECK_VERSION: v1.8.0
 
@@ -18,11 +21,13 @@ on:
       - website/**
       - mkdocs.yml
       - requirements-docs.txt
+      - requirements-docs.lock
   pull_request:
     paths-ignore:
       - website/**
       - mkdocs.yml
       - requirements-docs.txt
+      - requirements-docs.lock
 
 jobs:
   verify:

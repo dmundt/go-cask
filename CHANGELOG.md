@@ -31,6 +31,13 @@ first-cycle exceptions recorded in `versioning.md` §1.
   to documentation inputs, scan direct `main` changes with CodeQL, and use the
   pinned Checkout v7 revision consistently.
 - Added CLI `verify --all` and viewer object-list/raw-route coverage.
+- Protected `main` with required reviews, resolved conversations, and CI/CodeQL
+  status checks; locked documentation dependencies; granted CI only read access;
+  and added Dependabot maintenance for Actions, Go, and Python dependencies.
+- Added a private vulnerability-reporting policy and pull-request validation
+  template matching the protected `main` workflow.
+- Documented required GitHub branch, merge, security, and workflow settings in
+  [`.github/AGENT.md`](.github/AGENT.md).
 
 ## [v1.4.6] - 2026-09-18
 
