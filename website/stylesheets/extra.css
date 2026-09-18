@@ -30,7 +30,8 @@ body {
 }
 
 .md-header,
-.md-tabs {
+.md-tabs,
+.md-footer {
   display: none;
 }
 
@@ -129,6 +130,11 @@ body {
   border-radius: 0;
   font-size: 0.8rem;
   line-height: 1.55;
+}
+
+.md-typeset pre > code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .md-typeset code {

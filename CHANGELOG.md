@@ -22,12 +22,24 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Rebuilt the public site as task-oriented technical documentation: concise project fit, verified generic-core examples, clear boundaries between `cas` and `gitlike`, and focused concepts, recipes, FAQ, and specification pages.
 - Replaced visual landing-page components with a neutral, document-first design using strong typography, whitespace, thin dividers, and restrained accent colors.
 - Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
+- Reorganized documentation navigation around adoption: start, concepts, guides,
+  reference, and project information.
 - Removed overflow-prone top-level navigation tabs; the responsive sidebar and search remain available on every page.
 - Hide table-of-contents scrollbar controls while preserving normal wheel and trackpad navigation.
 - Removed the empty Material header bar so documentation opens directly into its navigation and content.
+- Removed Material footer controls and metadata from the bottom of published
+  documentation.
+- Wrap long code lines in documentation blocks instead of displaying horizontal
+  scrollbars.
+- Restored natural browser table sizing after fixed column widths caused
+  comparison tables to overflow on narrower content panes.
+- Reformatted the object-envelope wire layout as readable fields instead of an
+  overflowing single-line code sample.
 
 ### Fixed
 
+- Prevented the Go CI workflow from running for documentation-site-only changes;
+  the dedicated GitHub Pages workflow continues to build and deploy the site.
 - Removed the unsupported macOS arm64 runner from the CI platform matrix so the cross-platform validation set matches the repo's supported targets and avoids unnecessary OS churn in GitHub Actions.
 - Confirmed the MkDocs build passes with the Mermaid configuration enabled so the public docs site renders cleanly in CI.
 - Replaced repetitive Mermaid diagrams with one canonical, flat architecture data-flow diagram and removed HTML-based page layout from published Markdown.

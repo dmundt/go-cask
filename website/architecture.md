@@ -47,7 +47,11 @@ letting every application define its own types.
 small TLV envelope so a stored object is self-describing:
 
 ```text
-[version u8][uvarint type-length][type name][uvarint payload-length][payload]
+version            u8
+type length        uvarint
+type name          bytes
+payload length     uvarint
+payload            bytes
 ```
 
 The type name is versioned (`"note@1"`, `"commit@1"`), and the digest covers

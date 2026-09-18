@@ -34,6 +34,7 @@ developer-facing companion to the authoritative repository documentation under
 - Do not add shadows, decorative icons, pill badges, gradients, or card-grid
   layouts unless content comparison genuinely requires a table or panel.
 - Prefer sharp or near-sharp edges and avoid nested visual frames.
+- Code blocks MUST wrap long lines instead of exposing horizontal scrollbars.
 
 ## Validation
 

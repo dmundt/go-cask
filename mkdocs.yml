@@ -10,31 +10,31 @@ site_dir: site
 exclude_docs: AGENT.md
 
 nav:
-  - Home: index.md
+  - Overview: index.md
   - Getting started: getting-started.md
-  - Architecture: architecture.md
-  - Contributing: contributing.md
   - Concepts:
-      - Overview: concepts/index.md
-      - Content addressing: concepts/content-addressing.md
-      - Hashes: concepts/hashes.md
-      - Codecs: concepts/codecs.md
-      - Backends: concepts/backends.md
-  - Specifications:
-      - Overview: specifications/index.md
-      - Object format: specifications/object-format.md
-      - Project specs: specs.md
-  - Recipes:
-      - Custom codec: recipes/custom-codec.md
-      - Filesystem backend: recipes/filesystem-backend.md
-  - FAQ: faq.md
-  - Changelog: changelog.md
+      - Content-addressable storage: concepts/index.md
+      - Content identity: concepts/content-addressing.md
+      - Hash algorithms: concepts/hashes.md
+      - Serialization codecs: concepts/codecs.md
+      - Storage backends: concepts/backends.md
+  - Guides:
+      - Filesystem storage: recipes/filesystem-backend.md
+      - Custom codecs: recipes/custom-codec.md
+  - Reference:
+      - Architecture: architecture.md
+      - Object envelope: specifications/object-format.md
+      - Design specifications: specifications/index.md
+      - Specification index: specs.md
+  - Project:
+      - Contributing: contributing.md
+      - FAQ: faq.md
+      - Changelog: changelog.md
 
 theme:
   name: material
   features:
     - navigation.sections
-    - navigation.footer
     - content.code.copy
     - content.action.edit
     - search.suggest

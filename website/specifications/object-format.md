@@ -7,7 +7,11 @@ hashed and stored under the resulting digest.
 ## Envelope layout
 
 ```text
-[version u8][uvarint type-length][type name][uvarint payload-length][payload]
+version            u8
+type length        uvarint
+type name          bytes
+payload length     uvarint
+payload            bytes
 ```
 
 - **version** — the envelope format version (currently `1`).
