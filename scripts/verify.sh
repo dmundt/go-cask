@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+govulncheck_version="v1.8.0"
+
 # Git Bash/WSL often do not inherit the Go installation path from the parent
 # shell. Resolve the toolchain before any gofmt/go commands run.
 if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then
@@ -44,7 +46,8 @@ fi
 export CGO_ENABLED="${CGO_ENABLED:-1}"
 
 if [[ "${CGO_ENABLED:-1}" != "0" ]] && ! command -v gcc >/dev/null 2>&1 && ! command -v clang >/dev/null 2>&1 && ! command -v cc >/dev/null 2>&1; then
-  echo "CGO is required for the race/coverage gate; install gcc or clang and retry." >&2
+  echo "CGO is required for the race/coverage gate; install a supported C compiler (gcc or clang) and retry." >&2
+  echo "On Windows, use a Go release with a supported MinGW-w64 or LLVM toolchain; MSVC may reject Go's race-build flags." >&2
   exit 1
 fi
 
@@ -127,20 +130,22 @@ case "$gobin" in
 esac
 mkdir -p "$gobin"
 export PATH="$gobin:$PATH"
-if [[ ! -x "$gobin/govulncheck" && ! -x "$gobin/govulncheck.exe" ]]; then
-  GOBIN="$gobin" go install golang.org/x/vuln/cmd/govulncheck@latest
+govulncheck_bin="$gobin/govulncheck"
+if [[ -x "$gobin/govulncheck.exe" ]]; then
+  govulncheck_bin="$gobin/govulncheck.exe"
 fi
-
-if [[ ! -x "$gobin/govulncheck" && ! -x "$gobin/govulncheck.exe" ]]; then
-  echo "govulncheck was not installed to $gobin" >&2
-  exit 1
+if [[ ! -x "$govulncheck_bin" ]] || ! "$govulncheck_bin" -version 2>/dev/null | grep -q "Scanner: govulncheck@${govulncheck_version}$"; then
+  GOBIN="$gobin" go install "golang.org/x/vuln/cmd/govulncheck@${govulncheck_version}"
 fi
 
 if [[ -x "$gobin/govulncheck.exe" ]]; then
   govulncheck_bin="$gobin/govulncheck.exe"
-else
-  govulncheck_bin="$gobin/govulncheck"
 fi
+if [[ ! -x "$govulncheck_bin" ]]; then
+  echo "govulncheck was not installed to $gobin" >&2
+  exit 1
+fi
+
 "$govulncheck_bin" ./...
 
 echo "== test -race + coverage gate =="

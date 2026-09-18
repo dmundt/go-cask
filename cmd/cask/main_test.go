@@ -242,6 +242,17 @@ func TestExitCodes(t *testing.T) {
 	}
 }
 
+func TestVerifyAll(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "put", writeTemp(t, "verified")); code != 0 {
+		t.Fatal("put failed")
+	}
+	out, code := run(t, mf, "verify", "--all")
+	if code != 0 || !strings.Contains(out, "verified 1 objects, 0 corrupt") {
+		t.Fatalf("verify --all = (%q, %d)", out, code)
+	}
+}
+
 func writeTemp(t *testing.T, content string) string {
 	t.Helper()
 	f := filepath.Join(t.TempDir(), "f.bin")

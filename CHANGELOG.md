@@ -27,6 +27,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Marked shell automation as executable so verification and release commands
   work when invoked directly on POSIX systems.
+- Pinned GitHub Actions and `govulncheck` revisions, limited Pages deployments
+  to documentation inputs, scan direct `main` changes with CodeQL, and use the
+  pinned Checkout v7 revision consistently.
+- Added CLI `verify --all` and viewer object-list/raw-route coverage.
 
 ## [v1.4.6] - 2026-09-18
 

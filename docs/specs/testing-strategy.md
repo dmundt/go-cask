@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v20
+version: v21
 ---
 
 # Testing Strategy — go-cask
@@ -74,8 +74,8 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
-- **Coverage as high as practical:** `cas/` core and `gitlike/` ≥ **90%** statement coverage (excluding generated); every exported identifier exercised; any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
-- CI runs `go test -coverprofile` per gated package (the list in `.github/workflows/ci.yml`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
+- **Coverage as high as practical:** foundational public packages and `gitlike/` are held to ≥ **90%** statement coverage (excluding generated): `cas`, `cas/backend/fs`, `cas/backend/mem`, `cas/cache/{mem,lru,prefetch}`, `cas/codec/{json,gob}`, `cas/hash/{sha256,sha512_256}`, `gitlike`, and `internal/index`. Extension packages and user-facing commands are measured but have no numeric gate; every exported identifier must still be exercised and any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
+- CI runs `go test -race -cover` per gated package (the list in `scripts/verify.sh`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
 
 ## 6. Checklist
 

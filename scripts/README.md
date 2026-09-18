@@ -34,6 +34,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
+- `verify.sh` installs `govulncheck v1.8.0` so local and CI vulnerability scans are reproducible. Update the pinned version deliberately in both the script and CI workflow.
+- The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
 
 ## Typical commands
 

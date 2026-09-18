@@ -252,6 +252,52 @@ func TestStatic(t *testing.T) {
 	}
 }
 
+func TestObjectsListAndRaw(t *testing.T) {
+	ts, srv := newTestServer(t)
+	ctx := context.Background()
+	h := mustParse(t, "sha256:"+strings.Repeat("cd", 32))
+	if err := srv.store.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("object body")))); err != nil {
+		t.Fatal(err)
+	}
+	viewer := login(t, ts, "viewer-tok")
+
+	for _, request := range []struct {
+		path string
+		hx   bool
+		want string
+	}{
+		{path: "/viewer/objects", want: h.String()},
+		{path: "/viewer/objects?q=blob@1", hx: true, want: h.String()},
+		{path: "/viewer/objects/" + h.String() + "/raw", want: "00000000"},
+	} {
+		req, err := http.NewRequest(http.MethodGet, ts.URL+request.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if request.hx {
+			req.Header.Set("HX-Request", "true")
+		}
+		resp, err := viewer.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), request.want) {
+			t.Fatalf("GET %s = (%d, %.200q), want 200 containing %q", request.path, resp.StatusCode, body, request.want)
+		}
+	}
+
+	resp, err := viewer.Get(ts.URL + "/viewer/objects/not-a-digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid object digest = %d, want 400", resp.StatusCode)
+	}
+}
+
 func mustParse(t *testing.T, s string) cas.Digest {
 	t.Helper()
 	h, err := sha256.Parse(s)
