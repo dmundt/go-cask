@@ -11,7 +11,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 
 ## 1. Go version and toolchain
 
-- Library baseline Go 1.24+. `go.mod` declares `go 1.24` with `toolchain go1.27` — the self-managing toolchain auto-downloads 1.27 for CI, while consumers on 1.24+ can build. The 1.24 floor is required by the `omitzero` JSON tag option (cas-core §4.6): an older standard library ignores it, which would change stored bytes.
+- Library baseline Go 1.24+. `go.mod` declares `go 1.24` with `toolchain go1.27.1` — the self-managing toolchain auto-downloads 1.27.1 for CI, while consumers on 1.24+ can build. The 1.24 floor is required by the `omitzero` JSON tag option (cas-core §4.6): an older standard library ignores it, which would change stored bytes.
 - Language available in the baseline (1.24+): generics/type sets (`~` unions)/`comparable` (1.18+), `slices`/`maps`/`cmp` (1.21+), range-over-int (1.22+), `iter`/range-over-func (1.23+), generic type aliases and `encoding/json` `omitzero`-style zero hooks (1.24+), and later additions.
 - `GOTOOLCHAIN=auto` (default) uses the `go.mod`-declared toolchain; CI MUST pin the same version for reproducibility.
 - Do NOT use features from a newer toolchain than the declared `go` directive — the declaration is the contract.
@@ -85,7 +85,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 - Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `gitlike/`).
 - Viewer middleware (authn, sessions, CSRF, login throttle) lives in `internal/web`. An example surface MAY add its own IP rate limiter (std-lib token bucket, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
-- `go.mod` at root declaring `go 1.24` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic (the core has no registry and no global state).
+- `go.mod` at root declaring `go 1.24` + `toolchain go1.27.1`; module path matches the repo. No blank imports except `embed`; no init-based magic (the core has no registry and no global state).
 - Tests: every exported `cas/` function tested; handlers use `httptest`; template FS fixtures use `testing/fstest`.
 - Verify before commit: `gofmt -l .`; `go vet ./...`; `go test ./...`; `go build ./...`.
 
@@ -97,7 +97,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 11. Pre-commit checklist
 
 - [x] `gofmt -l .` clean; `go vet` and `go test` pass
-- [x] `go.mod` declares `go 1.24` + `toolchain go1.27`; zero external deps, or each justified and vendored
+- [x] `go.mod` declares `go 1.24` + `toolchain go1.27.1`; zero external deps, or each justified and vendored
 - [x] No CSS, no hand-written JS, no `<style>`/`<script>` — htmx only
 - [x] HTML via `html/template` only, using the latest feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`, `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)

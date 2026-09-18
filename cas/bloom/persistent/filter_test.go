@@ -329,26 +329,6 @@ func TestFilterPersistentMmapEdgeCases(t *testing.T) {
 	}
 }
 
-func TestFilterPersistentMappedAddrLifecycle(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mapped-addr.bin")
-	f, err := New(path, 256, 0.01)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(f.data) == 0 {
-		t.Fatal("expected data buffer to be allocated")
-	}
-	f.mapped = true
-	f.mappedAddr = slicePtr(f.data)
-	mappedViews.Store(f.mappedAddr, true)
-	if err := f.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestFilterPersistentExtendedCoverageBranches(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "extended.bin")
 	oldOps := mmapOps

@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestFilterPersistentMappedAddrLifecycle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mapped-addr.bin")
+	f, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.mapped || f.mappedAddr == 0 {
+		t.Fatal("expected persistent filter to retain mapped view")
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPersistentMmapUnixBranches(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mmap.bin")
 	want := bytes.Repeat([]byte("A"), 64)
