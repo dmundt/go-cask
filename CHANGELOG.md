@@ -27,6 +27,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Hardened verification with fail-closed coverage parsing, non-mutating module
+  drift checks, an explicit build gate, shared security scanning, and tested CI
+  documentation-scope classification.
 - Standardized content-addressable terminology: use “store” for CASK and
   concrete implementations, and “storage” for the general technique.
 - Marked shell automation as executable so verification and release commands

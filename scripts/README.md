@@ -14,6 +14,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 | Script | Purpose |
 |---|---|
 | [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, and doc integrity. Run before commits and before release decisions. |
+| [`security.sh`](./security.sh) | Installs the pinned `govulncheck` version and runs the repository security scan. |
+| [`docs-only.sh`](./docs-only.sh) | Classifies a Git diff as documentation-only for CI scope selection. |
 | [`release.sh`](./release.sh) | Release wrapper that coordinates the consistent release flow from the repo root. |
 | [`release-notes.sh`](./release-notes.sh) | Generates GitHub release notes from `CHANGELOG.md` and ensures the standard `Full Changelog:` compare URL is present. |
 | [`bench-baseline.sh`](./bench-baseline.sh) | Captures a benchmark baseline artifact for later comparison. |
@@ -34,7 +36,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
-- `verify.sh` installs `govulncheck v1.8.0` so local and CI vulnerability scans are reproducible. Update the pinned version deliberately in both the script and CI workflow.
+- `security.sh` installs the pinned `govulncheck` version so local and CI vulnerability scans are reproducible. Update `GOVULNCHECK_VERSION` deliberately.
 - The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
 - Documentation CI installs [requirements-docs.lock](../requirements-docs.lock) with
   hash verification. Regenerate it with the command recorded in

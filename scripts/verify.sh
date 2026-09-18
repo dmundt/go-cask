@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-govulncheck_version="v1.8.0"
-
-# Git Bash/WSL often do not inherit the Go installation path from the parent
-# shell. Resolve the toolchain before any gofmt/go commands run.
+# Git Bash and WSL may not inherit Go's installation path.
+# Resolve the toolchain before running gofmt or Go commands.
 if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then
   if command -v powershell.exe >/dev/null 2>&1; then
     if ! command -v go >/dev/null 2>&1; then
@@ -68,12 +66,18 @@ if [[ -n "$unformatted" ]]; then
 fi
 
 echo "== go mod tidy =="
-go mod tidy
-if ! git diff --exit-code -- go.mod go.sum >/dev/null 2>&1; then
+tidy_diff="$(go mod tidy -diff 2>&1)" || {
+  printf '%s\n' "$tidy_diff" >&2
+  exit 1
+}
+if [[ -n "$tidy_diff" ]]; then
   echo "go.mod / go.sum drift detected; run go mod tidy and commit the result." >&2
-  git --no-pager diff -- go.mod go.sum || true
+  printf '%s\n' "$tidy_diff" >&2
   exit 1
 fi
+
+echo "== go build =="
+go build ./...
 
 echo "== module graph =="
 mod_snapshot="$(mktemp)"
@@ -101,52 +105,7 @@ if go list -deps ./gitlike | grep -E 'cas/codec' >/dev/null 2>&1; then
 fi
 
 echo "== govulncheck =="
-if ! command -v go >/dev/null 2>&1; then
-  echo "go is required for the security gate" >&2
-  exit 1
-fi
-
-gobin="${GOBIN:-}"
-if [[ -z "$gobin" ]]; then
-  gobin="$(go env GOBIN 2>/dev/null || true)"
-fi
-if [[ -z "$gobin" ]]; then
-  gobin="$(go env GOPATH 2>/dev/null || true)"
-  if [[ -n "$gobin" ]]; then
-    gobin="$gobin/bin"
-  fi
-fi
-if [[ -z "$gobin" ]]; then
-  gobin="$HOME/bin"
-fi
-
-gobin="$(printf '%s' "$gobin" | sed 's|\\|/|g')"
-case "$gobin" in
-  [A-Za-z]:*)
-    drive="${gobin%%:*}"
-    rest="${gobin#*:}"
-    gobin="/mnt/${drive,,}${rest}"
-    ;;
-esac
-mkdir -p "$gobin"
-export PATH="$gobin:$PATH"
-govulncheck_bin="$gobin/govulncheck"
-if [[ -x "$gobin/govulncheck.exe" ]]; then
-  govulncheck_bin="$gobin/govulncheck.exe"
-fi
-if [[ ! -x "$govulncheck_bin" ]] || ! "$govulncheck_bin" -version 2>/dev/null | grep -q "Scanner: govulncheck@${govulncheck_version}$"; then
-  GOBIN="$gobin" go install "golang.org/x/vuln/cmd/govulncheck@${govulncheck_version}"
-fi
-
-if [[ -x "$gobin/govulncheck.exe" ]]; then
-  govulncheck_bin="$gobin/govulncheck.exe"
-fi
-if [[ ! -x "$govulncheck_bin" ]]; then
-  echo "govulncheck was not installed to $gobin" >&2
-  exit 1
-fi
-
-"$govulncheck_bin" ./...
+./scripts/security.sh
 
 echo "== test -race + coverage gate =="
 fail=0
@@ -170,11 +129,12 @@ for target in "${coverage_targets[@]}"
   out="$(go test -race -cover "$pkg" 2>&1)"
   echo "$out"
   cov="$(printf '%s\n' "$out" | grep -oE 'coverage: [0-9.]+%' | tail -n 1 | sed 's/^coverage: //; s/%$//')" || true
-  if [[ -n "$cov" ]]; then
-    awk -v c="$cov" -v threshold="$threshold" 'BEGIN { if (c + 0 < threshold) exit 1 }' || {
-      echo "coverage ${cov}% below ${threshold}% for ${pkg}" >&2
-      fail=1
-    }
+  if [[ -z "$cov" ]]; then
+    echo "coverage output missing for ${pkg}" >&2
+    fail=1
+  elif ! awk -v c="$cov" -v threshold="$threshold" 'BEGIN { exit !(c + 0 >= threshold) }'; then
+    echo "coverage ${cov}% below ${threshold}% for ${pkg}" >&2
+    fail=1
   fi
 done
 
