@@ -22,10 +22,14 @@ type Filter struct {
 
 // Config configures a counting Bloom filter.
 type Config struct {
-	ExpectedItems     uint64
+	// ExpectedItems is the anticipated number of distinct digests.
+	ExpectedItems uint64
+	// FalsePositiveRate is the target false-positive probability.
 	FalsePositiveRate float64
-	CounterBits       int
-	Hash              bloom.IndexHash
+	// CounterBits selects the counter width: 4, 8, or 16 bits.
+	CounterBits int
+	// Hash optionally selects the digest indexing function.
+	Hash bloom.IndexHash
 }
 
 // New creates a 4/8/16-bit counting Bloom filter.

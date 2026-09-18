@@ -23,6 +23,7 @@ type removerFilter interface {
 	Remove(cas.Digest)
 }
 
+// Guard wraps a backend with an advisory Bloom-filter pre-check.
 type Guard struct {
 	backend cas.Backend
 	filter  guardFilter

@@ -12,10 +12,14 @@ import (
 // exposes convenience, fully typed getters that hit the caches. It also
 // carries an internal Resolver for cross-type resolution.
 type CachedRepository struct {
-	repo     *Repository
-	Blobs    *lru.Cache[*Blob]
-	Trees    *lru.Cache[*Tree]
-	Commits  *lru.Cache[*Commit]
+	repo *Repository
+	// Blobs caches Blob objects.
+	Blobs *lru.Cache[*Blob]
+	// Trees caches Tree objects.
+	Trees *lru.Cache[*Tree]
+	// Commits caches Commit objects.
+	Commits *lru.Cache[*Commit]
+	// Tags caches Tag objects.
 	Tags     *lru.Cache[*Tag]
 	resolver *Resolver
 }

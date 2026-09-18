@@ -19,9 +19,14 @@ import "errors"
 // returns ErrUnknownType; a stored payload that the store codec cannot decode
 // returns ErrCorrupt. Compare with errors.Is, never by string.
 var (
-	ErrNotFound       = errors.New("cas: object not found")
+	// ErrNotFound reports that a digest is absent from a backend.
+	ErrNotFound = errors.New("cas: object not found")
+	// ErrDigestMismatch reports content that does not match its digest.
 	ErrDigestMismatch = errors.New("cas: digest mismatch")
-	ErrInvalidDigest  = errors.New("cas: invalid digest")
-	ErrUnknownType    = errors.New("cas: unknown object type or version")
-	ErrCorrupt        = errors.New("cas: corrupt object")
+	// ErrInvalidDigest reports malformed or unsupported digest bytes.
+	ErrInvalidDigest = errors.New("cas: invalid digest")
+	// ErrUnknownType reports an object type without a registered resolver.
+	ErrUnknownType = errors.New("cas: unknown object type or version")
+	// ErrCorrupt reports invalid stored object data.
+	ErrCorrupt = errors.New("cas: corrupt object")
 )

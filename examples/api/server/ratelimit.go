@@ -13,10 +13,14 @@ import (
 
 // RateLimitConfig configures the IP-based token-bucket limiter.
 type RateLimitConfig struct {
-	Enabled           bool
+	// Enabled enables request limiting.
+	Enabled bool
+	// RequestsPerSecond is the sustained token refill rate.
 	RequestsPerSecond float64
-	Burst             int
-	ExemptLoopback    bool
+	// Burst is the maximum token bucket capacity.
+	Burst int
+	// ExemptLoopback excludes loopback clients from limiting.
+	ExemptLoopback bool
 }
 
 // DefaultRateLimit is the canonical rate-limit default (defaults §3).

@@ -37,12 +37,16 @@ commands:
 // Artifact is a cached build output. Its address is the hash of its
 // gzip-compressed envelope, so identical bytes always deduplicate.
 type Artifact struct {
+	// Name identifies the artifact.
 	Name string `json:"name"`
+	// Data contains the artifact bytes.
 	Data []byte `json:"data"`
 }
 
+// Type returns the versioned artifact type name.
 func (a *Artifact) Type() string { return "artifact@1" }
 
+// References returns nil because artifacts are leaves.
 func (a *Artifact) References() []cas.Digest { return nil }
 
 // Manifest names the current artifact(s) of a build target. GC keeps
@@ -50,10 +54,13 @@ func (a *Artifact) References() []cas.Digest { return nil }
 // reference field is a cas.Digest: it renders itself as one hex string through
 // encoding.TextMarshaler and needs no JSON code here (cas-core §4.2).
 type Manifest struct {
-	Name      string       `json:"name"`
+	// Name identifies the manifest.
+	Name string `json:"name"`
+	// Artifacts lists referenced artifact digests.
 	Artifacts []cas.Digest `json:"artifacts,omitempty"`
 }
 
+// Type returns the versioned manifest type name.
 func (m *Manifest) Type() string { return "manifest@1" }
 
 // References returns the artifact digests, or nil for an empty manifest (nil

@@ -24,11 +24,16 @@ const (
 // Session is one authenticated viewer session; sessions carry exactly one
 // role resolved at login (viewer-security §5.1).
 type Session struct {
-	ID       string
-	Role     string
-	Created  time.Time
+	// ID is the session identifier.
+	ID string
+	// Role is the authorized viewer role.
+	Role string
+	// Created is the session creation time.
+	Created time.Time
+	// LastSeen is the most recent authenticated request time.
 	LastSeen time.Time
-	CSRF     string // per-session CSRF token
+	// CSRF is the per-session CSRF token.
+	CSRF string
 }
 
 // sessions is the in-memory session store: idle timeout and maximum

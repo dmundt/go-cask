@@ -14,15 +14,19 @@ import (
 	"github.com/dmundt/go-cask/cas"
 )
 
+// Name is the digest algorithm name used by this package.
 const Name = "crc64"
 
+// Size is the CRC-64 digest size in bytes.
 const Size = 8
 
 // Hasher implements cas.Hasher with CRC-64/ECMA-182 for maintenance-only checks.
 type Hasher struct{}
 
+// New returns a CRC-64/ECMA CAS hasher.
 func New() Hasher { return Hasher{} }
 
+// Digest computes the CRC-64/ECMA digest of data read from r.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 	tbl := crc64.MakeTable(crc64.ECMA)
 	h := crc64.New(tbl)
@@ -35,6 +39,7 @@ func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 	return cas.NewDigest(b), nil
 }
 
+// Validate checks that d is a valid CRC-64/ECMA digest.
 func (Hasher) Validate(d cas.Digest) error {
 	if d.IsZero() {
 		return fmt.Errorf("%w: absent digest", cas.ErrInvalidDigest)
@@ -45,8 +50,10 @@ func (Hasher) Validate(d cas.Digest) error {
 	return nil
 }
 
+// NewHasher returns a standard library CRC-64 hash.Hash64.
 func NewHasher() hash.Hash64 { return crc64.New(crc64.MakeTable(crc64.ECMA)) }
 
+// Of returns the CRC-64/ECMA digest of data.
 func Of(data []byte) cas.Digest {
 	tbl := crc64.MakeTable(crc64.ECMA)
 	v := crc64.Checksum(data, tbl)
@@ -55,6 +62,7 @@ func Of(data []byte) cas.Digest {
 	return cas.NewDigest(b)
 }
 
+// Format formats d as a CRC-64/ECMA digest string.
 func Format(d cas.Digest) string {
 	if d.IsZero() {
 		return ""
@@ -62,6 +70,7 @@ func Format(d cas.Digest) string {
 	return Name + ":" + hex.EncodeToString(d)
 }
 
+// Parse parses a CRC-64/ECMA digest string.
 func Parse(s string) (cas.Digest, error) {
 	body, ok := strings.CutPrefix(s, Name+":")
 	if !ok {

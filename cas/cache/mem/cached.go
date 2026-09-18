@@ -25,20 +25,30 @@ import (
 
 // CacheMetrics are atomic counters tracking cache behavior.
 type CacheMetrics struct {
-	Hits   atomic.Uint64 // Proxy found the object already cached
-	Misses atomic.Uint64 // Proxy had to create a cache entry
-	Loads  atomic.Uint64 // CachedObject.Load fetched the object from the store
-	Evicts atomic.Uint64 // entries removed by a policy or by Evict
+	// Hits counts lookups that found an existing cache entry.
+	Hits atomic.Uint64
+	// Misses counts lookups that created a cache entry.
+	Misses atomic.Uint64
+	// Loads counts calls that fetched an object from the store.
+	Loads atomic.Uint64
+	// Evicts counts entries removed by a policy or explicit eviction.
+	Evicts atomic.Uint64
 }
 
 // CacheStats is a point-in-time snapshot of cache behavior.
 type CacheStats struct {
-	Hits    uint64  // Proxy hits
-	Misses  uint64  // Proxy misses
-	Loads   uint64  // store fetches by Load
-	Evicts  uint64  // entries evicted
-	HitRate float64 // Hits / (Hits + Misses), 0 when there was no access
-	Size    int     // entries currently cached
+	// Hits counts lookups that found an existing cache entry.
+	Hits uint64
+	// Misses counts lookups that created a cache entry.
+	Misses uint64
+	// Loads counts object fetches from the store.
+	Loads uint64
+	// Evicts counts entries removed from the cache.
+	Evicts uint64
+	// HitRate is Hits divided by Hits plus Misses, or zero without access.
+	HitRate float64
+	// Size is the number of entries currently cached.
+	Size int
 }
 
 // CachedObject[T] is a lazy proxy for one digest: it loads the object from the

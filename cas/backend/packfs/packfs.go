@@ -61,13 +61,13 @@ func WithPackMaxEntries(maxEntries int) backend.Option {
 }
 
 type packRecord struct {
-	Pack   string `json:"pack"`
-	Offset int64  `json:"offset"`
-	Size   int64  `json:"size"`
+	Pack   string `json:"pack"`   // Pack identifies the pack file.
+	Offset int64  `json:"offset"` // Offset is the payload start in Pack.
+	Size   int64  `json:"size"`   // Size is the payload length.
 }
 
 type manifest struct {
-	Entries map[string]packRecord `json:"entries"`
+	Entries map[string]packRecord `json:"entries"` // Entries maps digests to pack locations.
 }
 
 var (

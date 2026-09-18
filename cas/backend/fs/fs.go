@@ -23,7 +23,9 @@ import (
 
 // Default fan-out parameters, Git-like: <base>/<2 hex>/<full hex>.
 const (
-	DefaultFanOut    = 2
+	// DefaultFanOut is the default number of digest characters per directory.
+	DefaultFanOut = 2
+	// DefaultFanLevels is the default number of fan-out directory levels.
 	DefaultFanLevels = 1
 	// MaxFanDepth is the fan-out bound: FanLevels × FanOut must not exceed the
 	// hex digest width. Go-cask's own clients digest with sha256 (64 hex chars),

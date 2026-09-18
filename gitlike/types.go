@@ -26,14 +26,19 @@ import (
 
 // Object type names (versioned majors, object-versioning §6).
 const (
-	TypeBlob   = "blob@1"
-	TypeTree   = "tree@1"
+	// TypeBlob is the versioned blob type name.
+	TypeBlob = "blob@1"
+	// TypeTree is the versioned tree type name.
+	TypeTree = "tree@1"
+	// TypeCommit is the versioned commit type name.
 	TypeCommit = "commit@1"
-	TypeTag    = "tag@1"
+	// TypeTag is the versioned tag type name.
+	TypeTag = "tag@1"
 )
 
 // Blob is a leaf object holding raw bytes.
 type Blob struct {
+	// Data contains the blob's raw bytes.
 	Data []byte `json:"data"`
 }
 
@@ -46,16 +51,15 @@ func (b *Blob) References() []cas.Digest { return nil }
 // TreeEntry is one entry in a Tree. It is an entry, not an object itself;
 // Hash references the stored object for Name and may be absent.
 type TreeEntry struct {
-	Name string     `json:"name"`
-	Hash cas.Digest `json:"hash,omitzero"` // optional: absent is omitted
-	Mode string     `json:"mode"`
+	// Name is the entry name or path component.
+	Name string `json:"name"`
+	// Hash identifies the referenced object; zero means no reference.
+	Hash cas.Digest `json:"hash,omitzero"`
+	// Mode describes the entry kind or permissions.
+	Mode string `json:"mode"`
 }
 
-// Validate reports whether the entry can be stored and read back: a tree entry
-// must be named. An absent Hash is valid — an entry without a reference is
-// representable and round-trips as absent. The store enforces this on every Put
-// and Get (cas.Validator), so a nameless entry can neither be written nor read
-// back; Tree.Validate runs the check over a whole tree in one call.
+// Validate reports whether the entry has the required name.
 func (e TreeEntry) Validate() error {
 	if e.Name == "" {
 		return fmt.Errorf("gitlike: tree entry has no name")
@@ -65,6 +69,7 @@ func (e TreeEntry) Validate() error {
 
 // Tree is a directory-like object referencing other objects by hash.
 type Tree struct {
+	// Entries contains the tree's directory entries.
 	Entries []TreeEntry `json:"entries"`
 }
 
@@ -97,11 +102,16 @@ func (t *Tree) References() []cas.Digest {
 // Commit points at a tree (and optionally a parent commit); an absent Parent
 // marks a root commit.
 type Commit struct {
-	Tree    cas.Digest `json:"tree"`            // required: a missing/empty/null tree fails decode
-	Parent  cas.Digest `json:"parent,omitzero"` // optional: absent is omitted
-	Author  string     `json:"author"`
-	Message string     `json:"message"`
-	Time    time.Time  `json:"time"`
+	// Tree identifies the required tree object.
+	Tree cas.Digest `json:"tree"`
+	// Parent identifies the optional parent commit.
+	Parent cas.Digest `json:"parent,omitzero"`
+	// Author identifies the commit author.
+	Author string `json:"author"`
+	// Message contains the commit message.
+	Message string `json:"message"`
+	// Time is the commit timestamp.
+	Time time.Time `json:"time"`
 }
 
 // Validate reports whether the commit can be stored and read back: a commit
@@ -136,10 +146,14 @@ func (c *Commit) References() []cas.Digest {
 
 // Tag names a target object (typically a commit).
 type Tag struct {
-	Name    string     `json:"name"`
-	Target  cas.Digest `json:"target"` // may be absent; a plain field keeps the historical ""
-	Tagger  string     `json:"tagger"`
-	Message string     `json:"message"`
+	// Name is the tag name.
+	Name string `json:"name"`
+	// Target identifies the tagged object and may be zero.
+	Target cas.Digest `json:"target"`
+	// Tagger identifies the tag creator.
+	Tagger string `json:"tagger"`
+	// Message contains the tag annotation.
+	Message string `json:"message"`
 }
 
 // Validate reports whether the tag can be stored and read back: a tag must be

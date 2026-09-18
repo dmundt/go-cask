@@ -12,9 +12,12 @@ import (
 // Repository bundles the per-type stores over one Backend — the app's own
 // repository, copied from the gitlike pattern (cas-core §4.12).
 type Repository struct {
-	raw         cas.Backend
-	Notes       *cas.Store[*Note]
-	Tags        *cas.Store[*Tag]
+	raw cas.Backend
+	// Notes stores Note objects.
+	Notes *cas.Store[*Note]
+	// Tags stores Tag objects.
+	Tags *cas.Store[*Tag]
+	// Attachments stores Attachment objects.
 	Attachments *cas.Store[*Attachment]
 }
 
@@ -29,9 +32,13 @@ func newRepository(raw cas.Backend, hasher cas.Hasher) (*Repository, error) {
 
 // ResolvedObject is the typed union returned by ResolveAny — no any.
 type ResolvedObject struct {
-	Type       string
-	Note       *Note
-	Tag        *Tag
+	// Type identifies which union field is populated.
+	Type string
+	// Note is populated for note objects.
+	Note *Note
+	// Tag is populated for tag objects.
+	Tag *Tag
+	// Attachment is populated for attachment objects.
 	Attachment *Attachment
 }
 
@@ -40,14 +47,17 @@ type Resolver struct{ repo *Repository }
 
 func newResolver(repo *Repository) *Resolver { return &Resolver{repo: repo} }
 
+// ResolveNote loads a note by digest.
 func (r *Resolver) ResolveNote(ctx context.Context, d cas.Digest) (*Note, error) {
 	return r.repo.Notes.Get(ctx, d)
 }
 
+// ResolveTag loads a tag by digest.
 func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 	return r.repo.Tags.Get(ctx, d)
 }
 
+// ResolveAttachment loads an attachment by digest.
 func (r *Resolver) ResolveAttachment(ctx context.Context, d cas.Digest) (*Attachment, error) {
 	return r.repo.Attachments.Get(ctx, d)
 }

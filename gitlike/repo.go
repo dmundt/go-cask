@@ -17,10 +17,14 @@ import (
 // build it once, name it and reuse it, and so adding an object type stays a
 // compile-time change at every construction site.
 type Codecs struct {
-	Blob   cas.Codec[*Blob]
-	Tree   cas.Codec[*Tree]
+	// Blob serializes Blob objects.
+	Blob cas.Codec[*Blob]
+	// Tree serializes Tree objects.
+	Tree cas.Codec[*Tree]
+	// Commit serializes Commit objects.
 	Commit cas.Codec[*Commit]
-	Tag    cas.Codec[*Tag]
+	// Tag serializes Tag objects.
+	Tag cas.Codec[*Tag]
 }
 
 // Repository bundles the per-type stores (blob, tree, commit, tag) over one
@@ -28,11 +32,15 @@ type Codecs struct {
 // without any: each store is typed, so calling the wrong store is a
 // compile-time error.
 type Repository struct {
-	raw     cas.Backend
-	Blobs   *cas.Store[*Blob]
-	Trees   *cas.Store[*Tree]
+	raw cas.Backend
+	// Blobs stores Blob objects.
+	Blobs *cas.Store[*Blob]
+	// Trees stores Tree objects.
+	Trees *cas.Store[*Tree]
+	// Commits stores Commit objects.
 	Commits *cas.Store[*Commit]
-	Tags    *cas.Store[*Tag]
+	// Tags stores Tag objects.
+	Tags *cas.Store[*Tag]
 }
 
 // NewRepository builds a Repository over raw with the caller's hasher and
@@ -52,11 +60,16 @@ func NewRepository(raw cas.Backend, hasher cas.Hasher, codecs Codecs) *Repositor
 // alternative to any for "resolve whatever this hash points to". Exactly one
 // of the fields is non-nil, matching Type.
 type ResolvedObject struct {
-	Type   string
+	// Type identifies which union field is populated.
+	Type string
+	// Commit is populated when Type is TypeCommit.
 	Commit *Commit
-	Tree   *Tree
-	Blob   *Blob
-	Tag    *Tag
+	// Tree is populated when Type is TypeTree.
+	Tree *Tree
+	// Blob is populated when Type is TypeBlob.
+	Blob *Blob
+	// Tag is populated when Type is TypeTag.
+	Tag *Tag
 }
 
 // Resolver resolves digests to the right concrete type. Dedicated methods
