@@ -17,23 +17,15 @@ env:
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - website/**
-      - mkdocs.yml
-      - requirements-docs.txt
-      - requirements-docs.lock
   pull_request:
-    paths-ignore:
-      - website/**
-      - mkdocs.yml
-      - requirements-docs.txt
-      - requirements-docs.lock
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -42,9 +34,30 @@ jobs:
           # Dependency set is small and verify checks module drift explicitly.
           cache: false
 
+      - name: Determine verification scope
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          if [[ -n "$changed" ]] && ! grep -qvE '(^|/)([^/]+\.md)$|^docs/|^website/|^mkdocs\.yml$|^requirements-docs(\.lock)?\.txt$'; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Verify repo
-        if: hashFiles('**/*.go') != ''
+        if: steps.scope.outputs.docs_only != 'true' && hashFiles('**/*.go') != ''
         run: bash ./scripts/verify.sh
+
+      - name: Verify documentation-only change
+        if: steps.scope.outputs.docs_only == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
   security:
     runs-on: ubuntu-latest
