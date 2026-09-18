@@ -27,7 +27,6 @@ section="$(awk -v tag="$new_tag" '
     if (in_section) exit
     if ($0 ~ "\\[" tag "\\]") {
       in_section = 1
-      print
       next
     }
   }
@@ -38,5 +37,16 @@ if [[ -z "$section" ]]; then
   echo "no changelog section found for $new_tag" >&2
   exit 1
 fi
+
+section="$(printf '%s\n' "$section" | awk '
+  NR == 1 && /^## \[/ { next }
+  /^### Changed$/ { print "## Changed"; next }
+  /^### Fixed$/   { print "## Fixed"; next }
+  /^### Added$/   { print "## Added"; next }
+  /^### Removed$/ { print "## Removed"; next }
+  /^### Deprecated$/ { print "## Deprecated"; next }
+  /^### Security$/ { print "## Security"; next }
+  { print }
+')"
 
 printf '%s\n\n**Full Changelog**: https://github.com/dmundt/go-cask/compare/%s...%s\n' "$section" "$from_tag" "$new_tag"
