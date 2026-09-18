@@ -8,6 +8,23 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.3.1`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [Unreleased]
+
+### Added
+
+- Added a public documentation site under [website/](website/) with a developer-focused landing page, architecture overview, concepts pages, and MkDocs Material navigation.
+- Enabled Mermaid-based diagrams in the site so architecture and content-addressing pages can show layered structure and object-flow clearly without ASCII-only clutter.
+- Added the GitHub Pages workflow as [\.github/workflows/website.yml](.github/workflows/website.yml) and kept the generated `site/` output excluded from version control via [.gitignore](.gitignore).
+
+### Changed
+
+- Kept the repo’s normative implementation guidance in [AGENTS.md](AGENTS.md) and narrowed the public docs to user-facing explanation, while clarifying that the source-of-truth docs remain in [docs/specs/](docs/specs/) and the public website is a companion layer.
+- Updated the website guidance in [AGENTS.md](AGENTS.md) to prefer Mermaid diagrams and maintain clear architecture boundaries between the generic core, object-model layer, and storage backends.
+
+### Fixed
+
+- Confirmed the MkDocs build passes with the Mermaid configuration enabled so the public docs site renders cleanly in CI.
+
 ## [v1.4.5] - 2026-09-17
 
 ### Changed
@@ -16,6 +33,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Made the architecture boundary intentionally boring and stable: the generic core stays in [cas/](cas/), storage backends remain in [cas/backend/](cas/backend/), helper/manifest logic remains in [cas/pack/](cas/pack/), and higher-level object models stay layered on top instead of blurring into the core. This is now called out explicitly in [AGENTS.md](AGENTS.md) and [docs/index.md](docs/index.md) so future edits do not silently reintroduce boundary drift.
 - Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
 - Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
+- Normalized the generated v1.4.5 release notes to the same `## Changed` / `## Fixed` layout used by prior GitHub releases, keeping the release body stable and consistent with the repo’s existing publishing pattern.
 - Added dated benchmark retention and comparison helpers in [scripts/bench-baseline.sh](scripts/bench-baseline.sh) and [scripts/bench-compare.sh](scripts/bench-compare.sh), with the latest benchmark baseline kept at [benchmarks/data/baseline.txt](benchmarks/data/baseline.txt).
 - Consolidated the shared payload helper surface into [cas/pack/README.md](cas/pack/README.md): fixed-size chunking and sidecar manifest logic live in one canonical package, with no compatibility-only duplicate package layer.
 - Added the canonical pack-layer benchmark family in [benchmarks/pack_bench_test.go](benchmarks/pack_bench_test.go) to cover chunking, manifest round-trips, and file-based save/load behavior directly under the public helper package.
@@ -37,6 +55,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Gated the platform matrix on the verify and security gates to avoid wasting OS-target builds when the main CI checks already fail.
 - Hardened the `govulncheck` installation path to resolve correctly across Go/GOPATH/GOBIN combinations and bash environments.
 - Fixed release automation to detect previous tags and generate a valid changelog section without relying on manual maintenance.
+- Normalized release-note generation to keep the GitHub release body in the same format as earlier releases, so the formatted changelog output remains consistent across tags.
 - Kept benchmark comparison usable even when `benchstat` is unavailable by emitting the explicit manual diff path.
 
 ## [v1.4.4] - 2026-09-16

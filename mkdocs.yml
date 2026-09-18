@@ -1,0 +1,82 @@
+site_name: CASK
+site_description: Git-like content-addressable storage for Go
+site_url: https://dmundt.github.io/go-cask/
+repo_url: https://github.com/dmundt/go-cask
+repo_name: dmundt/go-cask
+edit_uri: edit/main/docs-site/
+
+docs_dir: website
+site_dir: site
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Architecture: architecture.md
+  - Concepts:
+      - Overview: concepts/index.md
+      - Content addressing: concepts/content-addressing.md
+      - Hashes: concepts/hashes.md
+      - Codecs: concepts/codecs.md
+      - Backends: concepts/backends.md
+  - Specifications:
+      - Overview: specifications/index.md
+      - Object format: specifications/object-format.md
+      - Landing page: specs.md
+  - Recipes:
+      - Custom codec: recipes/custom-codec.md
+      - Filesystem backend: recipes/filesystem-backend.md
+  - FAQ: faq.md
+  - Changelog: changelog.md
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/dmundt/go-cask

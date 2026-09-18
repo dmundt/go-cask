@@ -79,6 +79,15 @@ AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/specs/
 ```
 
+Website and docs policy: the public site lives under `website/` and is built with
+MkDocs Material. It is a companion documentation layer, not the source of truth
+for the implementation; the normative design remains in `docs/specs/` and
+`AGENTS.md`. Prefer clear concept diagrams over ASCII-heavy pages, using Mermaid
+for architecture and flow diagrams and small SVG/PNG artwork only where it adds
+signal. Keep the pages developer-focused: architecture, stores, hashes, codecs,
+backends, recipes, and the public changelog. The generated `site/` directory is
+not committed and must remain ignored.
+
 Architecture boundary rule: keep the layer boundaries boringly obvious and
 stable. The core stays generic (`cas/`), concrete storage backends live under
 `cas/backend/*`, helper/manifest logic stays in `cas/pack` or similar app-facing
