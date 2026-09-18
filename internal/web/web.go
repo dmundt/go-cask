@@ -30,9 +30,12 @@ var htmxJS []byte
 // (`cmd/cask web`) constructs it — there is no Enabled switch
 // (viewer-security §3).
 type Config struct {
-	StartupToken string // generated at startup, printed once, admin role
-	RoleTokens   map[string]string
-	Secure       bool // serve Secure cookies (HTTPS)
+	// StartupToken is generated at startup and printed once for admin login.
+	StartupToken string
+	// RoleTokens maps role names to bearer tokens.
+	RoleTokens map[string]string
+	// Secure enables the Secure cookie attribute for HTTPS.
+	Secure bool
 }
 
 // Server is the viewer: login, sessions, role authorization, CSRF, and the
@@ -100,9 +103,12 @@ func (s *Server) Handler() http.Handler {
 
 // Roles (viewer-security §8).
 const (
-	RoleViewer   = "viewer"
+	// RoleViewer permits read-only viewer access.
+	RoleViewer = "viewer"
+	// RoleOperator permits verification operations.
 	RoleOperator = "operator"
-	RoleAdmin    = "admin"
+	// RoleAdmin permits destructive operations.
+	RoleAdmin = "admin"
 )
 
 // require enforces: valid session (401 empty), sufficient role (403 empty),
@@ -203,17 +209,25 @@ func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
 }
 
 type dashboardData struct {
+	// ObjectCount is the number of stored objects.
 	ObjectCount int64
-	TotalSize   int64
-	Sample      []objectRow
-	HasSample   bool
+	// TotalSize is the total stored payload size.
+	TotalSize int64
+	// Sample contains representative object rows.
+	Sample []objectRow
+	// HasSample reports whether Sample is non-empty.
+	HasSample bool
 }
 
 type objectRow struct {
+	// Digest is the full object digest.
 	Digest string
-	Short  string
-	Type   string
-	Size   int64
+	// Short is the abbreviated digest.
+	Short string
+	// Type is the decoded object type.
+	Type string
+	// Size is the stored payload size.
+	Size int64
 }
 
 func (s *Server) dashboardData(ctx context.Context) dashboardData {
@@ -508,9 +522,12 @@ func hexdump(data []byte) []dumpRow {
 }
 
 type dumpRow struct {
+	// Offset is the hexadecimal byte offset.
 	Offset string
-	Hex    string
-	ASCII  string
+	// Hex is the formatted byte sequence.
+	Hex string
+	// ASCII is the printable representation.
+	ASCII string
 }
 
 func callerIP(r *http.Request) string {

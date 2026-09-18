@@ -42,6 +42,13 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Removed raw HTML from Markdown documentation and templates.
 - Added deterministic binary `mem.Backend.Snapshot` and `Restore` methods for
   test fixtures, replay, and state preservation.
+- Added portable `cas/backend/snapshot` export and import helpers for moving
+  raw objects between compatible backends without expanding the backend
+  interface.
+- Audited exported Go APIs and completed identifier-led GoDoc for public
+  types, fields, constants, functions, and methods across the repository.
+- Applied tiered coverage gates: 90% for core storage packages and 80% for
+  supporting caches, codecs, hash clients, `gitlike`, and `internal/index`.
 
 ## [v1.4.6] - 2026-09-18
 

@@ -24,17 +24,26 @@ commands:
   roundtrip <size> <payload>
 `
 
+// Chunk is one serialized payload fragment.
 type Chunk struct {
-	Index int    `json:"index"`
-	Size  int    `json:"size"`
-	Data  string `json:"data"`
+	// Index is the zero-based chunk position.
+	Index int `json:"index"`
+	// Size is the chunk payload length.
+	Size int `json:"size"`
+	// Data is the chunk payload encoded as a string.
+	Data string `json:"data"`
 }
 
+// Manifest describes a chunked payload.
 type Manifest struct {
-	Kind      string  `json:"kind"`
-	Owner     string  `json:"owner"`
-	Chunks    []Chunk `json:"chunks,omitempty"`
-	TotalSize int     `json:"total_size,omitempty"`
+	// Kind identifies the manifest payload type.
+	Kind string `json:"kind"`
+	// Owner identifies the payload owner.
+	Owner string `json:"owner"`
+	// Chunks contains the ordered payload chunks.
+	Chunks []Chunk `json:"chunks,omitempty"`
+	// TotalSize is the original payload length.
+	TotalSize int `json:"total_size,omitempty"`
 }
 
 func splitPayload(payload []byte, chunkSize int) []Chunk {
@@ -50,6 +59,7 @@ func splitPayload(payload []byte, chunkSize int) []Chunk {
 	return out
 }
 
+// Reassemble concatenates manifest chunks into the original payload.
 func (m Manifest) Reassemble() []byte {
 	if len(m.Chunks) == 0 {
 		return nil

@@ -37,6 +37,7 @@ func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
 // usageError marks an argument error (exit code 2).
 type usageError struct{ msg string }
 
+// Error implements the error interface.
 func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }

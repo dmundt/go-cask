@@ -19,9 +19,12 @@ type Filter struct {
 
 // Config is the expected size and false-positive target for a new filter.
 type Config struct {
-	ExpectedItems     uint64
+	// ExpectedItems is the anticipated number of distinct digests.
+	ExpectedItems uint64
+	// FalsePositiveRate is the target false-positive probability.
 	FalsePositiveRate float64
-	Hash              bloom.IndexHash
+	// Hash optionally selects the digest indexing function.
+	Hash bloom.IndexHash
 }
 
 // New creates a Bloom filter sized to hold the expected number of items.

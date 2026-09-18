@@ -14,15 +14,19 @@ import (
 	"github.com/dmundt/go-cask/cas"
 )
 
+// Name is the digest algorithm name used by this package.
 const Name = "adler32"
 
+// Size is the Adler-32 digest size in bytes.
 const Size = 4
 
 // Hasher implements cas.Hasher with Adler-32 for maintenance-only checks.
 type Hasher struct{}
 
+// New returns an Adler-32 CAS hasher.
 func New() Hasher { return Hasher{} }
 
+// Digest computes the Adler-32 digest of data read from r.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 	h := adler32.New()
 	if _, err := io.Copy(h, r); err != nil {
@@ -34,6 +38,7 @@ func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 	return cas.NewDigest(b), nil
 }
 
+// Validate checks that d is a valid Adler-32 digest.
 func (Hasher) Validate(d cas.Digest) error {
 	if d.IsZero() {
 		return fmt.Errorf("%w: absent digest", cas.ErrInvalidDigest)
@@ -44,8 +49,10 @@ func (Hasher) Validate(d cas.Digest) error {
 	return nil
 }
 
+// NewHasher returns a standard library Adler-32 hash.Hash32.
 func NewHasher() hash.Hash32 { return adler32.New() }
 
+// Of returns the Adler-32 digest of data.
 func Of(data []byte) cas.Digest {
 	v := adler32.Checksum(data)
 	b := make([]byte, Size)
@@ -53,6 +60,7 @@ func Of(data []byte) cas.Digest {
 	return cas.NewDigest(b)
 }
 
+// Format formats d as an Adler-32 digest string.
 func Format(d cas.Digest) string {
 	if d.IsZero() {
 		return ""
@@ -60,6 +68,7 @@ func Format(d cas.Digest) string {
 	return Name + ":" + hex.EncodeToString(d)
 }
 
+// Parse parses an Adler-32 digest string.
 func Parse(s string) (cas.Digest, error) {
 	body, ok := strings.CutPrefix(s, Name+":")
 	if !ok {

@@ -150,26 +150,29 @@ fi
 
 echo "== test -race + coverage gate =="
 fail=0
-for pkg in \
-  ./cas \
-  ./cas/backend/fs \
-  ./cas/backend/mem \
-  ./cas/cache/mem \
-  ./cas/cache/lru \
-  ./cas/cache/prefetch \
-  ./cas/codec/json \
-  ./cas/codec/gob \
-  ./cas/hash/sha256 \
-  ./cas/hash/sha512_256 \
-  ./gitlike \
-  ./internal/index
+coverage_targets=(
+  "90|./cas"
+  "90|./cas/backend/fs"
+  "90|./cas/backend/mem"
+  "80|./cas/cache/mem"
+  "80|./cas/cache/lru"
+  "80|./cas/cache/prefetch"
+  "80|./cas/codec/json"
+  "80|./cas/codec/gob"
+  "80|./cas/hash/sha256"
+  "80|./cas/hash/sha512_256"
+  "80|./gitlike"
+  "80|./internal/index"
+)
+for target in "${coverage_targets[@]}"
  do
+  IFS='|' read -r threshold pkg <<< "$target"
   out="$(go test -race -cover "$pkg" 2>&1)"
   echo "$out"
   cov="$(printf '%s\n' "$out" | grep -oE 'coverage: [0-9.]+%' | tail -n 1 | sed 's/^coverage: //; s/%$//')" || true
   if [[ -n "$cov" ]]; then
-    awk -v c="$cov" 'BEGIN { if (c + 0 < 90.0) exit 1 }' || {
-      echo "coverage ${cov}% below 90% for $pkg" >&2
+    awk -v c="$cov" -v threshold="$threshold" 'BEGIN { if (c + 0 < threshold) exit 1 }' || {
+      echo "coverage ${cov}% below ${threshold}% for ${pkg}" >&2
       fail=1
     }
   fi

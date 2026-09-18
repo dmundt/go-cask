@@ -23,7 +23,7 @@ type gzipCodec[T any] struct{ inner cas.Codec[T] }
 // newGzipCodec wraps the default JSON codec (json.New[T]()).
 func newGzipCodec[T any]() gzipCodec[T] { return gzipCodec[T]{inner: jsoncodec.New[T]()} }
 
-// Marshal gzip-compresses the inner codec's output.
+// Encode gzip-compresses the inner codec's output.
 func (c gzipCodec[T]) Encode(v T) ([]byte, error) {
 	inner, err := c.inner.Encode(v)
 	if err != nil {
@@ -42,7 +42,7 @@ func (c gzipCodec[T]) Encode(v T) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Unmarshal gunzip-decompresses and decodes with the inner codec.
+// Decode gunzip-decompresses and decodes with the inner codec.
 func (c gzipCodec[T]) Decode(data []byte) (T, error) {
 	var zero T
 	zr, err := gzip.NewReader(bytes.NewReader(data))

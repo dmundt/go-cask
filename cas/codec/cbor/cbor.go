@@ -61,6 +61,7 @@ func NewMap() Codec[map[string]any] {
 	return NewRaw[map[string]any](encodeMapValue, decodeMapValue)
 }
 
+// Encode encodes v using the configured CBOR conversion functions.
 func (c Codec[T]) Encode(v T) ([]byte, error) {
 	if c.next != nil && c.encode == nil {
 		return c.next.Encode(v)
@@ -71,6 +72,7 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 	return c.encode(v)
 }
 
+// Decode decodes data using the configured CBOR conversion functions.
 func (c Codec[T]) Decode(data []byte) (T, error) {
 	if c.next != nil && c.decode == nil {
 		return c.next.Decode(data)

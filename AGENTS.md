@@ -6,6 +6,12 @@ version: v23
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
 
+## Markdown policy
+
+Raw HTML is strictly forbidden in every Markdown file in this repository.
+Documentation MUST use valid Markdown syntax only; do not add HTML tags,
+comments, layout wrappers, or embedded HTML blocks.
+
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,

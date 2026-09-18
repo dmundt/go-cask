@@ -10,7 +10,9 @@ import "fmt"
 // produced a digest (cas-core §4.2), so it cannot group objects by one. A client
 // that needs that groups its own digests.
 type Stats struct {
-	TotalSize   int64
+	// TotalSize is the sum of stored payload bytes.
+	TotalSize int64
+	// ObjectCount is the number of stored objects.
 	ObjectCount int64
 }
 

@@ -3,6 +3,12 @@
 This directory contains repository automation and GitHub configuration
 conventions. Keep GitHub settings, workflow files, and these rules aligned.
 
+## Markdown policy
+
+Raw HTML is strictly forbidden in every Markdown file in this repository.
+Use valid Markdown syntax only; do not add HTML tags, comments, layout
+wrappers, or embedded HTML blocks.
+
 ## Main branch
 
 `main` accepts changes through pull requests only. Keep these protections

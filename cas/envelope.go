@@ -30,7 +30,9 @@ import (
 // streaming and range reads. Version makes a future format bump detectable
 // from the leading byte.
 type Envelope struct {
+	// Type identifies the encoded object type and major version.
 	Type string
+	// Data contains the encoded object payload.
 	Data []byte
 }
 

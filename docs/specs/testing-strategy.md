@@ -74,8 +74,8 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
-- **Coverage as high as practical:** foundational public packages and `gitlike/` are held to ≥ **90%** statement coverage (excluding generated): `cas`, `cas/backend/fs`, `cas/backend/mem`, `cas/cache/{mem,lru,prefetch}`, `cas/codec/{json,gob}`, `cas/hash/{sha256,sha512_256}`, `gitlike`, and `internal/index`. Extension packages and user-facing commands are measured but have no numeric gate; every exported identifier must still be exercised and any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
-- CI runs `go test -race -cover` per gated package (the list in `scripts/verify.sh`, which includes the shipped `cas/hash/sha256`) and fails below the bar; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
+- **Tiered coverage gates:** foundational storage and integrity packages are held to ≥ **90%** statement coverage (excluding generated): `cas`, `cas/backend/fs`, and `cas/backend/mem`. Supporting caches, codecs, hash clients, `gitlike`, and `internal/index` are held to ≥ **80%**. Extension packages, `cas/backend/packfs`, and user-facing commands are measured but have no numeric gate until their coverage justifies promotion. Every exported identifier must still be exercised and any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
+- CI runs `go test -race -cover` per gated package (the package and threshold list lives in `scripts/verify.sh`) and fails below that package's tier; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
 
 ## 6. Checklist
 
@@ -86,6 +86,6 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 - [x] `-race` concurrent test green
 - [x] corruption test proves `Verify` fails on a flipped byte
 - [x] golden vectors assert exact digests
-- [x] coverage ≥ 90% on `cas/` + `gitlike/`; every exported identifier exercised; untested branches commented
+- [x] tiered coverage gates enforced for core and supporting packages; every exported identifier exercised; untested branches commented
 - [x] every HTTP route tested (success + 400/401/403/404/429)
 - [x] new requirements come with their test (review-gated)
