@@ -19,3 +19,6 @@ coverage.out
 
 # Smoke-test artifacts
 .smoke/
+
+# Generated MkDocs site
+/site/
