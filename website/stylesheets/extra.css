@@ -156,6 +156,105 @@ body {
   }
 }
 
+@media screen and (max-width: 1219px) {
+  .md-header {
+    display: block;
+    background: #ffffff;
+    color: #1f1f1f;
+    border-bottom: 1px solid var(--panel-border);
+    box-shadow: none;
+  }
+
+  .md-header__button,
+  .md-header__title,
+  .md-header__topic,
+  .md-header .md-icon {
+    color: #1f1f1f;
+  }
+
+  .md-sidebar--primary,
+  .md-sidebar--primary .md-sidebar__scrollwrap,
+  .md-sidebar--primary .md-sidebar__inner {
+    background: #ffffff;
+  }
+
+  .md-sidebar--primary .md-nav--primary > .md-nav__source {
+    display: none;
+  }
+
+  .md-sidebar--primary .md-nav--primary > .md-nav__title {
+    background: #ffffff;
+    color: var(--text-soft);
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 650;
+    padding: 0.75rem;
+  }
+
+  .md-sidebar--primary .md-nav--primary > .md-nav__title .md-logo {
+    display: none;
+  }
+
+  .md-sidebar--primary .md-nav {
+    font-size: 0.8rem;
+  }
+
+  .md-sidebar--primary .md-nav__title {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    font-weight: 650;
+  }
+
+  .md-sidebar--primary .md-nav__link {
+    color: var(--md-default-fg-color);
+    padding: 0.25rem 0.75rem;
+  }
+
+  .md-sidebar--primary .md-nav__item {
+    border-top: 0;
+  }
+
+  .md-sidebar--primary .md-nav__link--active,
+  .md-sidebar--primary .md-nav__link:focus,
+  .md-sidebar--primary .md-nav__link:hover {
+    color: var(--md-accent-fg-color);
+  }
+
+  /*
+   * Material presents nested drawer sections as separate drill-down panels.
+   * Keep primary navigation's grouped, expanded desktop hierarchy on narrow
+   * screens instead.
+   */
+  .md-sidebar--primary .md-nav--primary > .md-nav__list >
+  .md-nav__item--section > .md-nav__toggle,
+  .md-sidebar--primary .md-nav--primary > .md-nav__list >
+  .md-nav__item--section > .md-nav__link .md-nav__icon,
+  .md-sidebar--primary .md-nav--primary > .md-nav__list >
+  .md-nav__item--section > .md-nav > .md-nav__title {
+    display: none;
+  }
+
+  .md-sidebar--primary .md-nav--primary > .md-nav__list >
+  .md-nav__item--section > .md-nav__link {
+    color: var(--text-soft);
+    cursor: default;
+    font-size: 0.78rem;
+    font-weight: 650;
+    padding-top: 0.65rem;
+    pointer-events: none;
+  }
+
+  .md-sidebar--primary .md-nav--primary > .md-nav__list >
+  .md-nav__item--section > .md-nav {
+    display: block;
+    height: auto;
+    opacity: 1;
+    overflow: visible;
+    position: static;
+    transform: none;
+  }
+}
+
 .md-sidebar__scrollwrap {
   scrollbar-width: none;
 }

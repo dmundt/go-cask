@@ -24,6 +24,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
 - Reorganized documentation navigation around adoption: start, concepts, guides,
   reference, and project information.
+- Restore Material's standard hamburger navigation below desktop width instead
+  of forcing a persistent narrow sidebar into the reading layout.
+- Match the narrow-screen navigation drawer to the neutral desktop sidebar
+  instead of showing Material's colored branding panel.
 - Removed overflow-prone top-level navigation tabs; the responsive sidebar and search remain available on every page.
 - Hide table-of-contents scrollbar controls while preserving normal wheel and trackpad navigation.
 - Removed the empty Material header bar so documentation opens directly into its navigation and content.
