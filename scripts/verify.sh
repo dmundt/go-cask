@@ -66,10 +66,13 @@ if [[ -n "$unformatted" ]]; then
 fi
 
 echo "== go mod tidy =="
-tidy_diff="$(go mod tidy -diff 2>&1)" || {
-  printf '%s\n' "$tidy_diff" >&2
+tidy_errors="$(mktemp)"
+if ! tidy_diff="$(go mod tidy -diff 2>"$tidy_errors")"; then
+  cat "$tidy_errors" >&2
+  rm -f "$tidy_errors"
   exit 1
-}
+fi
+rm -f "$tidy_errors"
 if [[ -n "$tidy_diff" ]]; then
   echo "go.mod / go.sum drift detected; run go mod tidy and commit the result." >&2
   printf '%s\n' "$tidy_diff" >&2
