@@ -1,6 +1,6 @@
 # go-cask
 
-Content-addressable storage for Go applications. Store immutable typed objects
+Content-addressable store kit for Go applications. Store immutable typed objects
 by content-derived `Digest`, verify stored bytes on demand, and keep object
 semantics separate from persistence.
 

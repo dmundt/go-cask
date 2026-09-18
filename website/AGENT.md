@@ -13,6 +13,8 @@ developer-facing companion to the authoritative repository documentation under
   operational trade-offs alongside benefits.
 - Use `go-cask` for the project, `cas` for the core package, `Digest` for the
   content address, and `Hasher` for its algorithm provider.
+- Use **content-addressable store** for go-cask and concrete implementations;
+  use **content-addressable storage** for the general technique or concept.
 - Distinguish the generic `cas` core from the `gitlike` reference package.
 - Keep one concept per page. Prefer headings, prose, tables, lists, and
   runnable examples over landing-page components or promotional copy.
