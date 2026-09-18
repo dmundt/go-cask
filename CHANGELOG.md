@@ -39,6 +39,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Documented required GitHub branch, merge, security, and workflow settings in
   [`.github/AGENT.md`](.github/AGENT.md).
 - Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
+- Removed raw HTML from Markdown documentation and templates.
 
 ## [v1.4.6] - 2026-09-18
 

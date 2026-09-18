@@ -210,6 +210,16 @@ inline = re.compile(
 )
 reference = re.compile(r'^\s*\[[^\]]+\]:\s*(?P<target>\S+)', re.MULTILINE)
 inline_code = re.compile(r'`[^`]*`')
+html = re.compile(
+    r'<!--|</?(?:a|abbr|address|article|aside|audio|blockquote|body|button|'
+    r'canvas|caption|cite|code|col|data|dd|del|details|dfn|dialog|div|dl|dt|'
+    r'em|embed|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|'
+    r'hgroup|hr|html|iframe|img|input|ins|kbd|label|legend|li|link|main|map|'
+    r'mark|menu|meta|meter|nav|noscript|object|ol|optgroup|option|output|p|'
+    r'picture|pre|progress|q|s|samp|script|section|select|small|source|span|'
+    r'style|sub|summary|sup|table|tbody|td|template|textarea|tfoot|th|thead|'
+    r'time|title|tr|track|u|ul|var|video|wbr)(?:\s[^<>]*)?/?>',
+)
 errors = []
 files = subprocess.check_output(
     ['git', 'ls-files', '*.md'], cwd=repo_root, text=True
@@ -226,6 +236,8 @@ for filename in sorted(files):
         if not in_fence:
             prose.append(line)
     text = inline_code.sub('', '\n'.join(prose))
+    for match in html.finditer(text):
+        errors.append(f'{filename}: raw HTML is not allowed: {match.group(0)}')
     for match in list(inline.finditer(text)) + list(reference.finditer(text)):
         target = (match.group('angled') or match.group('target') or '').strip()
         parsed = urlsplit(target)

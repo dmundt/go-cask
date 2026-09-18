@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- Explain intent and user-visible behavior. -->
+Describe intent and user-visible behavior.
 
 ## Validation
 

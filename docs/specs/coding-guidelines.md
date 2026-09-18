@@ -46,8 +46,8 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 
 ## 4. No CSS, no JavaScript
 
-- SHALL NOT add CSS (no `.css`, no `<style>`, no inline `style="…"`).
-- SHALL NOT add JavaScript (no `.js`, no hand-written `<script>`, no client-side logic).
+- SHALL NOT add CSS (no `.css`, no style elements, no inline `style` attributes).
+- SHALL NOT add JavaScript (no `.js`, no hand-written script elements, no client-side logic).
 - Only script allowed in the viewer is **htmx** (one pinned vendored file, or CDN URL with integrity attribute) — a framework, not "our" JS.
 - Interactivity is expressed only via htmx attributes (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-trigger`…) requesting HTML fragments; no client-side state.
 - Rationale: minimal attack surface/auditability (viewer-security), no build pipeline, no browser secrets, viewer works with JS disabled except htmx.
@@ -64,8 +64,8 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 6. Prefer raw HTML
 
 - "Raw HTML" = hand-written semantic markup in templates — no client-side frameworks, no JS-generated DOM, no HTML built by string concatenation in Go.
-- Never build HTML in Go (`fmt.Sprintf("<td>…</td>")`) — dynamic output is always a template.
-- Prefer semantic elements (`<main>`, `<nav>`, `<table>`, `<form>`, `<label>`…) over `<div>` soup; accessibility required (labels, `alt`, logical heading order). Templates needing heavy logic signal the Go side should pre-compute.
+- Never build HTML in Go with string concatenation — dynamic output is always a template.
+- Prefer semantic elements (main, navigation, table, form, label) over generic containers; accessibility requires labels, alternative text, and logical heading order. Templates needing heavy logic signal the Go side should pre-compute.
 
 ## 7. Document exported types and functions
 
@@ -98,7 +98,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 
 - [x] `gofmt -l .` clean; `go vet` and `go test` pass
 - [x] `go.mod` declares `go 1.24` + `toolchain go1.27.1`; zero external deps, or each justified and vendored
-- [x] No CSS, no hand-written JS, no `<style>`/`<script>` — htmx only
+- [x] No CSS, no hand-written JS, no style or script elements — htmx only
 - [x] HTML via `html/template` only, using the latest feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`, `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)
 - [x] Generics (incl. generic methods) where needed; nothing over-engineered; no features newer than the declared `go` directive
