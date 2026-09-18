@@ -22,6 +22,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Rebuilt the public site as task-oriented technical documentation: concise project fit, verified generic-core examples, clear boundaries between `cas` and `gitlike`, and focused concepts, recipes, FAQ, and specification pages.
 - Replaced visual landing-page components with a neutral, document-first design using strong typography, whitespace, thin dividers, and restrained accent colors.
 - Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
+- Removed overflow-prone top-level navigation tabs; the responsive sidebar and search remain available on every page.
+- Hide table-of-contents scrollbar controls while preserving normal wheel and trackpad navigation.
+- Removed the empty Material header bar so documentation opens directly into its navigation and content.
 
 ### Fixed
 

@@ -29,6 +29,15 @@ body {
   background: var(--md-default-bg-color);
 }
 
+.md-header,
+.md-tabs {
+  display: none;
+}
+
+.md-main {
+  margin-top: 0;
+}
+
 .md-grid,
 .md-main__inner,
 .md-content {
@@ -41,7 +50,8 @@ body {
 
 .md-typeset {
   color: var(--md-default-fg-color);
-  line-height: 1.7;
+  font-size: 0.86rem;
+  line-height: 1.75;
 }
 
 .md-typeset h1 {
@@ -58,14 +68,17 @@ body {
   padding-top: 1rem;
   border-top: 1px solid var(--panel-border);
   color: #1f1f1f;
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   font-weight: 600;
   letter-spacing: -0.015em;
+  line-height: 1.25;
 }
 
 .md-typeset h3 {
   color: #303030;
+  font-size: 1.1rem;
   font-weight: 600;
+  line-height: 1.35;
 }
 
 [data-md-color-scheme="slate"] .md-typeset h1,
@@ -87,6 +100,9 @@ body {
 .md-typeset table td {
   border: 1px solid var(--panel-border);
   background: #ffffff;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  vertical-align: top;
 }
 
 [data-md-color-scheme="slate"] .md-typeset table th,
@@ -97,18 +113,22 @@ body {
 .md-typeset table th {
   background-color: var(--panel-surface);
   color: var(--md-default-fg-color);
+  font-size: 0.8rem;
   font-weight: 650;
 }
 
 .md-typeset code {
   background: rgba(148, 163, 184, 0.08);
   color: inherit;
+  font-size: 0.82em;
 }
 
 .md-typeset pre {
   border: 1px solid var(--panel-border);
   box-shadow: none;
   border-radius: 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 
 .md-typeset code {
@@ -122,4 +142,18 @@ body {
 .md-typeset .mermaid .node rect {
   rx: 0;
   ry: 0;
+}
+
+@media screen and (max-width: 1219px), screen and (max-height: 700px) {
+  .md-sidebar--secondary {
+    display: none;
+  }
+}
+
+.md-sidebar__scrollwrap {
+  scrollbar-width: none;
+}
+
+.md-sidebar__scrollwrap::-webkit-scrollbar {
+  display: none;
 }

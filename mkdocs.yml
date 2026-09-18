@@ -33,7 +33,6 @@ nav:
 theme:
   name: material
   features:
-    - navigation.tabs
     - navigation.sections
     - navigation.footer
     - content.code.copy
