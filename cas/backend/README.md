@@ -6,7 +6,7 @@ The backend layer is the non-generic byte store beneath the typed `cas` API. It 
 
 - [fs](./fs/README.md) — durable filesystem backend
 - [mem](./mem/README.md) — in-memory backend for tests and ephemeral workloads
-- [pack](./pack/README.md) — optional packfile backend for large object stores
+- [pack](../pack/README.md) — optional packfile backend for large object stores
 
 ## Policy
 

@@ -43,10 +43,10 @@ Explicitly out of scope: buckets overview, upload dialog, settings, user managem
 
 - **Top bar** — brand + breadcrumb (`cas-kit / store / Objects`), status chips (objects, bytes; "corrupt N" chip appears only after a session verify found corruption), primary actions; sticky.
 - **Filter bar** — owns durable view state; every fragment request pulls it via `hx-include`; sort in a hidden field (never an ambiguous headers/filters pair).
-- **Search box** — detects hex digest prefix (prefix match, `<mark>`-wrapped — built, never interpolated) vs. free text (type match).
+- **Search box** — detects hex digest prefix (prefix match, highlighted with a generated `mark` element, never interpolated) vs. free text (type match).
 - **Results table** — sticky header, sortable columns, empty-state row; numeric cells right-aligned.
 - **Pager** — offset/limit, page-window elision, per-page selector; carried in the URL; no client cursor state.
-- **Inspector** — radio-driven tabs, `<dl>` metadata, hexdump `<pre>`, integrity fragment.
+- **Inspector** — radio-driven tabs, description-list metadata, preformatted hexdump, integrity fragment.
 - **Status tags** — textual tags (no colored pills without CSS): algorithm, `type@major`, verified/corrupt/unverified, `empty store`; colors arrive with the gated CSS step.
 - **Panel states** — distinct empty copy per state (no match for query vs. no objects at all); error panel with error text, trace id, retry — full-page vs. fragment variants.
 
@@ -58,7 +58,7 @@ Explicitly out of scope: buckets overview, upload dialog, settings, user managem
 - Verify: `hx-post` swaps only `#integrity` (pending → resolved; htmx indicator = recomputing).
 - Bytes: hexdump on `revealed` (or explicit load for large objects).
 - Delete/GC: CSRF POST behind `hx-confirm`.
-- Every nav link is a plain `<a>`; without htmx the viewer works via full navigation; a cold load of any fragment URL returns the full document.
+- Every nav link is a plain link; without htmx the viewer works via full navigation; a cold load of any fragment URL returns the full document.
 
 ## 6. Visual language (step 2 — deferred, gated)
 

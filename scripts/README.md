@@ -28,10 +28,18 @@ This directory holds the repo's operational helper scripts. They are the single 
 - `release.sh --publish` resolves either `gh` or `gh.exe`, so it works in
   POSIX shells on Windows as well as native Linux and macOS shells, and pipes
   release notes instead of passing a shell-specific temporary-file path.
+- Publish only from a clean `main` checkout: the release tag must exist, point
+  at `HEAD`, and be reachable from `main`.
 - Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
+- `verify.sh` installs `govulncheck v1.8.0` so local and CI vulnerability scans are reproducible. Update the pinned version deliberately in both the script and CI workflow.
+- The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
+- Documentation CI installs [requirements-docs.lock](../requirements-docs.lock) with
+  hash verification. Regenerate it with the command recorded in
+  [requirements-docs.txt](../requirements-docs.txt) after updating a direct
+  documentation dependency.
 
 ## Typical commands
 

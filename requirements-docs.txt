@@ -1,3 +1,5 @@
+# Direct documentation dependencies. Regenerate requirements-docs.lock with:
+# python -m piptools compile --generate-hashes --output-file requirements-docs.lock requirements-docs.txt
 mkdocs-material>=9.5,<10
 mkdocs>=1.6,<2
 pymdown-extensions>=10.7,<11

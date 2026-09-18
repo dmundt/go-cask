@@ -12,7 +12,7 @@ The project’s canonical distinction is: `cas/backend/fs` is the raw backend, `
 - The backend remains opt-in and app-selected.
 - The default path stays loose-object `fs` storage for normal workloads.
 - A pack layout still uses `cas.Digest` as the object identity; the pack file only changes the on-disk layout.
-- This is a storage backend, not the chunk/manifest helper package in [../pack](../pack/README.md). The helper package is for payload splitting and metadata; the backend is for durable append-only object storage.
+- This is a storage backend, not the chunk/manifest helper package in [../pack](../../pack/README.md). The helper package is for payload splitting and metadata; the backend is for durable append-only object storage.
 
 ## Typical use
 

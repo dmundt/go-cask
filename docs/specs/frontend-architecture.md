@@ -58,7 +58,7 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 
 ## 7. Semantics and accessibility
 
-- Raw semantic HTML: `<main>`, `<nav>`, `<table>` with `<caption>`/`<th scope>`, `<dl>` for metadata, `<pre>` for bytes, `<form>`/`<label>` for input — no `<div>` soup, no inline `style`.
+- Raw semantic HTML: main and navigation elements; tables with captions and scoped headers; description lists for metadata; preformatted blocks for bytes; forms with labels for input — no generic-container soup or inline styles.
 - Accessibility: labels on all inputs, `alt` text, logical heading order, keyboard-operable links/forms. htmx keeps native elements native (progressive enhancement), so focus/semantics survive.
 - Elegance without CSS comes from structure, whitespace, consistent layout (viewer-design §2).
 

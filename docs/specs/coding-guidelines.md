@@ -1,17 +1,17 @@
 ---
 type: Specification
 title: Go Coding Guidelines — go-cask
-description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v18
+description: Idiomatic Go with a minimal dependency policy, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
+version: v19
 ---
 
 # Go Coding Guidelines — go-cask
 
-Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; std-lib only; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
+Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; minimal dependencies; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
 
 ## 1. Go version and toolchain
 
-- Library baseline Go 1.24+. `go.mod` declares `go 1.24` with `toolchain go1.27` — the self-managing toolchain auto-downloads 1.27 for CI, while consumers on 1.24+ can build. The 1.24 floor is required by the `omitzero` JSON tag option (cas-core §4.6): an older standard library ignores it, which would change stored bytes.
+- Library baseline Go 1.24+. `go.mod` declares `go 1.24` with `toolchain go1.27.1` — the self-managing toolchain auto-downloads 1.27.1 for CI, while consumers on 1.24+ can build. The 1.24 floor is required by the `omitzero` JSON tag option (cas-core §4.6): an older standard library ignores it, which would change stored bytes.
 - Language available in the baseline (1.24+): generics/type sets (`~` unions)/`comparable` (1.18+), `slices`/`maps`/`cmp` (1.21+), range-over-int (1.22+), `iter`/range-over-func (1.23+), generic type aliases and `encoding/json` `omitzero`-style zero hooks (1.24+), and later additions.
 - `GOTOOLCHAIN=auto` (default) uses the `go.mod`-declared toolchain; CI MUST pin the same version for reproducibility.
 - Do NOT use features from a newer toolchain than the declared `go` directive — the declaration is the contract.
@@ -27,7 +27,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 - Make zero values useful; `NewX` only when setup is non-trivial (e.g. `fs.New` must create directories).
 - Tests: table-driven with `testing`, `t.Run` subtests, `t.Parallel()` where safe.
 
-## 3. Standard library only
+## 3. Minimal dependency policy
 
 | Need | Std-lib answer |
 |---|---|
@@ -41,13 +41,13 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 | Testing/bench | `testing`, `net/http/httptest`, `testing/fstest` |
 | Data/strings | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast`/`bytes.CutLast` (1.27) |
 
-Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution); any external dependency MUST be (1) justified in the commit/PR and (2) vendored (`go mod vendor`).
+Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution). The approved exception is `golang.org/x/sys`, used only by `cas/bloom/persistent` for portable mmap flushing where the standard library has no equivalent. Any new external dependency MUST be justified in the commit/PR and added to `go.mod`/`go.sum`; vendoring is optional unless required by an offline build environment.
 Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing goes through the injected `cas.Hasher` seam (the shipped `cas/hash/sha256` is the client-side default; the core names no algorithm and has no registry, cas-core §4.2); the only frontend exception is **htmx** (§5).
 
 ## 4. No CSS, no JavaScript
 
-- SHALL NOT add CSS (no `.css`, no `<style>`, no inline `style="…"`).
-- SHALL NOT add JavaScript (no `.js`, no hand-written `<script>`, no client-side logic).
+- SHALL NOT add CSS (no `.css`, no style elements, no inline `style` attributes).
+- SHALL NOT add JavaScript (no `.js`, no hand-written script elements, no client-side logic).
 - Only script allowed in the viewer is **htmx** (one pinned vendored file, or CDN URL with integrity attribute) — a framework, not "our" JS.
 - Interactivity is expressed only via htmx attributes (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-trigger`…) requesting HTML fragments; no client-side state.
 - Rationale: minimal attack surface/auditability (viewer-security), no build pipeline, no browser secrets, viewer works with JS disabled except htmx.
@@ -64,8 +64,8 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 6. Prefer raw HTML
 
 - "Raw HTML" = hand-written semantic markup in templates — no client-side frameworks, no JS-generated DOM, no HTML built by string concatenation in Go.
-- Never build HTML in Go (`fmt.Sprintf("<td>…</td>")`) — dynamic output is always a template.
-- Prefer semantic elements (`<main>`, `<nav>`, `<table>`, `<form>`, `<label>`…) over `<div>` soup; accessibility required (labels, `alt`, logical heading order). Templates needing heavy logic signal the Go side should pre-compute.
+- Never build HTML in Go with string concatenation — dynamic output is always a template.
+- Prefer semantic elements (main, navigation, table, form, label) over generic containers; accessibility requires labels, alternative text, and logical heading order. Templates needing heavy logic signal the Go side should pre-compute.
 
 ## 7. Document exported types and functions
 
@@ -85,7 +85,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 - Layout: `cas/` (public core, `package cas`), `internal/` (`web`, `index`; not importable outside the module), `cmd/` (thin `main` only), `examples/`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps). `cas/` is the only public package (plus `gitlike/`).
 - Viewer middleware (authn, sessions, CSRF, login throttle) lives in `internal/web`. An example surface MAY add its own IP rate limiter (std-lib token bucket, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
-- `go.mod` at root declaring `go 1.24` + `toolchain go1.27`; module path matches the repo. No blank imports except `embed`; no init-based magic (the core has no registry and no global state).
+- `go.mod` at root declaring `go 1.24` + `toolchain go1.27.1`; module path matches the repo. No blank imports except `embed`; no init-based magic (the core has no registry and no global state).
 - Tests: every exported `cas/` function tested; handlers use `httptest`; template FS fixtures use `testing/fstest`.
 - Verify before commit: `gofmt -l .`; `go vet ./...`; `go test ./...`; `go build ./...`.
 
@@ -97,8 +97,8 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 11. Pre-commit checklist
 
 - [x] `gofmt -l .` clean; `go vet` and `go test` pass
-- [x] `go.mod` declares `go 1.24` + `toolchain go1.27`; zero external deps, or each justified and vendored
-- [x] No CSS, no hand-written JS, no `<style>`/`<script>` — htmx only
+- [x] `go.mod` declares `go 1.24` + `toolchain go1.27.1`; zero external deps, or each justified and vendored
+- [x] No CSS, no hand-written JS, no style or script elements — htmx only
 - [x] HTML via `html/template` only, using the latest feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`, `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)
 - [x] Generics (incl. generic methods) where needed; nothing over-engineered; no features newer than the declared `go` directive

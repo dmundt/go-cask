@@ -16,6 +16,30 @@ first-cycle exceptions recorded in `versioning.md` §1.
   invoked through a POSIX shell.
 - Removed the stale custom-domain CNAME configuration so GitHub Pages uses its
   documented default URL.
+- Made persistent Bloom filters flush and unmap registered Unix mmap views on
+  `Sync` and `Close`.
+- Made release publishing reject dirty worktrees and tags that do not identify
+  the current `main` commit.
+- Corrected the dependency policy to document the approved `golang.org/x/sys`
+  mmap support dependency instead of claiming a standard-library-only module.
+
+### Changed
+
+- Marked shell automation as executable so verification and release commands
+  work when invoked directly on POSIX systems.
+- Pinned GitHub Actions and `govulncheck` revisions, limited Pages deployments
+  to documentation inputs, scan direct `main` changes with CodeQL, and use the
+  pinned Checkout v7 revision consistently.
+- Added CLI `verify --all` and viewer object-list/raw-route coverage.
+- Protected `main` with required reviews, resolved conversations, and CI/CodeQL
+  status checks; locked documentation dependencies; granted CI only read access;
+  and added Dependabot maintenance for Actions, Go, and Python dependencies.
+- Added a private vulnerability-reporting policy and pull-request validation
+  template matching the protected `main` workflow.
+- Documented required GitHub branch, merge, security, and workflow settings in
+  [`.github/AGENT.md`](.github/AGENT.md).
+- Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
+- Removed raw HTML from Markdown documentation and templates.
 
 ## [v1.4.6] - 2026-09-18
 
@@ -163,7 +187,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 ### Added
 
 - Added an optional, advisory Bloom layer under [cas/bloom/](cas/bloom/) with standard, counting, and persistent variants, plus a backend guard (`bloom.Guard`) that short-circuits absent lookups without changing the CAS identity model.
-- Added focused benchmark families in [benchmarks/bench_test.go](benchmarks/bench_test.go):
+- Added focused benchmark families in [benchmarks/](benchmarks/):
   `BenchmarkCodecEncodeDecode` isolates pure serialization cost and
   `BenchmarkHasherDigest` isolates raw hash throughput.
 - Added benchmark tables and recommendation text to [benchmarks/README.md](benchmarks/README.md),

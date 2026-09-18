@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://go-cask.dev/schemas/store-codec-hash-roundtrip.schema.json",
+  "$id": "https://dmundt.github.io/go-cask/schemas/store-codec-hash-roundtrip.schema.json",
   "title": "go-cask benchmark matrix",
   "description": "Schema for the canonical codec + hasher round-trip benchmark matrix used by benchmarks/data/store-codec-hash-roundtrip.json.",
   "type": "object",

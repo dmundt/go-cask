@@ -33,7 +33,7 @@ Testable via the CAS laws (testing-strategy.md §1).
 ```mermaid
 flowchart TB
     subgraph APP["Application / domain layer (per app, NOT core)"]
-        GITLIKE["gitlike/: Blob, Tree, Commit, Tag,<br/>Repository, Resolver, ResolvedObject,<br/>WalkGraph, CachedRepository, Preloader"]
+        GITLIKE["gitlike/: Blob, Tree, Commit, Tag,\nRepository, Resolver, ResolvedObject,\nWalkGraph, CachedRepository, Preloader"]
         OTHER["Other apps: Note, Job, Document, ... (same pattern)"]
         CLIENTHASH["Client hasher: cas/hash/sha256, or any cas.Hasher"]
     end
@@ -43,7 +43,7 @@ flowchart TB
         CODEC["Codec[T] — serialization (default: json.New[T]())"]
         STORE["Store[T] — Put / Get / GetRaw / Exists / Delete"]
         WALKER["Walker[T] — traversal over References()"]
-        CACHE["Caching / lazy layer (generic over T):<br/>CachedObject[T] → CachedStore[T] → lru.Cache"]
+        CACHE["Caching / lazy layer (generic over T):\nCachedObject[T] → CachedStore[T] → lru.Cache"]
         CACHE -. "wraps" .-> STORE
         STORE -. "enforces on Put/Get" .-> VALIDATOR
     end
@@ -51,7 +51,7 @@ flowchart TB
         DIGEST["Digest — raw digest bytes · NewDigest · ParseDigest · CheckDigest"]
         SEAM["Hasher — the algorithm seam (interface only)"]
         RAW["Backend interface"]
-        BACKENDS["fs.Backend (reference), memory.Backend (tests),<br/>S3, BadgerDB, PostgreSQL"]
+        BACKENDS["fs.Backend (reference), memory.Backend (tests),\nS3, BadgerDB, PostgreSQL"]
     end
     APP --> TYPED
     CLIENTHASH -. "implements Hasher" .-> SEAM
