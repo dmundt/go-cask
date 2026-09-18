@@ -118,3 +118,10 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 - If a visual aid is ever needed, prefer a plain markdown table or a small,
   deliberately curated excerpt of the canonical JSON values rather than a chart block.
 
+## Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.

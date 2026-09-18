@@ -45,3 +45,11 @@ architecture pattern.
 ## Scope
 
 This file covers the `cas` package and the layer READMEs directly under it. It does not define the git-like reference model or the example programs; those live in their own packages and docs.
+
+## Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.

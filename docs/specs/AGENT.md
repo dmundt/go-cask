@@ -132,3 +132,11 @@ Before committing any change to a file in this folder:
 - [x] New files added to the `AGENTS.md` aggregator "Related specs" list
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
+
+## 11. Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.

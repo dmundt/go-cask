@@ -42,6 +42,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
   template matching the protected `main` workflow.
 - Documented required GitHub branch, merge, security, and workflow settings in
   [`.github/AGENT.md`](.github/AGENT.md).
+- Documented the local signed-commit workflow required for protected pull
+  requests.
 - Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
 - Removed raw HTML from Markdown documentation and templates.
 - Added deterministic binary `mem.Backend.Snapshot` and `Restore` methods for

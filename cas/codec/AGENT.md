@@ -29,3 +29,11 @@ The codec layer is the serialization boundary between the generic CAS core and t
 ## Scope
 
 This file covers the codec family under `cas/codec` and the package-local rules for custom codec wrappers and chainable formats.
+
+## Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.
