@@ -10,6 +10,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+## [v1.4.6] - 2026-09-18
+
 ### Added
 
 - Added a public documentation site under [website/](website/) with a developer-focused landing page, architecture overview, concepts pages, and MkDocs Material navigation.
@@ -24,6 +26,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
 - Reorganized documentation navigation around adoption: start, concepts, guides,
   reference, and project information.
+- Restored the persistent top bar, retaining its narrow-screen hamburger menu
+  while the desktop sidebar remains available.
+- Kept the GitHub repository link at the right side of the narrow top bar and
+  placed the compact search control beside it.
 - Restore Material's standard hamburger navigation below desktop width instead
   of forcing a persistent narrow sidebar into the reading layout.
 - Match the narrow-screen navigation drawer to the neutral desktop sidebar

@@ -35,6 +35,10 @@ developer-facing companion to the authoritative repository documentation under
   layouts unless content comparison genuinely requires a table or panel.
 - Prefer sharp or near-sharp edges and avoid nested visual frames.
 - Code blocks MUST wrap long lines instead of exposing horizontal scrollbars.
+- Keep the top bar visible at every viewport width. On narrow screens, retain
+  the left hamburger, compact search control, and a right-aligned GitHub icon.
+- Keep search fields on the white page surface with the same thin gray border
+  used by tables and section dividers.
 
 ## Validation
 
@@ -43,3 +47,6 @@ Run the site build after website changes:
 ```text
 python -m mkdocs build --strict
 ```
+
+Preview through `python -m mkdocs serve`; browser `file://` pages cannot load
+MkDocs' search index, so local search is not a valid file-preview check.

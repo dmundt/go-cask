@@ -162,6 +162,9 @@ raw := mem.New() // fast, deterministic, not persistent
 
 [docs/specs/](docs/specs/) is the complete design contract: core architecture, coding guidelines, library design, performance, testing, consistency (GC/pruning), viewer HTTP surface, viewer design and security, versioning, defaults, examples, and extensions.
 
+Published developer documentation is available at
+[dmundt.github.io/go-cask](https://dmundt.github.io/go-cask/).
+
 Note: the documentation tree under [docs/](docs/) follows the OKF frontmatter layout (`type`, `title`, `description`, `version` for each document, with `docs/index.md` as the top-level rule index).
 
 Key references:

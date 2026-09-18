@@ -37,14 +37,61 @@ body {
   background: var(--md-default-bg-color);
 }
 
-.md-header,
+@media screen and (min-width: 768px) {
+  .md-search {
+    display: block;
+    margin-left: auto;
+    margin-right: 0.5rem;
+    min-width: 16rem;
+    opacity: 1;
+    visibility: visible;
+    width: 16rem;
+  }
+
+  .md-search__form {
+    border: 1px solid var(--panel-border);
+    display: block;
+    opacity: 1;
+    width: 100%;
+    visibility: visible;
+  }
+
+  .md-search__input {
+    box-sizing: border-box;
+    color: #1f1f1f;
+    display: block;
+    opacity: 1;
+    width: 100%;
+    visibility: visible;
+  }
+
+  .md-search__input::placeholder {
+    color: var(--text-soft);
+    opacity: 1;
+  }
+
+  .md-header__source {
+    margin-left: 0.5rem;
+  }
+}
+
 .md-tabs,
 .md-footer {
   display: none;
 }
 
-.md-main {
-  margin-top: 0;
+.md-header {
+  background: #ffffff;
+  color: #1f1f1f;
+  border-bottom: 1px solid var(--panel-border);
+  box-shadow: none;
+}
+
+.md-header__button,
+.md-header__title,
+.md-header__topic,
+.md-header .md-icon {
+  color: #1f1f1f;
 }
 
 .md-grid,
@@ -165,19 +212,41 @@ body {
 }
 
 @media screen and (max-width: 1219px) {
-  .md-header {
-    display: block;
-    background: #ffffff;
-    color: #1f1f1f;
-    border-bottom: 1px solid var(--panel-border);
-    box-shadow: none;
+  .md-header__title {
+    flex: 1;
   }
 
-  .md-header__button,
-  .md-header__title,
-  .md-header__topic,
-  .md-header .md-icon {
-    color: #1f1f1f;
+  .md-header [data-md-component="search"] {
+    display: block;
+    margin: 0;
+    min-width: 0;
+    opacity: 1;
+    visibility: visible;
+    width: 0;
+  }
+
+  .md-header__source {
+    align-items: center;
+    display: block;
+    height: 3rem;
+    margin: 0 0 0 auto;
+    max-width: 3rem;
+    width: 3rem;
+  }
+
+  .md-header__source .md-source {
+    align-items: center;
+    display: flex;
+    height: 3rem;
+    width: 3rem;
+  }
+
+  .md-header__source .md-source__repository {
+    display: none;
+  }
+
+  .md-header__source .md-source__icon {
+    margin: 0 0.5rem;
   }
 
   .md-sidebar--primary,
