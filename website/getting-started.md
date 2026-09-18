@@ -1,6 +1,8 @@
 # Getting started
 
-go-cask gives Go applications stable, content-derived object identities. You can store typed data, verify integrity, and swap storage backends without rewriting your application model.
+go-cask gives Go applications content-derived object identity: store typed
+data, verify integrity on demand, and swap storage backends behind a small
+interface.
 
 ## Install
 
@@ -8,9 +10,18 @@ go-cask gives Go applications stable, content-derived object identities. You can
 go get github.com/dmundt/go-cask
 ```
 
-## Minimal example
+## First store
 
-This example creates a filesystem-backed store and stores a Git-like blob object.
+Start with the complete generic-core program on the [home page](index.md).
+It defines one `Object[T]`, opens the filesystem backend, stores the object,
+retrieves it by `Digest`, and verifies the stored bytes. Keep one `Store[T]`
+per application object type.
+
+## Example: the `gitlike` reference model
+
+`gitlike` is a separate, reusable object model (blob/tree/commit/tag) built on
+the same `Store[T]`. Use it directly, or copy its pattern for your own graph
+shape.
 
 ```go
 package main
@@ -39,28 +50,28 @@ func main() {
         Tag:    jsoncodec.New[*gitlike.Tag](),
     })
 
-    blob, err := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
+    // Blobs.Put returns a cas.Digest — the content address of the blob.
+    blobDigest, err := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
     if err != nil {
         panic(err)
     }
 
-    fmt.Println(blob)
+    fmt.Println(blobDigest)
 }
 ```
 
 ## Important mental model
 
-The core idea is straightforward:
-
 - content determines object identity
-- the digest is the object key
+- the digest is the object key (it covers the type name and the encoded bytes)
 - the codec owns serialization
-- the backend owns storage
-- the application owns semantics
+- the backend owns storage and never checks the digest itself
+- verification is explicit (`cas.Verify`) — nothing verifies automatically on
+  every read
+- the application owns semantics: `cas` and `gitlike` do not know what a
+  "note" or a "commit" means to your app
 
 ## Run the examples
-
-The repository includes a few runnable examples that show different patterns.
 
 ```bash
 go run ./examples/files --help
@@ -68,19 +79,25 @@ go run ./examples/bloom
 go run ./examples/notes
 ```
 
+Each `examples/` program is self-contained and documented in its own
+`README.md`.
+
 ## Next steps
 
 - read the [architecture overview](architecture.md)
 - review the [concepts](concepts/index.md)
 - browse the [specifications](specs.md)
-- start from a small local backend and grow into custom codecs or hash policies as needed
+- start from a small filesystem-backed store and grow into custom codecs or
+  hash algorithms as needed
 
 ## CI and verification
 
-Before committing meaningful changes, run the project verification gate:
+Before committing meaningful changes, run the project verification gate. It is
+a Bash script (Git Bash or WSL on Windows):
 
 ```bash
 bash ./scripts/verify.sh
 ```
 
-This keeps the repository in a releasable state and catches common breakage early.
+This runs `gofmt`, `go vet`, the import-boundary checks, `govulncheck`, and
+the test suite with race detection and coverage — the same gate CI runs.

@@ -1,36 +1,35 @@
 # Content addressing
 
-Content-addressable storage means the bytes determine the key. A value is identified by what it contains, not by where it lives.
+Content-addressable storage means the bytes determine the key: an object is
+identified by what it contains, not by where it lives.
 
 ```text
-bytes -> hash -> digest -> object identity
+encoded bytes -> hash -> digest -> object identity
 ```
 
-A store can therefore answer questions like:
+A store can therefore answer:
 
-- is this object already present?
+- is this object already present? (`Exists`)
 - what is the canonical byte sequence for this value?
-- can I deduplicate data automatically?
+- can identical data dedupe automatically? (`PutDedup`)
 
 ## Why it matters
 
-- identical payloads deduplicate naturally
-- data is immutable by default
-- object identity stays stable across copies and renames
-- the data model remains simple and easy to audit
-
-## A simple diagram
-
-```mermaid
-flowchart LR
-    A["Bytes"] --> B["Hash function"]
-    B --> C["Digest"]
-    C --> D["Stable identity"]
-    D --> E["Stored object"]
-```
+- identical payloads dedupe naturally — same encoded bytes, same digest
+- objects are immutable in practice: changing content changes the digest,
+  there is no in-place update
+- object identity stays stable across renames and storage moves
+- the data model stays simple and easy to audit
 
 ## In go-cask
 
-The core stores bytes behind a digest. The object identity is not a database row or filename; it is the content-derived key. The application can then layer typed JSON, binary, or custom representations on top without altering the storage model itself.
+`Store.Put` encodes the value with a `Codec[T]`, wraps it in a small
+self-describing envelope (see [object format](../specifications/object-format.md)),
+and hashes the whole envelope with the caller's `Hasher`. The digest — not a
+database row or a filename — is the object's identity. Different
+applications can layer JSON, binary, or custom representations on the same
+underlying model without changing how identity works.
 
-This is the same conceptual model behind Git object storage and similar CAS systems: the object is identified by its content, not by a mutable pointer.
+This is the same conceptual model as Git's object store: content determines
+address, not a mutable pointer. go-cask keeps the same idea but stays generic
+about the object types on top.

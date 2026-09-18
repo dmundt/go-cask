@@ -1,29 +1,43 @@
 # Hashes
 
-A hash is how bytes become a stable object identifier.
+A hash turns bytes into a stable object identifier. go-cask's core names no
+algorithm — a `Digest` is just bytes — so the algorithm is a property of the
+client, injected as a `Hasher`.
 
-## Common choices
+## Shipped hashers
 
-The project keeps the core hash-agnostic and lets the caller choose the algorithm. The repository defaults to SHA-256 for its own clients.
+| Package | Algorithm | Notes |
+|---|---|---|
+| `cas/hash/sha256` | SHA-256 | the project's recommended default for new data |
+| `cas/hash/sha512` | SHA-512 | full-width alternative |
+| `cas/hash/sha512_256` | SHA-512/256 | fast, secure alternative to SHA-256 |
 
-Common choices include:
+MD5 and SHA-1 are not shipped; they are legacy/compatibility-only choices and
+are not recommended for new content-addressed data.
 
-- `SHA-256` — default, widely used, and easy to reason about
-- `SHA-512/256` — a strong default for secure content identity
-- custom algorithms — supported by the pluggable `Hasher` seam
+## Custom algorithms
+
+`Hasher` is a two-method interface:
+
+```go
+type Hasher interface {
+    Digest(r io.Reader) (Digest, error)
+    Validate(d Digest) error
+}
+```
+
+Any algorithm that fits this shape works — BLAKE3, a truncated digest, or a
+non-cryptographic key for tests — without changing the core or any backend.
 
 ## Why the core stays algorithm-agnostic
 
-The storage layer is intentionally generic: it stores bytes under a digest and does not care which algorithm produced that digest. That keeps the library reusable and avoids baking one trust model into the core.
+The storage layer stores bytes under a digest and does not care which
+algorithm produced it. That keeps `cas` reusable across trust models instead
+of baking one hashing policy into the storage contract.
 
-```mermaid
-flowchart LR
-    A["Input bytes"] --> B["Hasher"]
-    B --> C["Digest"]
-    C --> D["Content address"]
-    D --> E["Verify or retrieve"]
-```
+## Identity and verification are different concerns
 
-## Identity and verification
-
-A digest answers, "What is this object?" Verification answers, "Does the content still match?" go-cask models these as adjacent but distinct concerns so the application can pick the right policy without mixing identity with validation.
+A digest answers "what is this object?" Verification answers "does the
+stored content still match?" `cas.Verify` / `cas.NewVerifier` re-read an
+object and recompute its digest with the caller's `Hasher`; nothing verifies
+automatically on every `Get`.

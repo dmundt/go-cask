@@ -13,20 +13,22 @@ first-cycle exceptions recorded in `versioning.md` §1.
 ### Added
 
 - Added a public documentation site under [website/](website/) with a developer-focused landing page, architecture overview, concepts pages, and MkDocs Material navigation.
-- Enabled Mermaid-based diagrams in the site so architecture and content-addressing pages can show layered structure and object-flow clearly without ASCII-only clutter.
+- Added [website/AGENT.md](website/AGENT.md) to keep published documentation consistent: accurate public API examples, Markdown-only page content, and a restrained developer-docs visual system. It is excluded from published MkDocs output.
 - Added the GitHub Pages workflow as [\.github/workflows/website.yml](.github/workflows/website.yml) and kept the generated `site/` output excluded from version control via [.gitignore](.gitignore).
 
 ### Changed
 
 - Kept the repo’s normative implementation guidance in [AGENTS.md](AGENTS.md) and narrowed the public docs to user-facing explanation, while clarifying that the source-of-truth docs remain in [docs/specs/](docs/specs/) and the public website is a companion layer.
-- Updated the website guidance in [AGENTS.md](AGENTS.md) to prefer Mermaid diagrams and maintain clear architecture boundaries between the generic core, object-model layer, and storage backends.
-- Refined the public landing page and supporting docs in [website/](website/) to better serve GitHub, pkg.go.dev, and AI-driven discovery with clearer product framing, sharper technical language, and stronger calls to action.
+- Rebuilt the public site as task-oriented technical documentation: concise project fit, verified generic-core examples, clear boundaries between `cas` and `gitlike`, and focused concepts, recipes, FAQ, and specification pages.
+- Replaced visual landing-page components with a neutral, document-first design using strong typography, whitespace, thin dividers, and restrained accent colors.
+- Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
 
 ### Fixed
 
 - Removed the unsupported macOS arm64 runner from the CI platform matrix so the cross-platform validation set matches the repo's supported targets and avoids unnecessary OS churn in GitHub Actions.
 - Confirmed the MkDocs build passes with the Mermaid configuration enabled so the public docs site renders cleanly in CI.
-- Reworked the Mermaid diagrams across [website/](website/) to use balanced, valid flow syntax and more legible architecture explanations without brittle or malformed rendering.
+- Replaced repetitive Mermaid diagrams with one canonical, flat architecture data-flow diagram and removed HTML-based page layout from published Markdown.
+- Removed unsupported codec/hash claims, invalid sample API calls, placeholder benchmark content, and deployment-unsafe raw HTML documentation links.
 
 ## [v1.4.5] - 2026-09-17
 

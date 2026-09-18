@@ -1,31 +1,44 @@
 # Codecs
 
-A codec defines how a Go value becomes bytes and back again.
+A codec defines how a Go value becomes bytes and back:
 
-## Typical usage
+```go
+type Codec[T any] interface {
+    Encode(v T) ([]byte, error)
+    Decode(data []byte) (T, error)
+}
+```
 
-- JSON for readability and portability
-- CBOR or MsgPack for compact binary representations
-- custom formats for domain-specific payloads
-- wrapper codecs for compression or encryption
+The contract is a round trip: `Decode(Encode(v)) == v` for every storable
+value.
+
+## Shipped codecs
+
+| Package | Format | Notes |
+|---|---|---|
+| `cas/codec/json` | JSON | readable, portable, the usual default |
+| `cas/codec/gob` | Go `encoding/gob` | Go-only; not a stable cross-language format |
+| `cas/codec/binary` | compact binary | caller-supplied encode/decode functions |
+| `cas/codec/cbor` | compact CBOR subset | caller-supplied encode/decode functions |
+| `cas/codec/gzip`, `cas/codec/zlib`, `cas/codec/flate` | compression wrappers | wrap an inner codec; no encryption wrapper ships |
 
 ## Why codecs are separate
 
-The storage layer stores bytes. The application decides how to represent a domain object in those bytes. That keeps the storage core generic and leaves the object model in the hands of the caller.
+The storage layer stores bytes; the codec decides how a domain object becomes
+those bytes. That keeps the core generic and leaves representation choices —
+JSON for readability, a compact format for size — entirely with the caller.
 
-## Flow
+## Composing codecs
 
-```mermaid
-flowchart LR
-    A["Go value"] --> B["Codec"]
-    B --> C["Bytes"]
-    C --> D["Backend"]
-    D --> E["Stored object"]
+A compression wrapper takes an inner codec and re-encodes its output:
+
+```go
+inner := jsoncodec.New[*Note]()
+compressed := gzip.New(inner)
 ```
 
-```text
-Go value -> Encode() -> bytes -> backend
-bytes -> Decode() -> Go value
-```
-
-The repository ships a few standard codec choices and keeps the interface lean enough for custom implementations without changing the storage contract.
+`compressed.Encode` runs the inner codec first, then compresses the result;
+`Decode` reverses the order. Because the digest covers the final envelope,
+changing the codec stack changes the digest of otherwise-identical values —
+see the [custom codec recipe](../recipes/custom-codec.md) for a worked
+example.

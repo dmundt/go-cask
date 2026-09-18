@@ -1,40 +1,51 @@
 # Contributing
 
-This project is intentionally organized in layers so the core storage model stays generic while application behavior remains clear and explicit.
+The project is organized in layers so the core storage model stays generic
+while application behavior remains explicit. Keep changes aligned with that
+boundary.
 
 ## Repository layout
 
-- `cas/` — the generic storage core
+- `cas/` — the generic storage core (byte layer + typed layer)
+- `cas/backend/` — storage backends (filesystem, memory)
+- `cas/codec/` — codec implementations (JSON, gob, binary, CBOR, compression
+  wrappers)
+- `cas/hash/` — hasher implementations (SHA-256, SHA-512, SHA-512/256)
 - `gitlike/` — a reference object model built on top of `cas`
-- `cas/backend/` — storage backends such as filesystem and memory
 - `examples/` — runnable examples and usage patterns
-- `docs/specs/` — normative architecture and implementation documentation
-- `website/` — public documentation for developers and adopters
+- `internal/` — implementation details not importable outside the module
+- `docs/specs/` — the normative specification set
+- `website/` — this public documentation site
 
-## Public docs versus source-of-truth docs
+## Public docs versus normative specs
 
-The public website explains the project and its ideas. The normative implementation rules live in `docs/specs/` and in the repository root `AGENTS.md`.
+This website explains the project for adopters: architecture, concepts,
+recipes, and accurate code examples. The normative implementation rules that
+constrain agent- and human-assisted changes to the repository live in
+`docs/specs/` and the repository root `AGENTS.md`. Keep that distinction: the
+public site should never need a reader to open `AGENTS.md` to understand how
+to use the library.
 
-Keep the public site focused on:
+## Before you submit a change
 
-- architecture
-- content addressing
-- object identity
-- code examples
-- recipes and usage guidance
-
-Avoid exposing internal maintenance policy or agent instructions in the public documentation.
-
-## Verification
-
-Before submitting a change, run:
+Run the project verification gate (Bash — Git Bash or WSL on Windows):
 
 ```bash
 bash ./scripts/verify.sh
 ```
 
-This is the repository’s main preflight gate.
+This runs `gofmt`, `go mod tidy` drift checks, `go vet`, import-boundary
+checks, `govulncheck`, and the test suite with race detection and per-package
+coverage — the same gate CI runs on every push and pull request.
 
 ## Good contributions
 
-Good changes tend to be small, technical, and easy to reason about. Prefer clear examples, focused docs, and architecture-aligned improvements over broad rewording or marketing-heavy copy.
+Good changes are small, technical, and easy to reason about:
+
+- a focused fix or feature with tests that exercise it
+- documentation and code examples kept in sync with the actual API
+- changes that respect the existing layer boundaries (for example: `cas/`
+  never imports `examples/` or `gitlike/`)
+
+Update `CHANGELOG.md` for any user-visible change, following the existing
+Keep a Changelog structure.
