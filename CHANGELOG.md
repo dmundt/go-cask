@@ -14,6 +14,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Made `scripts/release.sh --publish` resolve the Windows `gh.exe` command when
   invoked through a POSIX shell.
+- Removed the stale custom-domain CNAME configuration so GitHub Pages uses its
+  documented default URL.
 
 ## [v1.4.6] - 2026-09-18
 
