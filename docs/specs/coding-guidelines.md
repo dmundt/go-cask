@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Go Coding Guidelines — go-cask
-description: Idiomatic Go, standard-library-only, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v18
+description: Idiomatic Go with a minimal dependency policy, no CSS/JS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
+version: v19
 ---
 
 # Go Coding Guidelines — go-cask
 
-Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; std-lib only; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
+Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; minimal dependencies; **no CSS, no JS**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
 
 ## 1. Go version and toolchain
 
@@ -27,7 +27,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 - Make zero values useful; `NewX` only when setup is non-trivial (e.g. `fs.New` must create directories).
 - Tests: table-driven with `testing`, `t.Run` subtests, `t.Parallel()` where safe.
 
-## 3. Standard library only
+## 3. Minimal dependency policy
 
 | Need | Std-lib answer |
 |---|---|
@@ -41,7 +41,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 | Testing/bench | `testing`, `net/http/httptest`, `testing/fstest` |
 | Data/strings | `slices`, `maps`, `cmp`, `container/list`, `container/heap`; `strings.CutLast`/`bytes.CutLast` (1.27) |
 
-Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution); any external dependency MUST be (1) justified in the commit/PR and (2) vendored (`go mod vendor`).
+Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution). The approved exception is `golang.org/x/sys`, used only by `cas/bloom/persistent` for portable mmap flushing where the standard library has no equivalent. Any new external dependency MUST be justified in the commit/PR and added to `go.mod`/`go.sum`; vendoring is optional unless required by an offline build environment.
 Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing goes through the injected `cas.Hasher` seam (the shipped `cas/hash/sha256` is the client-side default; the core names no algorithm and has no registry, cas-core §4.2); the only frontend exception is **htmx** (§5).
 
 ## 4. No CSS, no JavaScript

@@ -58,7 +58,30 @@ if [[ -z "$from_tag" ]]; then
   from_tag="$(git tag --sort=-version:refname | awk -v tag="$tag" '$0 != tag { print; exit }' || true)"
 fi
 
-notes="$(./scripts/release-notes.sh "$tag" "$from_tag")"
+if [[ "$publish" -eq 1 ]]; then
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "working tree must be clean before publishing a release" >&2
+    exit 1
+  fi
+  if ! git rev-parse --verify --quiet "${tag}^{commit}" >/dev/null; then
+    echo "release tag $tag does not exist locally" >&2
+    exit 1
+  fi
+  if [[ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]]; then
+    echo "release tag $tag must point at HEAD" >&2
+    exit 1
+  fi
+  if ! git rev-parse --verify --quiet 'main^{commit}' >/dev/null; then
+    echo "main branch does not exist locally" >&2
+    exit 1
+  fi
+  if ! git merge-base --is-ancestor "$tag" main; then
+    echo "release tag $tag must be reachable from main" >&2
+    exit 1
+  fi
+fi
+
+notes="$(bash ./scripts/release-notes.sh "$tag" "$from_tag")"
 
 if [[ "$dry_run" -eq 1 ]]; then
   printf '%s\n' "$notes"

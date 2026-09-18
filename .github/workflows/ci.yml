@@ -31,7 +31,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # std-lib-only module: no go.sum to key a module cache on
+          # Dependency set is small and verify checks module drift explicitly.
           cache: false
 
       - name: Verify repo

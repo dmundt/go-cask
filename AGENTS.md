@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v22
+version: v23
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -103,7 +103,7 @@ Related specs that also constrain work in this repo:
   flows, concurrency, and the extension contract); the reference
   implementation of this repo.
 - `docs/specs/coding-guidelines.md` — idiomatic Go,
-  standard-library-only, no CSS/JS, `html/template` + htmx, raw HTML,
+  minimal-dependency policy, no CSS/JS, `html/template` + htmx, raw HTML,
   doc-comment rules, Go 1.27, latest generics.
 - `docs/specs/viewer-security.md` — security
   requirements for the embedded viewer (secure-by-default, authn/authz,
@@ -454,7 +454,7 @@ gofmt -l .
 
 ## Constraints and Conventions
 
-- Go **1.24+** required (generics, enhanced routing, `omitzero` JSON tags, stdlib-only); repo toolchain is 1.27. Module: the repo
+- Go **1.24+** required (generics, enhanced routing, `omitzero` JSON tags); repo toolchain is 1.27. The approved `golang.org/x/sys` dependency supports portable mmap flushing in `cas/bloom/persistent`; every other dependency requires the coding-guidelines §3 exception process. Module: the repo
   root; core library lives in `cas/` as `package cas`.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the

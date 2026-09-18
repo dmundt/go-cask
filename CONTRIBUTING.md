@@ -61,7 +61,8 @@ gofmt -l .                     # must be empty
 
 Rules from the specs that always apply:
 
-- Standard library only (external deps need justification + vendoring) —
+- Minimal dependency policy: `golang.org/x/sys` is approved only for portable
+  mmap flushing; every other external dependency needs justification under
   `coding-guidelines` §3.
 - No `any`/reflection in exported APIs — `cas-core` §2, `coding-guidelines`
   §8.

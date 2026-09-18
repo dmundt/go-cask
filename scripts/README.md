@@ -28,6 +28,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 - `release.sh --publish` resolves either `gh` or `gh.exe`, so it works in
   POSIX shells on Windows as well as native Linux and macOS shells, and pipes
   release notes instead of passing a shell-specific temporary-file path.
+- Publish only from a clean `main` checkout: the release tag must exist, point
+  at `HEAD`, and be reachable from `main`.
 - Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.

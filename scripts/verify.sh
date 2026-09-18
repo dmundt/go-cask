@@ -195,31 +195,46 @@ done
 python3 - "$repo_root" <<'PY'
 import pathlib
 import re
+import subprocess
 import sys
+from urllib.parse import unquote, urlsplit
 
-root = pathlib.Path(sys.argv[1]) / 'docs' / 'specs'
-pat = re.compile(r'(?<!\!)\[[^\]]+\]\((?P<target>[^)\s]+)\)|^\[[^\]]+\]:\s*(?P<target2>\S+)')
+repo_root = pathlib.Path(sys.argv[1]).resolve()
+inline = re.compile(
+    r'(?<!!)\[[^\]]+\]\(\s*(?:<(?P<angled>[^>]+)>|(?P<target>[^\s)]+))'
+)
+reference = re.compile(r'^\s*\[[^\]]+\]:\s*(?P<target>\S+)', re.MULTILINE)
+inline_code = re.compile(r'`[^`]*`')
 errors = []
-for path in sorted(root.glob('*.md')):
-    text = path.read_text(encoding='utf-8', errors='ignore')
-    for match in pat.finditer(text):
-        target = (match.group('target') or match.group('target2') or '').strip()
-        if not target or target.startswith(('http://', 'https://', 'mailto:', '#')):
+files = subprocess.check_output(
+    ['git', 'ls-files', '*.md'], cwd=repo_root, text=True
+).splitlines()
+for filename in sorted(files):
+    path = repo_root / filename
+    lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
+    prose = []
+    in_fence = False
+    for line in lines:
+        if line.lstrip().startswith(('```', '~~~')):
+            in_fence = not in_fence
             continue
-        target = target.split('#', 1)[0].split('?', 1)[0]
-        if target.startswith('/'):
-            target = root.parent.parent / target.lstrip('/')
+        if not in_fence:
+            prose.append(line)
+    text = inline_code.sub('', '\n'.join(prose))
+    for match in list(inline.finditer(text)) + list(reference.finditer(text)):
+        target = (match.group('angled') or match.group('target') or '').strip()
+        parsed = urlsplit(target)
+        if not parsed.path or parsed.scheme or parsed.netloc or target.startswith('#'):
+            continue
+        if parsed.path.startswith('/'):
+            target_path = repo_root / unquote(parsed.path.lstrip('/'))
         else:
-            target = path.parent / target
-        if not target.exists():
-            errors.append(target.as_posix())
-for ref in sorted(set(errors)):
-    try:
-        rel = pathlib.Path(ref).resolve().relative_to(root.parent.parent.resolve())
-        label = rel.as_posix()
-    except ValueError:
-        label = pathlib.Path(ref).as_posix()
-    print(f'broken reference: {label}', file=sys.stderr)
+            target_path = path.parent / unquote(parsed.path)
+        if not target_path.exists():
+            errors.append(f'{filename}: {target}')
+for error in sorted(set(errors)):
+    print(f'broken Markdown reference: {error}', file=sys.stderr)
+if errors:
     sys.exit(1)
 PY
 cd "$repo_root"

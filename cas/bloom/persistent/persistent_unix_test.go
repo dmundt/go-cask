@@ -30,8 +30,18 @@ func TestPersistentMmapUnixBranches(t *testing.T) {
 	if len(data) != len(want) {
 		t.Fatalf("mmapBytes(file,%d) len = %d, want %d", len(want), len(data), len(want))
 	}
-	if err := closeMapped(data); err != nil {
+	addr := slicePtr(data)
+	if _, ok := mappedViews.Load(addr); !ok {
+		t.Fatal("mmapBytes did not register mapped view")
+	}
+	if err := flushMappedByAddr(addr, len(data)); err != nil {
 		t.Fatal(err)
+	}
+	if err := closeMappedByAddr(addr, len(data)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mappedViews.Load(addr); ok {
+		t.Fatal("closeMappedByAddr did not remove mapped view")
 	}
 	if err := closeMapped(nil); err != nil {
 		t.Fatal(err)

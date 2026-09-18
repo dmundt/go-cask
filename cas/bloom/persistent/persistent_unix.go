@@ -31,6 +31,7 @@ func mmapBytes(file *os.File, size int) (bool, []byte, error) {
 	for _, prot := range []int{syscall.PROT_READ | syscall.PROT_WRITE, syscall.PROT_READ} {
 		data, err := syscall.Mmap(int(file.Fd()), 0, size, prot, syscall.MAP_SHARED)
 		if err == nil {
+			mappedViews.Store(slicePtr(data), data)
 			return true, data, nil
 		}
 		if prot == syscall.PROT_READ|syscall.PROT_WRITE && err != nil {
@@ -59,7 +60,12 @@ func closeMapped(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	if err := syscall.Munmap(data); err != nil && !errors.Is(err, syscall.EINVAL) {
+	addr := slicePtr(data)
+	view, ok := mappedViews.LoadAndDelete(addr)
+	if !ok {
+		return nil
+	}
+	if err := syscall.Munmap(view.([]byte)); err != nil && !errors.Is(err, syscall.EINVAL) {
 		return err
 	}
 	return nil
@@ -76,10 +82,13 @@ func closeMappedByAddr(addr uintptr, size int) error {
 	if size <= 0 || addr == 0 {
 		return nil
 	}
-	if _, ok := mappedViews.Load(addr); !ok {
+	view, ok := mappedViews.LoadAndDelete(addr)
+	if !ok {
 		return nil
 	}
-	mappedViews.Delete(addr)
+	if err := syscall.Munmap(view.([]byte)); err != nil && !errors.Is(err, syscall.EINVAL) {
+		return err
+	}
 	return nil
 }
 
@@ -87,8 +96,9 @@ func flushMappedByAddr(addr uintptr, size int) error {
 	if size <= 0 || addr == 0 {
 		return nil
 	}
-	if _, ok := mappedViews.Load(addr); !ok {
+	view, ok := mappedViews.Load(addr)
+	if !ok {
 		return nil
 	}
-	return nil
+	return flushMapped(view.([]byte))
 }
