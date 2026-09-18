@@ -27,6 +27,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Standardized content-addressable terminology: use “store” for CASK and
+  concrete implementations, and “storage” for the general technique.
 - Marked shell automation as executable so verification and release commands
   work when invoked directly on POSIX systems.
 - Pinned GitHub Actions and `govulncheck` revisions, limited Pages deployments

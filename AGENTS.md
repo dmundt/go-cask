@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v23
+version: v24
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -11,6 +11,15 @@ version: v23
 Raw HTML is strictly forbidden in every Markdown file in this repository.
 Documentation MUST use valid Markdown syntax only; do not add HTML tags,
 comments, layout wrappers, or embedded HTML blocks.
+
+## Content-addressable terminology
+
+Use **content-addressable store** for CASK, go-cask, the `cas` package, a
+`Backend`, or any concrete implementation. Use **content-addressable storage**
+for the general technique, architecture pattern, or conceptual explanation.
+Expand `CAS` as **Content-Addressable Store** and `CASK` as **Content-Addressable
+Store Kit**. Do not replace one phrase with the other mechanically when context
+requires a different scope.
 
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final

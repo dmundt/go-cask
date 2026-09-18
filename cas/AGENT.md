@@ -6,6 +6,10 @@ This package-local guide applies to the core `cas` subtree.
 
 `cas` is the generic, hash-agnostic content-addressable store core. It is intentionally smaller and more reusable than any one application model, backend, or codec.
 
+Use **content-addressable store** for the `cas` package and concrete backends.
+Use **content-addressable storage** only for the general technique or
+architecture pattern.
+
 ## Core rules
 
 - Keep `cas` algorithm-agnostic. Do not add a default hash algorithm to the core package.

@@ -1,6 +1,6 @@
 # Concepts
 
-go-cask is a content-addressable storage library for Go: the digest of an
+go-cask is a content-addressable store for Go: the digest of an
 object's encoded bytes is its identity.
 
 ## Why the model matters
