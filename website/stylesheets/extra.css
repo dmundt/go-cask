@@ -12,6 +12,7 @@
   --panel-surface: #f6f6f6;
   --panel-border: #d1d1d1;
   --text-soft: #4b5563;
+  --header-surface: #ffffff;
 }
 
 [data-md-color-scheme="slate"] {
@@ -23,6 +24,7 @@
   --panel-surface: #111827;
   --panel-border: #1f2937;
   --text-soft: #cbd5e1;
+  --header-surface: #0f172a;
 }
 
 body {
@@ -58,7 +60,7 @@ body {
 
   .md-search__input {
     box-sizing: border-box;
-    color: #1f1f1f;
+    color: var(--md-default-fg-color);
     display: block;
     opacity: 1;
     width: 100%;
@@ -81,8 +83,8 @@ body {
 }
 
 .md-header {
-  background: #ffffff;
-  color: #1f1f1f;
+  background: var(--header-surface);
+  color: var(--md-default-fg-color);
   border-bottom: 1px solid var(--panel-border);
   box-shadow: none;
 }
@@ -91,7 +93,7 @@ body {
 .md-header__title,
 .md-header__topic,
 .md-header .md-icon {
-  color: #1f1f1f;
+  color: var(--md-default-fg-color);
 }
 
 .md-grid,
@@ -112,7 +114,7 @@ body {
 
 .md-typeset h1 {
   margin: 0 0 1.25rem;
-  color: #1f1f1f;
+  color: var(--md-default-fg-color);
   font-size: clamp(2.1rem, 3.5vw, 3rem);
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -123,7 +125,7 @@ body {
   margin-top: 2.75rem;
   padding-top: 1rem;
   border-top: 1px solid var(--panel-border);
-  color: #1f1f1f;
+  color: var(--md-default-fg-color);
   font-size: 1.55rem;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -131,7 +133,7 @@ body {
 }
 
 .md-typeset h3 {
-  color: #303030;
+  color: var(--md-default-fg-color);
   font-size: 1.1rem;
   font-weight: 600;
   line-height: 1.35;
@@ -155,15 +157,10 @@ body {
 .md-typeset table th,
 .md-typeset table td {
   border: 1px solid var(--panel-border);
-  background: #ffffff;
+  background: var(--panel-surface);
   font-size: 0.82rem;
   line-height: 1.55;
   vertical-align: top;
-}
-
-[data-md-color-scheme="slate"] .md-typeset table th,
-[data-md-color-scheme="slate"] .md-typeset table td {
-  background: rgba(17, 24, 39, 0.85);
 }
 
 .md-typeset table th {
@@ -252,7 +249,7 @@ body {
   .md-sidebar--primary,
   .md-sidebar--primary .md-sidebar__scrollwrap,
   .md-sidebar--primary .md-sidebar__inner {
-    background: #ffffff;
+    background: var(--md-default-bg-color);
   }
 
   .md-sidebar--primary .md-nav--primary > .md-nav__source {
@@ -260,7 +257,7 @@ body {
   }
 
   .md-sidebar--primary .md-nav--primary > .md-nav__title {
-    background: #ffffff;
+    background: var(--header-surface);
     color: var(--text-soft);
     display: block;
     font-size: 0.78rem;

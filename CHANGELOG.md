@@ -12,6 +12,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Fixed unreadable website text in dark theme by applying scheme-aware colors to
+  headers, navigation, search, headings, and tables.
 - Made `scripts/release.sh --publish` resolve the Windows `gh.exe` command when
   invoked through a POSIX shell.
 - Removed the stale custom-domain CNAME configuration so GitHub Pages uses its
