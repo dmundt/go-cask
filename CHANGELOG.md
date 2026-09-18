@@ -47,6 +47,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
   [`.github/AGENT.md`](.github/AGENT.md).
 - Documented the local signed-commit workflow required for protected pull
   requests.
+- Required a full verification and coverage preflight before creating or
+  updating pull requests and before merging them.
 - Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
 - Removed raw HTML from Markdown documentation and templates.
 - Added deterministic binary `mem.Backend.Snapshot` and `Restore` methods for

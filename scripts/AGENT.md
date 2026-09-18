@@ -47,5 +47,7 @@ If the change affects release automation or changelog sync, also verify the gene
 When repository policy requires signed commits, rebuild PR branches locally from
 current `main`; never use GitHub's server-side rebase or update-branch operation.
 Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, and push with `git push --force-with-lease`. Enable
-auto-merge only after signature verification and required checks pass.
+`git verify-commit`, and push with `git push --force-with-lease`. Before every
+PR creation or update, run `./scripts/verify.sh` and confirm all configured
+coverage thresholds pass. Enable auto-merge or merge only after signature
+verification, required checks, and coverage checks pass.
