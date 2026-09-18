@@ -339,6 +339,15 @@ Every implementation rejects an absent digest with `ErrInvalidDigest` instead of
 
 This interface is the **backend extension point** — any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2).
 
+Portable state transfer is intentionally a helper above this interface:
+`cas/backend/snapshot.Export` writes a deterministic archive of raw digests and
+payloads, and `snapshot.Import` loads that archive into any backend. These
+helpers do not add methods to `Backend`, do not invoke a hasher or typed codec,
+and cannot promise atomic replacement for arbitrary implementations.
+Backend-specific APIs may provide stronger atomic restore guarantees; for
+example, `mem.Backend.Restore` validates the complete archive before swapping
+its map.
+
 ### 4.4 `fs.Backend` — the filesystem backend (`cas/backend/fs`)
 
 **On-disk layout (fan-out, Git-like by default):** objects live at `<base>/<fan-out directories>/<full-lowercase-hex-digest>`. There is **no algorithm directory** — the backend does not know which algorithm produced a key (§4.2) — and a digest is hex by construction (`Digest.UnmarshalText`), so no path element needs sanitizing (the old algorithm-name sanitizer is gone). The file name is always the **full hex digest**; fan-out dirs are successive digest chunks, controlled by:

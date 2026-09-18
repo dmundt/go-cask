@@ -37,3 +37,18 @@ backend. Records contain raw digests and payloads; typed codecs and hashers are
 not involved. `Restore` validates the complete input before replacing state,
 and a configured `WithMaxSize` limit applies. Treat snapshots as test,
 replay, and diagnostic artifacts, not as a cross-version backup format.
+
+For transfer between memory, filesystem, and other backends, use the portable
+`cas/backend/snapshot` package:
+
+```go
+if err := snapshot.Export(ctx, raw, writer); err != nil {
+    // handle error
+}
+if err := snapshot.Import(ctx, destination, reader); err != nil {
+    // handle error
+}
+```
+
+Portable import writes objects through the destination backend and therefore
+does not provide atomic replacement if a later record fails.
