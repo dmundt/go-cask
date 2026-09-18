@@ -21,6 +21,14 @@ Expand `CAS` as **Content-Addressable Store** and `CASK` as **Content-Addressabl
 Store Kit**. Do not replace one phrase with the other mechanically when context
 requires a different scope.
 
+## Signed pull-request workflow
+
+For repositories requiring signed commits, agents MUST never use GitHub's
+server-side rebase or update-branch operation. Rebuild each PR branch locally
+from current `main`, apply changes with `git cherry-pick -S`, verify every
+resulting head commit with `git verify-commit`, and push with
+`git push --force-with-lease`. Enable auto-merge only after signature
+verification and required checks pass.
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,

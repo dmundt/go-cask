@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/design/)
 description: This file governs docs/design/ — non-normative design docs (core-overview pointer, viewer-brief, mockups). Follows the conventions in docs/AGENT.md.
-version: v3
+version: v4
 tags: [go-cask]
 status: stable
 ---
@@ -42,3 +42,11 @@ version: v1
 - These docs are **non-normative** — they inform but never override the instruction specs; on conflict the instruction spec wins (`docs/specs/AGENT.md` §8).
 - When the viewer-brief's outcomes are folded back into the viewer specs, delete the brief (prefer extending an existing file over a parallel one).
 - `docs/design/` entries are listed in the design docs; no section-10-style inventory needed.
+
+## 5. Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.

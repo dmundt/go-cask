@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Examples
 description: Rules for runnable example programs under examples/, including folder conventions, README requirements, test expectations, and the allowed scope of teaching code.
-version: v1
+version: v2
 ---
 
 # AGENT — go-cask Examples
@@ -70,3 +70,11 @@ Keep the README short and direct. It should teach pattern and scope, not duplica
 - [ ] Code uses public APIs only and does not modify `cas`/`gitlike` for convenience
 - [ ] Tests compile and verify the demonstrated behavior
 - [ ] Example remains consistent with repo-level guidance and the examples spec
+
+## 8. Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.

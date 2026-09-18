@@ -25,6 +25,14 @@ enabled:
 - Reject force-pushes and branch deletion.
 - Do not configure bypass allowances.
 
+## Signed pull-request workflow
+
+When signed commits are required, rebuild PR branches locally from current
+`main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.
+
 ## Merge and security settings
 
 - Allow squash merges only. Keep merge commits and rebase merges disabled.

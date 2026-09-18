@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v9
+version: v10
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -87,3 +87,11 @@ Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] On add/remove/rename, `docs/index.md` and the parent `index.md` updated
 - [ ] Mermaid blocks balanced; all code fences tagged
 - [ ] LF endings, UTF-8
+
+## 9. Signed pull-request workflow
+
+When repository policy requires signed commits, rebuild PR branches locally from
+current `main`; never use GitHub's server-side rebase or update-branch operation.
+Apply changes with `git cherry-pick -S`, verify every head commit with
+`git verify-commit`, and push with `git push --force-with-lease`. Enable
+auto-merge only after signature verification and required checks pass.
