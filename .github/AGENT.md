@@ -17,9 +17,8 @@ enabled:
 - Require one approving review, dismiss stale approvals, and require approval
   after the last push.
 - Require resolved review conversations.
-- Require current (`strict`) status checks: `verify`, `security`,
-  `linux-amd64`, `linux-arm64`, `windows-amd64`, `Analyze (actions)`, and
-  `Analyze (go)`.
+- Require current (`strict`) status checks: `verify`, `security`, `platforms`,
+  `Analyze (actions)`, and `Analyze (go)`.
 - Enforce protections for administrators, require signed commits, and require
   linear history.
 - Reject force-pushes and branch deletion.
@@ -53,7 +52,17 @@ verification, required checks, and coverage checks pass.
 - Pin third-party actions to full commit SHAs with a readable version comment.
 - Keep Dependabot updates configured for GitHub Actions, Go modules, and Python
   documentation dependencies.
-- CI runs on code changes; Pages runs only for public documentation inputs.
+- CI and CodeQL validate pull requests and support manual runs; CodeQL also
+  performs its weekly scheduled scan. Protected `main` does not repeat the
+  same validation after a checked pull request is merged.
+- Scope security scans to Go- and security-relevant changes, and platform jobs
+  to Go-relevant changes. Keep native Windows amd64 and Linux arm64 coverage;
+  the primary `verify` job already provides Linux amd64 build, race, test, and
+  coverage validation. Require the always-running `platforms` aggregate check
+  so conditional matrix jobs still gate Go changes without blocking docs-only
+  changes.
+- Cancel superseded pull-request runs through workflow concurrency.
+- Pages runs only for public documentation inputs.
 - Keep required-check names synchronized with the branch protection settings
   when workflow job names change.
 

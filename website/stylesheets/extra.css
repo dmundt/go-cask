@@ -1,4 +1,6 @@
 :root {
+  --md-text-font: "Segoe UI", system-ui, sans-serif;
+  --md-code-font: Consolas, "Liberation Mono", monospace;
   --md-primary-fg-color: #263238;
   --md-primary-fg-color--light: #37474f;
   --md-primary-fg-color--dark: #1b2529;
@@ -77,9 +79,33 @@ body {
   }
 }
 
-.md-tabs,
-.md-footer {
+.md-tabs {
   display: none;
+}
+
+.md-footer-meta {
+  background: var(--header-surface);
+  border-top: 1px solid var(--panel-border);
+}
+
+.md-footer-meta .md-copyright,
+.md-footer-meta .md-copyright__highlight,
+.md-footer-meta .md-social__link {
+  color: var(--text-soft);
+}
+
+.md-footer-meta .md-copyright {
+  font-size: 0.78rem;
+}
+
+html .md-footer-meta .md-copyright__highlight a {
+  color: var(--md-accent-fg-color);
+}
+
+html .md-footer-meta.md-typeset .md-copyright__highlight a:focus,
+html .md-footer-meta.md-typeset .md-copyright__highlight a:hover {
+  color: var(--md-accent-fg-color);
+  text-decoration: underline;
 }
 
 .md-header {

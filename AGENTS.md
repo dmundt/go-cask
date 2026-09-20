@@ -60,10 +60,10 @@ and coverage checks pass.
 > running `./scripts/release-notes.sh <new-tag> <previous-tag>`, include the
 > full changelog link used by prior releases (`Full Changelog:` + compare URL),
 > and keep the release body aligned with the shipped changelog sections. The
-> workflow uses `actions/checkout@v5` and `actions/setup-go@v6`, then runs the
-> `verify` gate via `./scripts/verify.sh` and the `platform-matrix` job across
-> Linux/Windows/macOS targets. Treat this as a required operational step for
-> all follow-up work, not an optional cleanup.
+> workflow uses `actions/checkout@v7` and `actions/setup-go@v7`, then runs the
+> `verify` gate via `./scripts/verify.sh`; Go-relevant pull requests also run
+> native Linux arm64 and Windows amd64 matrix jobs. Treat this as a required
+> operational step for all follow-up work, not an optional cleanup.
 
 ## Table of contents
 

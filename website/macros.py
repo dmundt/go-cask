@@ -10,4 +10,7 @@ import os
 
 def define_env(env):
     """Register variables available to `{{ ... }}` expressions in Markdown."""
-    env.variables["IMPRESSUM"] = os.environ.get("IMPRESSUM", "")
+    impressum = os.environ.get("IMPRESSUM", "")
+    if not impressum.strip():
+        raise RuntimeError("IMPRESSUM environment variable must not be empty")
+    env.variables["IMPRESSUM"] = impressum

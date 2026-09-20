@@ -11,7 +11,7 @@ changed=false
 while IFS= read -r path; do
   changed=true
   case "$path" in
-    *.md|docs/*|website/*|mkdocs.yml|requirements-docs.txt|requirements-docs.lock) ;;
+    *.md|docs/*|website/*|mkdocs.yml|requirements-docs.txt|requirements-docs.lock|.github/workflows/website.yml) ;;
     *) docs_only=false; break ;;
   esac
 done < <(git diff --name-only "$1" "$2")
