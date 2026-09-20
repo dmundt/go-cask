@@ -30,6 +30,7 @@ nav:
       - Contributing: contributing.md
       - FAQ: faq.md
       - Changelog: changelog.md
+  - Impressum: impressum.md
 
 theme:
   name: material
