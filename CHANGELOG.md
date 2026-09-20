@@ -35,6 +35,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Moved the Impressum link from the documentation sidebar to a global footer
   with copyright, privacy, and GitHub links.
+- Centered the website footer text and aligned desktop search with the header's
+  right content edge.
 - Vendored Mermaid 10.9.5 for documentation diagrams instead of loading it
   from a third-party CDN.
 - Added a concise privacy notice and disabled remote Google Fonts in favor of

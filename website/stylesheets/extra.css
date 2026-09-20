@@ -45,7 +45,7 @@ body {
   .md-search {
     display: block;
     margin-left: auto;
-    margin-right: 0.5rem;
+    margin-right: 0;
     min-width: 16rem;
     opacity: 1;
     visibility: visible;
@@ -88,6 +88,10 @@ body {
   border-top: 1px solid var(--panel-border);
 }
 
+.md-footer-meta__inner {
+  justify-content: center;
+}
+
 .md-footer-meta .md-copyright,
 .md-footer-meta .md-copyright__highlight,
 .md-footer-meta .md-social__link {
@@ -96,6 +100,9 @@ body {
 
 .md-footer-meta .md-copyright {
   font-size: 0.78rem;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
 }
 
 html .md-footer-meta .md-copyright__highlight a {
