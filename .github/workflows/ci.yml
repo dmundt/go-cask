@@ -169,3 +169,21 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: go test ./...
+
+  platforms:
+    name: platforms
+    needs: [verify, security, platform-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify required platform results
+        shell: bash
+        env:
+          GO_CHANGED: ${{ needs.verify.outputs.go_changed }}
+          PLATFORM_RESULT: ${{ needs.platform-matrix.result }}
+        run: |
+          if [[ "$GO_CHANGED" == "true" && "$PLATFORM_RESULT" != "success" ]]; then
+            echo "platform matrix result: $PLATFORM_RESULT" >&2
+            exit 1
+          fi
