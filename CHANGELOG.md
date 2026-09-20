@@ -58,6 +58,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
   interface.
 - Audited exported Go APIs and completed identifier-led GoDoc for public
   types, fields, constants, functions, and methods across the repository.
+- Regenerated `requirements-docs.lock` with Python 3.12 to pick up
+  `pymdown-extensions` 12.0.1, matching the website workflow's interpreter and
+  the `>=12.0,<13` constraint in `requirements-docs.txt`.
 - Applied tiered coverage gates: 90% for core storage packages and 80% for
   supporting caches, codecs, hash clients, `gitlike`, and `internal/index`.
 
