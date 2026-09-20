@@ -108,7 +108,11 @@ if go list -deps ./gitlike | grep -E 'cas/codec' >/dev/null 2>&1; then
 fi
 
 echo "== govulncheck =="
-./scripts/security.sh
+if [[ "${VERIFY_SKIP_SECURITY:-false}" == "true" ]]; then
+  echo "skipped (run by the separate CI security job)"
+else
+  ./scripts/security.sh
+fi
 
 echo "== test -race + coverage gate =="
 fail=0

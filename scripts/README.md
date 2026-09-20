@@ -37,6 +37,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
 - `security.sh` installs the pinned `govulncheck` version so local and CI vulnerability scans are reproducible. Update `GOVULNCHECK_VERSION` deliberately.
+- CI sets `VERIFY_SKIP_SECURITY=true` because its required `security` job runs
+  the same pinned scan separately; local `verify.sh` runs it by default.
 - The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
 - Documentation CI installs [requirements-docs.lock](../requirements-docs.lock) with
   hash verification. Regenerate it with the command recorded in

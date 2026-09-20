@@ -11,28 +11,30 @@ env:
 #   testing-strategy §5    — -race, tiered coverage gates, fuzz smoke
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
-# Go steps activate automatically once Go code exists (guarded by
-# hashFiles('**/*.go')); the doc-integrity step always runs.
+# The required verify context always runs. Expensive security and native
+# platform jobs run only for changes that can affect them.
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+      go_changed: ${{ steps.scope.outputs.go_changed }}
+      website_changed: ${{ steps.scope.outputs.website_changed }}
+      security_changed: ${{ steps.scope.outputs.security_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          # Dependency set is small and verify checks module drift explicitly.
-          cache: false
 
       - name: Determine verification scope
         id: scope
@@ -41,10 +43,47 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "go_changed=true" >> "$GITHUB_OUTPUT"
+            echo "website_changed=true" >> "$GITHUB_OUTPUT"
+            echo "security_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
           echo "docs_only=$(bash ./scripts/docs-only.sh "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
+
+          if grep -Eq '(^|/).*\.go$|^go\.(mod|sum)$' <<< "$changed_files"; then
+            echo "go_changed=true" >> "$GITHUB_OUTPUT"
+            echo "security_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go_changed=false" >> "$GITHUB_OUTPUT"
+            if grep -Eq '^scripts/(security|verify)\.sh$|^\.github/workflows/ci\.yml$' <<< "$changed_files"; then
+              echo "security_changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "security_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+          if grep -Eq '^website/|^mkdocs\.yml$|^requirements-docs\.(txt|lock)$|^\.github/workflows/website\.yml$' <<< "$changed_files"; then
+            echo "website_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "website_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.scope.outputs.docs_only != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # Dependency set is small and verify checks module drift explicitly.
+          cache: false
 
       - name: Verify repo
         if: steps.scope.outputs.docs_only != 'true' && hashFiles('**/*.go') != ''
+        env:
+          VERIFY_SKIP_SECURITY: 'true'
         run: bash ./scripts/verify.sh
 
       - name: Verify documentation-only change
@@ -54,8 +93,27 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
+      - name: Set up Python
+        if: steps.scope.outputs.website_changed == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install documentation dependencies
+        if: steps.scope.outputs.website_changed == 'true'
+        run: python -m pip install --require-hashes -r requirements-docs.lock
+
+      - name: Verify documentation site
+        if: steps.scope.outputs.website_changed == 'true'
+        env:
+          IMPRESSUM: CI verification address
+        run: python -m mkdocs build --strict
+
   security:
+    needs: verify
+    if: needs.verify.outputs.security_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -70,17 +128,14 @@ jobs:
 
   platform-matrix:
     needs: [verify, security]
+    if: needs.verify.outputs.go_changed == 'true'
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: linux-amd64
-            runs-on: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            smoke: true
           - name: linux-arm64
             runs-on: ubuntu-24.04-arm
             goos: linux
