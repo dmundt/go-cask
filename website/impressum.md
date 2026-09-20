@@ -2,6 +2,6 @@
 
 Angaben gemäß § 5 DDG:
 
-{{ IMPRESSUM }}
+{{ IMPRESSUM | replace('\n', '  \n') }}
 
 E-Mail: [mail@go-cask.dev](mailto:mail@go-cask.dev)
