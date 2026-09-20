@@ -12,6 +12,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Fixed the Impressum page rendering the literal `{{ IMPRESSUM }}` placeholder
+  instead of the injected legal notice, by registering `mkdocs-macros-plugin`
+  and a `website/macros.py` hook that exposes the `IMPRESSUM` build-time
+  environment variable to the page.
 - Fixed unreadable website text in dark theme by applying scheme-aware colors to
   headers, navigation, search, headings, and tables.
 - Made `scripts/release.sh --publish` resolve the Windows `gh.exe` command when

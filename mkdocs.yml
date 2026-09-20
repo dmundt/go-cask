@@ -7,7 +7,9 @@ edit_uri: edit/main/website/
 
 docs_dir: website
 site_dir: site
-exclude_docs: AGENT.md
+exclude_docs: |
+  AGENT.md
+  macros.py
 
 nav:
   - Overview: index.md
@@ -54,6 +56,8 @@ theme:
 
 plugins:
   - search
+  - macros:
+      module_name: website/macros
 
 markdown_extensions:
   - admonition

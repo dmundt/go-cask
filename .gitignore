@@ -3,7 +3,6 @@
 *.exe
 *.test
 *.out
-coverage.out
 *.prof
 .gocache/
 .gopath/
@@ -22,3 +21,8 @@ coverage.out
 
 # Generated MkDocs site
 /site/
+
+# Python (mkdocs-macros-plugin hook module)
+__pycache__/
+*.pyc
+.venv*/
