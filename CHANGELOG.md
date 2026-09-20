@@ -12,6 +12,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Preserved line breaks in the injected Impressum address instead of collapsing
+  it into one line.
 - Fixed the Impressum page rendering the literal `{{ IMPRESSUM }}` placeholder
   instead of the injected legal notice, by registering `mkdocs-macros-plugin`
   and a `website/macros.py` hook that exposes the `IMPRESSUM` build-time
