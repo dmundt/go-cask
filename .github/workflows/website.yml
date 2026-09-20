@@ -36,9 +36,17 @@ jobs:
       - name: Install MkDocs dependencies
         run: python -m pip install --require-hashes -r requirements-docs.lock
 
+      - name: Validate Impressum secret
+        env:
+          IMPRESSUM: ${{ secrets.IMPRESSUM_HTML }}
+        run: >-
+          python -c "import os, sys;
+          sys.exit(0 if os.environ['IMPRESSUM'].strip()
+          else 'IMPRESSUM_HTML secret must not be empty.')"
+
       - name: Build site
         env:
-            IMPRESSUM: ${{ secrets.IMPRESSUM_HTML }}
+          IMPRESSUM: ${{ secrets.IMPRESSUM_HTML }}
         run: mkdocs build --strict
 
       - name: Upload artifact

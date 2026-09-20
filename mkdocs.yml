@@ -1,9 +1,7 @@
 site_name: go-cask
 site_description: Content-addressable storage for Go
-site_url: https://dmundt.github.io/go-cask/
-repo_url: https://github.com/dmundt/go-cask
-repo_name: dmundt/go-cask
-edit_uri: edit/main/website/
+site_url: https://go-cask.dev/
+copyright: © 2026 Daniel Mundt · <a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutz</a> · <a href="https://github.com/dmundt/go-cask">GitHub</a>
 
 docs_dir: website
 site_dir: site
@@ -32,27 +30,20 @@ nav:
       - Contributing: contributing.md
       - FAQ: faq.md
       - Changelog: changelog.md
-  - Impressum: impressum.md
 
 theme:
   name: material
+  font: false
   features:
     - navigation.sections
     - content.code.copy
     - content.action.edit
     - search.suggest
     - search.highlight
-  icon:
-    repo: fontawesome/brands/github
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: blue grey
-      accent: blue
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: blue grey
-      accent: blue
+    scheme: default
+    primary: blue grey
+    accent: blue
 
 plugins:
   - search
@@ -78,13 +69,12 @@ markdown_extensions:
       custom_checkbox: true
 
 extra_javascript:
-  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - javascripts/os-theme.js
+  - javascripts/mermaid-10.9.5.min.js
   - javascripts/mermaid-init.js
 
 extra_css:
   - stylesheets/extra.css
 
 extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/dmundt/go-cask
+  generator: false

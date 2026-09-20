@@ -33,6 +33,16 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Moved the Impressum link from the documentation sidebar to a global footer
+  with copyright, privacy, and GitHub links.
+- Vendored Mermaid 10.9.5 for documentation diagrams instead of loading it
+  from a third-party CDN.
+- Added a concise privacy notice and disabled remote Google Fonts in favor of
+  system fonts.
+- Removed automatic GitHub repository metadata requests and non-essential
+  browser storage, restored OS-based light and dark themes without persistence,
+  set the canonical website URL, and made documentation builds reject an empty
+  Impressum secret.
 - Hardened verification with fail-closed coverage parsing, non-mutating module
   drift checks, an explicit build gate, shared security scanning, and tested CI
   documentation-scope classification.
