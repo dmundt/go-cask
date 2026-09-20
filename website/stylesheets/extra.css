@@ -79,6 +79,13 @@ body {
   }
 }
 
+@media screen and (min-width: 1220px) {
+  .md-header__inner.md-grid {
+    max-width: none;
+    padding-left: max(0.2rem, calc((100% - 1240px) / 2 + 0.2rem));
+  }
+}
+
 .md-tabs {
   display: none;
 }
