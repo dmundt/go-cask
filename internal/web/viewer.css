@@ -322,6 +322,14 @@ body.viewer-shell {
   color: var(--viewer-muted);
 }
 
+/* An object whose bytes cannot be read has no type to show. The cell says so
+   in the type's own voice rather than sitting empty, which would read as an
+   untyped object. */
+.viewer-unreadable {
+  color: oklch(49% 0.15 25);
+  font-style: italic;
+}
+
 /* The link fills its cell so the whole row is clickable. Its inset must mirror
    the cell padding exactly: a wider one overhangs the last column and gives the
    table a horizontal scrollbar it does not need. */

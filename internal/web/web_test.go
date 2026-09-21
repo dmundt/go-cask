@@ -2284,3 +2284,39 @@ func TestEveryRowCellCarriesTheSelectionLink(t *testing.T) {
 		}
 	}
 }
+
+// TestUnreadableObjectRowSaysSo guards the distinction between an object with
+// no type and an object whose bytes could not be read: an empty type cell
+// reads as the former, so the row must name the failure instead.
+func TestUnreadableObjectRowSaysSo(t *testing.T) {
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.render(rec, "object-row", objectRow{
+		Digest:     "sha256:" + strings.Repeat("cd", 32),
+		Short:      "cdcdcdcd",
+		Unreadable: true,
+		SelectURL:  "/viewer/objects?selected=x",
+	})
+	body := rec.Body.String()
+	if !strings.Contains(body, `<span class="viewer-unreadable">unreadable</span>`) {
+		t.Fatalf("unreadable row must say so: %.400q", body)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.render(rec, "object-row", objectRow{
+		Digest:    "sha256:" + strings.Repeat("ef", 32),
+		Short:     "efefefef",
+		TypeLabel: "blob@1",
+		SelectURL: "/viewer/objects?selected=y",
+	})
+	if body := rec.Body.String(); !strings.Contains(body, "blob@1") || strings.Contains(body, "viewer-unreadable") {
+		t.Fatalf("readable row must show its type: %.400q", body)
+	}
+}

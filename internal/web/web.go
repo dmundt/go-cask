@@ -360,6 +360,12 @@ type objectRow struct {
 	Short string
 	// Type is the decoded object type.
 	Type string
+	// TypeLabel is what the type cell shows. It differs from Type only when the
+	// bytes could not be read: the cell says so instead of rendering an empty
+	// cell that reads like an untyped object.
+	TypeLabel string
+	// Unreadable reports that the object's bytes could not be read.
+	Unreadable bool
 	// Size is the stored payload size.
 	Size int64
 	// References is the number of host-indexed inbound references, when known.
@@ -722,11 +728,19 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 			typeFound = true
 		}
 		row := objectRow{
-			Digest:    h.String(),
-			Short:     shortDigest(h),
-			Type:      typ,
-			Size:      meta.Size,
-			Integrity: s.sessions.verification(sessionID(r), h.String()),
+			Digest: h.String(),
+			Short:  shortDigest(h),
+			// An unreadable object keeps an empty Type so a type filter can
+			// never match it — the type is unknown, not blank — while the cell
+			// still says what happened.
+			Type:       typ,
+			TypeLabel:  typ,
+			Unreadable: meta.Unreadable,
+			Size:       meta.Size,
+			Integrity:  s.sessions.verification(sessionID(r), h.String()),
+		}
+		if meta.Unreadable {
+			row.TypeLabel = "unreadable"
 		}
 		row.ReachabilityKnown = s.cfg.Reachability != nil
 		row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)

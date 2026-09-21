@@ -74,6 +74,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- The object table now says when an object's bytes cannot be read instead of
+  rendering an empty type cell, which was indistinguishable from an object that
+  carries no type. Such a row still matches no type filter, because its type is
+  unknown rather than blank.
 - Sorting the object table by integrity now reads verified, unverified, corrupt
   ascending, sound state first, like every other column. The keys were compared
   as text, so ascending led with the corrupt objects — the opposite of what the

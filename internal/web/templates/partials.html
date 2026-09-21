@@ -53,7 +53,7 @@
 
 {{define "object-row"}}<tr{{if .Selected}} class="viewer-selected" aria-current="true"{{end}}>
 <td><a class="viewer-row-link" {{rowLink .SelectURL}}>{{.Short}}</a></td>
-<td class="viewer-type"><a class="viewer-row-link" {{rowLink .SelectURL}}>{{.Type}}</a></td>
+<td class="viewer-type"><a class="viewer-row-link" {{rowLink .SelectURL}}>{{if .Unreadable}}<span class="viewer-unreadable">unreadable</span>{{else}}{{.TypeLabel}}{{end}}</a></td>
 <td><a class="viewer-row-link" {{rowLink .SelectURL}}>{{formatBytes .Size}}</a></td>
 <td class="viewer-references"><a class="viewer-row-link" {{rowLink .SelectURL}}>{{.References}}</a></td>
 <td class="viewer-status-cell"><a class="viewer-row-link" {{rowLink .SelectURL}}><span class="viewer-status viewer-status-{{.Integrity}}">{{.IntegrityLabel}}</span></a></td>{{if .ReachabilityKnown}}<td class="viewer-status-cell"><a class="viewer-row-link" {{rowLink .SelectURL}}>{{if .Orphaned}}<span class="viewer-status viewer-status-orphaned">Orphaned</span>{{else}}<span class="viewer-status viewer-status-reachable">Resolved</span>{{end}}</a></td>{{end}}
