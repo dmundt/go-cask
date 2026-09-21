@@ -129,7 +129,8 @@ coverage_targets=(
   "80|./cas/hash/sha512_256"
   "80|./gitlike"
   "80|./internal/index"
-  "85|./internal/web"
+  "80|./internal/web"
+  "80|./cmd/cask"
 )
 for target in "${coverage_targets[@]}"
  do

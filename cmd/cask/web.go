@@ -139,18 +139,23 @@ func isLoopbackBind(addr string) bool {
 	return ip.IsLoopback()
 }
 
+// browserCommand returns the command that opens a URL in the default browser
+// on the named GOOS. It is split from openBrowser so the per-platform mapping
+// can be tested without launching a browser on the test machine.
+func browserCommand(goos, url string) (string, []string) {
+	switch goos {
+	case "windows":
+		return "cmd", []string{"/c", "start", url}
+	case "darwin":
+		return "open", []string{url}
+	default:
+		return "xdg-open", []string{url}
+	}
+}
+
 // openBrowser opens the default browser to the given URL (cross-platform).
 func openBrowser(url string) {
-	var cmd string
-	var args []string
-	switch runtime.GOOS {
-	case "windows":
-		cmd, args = "cmd", []string{"/c", "start", url}
-	case "darwin":
-		cmd, args = "open", []string{url}
-	default:
-		cmd, args = "xdg-open", []string{url}
-	}
+	cmd, args := browserCommand(runtime.GOOS, url)
 	if err := exec.Command(cmd, args...).Start(); err != nil {
 		slog.Debug("open browser", "err", err) // not fatal
 	}

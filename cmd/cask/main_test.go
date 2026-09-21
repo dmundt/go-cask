@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -455,14 +456,41 @@ func TestVersionAndWebHelpers(t *testing.T) {
 	})
 
 	t.Run("bind and token helpers", func(t *testing.T) {
-		if !isLoopbackBind("127.0.0.1:8080") {
-			t.Fatal("127.0.0.1 should be treated as loopback")
-		}
-		if isLoopbackBind("0.0.0.0:8080") {
-			t.Fatal("0.0.0.0 should not be treated as loopback")
+		for _, tc := range []struct {
+			addr string
+			want bool
+		}{
+			{"127.0.0.1:8080", true},
+			{"[::1]:8080", true},
+			{"localhost:8080", true},
+			{"0.0.0.0:8080", false},
+			{"192.168.1.10:8080", false},
+			{"example.test:8080", false},
+			{"no-port", false},
+		} {
+			if got := isLoopbackBind(tc.addr); got != tc.want {
+				t.Fatalf("isLoopbackBind(%q) = %v, want %v", tc.addr, got, tc.want)
+			}
 		}
 		if tok := randomToken(); len(tok) == 0 || strings.Count(tok, "-") != 2 {
 			t.Fatalf("randomToken() = %q, want 3 groups separated by dashes", tok)
+		}
+	})
+
+	t.Run("browser command per platform", func(t *testing.T) {
+		for _, tc := range []struct {
+			goos string
+			cmd  string
+			args []string
+		}{
+			{"windows", "cmd", []string{"/c", "start", "http://x"}},
+			{"darwin", "open", []string{"http://x"}},
+			{"linux", "xdg-open", []string{"http://x"}},
+		} {
+			cmd, args := browserCommand(tc.goos, "http://x")
+			if cmd != tc.cmd || !slices.Equal(args, tc.args) {
+				t.Fatalf("browserCommand(%q) = (%q, %v), want (%q, %v)", tc.goos, cmd, args, tc.cmd, tc.args)
+			}
 		}
 	})
 
