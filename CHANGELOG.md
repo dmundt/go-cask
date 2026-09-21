@@ -36,6 +36,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Matched the viewer object-browser workspace to its visual reference with
+  pane-local scrolling, a pinned pager, dense table geometry, search styling,
+  and truthful integrity pills.
 - Added `cask seed-preview` to generate deterministic valid objects for local
   object-browser previews.
 - Made the object browser the authenticated viewer landing; retained the

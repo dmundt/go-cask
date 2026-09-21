@@ -235,6 +235,8 @@ type objectRow struct {
 	Size int64
 	// Status is the session-scoped integrity result.
 	Status string
+	// StatusLabel is the human-readable integrity result.
+	StatusLabel string
 	// Selected reports whether this row backs the visible inspector.
 	Selected bool
 	// SelectURL opens this row in the browser inspector.
@@ -499,6 +501,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 			Size:   s.objectSize(r.Context(), h),
 			Status: s.sessions.verification(sessionID(r), h.String()),
 		}
+		row.StatusLabel = integrityLabel(row.Status)
 		if !matchesObjectRow(row, state) {
 			continue
 		}
@@ -580,6 +583,19 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderPage(w, "objects", data)
+}
+
+func integrityLabel(status string) string {
+	switch status {
+	case "not-verified":
+		return "Unverified"
+	case "verified":
+		return "Verified"
+	case "corrupt":
+		return "Corrupt"
+	default:
+		return status
+	}
 }
 
 func matchesObjectRow(row objectRow, state objectBrowserState) bool {
