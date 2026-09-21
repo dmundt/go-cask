@@ -195,9 +195,40 @@ errors = []
 files = subprocess.check_output(
     ['git', 'ls-files', '*.md'], cwd=repo_root, text=True
 ).splitlines()
+
+
+def strip_code(lines):
+    """Blank out fenced blocks and inline code spans.
+
+    Prose rules do not apply to code: a Go generic call such as
+    `New[T](encode, decode)` is shaped exactly like a Markdown link, and a
+    sample or an inline mention of a tag is not raw HTML in the document.
+    Lines are blanked rather than dropped so reported positions stay honest.
+    """
+    out = []
+    fence = None
+    for line in lines:
+        marker = re.match(r'^\s*(```+|~~~+)', line)
+        if fence is None and marker:
+            fence = marker.group(1)[0] * 3
+            out.append(line)
+            continue
+        if fence is not None:
+            if marker and marker.group(1).startswith(fence):
+                fence = None
+            else:
+                out.append('')
+                continue
+            out.append(line)
+            continue
+        out.append(re.sub(r'`+[^`]*`+', '', line))
+    return out
+
+
 for filename in sorted(files):
     path = repo_root / filename
-    lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
+    raw_lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
+    lines = strip_code(raw_lines)
     text = '\n'.join(lines)
     for match in html.finditer(text):
         errors.append(f'{filename}: raw HTML is not allowed: {match.group(0)}')

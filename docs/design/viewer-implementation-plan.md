@@ -17,8 +17,8 @@ equivalent server/htmx behavior where the byte-layer data model supports it.
 
 Included:
 
-- One embedded [viewer.css](../../internal/web/viewer.css) asset and a bounded
-  [viewer.js](../../internal/web/viewer.js) divider enhancement.
+- One embedded [viewer.css](../../internal/web/viewer.css) asset and no
+  script of the viewer's own — htmx is the only JavaScript the page loads.
 - Composed Go templates for the top bar, filters, list, table, pager,
   inspector, integrity result, and hexdump.
 - Validated URL state for filtering, sorting, pagination, selection, and
