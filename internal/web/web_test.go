@@ -2329,3 +2329,32 @@ func TestUnreadableObjectRowSaysSo(t *testing.T) {
 		t.Fatalf("readable row must show its type: %.400q", body)
 	}
 }
+
+// TestResponsesCarryHardeningHeaders pins the response hardening: the viewer
+// serves its stylesheet and its one script from its own origin, so anything
+// else is denied, and no page may be framed or content-sniffed.
+func TestResponsesCarryHardeningHeaders(t *testing.T) {
+	ts, _ := newTestServer(t)
+	for _, path := range []string{"/viewer/login", "/viewer/objects", "/viewer/static/viewer.css"} {
+		resp, err := ts.Client().Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Fatalf("%s X-Content-Type-Options = %q, want nosniff", path, got)
+		}
+		if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
+			t.Fatalf("%s X-Frame-Options = %q, want DENY", path, got)
+		}
+		csp := resp.Header.Get("Content-Security-Policy")
+		for _, want := range []string{"default-src 'none'", "script-src 'self'", "frame-ancestors 'none'",
+			// htmx swaps are XHRs to the viewer's own routes; without this the
+			// policy blocks every interaction the viewer has.
+			"connect-src 'self'"} {
+			if !strings.Contains(csp, want) {
+				t.Fatalf("%s CSP = %q, want it to contain %q", path, csp, want)
+			}
+		}
+	}
+}

@@ -10,6 +10,15 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Added
+
+- Every viewer response now carries `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, and a deny-by-default Content Security Policy that
+  admits only the viewer's own origin. The viewer serves its stylesheet and its
+  single script itself, so nothing third-party has to be allowed; the policy
+  also refuses to be framed and stops a browser sniffing a hexdump into a
+  script. Recorded in viewer-security §10.
+
 ### Removed
 
 - Removed the viewer's separate cold-load object detail page. Nothing linked to

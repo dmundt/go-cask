@@ -255,7 +255,28 @@ func (s *Server) Handler() http.Handler {
 	// store-lifecycle operation that belongs to the CLI, where it can be
 	// scripted, audited, and paired with the roots a sweep needs.
 	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleOperator, http.NotFound))
-	return mux
+	return secureHeaders(mux)
+}
+
+// secureHeaders applies the response hardening every viewer response carries.
+// The viewer serves its own stylesheet and its only script from its own
+// origin, so the policy can deny everything else outright: no third-party
+// script can be injected, the pages cannot be framed, and a browser cannot be
+// talked into treating a hexdump as a script by sniffing it.
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header := w.Header()
+		header.Set("X-Content-Type-Options", "nosniff")
+		// style-src allows inline styles because htmx injects a style element
+		// for its indicator class; script-src stays strict, which is the
+		// directive that matters for injection.
+		header.Set("Content-Security-Policy",
+			"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+				"connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; "+
+				"frame-ancestors 'none'")
+		header.Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Roles (viewer-security §8).

@@ -64,6 +64,17 @@ All administrative actions MUST be logged, including timestamp, user/session ide
 
 The viewer MUST communicate only with the backend API; never allow direct browser access to storage internals. All authorization checks MUST occur in the backend (browser → viewer routes → object store).
 
+**Response hardening (MUST):** every viewer response MUST carry
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and a Content
+Security Policy that denies by default and allows only the viewer's own origin:
+`default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`.
+The viewer serves its stylesheet and its single script from its own origin, so
+no third-party source needs to be allowed. `connect-src 'self'` is required, not
+optional: every htmx swap is an XHR to a viewer route, and omitting it blocks
+the whole interaction model. `style-src` admits inline styles because htmx
+injects a style element for its indicator class; `script-src` stays strict,
+which is the directive that governs injection.
+
 ## 11. Secret handling
 
 Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`.
