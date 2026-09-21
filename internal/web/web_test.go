@@ -206,13 +206,18 @@ func TestLoginFlow(t *testing.T) {
 
 func TestDashboardRouteRemoved(t *testing.T) {
 	ts, _ := newTestServer(t)
+	// The route is gone, but it still answers through the auth gate: an
+	// anonymous caller learns nothing about which paths the viewer knows.
 	resp, err := ts.Client().Get(ts.URL + "/viewer/dashboard")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("dashboard route = %d, want 404", resp.StatusCode)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anonymous dashboard route = %d, want 401", resp.StatusCode)
+	}
+	if got := statusCode(t, login(t, ts, testStartupToken), ts.URL+"/viewer/dashboard"); got != http.StatusNotFound {
+		t.Fatalf("dashboard route = %d, want 404", got)
 	}
 }
 
@@ -281,8 +286,12 @@ func TestLoginThrottle(t *testing.T) {
 func TestRemovedGCPostReturnsNotFound(t *testing.T) {
 	ts, _ := newTestServer(t)
 	admin := login(t, ts, testStartupToken)
+	csrf := csrfFromPage(getBody(t, admin, ts.URL+"/viewer/objects"))
 
-	resp, err := admin.PostForm(ts.URL+"/viewer/gc", url.Values{"roots": {"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
+	resp, err := admin.PostForm(ts.URL+"/viewer/gc", url.Values{
+		"csrf":  {csrf},
+		"roots": {"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

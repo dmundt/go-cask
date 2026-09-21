@@ -238,10 +238,14 @@ func (s *Server) Handler() http.Handler {
 		}
 		s.require(RoleViewer, s.objects)(w, r)
 	})
-	mux.HandleFunc("GET /viewer/dashboard", http.NotFound)
-	mux.HandleFunc("GET /viewer/dashboard/", http.NotFound)
-	mux.HandleFunc("GET /viewer/gc", http.NotFound)
-	mux.HandleFunc("POST /viewer/gc", http.NotFound)
+	// These routes exist only to keep the "GET /viewer/" prefix from swallowing
+	// paths the viewer no longer serves. They answer through s.require so an
+	// anonymous caller is sent to the login page like everywhere else: a bare
+	// 404 would tell an unauthenticated caller which paths the viewer knows.
+	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, http.NotFound))
+	mux.HandleFunc("GET /viewer/dashboard/", s.require(RoleViewer, http.NotFound))
+	mux.HandleFunc("GET /viewer/gc", s.require(RoleViewer, http.NotFound))
+	mux.HandleFunc("POST /viewer/gc", s.require(RoleOperator, http.NotFound))
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
 	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectDetail))
 	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))
@@ -250,7 +254,7 @@ func (s *Server) Handler() http.Handler {
 	// The viewer inspects; it does not destroy. Deleting an object is a
 	// store-lifecycle operation that belongs to the CLI, where it can be
 	// scripted, audited, and paired with the roots a sweep needs.
-	mux.HandleFunc("POST /viewer/objects/{hash}/delete", http.NotFound)
+	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleOperator, http.NotFound))
 	return mux
 }
 
