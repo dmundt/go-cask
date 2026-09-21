@@ -43,6 +43,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
   system fonts.
 - Renamed the privacy notice URL from `/datenschutz/` to `/privacy/`, translated
   the notice into English, and updated the footer label.
+- Expanded the privacy notice with data categories, processing purposes,
+  recipients, controller roles, technical necessity, and automated
+  decision-making disclosures.
 - Removed automatic GitHub repository metadata requests and non-essential
   browser storage, restored OS-based light and dark themes without persistence,
   set the canonical website URL, and made documentation builds reject an empty
