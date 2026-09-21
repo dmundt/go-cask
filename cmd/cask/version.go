@@ -3,19 +3,15 @@ package main
 import (
 	"fmt"
 	"runtime"
-	"runtime/debug"
+
+	"github.com/dmundt/go-cask/internal/web"
 )
 
 // runVersion prints the library version and the Go version. The library
 // version comes from build info (the module version; pseudo-version until
-// the first tag — versioning §2).
+// the first tag — versioning §2). The viewer renders the same string, so both
+// read it from one place.
 func runVersion() {
-	lib := "dev"
-	if bi, ok := debug.ReadBuildInfo(); ok {
-		if bi.Main.Version != "" && bi.Main.Version != "(devel)" {
-			lib = bi.Main.Version
-		}
-	}
-	fmt.Printf("cask %s\n", lib)
+	fmt.Printf("cask %s\n", web.Version())
 	fmt.Printf("go %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }

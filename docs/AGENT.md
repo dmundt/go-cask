@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v10
+version: v11
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -45,6 +45,13 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 
 Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-level rule index; subdirectory indexes (`docs/design/index.md`, `docs/specs/index.md`) are shorter. All index files carry `okf_version: "0.2"` and no `type`.
 
+### 1.4 Markdown-only content
+
+Raw HTML is forbidden in every Markdown file, including HTML comments, tags,
+layout wrappers, and HTML/XML/SVG code fences. Use Markdown constructs, Mermaid,
+or links instead. HTML belongs only in dedicated non-Markdown assets such as
+the viewer mockup; it MUST NOT be copied into a `.md` file.
+
 ## 2. Trimming
 
 - Every doc must earn its bytes: replaceable-by-a-pointer → pointer; a section repeating another spec → remove + reference the canonical source.
@@ -86,6 +93,7 @@ Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] Ampersand used only where required by code, literal symbol text, or diagram syntax
 - [ ] On add/remove/rename, `docs/index.md` and the parent `index.md` updated
 - [ ] Mermaid blocks balanced; all code fences tagged
+- [ ] No raw HTML, HTML comments, or HTML/XML/SVG fences
 - [ ] LF endings, UTF-8
 
 ## 9. Signed pull-request workflow

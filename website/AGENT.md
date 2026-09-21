@@ -26,6 +26,8 @@ developer-facing companion to the authoritative repository documentation under
 - Use fenced code blocks only for code, shell commands, and wire formats.
 - Use Markdown links to internal pages. Do not use raw HTML links or HTML
   layout wrappers in Markdown pages.
+- Raw HTML is forbidden in every Markdown file: no tags, comments, layout
+  wrappers, or HTML/XML/SVG code fences.
 - Use Mermaid only when it adds information unavailable in prose or a table.
   Keep diagrams small, directional, and free of decorative styling.
 

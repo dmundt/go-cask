@@ -357,6 +357,25 @@ func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
 	return fi.Size(), nil
 }
 
+// ModTime returns the filesystem modification time of a stored object. This
+// is physical backend metadata, not a content-addressed object field.
+func (s *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	if err := s.checkKey(d, "fs: mod time"); err != nil {
+		return time.Time{}, err
+	}
+	fi, err := os.Stat(s.digestPath(d))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
+		}
+		return time.Time{}, fmt.Errorf("cas: stat object: %w", err)
+	}
+	return fi.ModTime(), nil
+}
+
 // Clean removes orphan temp files (crash leftovers) older than olderThan
 // (olderThan <= 0 removes them all). It removes both "<hex>.tmp" and the
 // collision fallbacks "<hex>.tmp.<n>" that createTempExcl may leave behind.

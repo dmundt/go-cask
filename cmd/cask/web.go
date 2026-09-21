@@ -42,14 +42,29 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if !isLoopbackBind(*bind) && !*allowInsecure {
-		slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
-		os.Exit(1)
+	if !isLoopbackBind(*bind) {
+		if !*allowInsecure {
+			slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
+			os.Exit(1)
+		}
+		// The session cookie is always Secure (viewer-security §7) and callers
+		// cannot disable that, so a browser reaching this bind over plain
+		// http:// will discard the cookie and never hold a session. The
+		// override therefore needs a TLS-terminating proxy in front of it to
+		// be usable at all — say so rather than let login fail silently.
+		slog.Warn("viewer bound to a non-loopback address",
+			"bind", *bind,
+			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session")
 	}
 
 	raw, err := fsbackend.New(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
+		os.Exit(1)
+	}
+	references, err := previewReferences(ctx, raw)
+	if err != nil {
+		slog.Error("build preview references", "err", err)
 		os.Exit(1)
 	}
 	// The viewer does not hold the store lock: its mutations are in-process
@@ -72,6 +87,8 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	webSrv, err := web.New(raw, web.Config{
 		StartupToken: token,
 		RoleTokens:   roleTokens,
+		References:   references,
+		Reachability: references,
 	})
 	if err != nil {
 		slog.Error("viewer setup", "err", err)
@@ -122,18 +139,23 @@ func isLoopbackBind(addr string) bool {
 	return ip.IsLoopback()
 }
 
+// browserCommand returns the command that opens a URL in the default browser
+// on the named GOOS. It is split from openBrowser so the per-platform mapping
+// can be tested without launching a browser on the test machine.
+func browserCommand(goos, url string) (string, []string) {
+	switch goos {
+	case "windows":
+		return "cmd", []string{"/c", "start", url}
+	case "darwin":
+		return "open", []string{url}
+	default:
+		return "xdg-open", []string{url}
+	}
+}
+
 // openBrowser opens the default browser to the given URL (cross-platform).
 func openBrowser(url string) {
-	var cmd string
-	var args []string
-	switch runtime.GOOS {
-	case "windows":
-		cmd, args = "cmd", []string{"/c", "start", url}
-	case "darwin":
-		cmd, args = "open", []string{url}
-	default:
-		cmd, args = "xdg-open", []string{url}
-	}
+	cmd, args := browserCommand(runtime.GOOS, url)
 	if err := exec.Command(cmd, args...).Start(); err != nil {
 		slog.Debug("open browser", "err", err) // not fatal
 	}

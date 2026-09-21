@@ -52,9 +52,24 @@ be stored in browser-accessible cookies.
 ## 8. Authorization (roles)
 
 Authentication and authorization MUST be separated. Roles: `viewer`, `operator`, `admin`.
-- **viewer:** list buckets/objects, inspect metadata, download. Not: upload, delete, bucket management.
-- **operator:** viewer permissions + upload.
-- **admin:** operator permissions + delete, bucket management, maintenance.
+
+The viewer inspects; it does not mutate the store (see viewer-design §5 and
+§11 below). The ladder therefore gates what the viewer actually offers, and
+nothing else — an unimplemented permission in this table would read as a
+capability the viewer must ship:
+
+- **viewer:** list and browse objects, inspect metadata and references, read an
+  object's bytes. Not: any operation that writes to or removes from the store.
+- **operator:** viewer permissions + verify an object, and verify every object
+  in one sweep. Verification reads and re-digests; it never mutates.
+- **admin:** operator permissions. The viewer exposes no destructive operation,
+  so `admin` currently reaches nothing `operator` does not. The rank stays
+  because the ladder defines it, not because the viewer needs it today.
+
+Store-lifecycle operations — writing an object, deleting one, garbage
+collection — belong to the CLI, where they can be scripted, audited, and paired
+with the roots a sweep needs. A future viewer that gains one MUST extend this
+table in the same commit that ships it.
 
 ## 9. Audit logging
 
@@ -63,6 +78,17 @@ All administrative actions MUST be logged, including timestamp, user/session ide
 ## 10. API architecture
 
 The viewer MUST communicate only with the backend API; never allow direct browser access to storage internals. All authorization checks MUST occur in the backend (browser → viewer routes → object store).
+
+**Response hardening (MUST):** every viewer response MUST carry
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and a Content
+Security Policy that denies by default and allows only the viewer's own origin:
+`default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`.
+The viewer serves its stylesheet and its single script from its own origin, so
+no third-party source needs to be allowed. `connect-src 'self'` is required, not
+optional: every htmx swap is an XHR to a viewer route, and omitting it blocks
+the whole interaction model. `style-src` admits inline styles because htmx
+injects a style element for its indicator class; `script-src` stays strict,
+which is the directive that governs injection.
 
 ## 11. Secret handling
 
@@ -74,7 +100,7 @@ If remote access is required, the preferred architecture is **VPN + reverse prox
 
 ## 13. Defensive programming
 
-- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The dashboard landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
+- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The viewer landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
 
 ## 14. Security principle
 

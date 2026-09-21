@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v25
+version: v27
 ---
 
 # Defaults and Behavior — go-cask
@@ -69,8 +69,9 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Session cookie | Always `HttpOnly`, `SameSite=Strict`, and `Secure` | viewer-security |
 | Login throttle | max 5 failures/IP/min with backoff | viewer-security |
 | Active-search trigger | `input changed delay:300ms` | viewer-design §5 |
-| GC progress polling | `hx-trigger="every 2s"` | viewer-design §5 |
-| Dashboard stat cards | total objects, total size + the addressing note (digests are raw hex; this viewer uses `sha256`) | viewer-design §7 |
+| Object-list pagination | `limit=25`, `offset=0`; allowed limits `25`, `50`, `100`, `250` | viewer-design §5 |
+| Object-list initial sort | hash ascending; sort/filter/page state is URL-addressable | viewer-design §5 |
+| GC progress polling | none; GC returns one result fragment | viewer-design §5 |
 | Roles | viewer (read) / operator (+store, verify) / admin (+delete, GC, prune) | viewer-security |
 
 ## 5. Maintenance and consistency defaults
@@ -105,7 +106,7 @@ Baselines are calibratable on CI hardware (performance §11.4) — default targe
 | Toolchain / `go.mod` | Go 1.27 | coding-guidelines §1 |
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions require justification | coding-guidelines §3 |
-| Frontend scripting | htmx only; no hand-written JS/CSS | coding-guidelines §4 |
+| Frontend scripting | htmx only; no hand-written JS; one scoped embedded viewer stylesheet | coding-guidelines §4 |
 | Lean-core budget | `cas/` ≤ ~1600 LOC, ≤ ~40 exported | library-design §1 |
 | Stable core surface | identifiers in cas-core §7.1 | cas-core §7.1 |
 | Extension rule | extend don't modify; own packages; stable surface only | extensions §1 |

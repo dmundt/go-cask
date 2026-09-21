@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v17
+version: v18
 ---
 
 # Backend Architecture — go-cask
@@ -32,7 +32,12 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 
 ## 4. HTTP layer
 
-- Every viewer route is `text/html` (pages + htmx fragments). The raw view buffers at most **256 KiB** for in-page hexdump (a bounded preview, not a streaming download — api-design §11 streaming applies to the API surface, not the hexdump UI).
+- Every viewer route is `text/html` (pages + htmx fragments). Its only
+  presentation asset is the embedded, locally served
+  `/viewer/static/viewer.css`; vendored htmx is the only script. The raw view
+  buffers at most **256 KiB** for in-page hexdump (a bounded preview, not a
+  streaming download — api-design §11 streaming applies to the API surface,
+  not the hexdump UI).
 - Errors are minimal HTML; 401/403 are empty bodies never disclosing existence.
 - The product serves no OpenAPI; an HTTP surface needing a documented contract (`examples/api`) keeps it in a separate embedded `openapi.yaml` (api-design §13).
 

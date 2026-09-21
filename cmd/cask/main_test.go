@@ -7,12 +7,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/index"
 )
 
 // run executes a cask operation in-process, returning its stdout and exit
@@ -87,6 +90,104 @@ func TestListRejectsOutOfRangeFlags(t *testing.T) {
 	} {
 		if _, code := run(t, mf, args[0], args[1:]...); code != 2 {
 			t.Errorf("%v: exit %d, want 2 (usage)", args, code)
+		}
+	}
+}
+
+func TestSeedPreview(t *testing.T) {
+	mf := localMF(t)
+	out, code := run(t, mf, "seed-preview", "-count", "6")
+	if code != 0 || out != "preview objects: added 6, deduplicated 0\n" {
+		t.Fatalf("first seed-preview = (%q, %d)", out, code)
+	}
+	raw, err := fs.New(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digests, err := raw.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 6 {
+		t.Fatalf("seeded objects = %d, want 6", len(digests))
+	}
+	references, err := previewReferences(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if references == nil {
+		t.Fatal("preview references = nil")
+	}
+	objects := make([]cas.Digest, 0, 6)
+	for ordinal := range 6 {
+		object := previewObjectFor(ordinal, objects)
+		objects = append(objects, object.digest)
+	}
+	if got := references.Outbound(objects[3]); len(got) != 3 || !got[0].Equal(objects[2]) || !got[1].Equal(objects[1]) || !got[2].Equal(objects[0]) {
+		t.Fatalf("preview outbound = %v, want [%s %s %s]", got, objects[2], objects[1], objects[0])
+	}
+	for _, test := range []struct {
+		digest cas.Digest
+		want   int
+	}{
+		{objects[0], 3},
+		{objects[4], 1},
+		{objects[5], 0},
+	} {
+		if got := len(references.Inbound(test.digest)); got != test.want {
+			t.Fatalf("preview inbound %s = %d, want %d", test.digest, got, test.want)
+		}
+	}
+	for _, test := range []struct {
+		digest cas.Digest
+		want   bool
+	}{
+		{objects[0], true},
+		{objects[3], true},
+		{objects[4], false},
+		{objects[5], false},
+	} {
+		if got := references.IsReachable(test.digest); got != test.want {
+			t.Fatalf("preview reachability %s = %t, want %t", test.digest, got, test.want)
+		}
+	}
+	for _, digest := range digests {
+		rc, err := raw.Get(context.Background(), digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if typ := index.EnvelopeType(data); typ == "" {
+			t.Fatalf("seeded object %s lacks a valid envelope type", digest)
+		}
+	}
+
+	// Ordinal 1 is seeded with tampered bytes and sits inside a reachable
+	// block, so the browser gets corrupt objects that are not orphaned.
+	if !previewCorruptOrdinal(1) || previewCorruptOrdinal(0) {
+		t.Fatalf("unexpected corrupt ordinal selection")
+	}
+	if !references.IsReachable(objects[1]) {
+		t.Fatalf("corrupt preview object %s must stay reachable", objects[1])
+	}
+	if err := raw.Verify(context.Background(), objects[1], sha256.New()); err == nil {
+		t.Fatalf("corrupt preview object %s must fail verification", objects[1])
+	}
+	if err := raw.Verify(context.Background(), objects[0], sha256.New()); err != nil {
+		t.Fatalf("intact preview object %s must verify: %v", objects[0], err)
+	}
+
+	out, code = run(t, mf, "seed-preview", "-count", "6")
+	if code != 0 || out != "preview objects: added 0, deduplicated 6\n" {
+		t.Fatalf("second seed-preview = (%q, %d)", out, code)
+	}
+	for _, args := range [][]string{{"-count", "0"}, {"-count", "10001"}, {"unexpected"}} {
+		if _, code := run(t, mf, "seed-preview", args...); code != 2 {
+			t.Fatalf("seed-preview %v exit = %d, want 2", args, code)
 		}
 	}
 }
@@ -355,14 +456,41 @@ func TestVersionAndWebHelpers(t *testing.T) {
 	})
 
 	t.Run("bind and token helpers", func(t *testing.T) {
-		if !isLoopbackBind("127.0.0.1:8080") {
-			t.Fatal("127.0.0.1 should be treated as loopback")
-		}
-		if isLoopbackBind("0.0.0.0:8080") {
-			t.Fatal("0.0.0.0 should not be treated as loopback")
+		for _, tc := range []struct {
+			addr string
+			want bool
+		}{
+			{"127.0.0.1:8080", true},
+			{"[::1]:8080", true},
+			{"localhost:8080", true},
+			{"0.0.0.0:8080", false},
+			{"192.168.1.10:8080", false},
+			{"example.test:8080", false},
+			{"no-port", false},
+		} {
+			if got := isLoopbackBind(tc.addr); got != tc.want {
+				t.Fatalf("isLoopbackBind(%q) = %v, want %v", tc.addr, got, tc.want)
+			}
 		}
 		if tok := randomToken(); len(tok) == 0 || strings.Count(tok, "-") != 2 {
 			t.Fatalf("randomToken() = %q, want 3 groups separated by dashes", tok)
+		}
+	})
+
+	t.Run("browser command per platform", func(t *testing.T) {
+		for _, tc := range []struct {
+			goos string
+			cmd  string
+			args []string
+		}{
+			{"windows", "cmd", []string{"/c", "start", "http://x"}},
+			{"darwin", "open", []string{"http://x"}},
+			{"linux", "xdg-open", []string{"http://x"}},
+		} {
+			cmd, args := browserCommand(tc.goos, "http://x")
+			if cmd != tc.cmd || !slices.Equal(args, tc.args) {
+				t.Fatalf("browserCommand(%q) = (%q, %v), want (%q, %v)", tc.goos, cmd, args, tc.cmd, tc.args)
+			}
 		}
 	})
 

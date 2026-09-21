@@ -153,7 +153,6 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 }
 
-// CAS law: dedup — Put twice → one object; PutDedup reports the duplicate.
 func TestStoreDedup(t *testing.T) {
 	raw := mem.New()
 	s := newTestStore(t, raw)

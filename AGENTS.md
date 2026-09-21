@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v24
+version: v25
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -128,19 +128,19 @@ Related specs that also constrain work in this repo:
   flows, concurrency, and the extension contract); the reference
   implementation of this repo.
 - `docs/specs/coding-guidelines.md` — idiomatic Go,
-  minimal-dependency policy, no CSS/JS, `html/template` + htmx, raw HTML,
+  minimal-dependency policy, one scoped viewer stylesheet and no custom
+  JavaScript, `html/template` + htmx, raw HTML,
   doc-comment rules, Go 1.27, latest generics.
 - `docs/specs/viewer-security.md` — security
   requirements for the embedded viewer (secure-by-default, authn/authz,
   session management, audit logging). Any viewer code MUST comply with it.
 - `docs/specs/viewer-design.md` — design of the
   embedded technical viewer (simple/elegant/usable, dashboard-first,
-  hypermedia-driven, nested Go templates + htmx only, no JS/CSS, low-level
-  object/reference/blob inspection).
+  hypermedia-driven, nested Go templates + htmx, one scoped stylesheet,
+  low-level object/blob inspection).
 - `docs/design/viewer-brief.md` — the design brief for the viewer's next
-  iteration (OpenDesign input, not a normative spec): structure-only step 1,
-  no JS/CSS; pages, components, and the htmx interaction map aligned to the
-  cas model.
+  iteration (OpenDesign input, not a normative spec): extracted visual system,
+  component map, and htmx interaction map aligned to the cas model.
 - `docs/specs/examples.md` — how example programs are
   generated plus five proposed non-trivial examples covering all aspects of
   the implementation (gitlike, custom codecs, caching, HTTP-exposure pattern, viewer).

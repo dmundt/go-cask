@@ -1,16 +1,37 @@
-{{define "objects"}}<!doctype html>
-<html lang="en">
-<head>{{template "head" .}}</head>
-<body><main>
-<nav><p><a href="/viewer/">Dashboard</a></p></nav>
-<h1>Objects</h1>
-<form method="get" action="/viewer/objects">
-<label for="q">Search</label>
-<input id="q" name="q" type="search" value="{{.Query}}" placeholder="hash or type"
-       hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-target="#object-list" hx-push-url="true">
-</form>
-<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}</div>
-</main></body>
-</html>{{end}}
+{{define "objects-content"}}{{template "filter-bar" .}}
+{{template "object-browser" .}}{{end}}
 
-{{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}{{end}}
+{{define "object-browser"}}
+<main class="viewer-workspace">
+<section class="viewer-list" aria-label="Objects">
+{{template "object-list" .}}
+</section>
+<aside class="viewer-inspector" id="object-inspector" aria-label="Object inspector">
+{{template "object-inspector" .}}
+</aside>
+</main>{{end}}
+
+{{define "object-list"}}<div id="object-list">{{template "object-table-fragment" .}}</div>{{end}}
+
+{{define "object-list-oob"}}<div id="object-list" hx-swap-oob="true">{{template "object-table-fragment" .}}</div>{{end}}
+
+{{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}{{template "pager" .}}{{template "object-list-refresher" .}}{{end}}
+
+<!-- The refresher lives inside the swapped fragment so its URL always carries
+     the filters currently in effect; on the wrapper it would go stale. -->
+{{define "object-list-refresher"}}<div class="viewer-sr-only" hx-get="{{.RefreshURL}}" hx-trigger="object-status-updated from:body" hx-target="#object-list" hx-swap="innerHTML"></div>{{end}}
+
+<!-- The inspector needs its own refresher: a store-wide sweep changes the
+     selected object's integrity too, and the list refresher above only swaps
+     the table. The shared URL serves both because the response is chosen by
+     the request's HX-Target. -->
+{{define "object-inspector-refresher"}}<div class="viewer-sr-only" hx-get="{{.RefreshURL}}" hx-trigger="object-status-updated from:body" hx-target="#object-inspector" hx-swap="innerHTML"></div>{{end}}
+
+{{define "object-selection"}}{{template "object-inspector" .}}{{template "object-list-oob" .}}{{end}}
+
+{{define "object-inspector-oob"}}<aside class="viewer-inspector" id="object-inspector" hx-swap-oob="true" aria-label="Object inspector">{{template "object-inspector" .}}</aside>{{end}}
+
+<!-- Filtering can drop the selected row, and the server then falls back to the
+     first row that survived. That fallback is only visible if the inspector
+     travels with the table, so the list swap carries it out of band. -->
+{{define "object-list-swap"}}{{template "object-table-fragment" .}}{{template "object-inspector-oob" .}}{{end}}

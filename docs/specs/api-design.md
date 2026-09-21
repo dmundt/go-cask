@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v7
+version: v8
 ---
 
 # API Design — go-cask
@@ -90,6 +90,11 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 - Cursor-free offset pagination: `?limit=<1..max>&offset=<0..>`, documented defaults.
 - Envelope `{"total": <int>, "<items>": [...]}` (`<items>` = plural resource name); `total` semantics documented per endpoint.
 - Filters are query params (`q` for the viewer's hash/type search); filters change only the set, never the item shape.
+- The viewer renders HTML rather than an envelope. Its object browser uses
+  `limit`/`offset` plus filter and sort query state; its allowed limits,
+  defaults, HTML fragment, and invalid-query behavior are defined by
+  `viewer-design.md` §5. The table, count, and pager are one response so they
+  cannot disagree.
 
 ## 11. Streaming and binary payloads
 

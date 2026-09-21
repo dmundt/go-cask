@@ -45,6 +45,11 @@ func (t *throttle) allow(ip string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := time.Now()
+	// Sweep before the lookup: an attacker rotating source addresses never
+	// exhausts a budget, so sweeping only on exhaustion would leave the map
+	// growing by one entry per address forever — exactly the case this
+	// defends against.
+	t.sweepLocked(now)
 	st := t.attempts[ip]
 	if st == nil {
 		st = &ipState{}
@@ -64,7 +69,6 @@ func (t *throttle) allow(ip string) bool {
 		st.strikes++
 		st.blockedUntil = now.Add(t.backoff(st.strikes))
 		st.recent = nil
-		t.sweepLocked(now)
 		return false
 	}
 	st.recent = append(st.recent, now)

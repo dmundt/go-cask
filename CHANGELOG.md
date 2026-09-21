@@ -10,8 +10,161 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Added
+
+- Every viewer response now carries `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, and a deny-by-default Content Security Policy that
+  admits only the viewer's own origin. The viewer serves its stylesheet and its
+  single script itself, so nothing third-party has to be allowed; the policy
+  also refuses to be framed and stops a browser sniffing a hexdump into a
+  script. Recorded in viewer-security §10.
+
+### Removed
+
+- Removed the viewer's separate cold-load object detail page. Nothing linked to
+  it, it described an object in a different shape than the inspector, and its
+  Verify button targeted a panel that its own markup did not contain.
+  `/viewer/objects/{hash}` stays a valid bookmark: it now redirects into the
+  browser with that object selected, so a shared link opens the one object view
+  the viewer has. An object that is not in the store still answers 404.
+- Removed the viewer's object delete action, its `POST
+  /viewer/objects/{hash}/delete` route, and the handler behind it. The viewer
+  inspects; it does not destroy. Deleting an object is a store-lifecycle
+  operation that belongs to the CLI, where it can be scripted, audited, and
+  paired with the roots a sweep needs. The route now returns 404, like the
+  dashboard and GC pages it joins.
+
+### Changed
+
+- `cask web` now logs the prominent startup warning viewer-security §4 requires
+  when `-allow-insecure-bind` exposes a non-loopback address, and says what the
+  override actually costs: session cookies are always `Secure`, so the address
+  has to be reached through a TLS-terminating proxy or the login will never
+  hold a session.
+- The viewer reads each object's type, size, and write time once instead of on
+  every request. All three are properties of the addressed bytes and can never
+  change for a digest, so they are memoized; previously every keystroke in the
+  search box re-read and re-stat the entire store.
+- The viewer's audit log now names the acting session on every audited line —
+  login, single-object verify, verify-all, and a rejected CSRF. The session id
+  is the cookie value, so the log carries a one-way digest prefix of it
+  instead: it correlates one session's actions without being replayable as a
+  credential.
+- Gave the status pills a faint 1px outline drawn from their own text colour,
+  so each keeps its hue and gains an edge without a second competing colour.
+- Settled every viewer control on one 28px height — the top-bar sweep, the
+  filter row, the inspector actions, and the pager — so nothing in a row
+  stands taller than its neighbours. The inspector's `‹`/`›` history arrows
+  stay 22px: they are icon controls, not buttons.
+- Moved the inspector's `Inbound` count out of `Storage` and into `State`,
+  after the reachability verdict. The count describes the reference axis, not
+  how the object is stored, so it now sits beside the verdict it qualifies.
+- Changed the inspector's active-tab underline from the green accent to the
+  dark gray the active tab label already uses. Green is the integrity tags'
+  colour, so an accent-coloured underline read as a status signal rather than
+  a position marker.
+- Made every viewer data column sortable: the `Inbound` count and the
+  `References` verdict now carry the same sort control as the other columns.
+- Split the viewer's `Status` column into `Integrity` and `References`. One
+  column carrying `Verified`/`Unverified`/`Corrupt` *and* `Orphaned` implied a
+  single verdict where there are two orthogonal axes, so `Orphaned` read as an
+  integrity result. Each axis now owns a column and an inspector row under its
+  own name, and the inbound-reference count is renamed `Inbound` so it does not
+  collide with the reachability column beside it.
+- The viewer inspector now restates a recorded verification every time the
+  object is selected, instead of showing the finding only in the response to
+  the click that produced it. The `Checked` metadata row is gone: the replayed
+  report already carries the check time and the reason, and the row's
+  "Never in this session" state said only that nobody had clicked yet.
+- Left-aligned the inspector's `Verify` and `Delete` buttons with the section
+  headings and metadata labels above them.
+- A reference in the inspector's References tab now highlights as a tinted
+  block on hover, matching the `Reset` control, rather than underlining.
+
 ### Fixed
 
+- The object table now says when an object's bytes cannot be read instead of
+  rendering an empty type cell, which was indistinguishable from an object that
+  carries no type. Such a row still matches no type filter, because its type is
+  unknown rather than blank.
+- Sorting the object table by integrity now reads verified, unverified, corrupt
+  ascending, sound state first, like every other column. The keys were compared
+  as text, so ascending led with the corrupt objects — the opposite of what the
+  arrow promised.
+- The object table, digest field, metadata values, pager and hexdump render
+  digits as tabular figures again. A shared rule asked for them, but each of
+  those elements later sets a `font` shorthand, which resets
+  `font-variant-numeric`, so digits in a column never lined up.
+- The inspector's panel switchers no longer claim the ARIA tab pattern. They
+  are navigation links, and `role="tablist"`/`role="tab"` promise arrow-key
+  roving and a linked `tabpanel` that the viewer cannot provide without the
+  JavaScript it forbids. `aria-current="page"` alone describes them correctly.
+- The login throttle now reclaims stale per-IP state on every attempt. The
+  sweep ran only when an address exhausted its budget, so a caller rotating
+  source addresses — the case the sweep exists for — never triggered it and
+  the state map grew by one entry per address. Active blocks still survive the
+  sweep.
+- The viewer now reclaims abandoned sessions. An expired session was deleted
+  only when something asked for it, so a session a browser simply walked away
+  from lived until the process exited, holding one verification record per
+  object it had checked. Login now sweeps every expired session first.
+- Updated the viewer inspector when a filter drops the selected object. The
+  server already fell back to the first surviving row, but a filter change
+  swapped the table alone, so the inspector kept describing an object no
+  longer listed. The list swap now carries the inspector out of band, and the
+  refresh URL embedded in it names the fallback instead of the dropped digest.
+- Kept the selected inspector tab when another object is picked in the table.
+  Switching tabs swapped only the inspector, so the table's row links still
+  carried the tab they were rendered with and threw the operator back to
+  Metadata on the next pick. A tab switch now re-renders the object list too,
+  under a `nav=stay` marker that leaves the visit trail alone.
+- Aligned the hexdump's "preview truncated" note with the inspector's other
+  secondary note, which it had been inheriting the body font size for.
+- Refreshed the open inspector when the top-bar Verify sweep runs. The sweep
+  changes the selected object's integrity too, but only the object table
+  subscribed to the status event, so the inspector kept showing the state from
+  before the sweep.
+- Restored the top inset between a corrupt report's explanation and its
+  expected/actual digest pair, which the later `.viewer-meta` margin shorthand
+  had been cancelling.
+- Unified the viewer's control font sizes on an explicit three-step type
+  scale. The inspector's `Verify`/`Delete` buttons and the top-bar `Verify`
+  sweep rendered at the 15.4px body size, which is set for prose: the control
+  font reset carried more specificity than the component rules, so a control
+  declaring its own size silently lost it. The reset is now specificity-free
+  and every control names a scale step.
+- Kept the viewer object table under the active filters when the top-bar
+  Verify sweep refreshes it: the refresh trigger now travels inside the
+  swapped list fragment, so its URL can no longer go stale.
+- Refreshed the viewer inspector's `Status` and `Checked` rows after an
+  on-demand verification, which previously updated only the result panel and
+  the object table.
+- Dropped the verified/corrupt counts from the top-bar Verify label; the
+  per-object status cells already report the outcome.
+- Replaced the viewer inspector's inert Back link, which only cleared the
+  selection, with working session-scoped history steps.
+- Removed the permanent horizontal scrollbar from the viewer object table: the
+  full-row click link overhung its cell by the difference between its own
+  inset and the cell padding.
+- Stopped the viewer's root-reachability overlay from hiding integrity results:
+  the object status cell now renders one pill per axis — an integrity pill plus
+  an additional `Orphaned` pill for orphans — instead of collapsing both axes
+  into a single state. A corrupt or verified orphan therefore reports both
+  facts at once rather than only the one that won a precedence contest. Both
+  remain matchable by the `corrupt` and `orphaned` status filters, and the
+  inspector renders both axes as pills.
+- Replaced the viewer's raw `corrupt: cas: digest mismatch: <hash>` action
+  result with a structured report: a state pill, a plain-language explanation,
+  and both the expected address and the digest the stored bytes actually hash
+  to, so a mismatch no longer shows one unlabeled hash.
+- Stopped the viewer object table from rendering a horizontal scrollbar when
+  the columns already fit.
+- Kept the selected object row highlighted when a verification or deletion
+  refreshes the viewer object table, by swapping the whole list element so its
+  refresh URL carries the current selection.
+- Restored the mockup's green Verified status pill in the viewer object table.
+- Refreshed the viewer object-table status cell immediately after an on-demand
+  integrity verification.
 - Made viewer session and deletion cookies unconditionally `Secure`, removing
   the caller-controlled insecure path and covering the attributes over TLS in
   integration tests.
@@ -34,8 +187,90 @@ first-cycle exceptions recorded in `versioning.md` §1.
 - Corrected the dependency policy to document the approved `golang.org/x/sys`
   mmap support dependency instead of claiming a standard-library-only module.
 
+### Added
+
+- Viewer top-bar Verify control that verifies every stored object in one
+  request, records each result, and refreshes the object table under the
+  filters in effect. The sweep is audited as a single event with counts.
+- Viewer verification results now record when they ran, and the inspector's
+  Actions tab reports the last result with its timestamp and age.
+- Viewer object selection now auto-fills: the first visible row backs the
+  inspector on load and after a filter drops the previous selection, clicking
+  the selected row again clears the inspector, and following a reference link
+  selects the target row and pages the table to it.
+- Viewer inspector `‹`/`›` controls that step through the references followed
+  in the current session, replacing the inert Back link. An exhausted
+  direction renders disabled, stepping never extends the trail, and picking a
+  row in the object table starts a new trail at it.
+- Viewer top bar now shows the build's module version beside the wordmark, so
+  a screenshot identifies the binary that produced it. It is the string
+  `cask version` prints: a real version for released binaries and `dev` for a
+  build without a module version.
+
 ### Changed
 
+- Removed the viewer's own JavaScript: htmx is now the only script it serves.
+  The inspector resizes through the CSS `resize` property bounded by
+  `min-width`/`max-width`, and the full digest is a readonly field that acts as
+  a single selection target instead of a clipboard button. Keyboard resizing of
+  the inspector is lost; resize by dragging the inspector's left edge.
+- Reduced the inspector's full-digest font so the whole 64-character address
+  fits the inspector without truncation.
+- Merged the viewer inspector's Actions tab into Metadata: verify and delete
+  now sit beside the integrity state and its last check time, so acting on an
+  object no longer requires leaving the state that justifies the action. A
+  `tab=actions` URL normalises to `tab=metadata`.
+- Split the viewer's object-state filter along its two axes: `status` now
+  selects an integrity state (Verified, Unverified, Corrupt) and a separate
+  `reach` filter selects reachability, the two combining by AND. One control
+  carrying both axes offered combinations that describe nothing. The orphan
+  filter therefore moves from `status=orphaned` to `reach=orphaned`.
+- Restyled the top-bar Verify control as a neutral button matching the other
+  viewer controls instead of an accent-filled one.
+- Removed the viewer GC page; maintenance remains a deliberate CLI operation.
+- Made row selection persist while using inspector tabs, tightened object-table
+  geometry, and aligned viewer controls and inspector header with the mockup.
+- Added an Orphaned object-state filter when the viewer host supplies
+  root-based reachability; ordinary stores do not infer orphanhood.
+- Seeded preview graph roots now produce a deterministic mix of reachable and
+  orphaned objects.
+- `seed-preview` now writes every eighth object with tampered bytes inside a
+  root-reachable segment, so the viewer shows genuinely corrupt objects that
+  are not orphaned instead of faked status values.
+- The viewer inspector reports `Reachability` alongside `Status` whenever a
+  reachability source is configured; verification stays available for orphaned
+  objects, which are the likeliest to rot before reclamation.
+- Render viewer `Written` metadata with minute precision below one hour.
+- Format viewer byte quantities with IEC units while retaining the selected
+  object's exact byte count in Metadata → Storage → Size.
+- Added an optional host-provided reference source to the viewer. It renders
+  inbound counts in the object table and deterministic By/Out reference rows
+  without extending the `cas` core API.
+- Seeded preview objects now form a deterministic reference graph, so the
+  object table and References tab exercise zero through three reference
+  counts locally.
+- Added a bounded, keyboard-accessible draggable divider to the object browser;
+  its inspector width resets on reload and is never persisted.
+- Removed the obsolete viewer dashboard so the object browser is the only
+  operational workspace.
+- Rendered filesystem write metadata as `Written` elapsed time and aligned
+  truncated object digests and pager controls with the viewer mockup; added
+  its exact UTC RFC 3339 timestamp to object metadata.
+- Limited viewer hex inspection to the first 256 object bytes and made
+  truncation explicit.
+- Matched the viewer object-browser workspace to its visual reference with
+  pane-local scrolling, a pinned pager, dense table geometry, search styling,
+  and truthful integrity pills.
+- Added `cask seed-preview` to generate deterministic valid objects for local
+  object-browser previews.
+- Made the object browser the authenticated viewer landing.
+- Consolidated the viewer into one global document shell with composable page,
+  workspace, and fragment components; documented the concrete template tree.
+- Added URL-addressable filtering, sorting, pagination, selection, integrity
+  status, and htmx fragment updates to the embedded viewer object browser.
+- Defined the embedded viewer's visual master-detail object-browser contract:
+  one central scoped stylesheet, composable Go templates, and URL-driven
+  server-side filtering, sorting, selection, and pagination.
 - Moved the Impressum link from the documentation sidebar to a global footer
   with copyright, privacy, and GitHub links.
 - Centered the website footer text and aligned desktop search with the header's
