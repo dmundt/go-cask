@@ -94,9 +94,29 @@ func (s *sessions) create(role string) (*Session, error) {
 		TrailPos:      -1,
 	}
 	s.mu.Lock()
+	s.sweepLocked(time.Now())
 	s.byID[sess.ID] = sess
 	s.mu.Unlock()
 	return sess, nil
+}
+
+// expiredLocked reports whether sess has passed its idle timeout or its
+// maximum lifetime (viewer-security §6).
+func expiredLocked(sess *Session, now time.Time) bool {
+	return now.Sub(sess.LastSeen) > idleTimeout || now.Sub(sess.Created) > maxLifetime
+}
+
+// sweepLocked drops every expired session. get() expires a session it is asked
+// for, but an abandoned session is never asked for again, so without this
+// sweep it would live until the process exits — holding a verification record
+// per object it ever checked. Login is the natural moment to run it: it is the
+// only operation that grows the map, and it is rare.
+func (s *sessions) sweepLocked(now time.Time) {
+	for id, sess := range s.byID {
+		if expiredLocked(sess, now) {
+			delete(s.byID, id)
+		}
+	}
 }
 
 func (s *sessions) verification(id, digest string) string {
@@ -211,7 +231,7 @@ func (s *sessions) get(id string) (*Session, bool) {
 		return nil, false
 	}
 	now := time.Now()
-	if now.Sub(sess.LastSeen) > idleTimeout || now.Sub(sess.Created) > maxLifetime {
+	if expiredLocked(sess, now) {
 		delete(s.byID, id)
 		return nil, false
 	}

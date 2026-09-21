@@ -63,6 +63,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- The viewer now reclaims abandoned sessions. An expired session was deleted
+  only when something asked for it, so a session a browser simply walked away
+  from lived until the process exited, holding one verification record per
+  object it had checked. Login now sweeps every expired session first.
 - Updated the viewer inspector when a filter drops the selected object. The
   server already fell back to the first surviving row, but a filter change
   swapped the table alone, so the inspector kept describing an object no
