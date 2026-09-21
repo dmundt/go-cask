@@ -74,6 +74,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- The inspector's panel switchers no longer claim the ARIA tab pattern. They
+  are navigation links, and `role="tablist"`/`role="tab"` promise arrow-key
+  roving and a linked `tabpanel` that the viewer cannot provide without the
+  JavaScript it forbids. `aria-current="page"` alone describes them correctly.
 - The login throttle now reclaims stale per-IP state on every attempt. The
   sweep ran only when an address exhausted its budget, so a caller rotating
   source addresses — the case the sweep exists for — never triggered it and

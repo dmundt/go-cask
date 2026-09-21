@@ -287,8 +287,12 @@ The object-browser URL owns all view state:
   single click, so it MUST NOT be carried by the URLs built from that state.
   The trail is session state — it disappears with the session and is never
   persisted.
-- Inspector panel links set `tab`; no browser-only tab state. Because the tab
-  therefore lives in the URL, the row and reference links rendered beneath it
+- Inspector panel links set `tab`; no browser-only tab state. The panel
+  switchers are navigation links marked with `aria-current="page"`, not an ARIA
+  tab widget: `role="tablist"`/`role="tab"` promise arrow-key roving and a
+  linked `tabpanel`, which the viewer cannot deliver without the JavaScript it
+  forbids, so claiming the pattern would misdescribe the control. Because the
+  tab lives in the URL, the row and reference links rendered beneath it
   MUST carry the open tab, and a tab switch MUST re-render the object list out
   of band so those links adopt the new tab — otherwise the next pick silently
   throws the operator back to Metadata. The bytes panel lazy-loads the hexdump

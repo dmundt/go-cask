@@ -1235,10 +1235,17 @@ func TestObjectsListAndRaw(t *testing.T) {
 		for _, want := range []string{
 			`class="viewer-selected" aria-current="true"`,
 			`tab=references`,
-			`aria-current="page" aria-selected="true"`,
+			`aria-current="page"`,
 		} {
 			if resp.StatusCode != http.StatusOK || !strings.Contains(page, want) {
 				t.Fatalf("inspector tab lost selected row or tab state %q: (%d, %.400q)", want, resp.StatusCode, page)
+			}
+		}
+		// The tabs are navigation links, not an ARIA tab widget: that pattern
+		// promises arrow-key roving the viewer cannot implement without JS.
+		for _, forbidden := range []string{`role="tab"`, `role="tablist"`, `aria-selected=`} {
+			if strings.Contains(page, forbidden) {
+				t.Fatalf("inspector tabs still claim the ARIA tab pattern (%q)", forbidden)
 			}
 		}
 	})
