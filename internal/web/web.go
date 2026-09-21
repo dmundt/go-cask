@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/subtle"
 	"embed"
@@ -16,7 +17,6 @@ import (
 	"net/url"
 	"runtime/debug"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -765,7 +765,9 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 			Selected: state.Type == typ,
 		})
 	}
-	sort.Slice(data.Types, func(i, j int) bool { return data.Types[i].Value < data.Types[j].Value })
+	slices.SortFunc(data.Types, func(left, right filterOption) int {
+		return strings.Compare(left.Value, right.Value)
+	})
 	for _, row := range rows {
 		data.TotalSize += row.Size
 	}
@@ -1039,54 +1041,60 @@ func matchesObjectRow(row objectRow, state objectBrowserState) bool {
 }
 
 func sortObjectRows(rows []objectRow, state objectBrowserState) {
-	sort.Slice(rows, func(i, j int) bool {
+	slices.SortFunc(rows, func(left, right objectRow) int {
 		var comparison int
 		switch state.Sort {
 		case "type":
-			comparison = strings.Compare(rows[i].Type, rows[j].Type)
+			comparison = strings.Compare(left.Type, right.Type)
 		case "size":
-			comparison = cmpInt64(rows[i].Size, rows[j].Size)
+			comparison = cmp.Compare(left.Size, right.Size)
 		case "inbound":
-			comparison = cmpInt64(int64(rows[i].References), int64(rows[j].References))
+			comparison = cmp.Compare(left.References, right.References)
 		case "status":
-			comparison = strings.Compare(rows[i].Integrity, rows[j].Integrity)
+			// Ascending puts the sound state first, matching the other axes,
+			// so the key is ranked rather than compared as text: alphabetical
+			// order would lead with "corrupt".
+			comparison = cmp.Compare(integrityOrder(left.Integrity), integrityOrder(right.Integrity))
 		case "reach":
 			// Ascending puts the sound state first, matching the other axes.
-			comparison = cmpInt64(boolOrder(rows[i].Orphaned), boolOrder(rows[j].Orphaned))
+			comparison = cmp.Compare(boolOrder(left.Orphaned), boolOrder(right.Orphaned))
 		case "written":
-			comparison = cmpInt64(rows[i].Written.UnixNano(), rows[j].Written.UnixNano())
+			comparison = left.Written.Compare(right.Written)
 		default:
-			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
+			comparison = strings.Compare(left.Digest, right.Digest)
 		}
 		if comparison == 0 {
-			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
+			comparison = strings.Compare(left.Digest, right.Digest)
 		}
 		if state.Direction == "desc" {
-			return comparison > 0
+			return -comparison
 		}
-		return comparison < 0
+		return comparison
 	})
+}
+
+// integrityOrder ranks an integrity key so an ascending sort reads from sound
+// to suspect, the order the status filter lists them in. Comparing the keys as
+// text would order them corrupt, not-verified, verified — backwards.
+func integrityOrder(integrity string) int {
+	switch integrity {
+	case "verified":
+		return 0
+	case "corrupt":
+		return 2
+	default:
+		return 1
+	}
 }
 
 // boolOrder ranks a flag so the false state sorts first, which keeps an
 // ascending sort on a two-state axis reading "sound before suspect" like the
 // other columns.
-func boolOrder(flag bool) int64 {
+func boolOrder(flag bool) int {
 	if flag {
 		return 1
 	}
 	return 0
-}
-
-func cmpInt64(left, right int64) int {
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
 }
 
 func paginationURL(state objectBrowserState, offset int) string {

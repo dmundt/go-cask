@@ -1919,9 +1919,9 @@ func TestObjectBrowserQueryState(t *testing.T) {
 
 func TestSortObjectRows(t *testing.T) {
 	rows := []objectRow{
-		{Digest: "b", Type: "tree@1", Size: 12, References: 1, Orphaned: true},
-		{Digest: "a", Type: "blob@1", Size: 4, References: 7},
-		{Digest: "c", Type: "blob@1", Size: 8, References: 3, Orphaned: true},
+		{Digest: "b", Type: "tree@1", Size: 12, References: 1, Orphaned: true, Integrity: "corrupt"},
+		{Digest: "a", Type: "blob@1", Size: 4, References: 7, Integrity: "not-verified"},
+		{Digest: "c", Type: "blob@1", Size: 8, References: 3, Orphaned: true, Integrity: "verified"},
 	}
 	for _, test := range []struct {
 		state objectBrowserState
@@ -1930,7 +1930,11 @@ func TestSortObjectRows(t *testing.T) {
 		{state: objectBrowserState{Sort: "hash", Direction: "asc"}, want: "abc"},
 		{state: objectBrowserState{Sort: "type", Direction: "desc"}, want: "bca"},
 		{state: objectBrowserState{Sort: "size", Direction: "asc"}, want: "acb"},
-		{state: objectBrowserState{Sort: "status", Direction: "asc"}, want: "abc"},
+		// Integrity is ranked, not compared as text: ascending reads verified,
+		// unverified, corrupt — sound first, like every other axis. Sorting the
+		// keys alphabetically would lead with the corrupt object.
+		{state: objectBrowserState{Sort: "status", Direction: "asc"}, want: "cab"},
+		{state: objectBrowserState{Sort: "status", Direction: "desc"}, want: "bac"},
 		{state: objectBrowserState{Sort: "inbound", Direction: "asc"}, want: "bca"},
 		{state: objectBrowserState{Sort: "inbound", Direction: "desc"}, want: "acb"},
 		// Ascending lists the sound state first, like the other axes; the

@@ -74,6 +74,14 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Sorting the object table by integrity now reads verified, unverified, corrupt
+  ascending, sound state first, like every other column. The keys were compared
+  as text, so ascending led with the corrupt objects — the opposite of what the
+  arrow promised.
+- The object table, digest field, metadata values, pager and hexdump render
+  digits as tabular figures again. A shared rule asked for them, but each of
+  those elements later sets a `font` shorthand, which resets
+  `font-variant-numeric`, so digits in a column never lined up.
 - The inspector's panel switchers no longer claim the ARIA tab pattern. They
   are navigation links, and `role="tablist"`/`role="tab"` promise arrow-key
   roving and a linked `tabpanel` that the viewer cannot provide without the
