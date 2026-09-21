@@ -36,6 +36,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Defined the embedded viewer's visual master-detail object-browser contract:
+  one central scoped stylesheet, composable Go templates, and URL-driven
+  server-side filtering, sorting, selection, and pagination.
 - Moved the Impressum link from the documentation sidebar to a global footer
   with copyright, privacy, and GitHub links.
 - Centered the website footer text and aligned desktop search with the header's

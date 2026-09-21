@@ -179,7 +179,6 @@ inline = re.compile(
     r'(?<!!)\[[^\]]+\]\(\s*(?:<(?P<angled>[^>]+)>|(?P<target>[^\s)]+))'
 )
 reference = re.compile(r'^\s*\[[^\]]+\]:\s*(?P<target>\S+)', re.MULTILINE)
-inline_code = re.compile(r'`[^`]*`')
 html = re.compile(
     r'<!--|</?(?:a|abbr|address|article|aside|audio|blockquote|body|button|'
     r'canvas|caption|cite|code|col|data|dd|del|details|dfn|dialog|div|dl|dt|'
@@ -197,17 +196,12 @@ files = subprocess.check_output(
 for filename in sorted(files):
     path = repo_root / filename
     lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
-    prose = []
-    in_fence = False
-    for line in lines:
-        if line.lstrip().startswith(('```', '~~~')):
-            in_fence = not in_fence
-            continue
-        if not in_fence:
-            prose.append(line)
-    text = inline_code.sub('', '\n'.join(prose))
+    text = '\n'.join(lines)
     for match in html.finditer(text):
         errors.append(f'{filename}: raw HTML is not allowed: {match.group(0)}')
+    for line in lines:
+        if re.match(r'^\s*(?:```|~~~)\s*(?:html|xml|svg)\b', line, re.I):
+            errors.append(f'{filename}: HTML/XML/SVG code fences are not allowed')
     for match in list(inline.finditer(text)) + list(reference.finditer(text)):
         target = (match.group('angled') or match.group('target') or '').strip()
         parsed = urlsplit(target)
@@ -220,7 +214,7 @@ for filename in sorted(files):
         if not target_path.exists():
             errors.append(f'{filename}: {target}')
 for error in sorted(set(errors)):
-    print(f'broken Markdown reference: {error}', file=sys.stderr)
+    print(f'Markdown integrity error: {error}', file=sys.stderr)
 if errors:
     sys.exit(1)
 PY

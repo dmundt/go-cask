@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/design/)
 description: This file governs docs/design/ — non-normative design docs (core-overview pointer, viewer-brief, mockups). Follows the conventions in docs/AGENT.md.
-version: v4
+version: v5
 tags: [go-cask]
 status: stable
 ---
@@ -24,7 +24,7 @@ Every `.md` file MUST begin with the four YAML keys the spec folder uses (`type`
 ```yaml
 ---
 type: Design
-title: <Title> — go-cask
+title: {Title} — go-cask
 description: One sentence stating the document's purpose.
 version: v1
 ---
@@ -32,6 +32,9 @@ version: v1
 
 - `version` is a simple marker; bump by one on material change, not on cosmetic fixes.
 - HTML and JSON files have no frontmatter requirement — they are display/reference artifacts.
+- Markdown files MUST NOT contain raw HTML, HTML comments, tags, layout
+  wrappers, or HTML/XML/SVG code fences. Keep HTML only in dedicated
+  non-Markdown mockup artifacts.
 
 ## 3. Cross-referencing
 

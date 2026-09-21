@@ -1,133 +1,174 @@
 ---
 type: Specification
 title: Viewer Design — go-cask
-description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v15
+description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
+version: v16
 ---
 
 # Viewer Design — go-cask
 
-The embedded technical browser UI in `internal/web/`, for developers/admins browsing the CAS. Defines **how** (hypermedia, nested Go templates + htmx only, raw HTML) and **what** (dashboard hub → objects/blobs/stats at a technical level). MUST be **simple, elegant, usable** — elegance from clean semantic structure/layout/hierarchy, not CSS. Read with `viewer-security.md` (all requirements apply unchanged), `coding-guidelines.md` (§4 no CSS/JS, §5 templates+htmx, §6 raw HTML, §10 viewer boundary), `cas-core.md` (data model: `Digest`, `Object[T]`, `Backend.Stats`, `Verify`, `GC`). Design reference: hypermedia.systems. `docs/design/viewer-brief.md` is non-normative next-iteration input; changes nothing here until folded back.
+The embedded technical browser UI in `internal/web/` is a dense, desktop-first
+object browser for developers and operators. It defines the viewer's screens,
+visual system, template composition, and hypermedia interactions. Read with
+`viewer-security.md`, `frontend-architecture.md`, `coding-guidelines.md`, and
+`api-design.md`. The visual reference is
+[`docs/design/go-cask-viewer.html`](../design/go-cask-viewer.html); its
+JavaScript is prototype-only and MUST NOT ship.
 
-## 1. Purpose and persona
+## 1. Purpose and boundaries
 
-- Persona: developer/operator answering "what is stored? how much space? what does this point to? is it intact?".
-- Hub: a **dashboard** (landing) with storage stats, an addressing note, a sample of objects, and search — one click to every detail.
-- Drill-down: dashboard → object list → object detail → raw blob/hexdump.
-- Aesthetic: simple, elegant, usable — dense but scannable, plain semantic HTML, no decoration.
-- Out of scope: object editing (objects are immutable), JSON/data APIs, client-side state, charting.
+- Persona: developer/operator answering "what is stored, how large is it, and
+  is a selected object intact?"
+- The viewer is a **byte-layer tool**. It shows objects, envelope types, exact
+  sizes, bytes, and on-demand integrity results. It MUST NOT resolve typed
+  references or import application object models.
+- Object identity is a raw lowercase-hex digest. Lists show `Digest.Prefix(8)`;
+  the inspector shows the full digest. The client algorithm may appear in the
+  metadata view as `sha256`, but MUST NOT prefix a displayed digest.
+- The object browser is the primary operational workspace. The dashboard
+  remains the landing hub and links into that workspace.
+- Out of scope: mutable object editing, uploads, buckets, charting, JSON APIs,
+  browser storage, client-side state, and custom JavaScript.
 
-## 2. Design principles
+## 2. Visual system
 
-Hypermedia-driven: (1) **HTML is the application** — every transition is an HTTP request (GET nav, POST mutation) returning HTML (full page or fragment); (2) server renders all HTML, client has no app logic; (3) **htmx is the only extension**, expressed purely via htmx attributes; (4) **progressive enhancement** — works with htmx disabled (real links/forms); (5) zero hand-written JS/CSS; the htmx script is the single vendored exception.
+The viewer MUST reproduce the mockup's restrained technical-browser hierarchy
+through `internal/web/viewer.css`: a white/near-white surface, dark foreground,
+muted metadata, hairline borders, one green accent, system body font, and
+monospace hashes/numbers/bytes. The CSS file is the only viewer stylesheet
+(coding-guidelines §4).
 
-Simple/elegant/usable: (6) **dashboard-first** landing (numbers that matter, sample, search; every screen answers "what am I looking at, where next?"); (7) **information hierarchy** overview → list → detail → raw; detail pages start with a summary block then go deeper; (8) **no dead ends** — every hash is a link, every panel has a "see all", always back to the dashboard; (9) **elegance without CSS** — semantic tables with captions and scoped headers, description-list metadata, hex-dump tables for bytes, whitespace/grouping; no generic-container soup or inline styles; (10) **restraint** — one purpose/page, scannable tables, exact byte counts on the dashboard, exact bytes in details.
-
-## 3. Security alignment
-
-`viewer-security.md` applies verbatim; design consequences:
-- Runs only when invoked (`cask web`; no `enabled` switch). Localhost default; non-loopback requires HTTPS or `allow_insecure_bind: true` + startup warning.
-- Auth: startup admin token + session cookie (always `HttpOnly`,
-  `SameSite=Strict`, and `Secure`); idle 30 min / max 8 h.
-- Roles: `viewer` (dashboard, list, metadata, download raw — all GET); `operator` (+ run `verify`, POST); `admin` (+ `delete`, `GC`, maintenance, POST).
-- Every mutation is a POST with server-validated CSRF token (hidden form field; htmx forms are ordinary forms).
-- Audit-log all admin actions (delete, GC, verify); never log tokens/secrets.
-- Missing/expired session → 401 empty on data endpoints; insufficient role → 403 empty; never disclose object existence. The dashboard landing (`/viewer/`) alone redirects (303) to `/viewer/login` when unauthenticated and also accepts a direct `?token=` login (viewer-security §5).
-- Browser talks only to the backend API; backend to the store. Validate every query param/header/hash (`sha256.Parse`); reject malformed before touching storage.
-
-## 4. Rendering architecture — nested Go templates
-
-Only `html/template` (auto-escaping = XSS boundary), embedded via `embed.FS` + `template.ParseFS`. The whole set is parsed once in `web.New` into a single template named `viewer`, and `Server.render` executes the named template into a buffer first, so a template error yields a clean 500 instead of a half-written 200. Composition is `{{define}}`/`{{template}}` only — there is no `{{block}}`. **A fragment is a named template rendered standalone**: the same partial serves full-page composition and an htmx swap (`object-table` inside `objects`, and `object-table-fragment` alone for the live search swap).
-
-`{{define}}` blocks (`internal/web/templates/*.html`):
-
-| File | Blocks |
+| Token/metric | Contract |
 |---|---|
-| `partials.html` | `head`, `stat-cards`, `digest-note`, `sample-table`, `object-table`, `hexdump-table`, `result` |
-| `login.html` | `login` (standalone shell) |
-| `dashboard.html` | `dashboard` (full page), `dashboard_panels` (fragment) |
-| `objects.html` | `objects` (full page), `object-table-fragment` (fragment) |
-| `object.html` | `object` (full page), `hexdump` (fragment) |
-| `gc.html` | `gc` (standalone shell) |
+| Top bar | 46px; `CA` mark, `go-cask` wordmark, right-aligned operational navigation/action |
+| Filter bar | 47px; search, type, size, and integrity filters plus reset |
+| Main workspace | flexible object-list column and 440px inspector column; 4px divider |
+| Inspector bounds | 280px–560px visual range; fixed 440px default |
+| Object table | dense mono data, sticky header, 30% digest column, remaining columns balanced |
+| Controls | 30px form controls; compact bordered pager/action controls |
+| Narrow view | at ≤900px, document scrolls; list precedes full-width inspector; filters scroll horizontally |
 
-There is no `base` shell, no `stat-card`/`stats-panel`/`quick-nav`/`object-row`/`_error`/`fragments` block, and no out-of-band target: every full page repeats its document, head, `{{template "head" .}}`, and main structure; `login` and `gc` carry no nav at all, and the dashboard sample has no OOB refresh.
+Colors, font stack, spacing, radii, status-tag colors, row hover/selection
+tints, and focus indicators MUST follow the token values in
+[`go-cask-object-browser.design.json`](../design/go-cask-object-browser.design.json).
+CSS provides appearance only: every control, value, state label, and focusable
+target MUST remain semantic HTML.
 
-Real element ids (markup hooks and htmx swap targets): `#object-list` (list page: container wrapping the table), `#object-table` (table identifier, never a swap target itself), `#hexdump` (detail page: lazy placeholder, then the replacement table identifier), `#object-meta` (detail description list), `#action-result` (detail page: empty result container), `#gc-result` (GC page: empty result container), plus `#sample-table`, `#q`, `#roots`, `#token` as markup hooks.
+## 3. Pages and visible data
 
-Conventions: one template per view + small partials; minimal logic (built-ins `{{if}}`/`{{range}}`/`{{eq}}`/`{{or}}`/`{{not}}` and pipelines only), all computation in Go handlers passing pre-shaped data; raw semantic HTML only.
-
-**Registered `template.FuncMap` helper: `shortDigest` only (it renders `cas.Digest.Prefix(8)`).** `web.New` registers exactly that one function — `shortDigest(d cas.Digest) string`, the first 8 hex chars via `sha256.Short` (`""` for the absent digest). Nothing else is registered: there is no `digestWithType`, `humanSize`, `byteSize`, or `hexdump` `FuncMap` entry (`digestWithType`/`parseDigestOrNil` exist only as unreferenced Go helpers, called by no template; `humanSize`/`byteSize` exist in no Go file). The templates do not call `shortDigest` either: the handlers precompute `objectRow{Digest, Short, Type, Size}` with it, and `sample-table`/`object-table` render the precomputed `.Short` field. `hexdump(data []byte) []dumpRow` is a **Go** helper, not a `FuncMap` entry: `objectRaw` calls it and passes `Rows` (offset/hex/ASCII per 16-byte row) plus an optional truncation `Note`, and `hexdump-table` ranges over them. Sizes render as exact byte counts (`.Size`, the store totals) — never humanized units.
-
-## 5. Hypermedia interaction model (htmx)
-
-htmx attributes are the only interactivity; the single vendored script is served at `/viewer/static/htmx.min.js`. Every htmx attribute in `internal/web/templates/`:
-
-| View | Element | Attributes |
+| Route | View | Role |
 |---|---|---|
-| `objects` | search input `#q` | `hx-get="/viewer/objects"`, `hx-trigger="input changed delay:300ms"`, `hx-target="#object-list"`, `hx-push-url="true"` |
-| `object` | verify form (operator/admin) | `hx-post="/viewer/objects/{hash}/verify"`, `hx-target="#action-result"` |
-| `object` | delete form (admin) | `hx-post="/viewer/objects/{hash}/delete"`, `hx-target="#action-result"`, `hx-confirm="Delete this object?"` |
-| `object` | lazy `#hexdump` placeholder | `hx-get="/viewer/objects/{hash}/raw"`, `hx-trigger="revealed"`, `hx-target="#hexdump"`, `hx-swap="outerHTML"` |
-| `gc` | GC form | `hx-post="/viewer/gc"`, `hx-target="#gc-result"`, `hx-swap="innerHTML"` |
+| `/viewer/` | dashboard: summary, search, sample, link to browser | viewer |
+| `/viewer/objects` | master-detail object browser | viewer |
+| `/viewer/objects/{hash}` | cold-load object detail | viewer |
+| `/viewer/objects/{hash}/raw` | lazy hexdump fragment | viewer |
+| `/viewer/gc` | maintenance form | admin |
 
-- Everything else is plain HTML: the nav links, the login form, and the dashboard's search form are ordinary `method="get"`/`method="post"` forms; the htmx forms keep their `action`/`method` too, so they still work with htmx disabled.
-- Live search replaces the **inside** of `#object-list` (the default `innerHTML` swap) with `object-table-fragment`; the handler selects that fragment when `HX-Request: true` and the full `objects` page otherwise. There is **no** paging: the list renders every object in one table, and the dashboard sample is capped at 10 (`index.Paginate(digests, 0, 10)`).
-- The raw view replaces its own placeholder (`hx-target="#hexdump"` + `hx-swap="outerHTML"`), so its container becomes the `#hexdump` table — the lazy-loaded hexdump.
-- Mutations swap the returned `result` paragraph into `#action-result` or `#gc-result`; `verify`/`delete` do not re-render the list, and destructive delete asks `hx-confirm` first. Every mutation is a POST carrying the session's CSRF token in a hidden `csrf` field.
-- GET endpoints are side-effect free; every state change is a POST form. Mutation responses are the result fragment (never 204); an unauthenticated request gets 401 with an empty body and an insufficient role 403 with an empty body.
-- No `hx-boost`, no `hx-swap-oob`, no polling (`hx-trigger="every …"`), no click-to-load/paging, and no custom events, `_hyperscript`, or Alpine — only the attributes above.
-- `GET /viewer/dashboard` exists and returns the `dashboard_panels` fragment, but no template issues that request, so nothing refreshes the dashboard in place today.
+The browser has a top bar, filter bar, table/pager master column, and inspector
+detail column. The object table contains digest, type, exact size, integrity
+status, and any optional metadata the backend can supply truthfully. It MUST
+NOT fabricate reference counts, object age, incoming/outgoing references, or
+stored verification state. A `not verified` status is valid until an
+on-demand verification result exists in the current server session.
 
-## 6. Pages and routes
+The inspector contains a summary header and server-selected panels:
 
-All under `/viewer`. The surface is fixed by `Server.Handler()`: there is no config block and no `-config` file yet (cli §2 defers it) — `cask web` selects only store, bind address, role tokens and the insecure-bind acknowledgement. `{hash}` values are parsed with the client's `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before storage access.
+1. **Metadata** — full digest, client algorithm, envelope type, exact size,
+   and integrity result.
+2. **Bytes** — lazy 16-byte-row hexdump and truncation note.
+3. **Actions** — role-gated verify/delete forms; forms remain ordinary,
+   CSRF-protected POSTs without htmx.
 
-| Route | Method | Content | Role |
-|---|---|---|---|
-| `/viewer/login` | GET/POST | startup-token login → session cookie | — |
-| `/viewer/?token=<token>` | GET | direct `?token=` login → session cookie → 303 to `/viewer/` (throttled; `Referrer-Policy: no-referrer`) | — |
-| `/viewer/` | GET | dashboard: store-overview stats, addressing note, 10-object sample, search, nav (Objects · GC); unauthenticated → 303 to `/viewer/login` | viewer |
-| `/viewer/dashboard` | GET | the dashboard panels (stats + addressing note + sample) as one `dashboard_panels` fragment; no template requests it today | viewer |
-| `/viewer/objects` | GET | object list: search box + one unpaged table (fragment target `#object-list`) | viewer |
-| `/viewer/objects/{hash}` | GET | object detail: `object-meta` + role-gated verify/delete actions + lazy hexdump placeholder | viewer |
-| `/viewer/objects/{hash}/raw` | GET | hexdump fragment in `#hexdump` table, preview truncated at 256 KiB with a note | viewer |
-| `/viewer/objects/{hash}/verify` | POST | integrity check → `result` fragment | operator |
-| `/viewer/objects/{hash}/delete` | POST | delete (hx-confirm) → `result` fragment | admin |
-| `/viewer/gc` | GET | GC page: root-hash form + `#gc-result` area | admin |
-| `/viewer/gc` | POST | mark-and-sweep GC from the submitted root hashes → `result` fragment | admin |
+References, copy-to-clipboard, draggable resizing, and client-side history are
+prototype behaviors. They are not viewer features unless a later server-side
+contract supplies truthful data and URL-addressable behavior.
 
-## 7. Data views
+## 4. Rendering architecture and composition
 
-**Dashboard (landing):** a store-overview line (`stat-cards`: object count · total bytes); an **addressing note** (`digest-note`: digests are raw digest bytes rendered as lowercase hex — the core names no algorithm; this viewer digests and validates with `sha256`); sample objects (`sample-table`: the first 10 of `Backend.List` via `index.Paginate(digests, 0, 10)`, rows as short-hash and type linking to details via the full digest, then a "see all objects" link — there is no paging); a search form (`GET /viewer/objects?q=…`) as the entry point for "find this hash"; a navigation line (Objects · GC).
+The viewer uses `html/template`, parsed from `embed.FS`, and executes named
+templates into a buffer before writing a response. Templates are deliberately
+small and compose into pages and fragments:
 
-**Objects:** UI links ALWAYS show the **8-char short hash** (`cas.Digest.Prefix(8)` via the `shortDigest` FuncMap entry, e.g. `9f86d081`); the link destination always carries the **full digest** (lowercase hex, e.g. `/viewer/objects/9f86d081…`, no algorithm prefix) — short form is display-only, identity never lost; the full digest is always on the detail page (`object-meta`). Generic lists render short-hash and type; tables with a dedicated type column MAY show the plain short hash. List columns: hash (short), `Type()`, size; search filters by hash or type substring (active search, `q`). Detail order: summary (`object-meta` description list: full digest, the client's constant algorithm name `sha256`, type, exact size) → actions (verify/delete per role) → raw bytes (hexdump, lazy).
+| Component | Responsibility |
+|---|---|
+| `head` | metadata, `/viewer/static/viewer.css`, vendored htmx |
+| `top-bar` | brand, navigation, operational action |
+| `filter-bar` | one GET form for durable browser state |
+| `object-table` | accessible headers, rows, empty state |
+| `pager` | result summary plus first/previous/next/last links |
+| `object-list` | table and pager; the primary htmx swap boundary |
+| `inspector` | selected-object header and metadata/bytes/actions panels |
+| `integrity` | verify result fragment |
+| `hexdump-table` | lazy bytes fragment |
+| `result` | mutation outcome |
 
-**References are out of scope:** the viewer is a **byte-layer** tool and MUST NOT interpret typed references (resolving `References()` needs an app object model; the product ships none; `internal/` and `cas/` MUST NOT import `examples/`). Reference graphs belong to app layers (`gitlike`). The viewer shows objects, bytes, and integrity, not typed structure.
+Full pages compose these components; fragments execute the same named
+components standalone. A component MUST receive pre-shaped data: templates may
+range and branch but MUST NOT calculate filtering, sorting, pagination,
+integrity, or layout.
 
-**Blobs:** the `raw` view shows exact serialized bytes — a hex dump table (`hexdump-table`: 16-byte rows, offset/hex/ASCII columns) plus the exact total size on the detail page. Hexdump is **lazy-loaded** via htmx (`revealed`) so large objects don't block the page (the handler streams at most `previewLimit` = 256 KiB and reports truncation; never buffer megabytes). The stored type comes from the TLV envelope; raw JSON payload is visible as-is.
+## 5. URL state and htmx interactions
 
-**Integrity and maintenance:** `verify` recomputes the stored-bytes digest with the client's hasher and reports match/mismatch (`Verify(ctx, d, hasher)` contract) as a `result` fragment. `gc` runs mark-and-sweep from the root hashes submitted in the form and returns a `result` fragment reporting the object count delta; only objects not in the reachable set are removed, and the GC run is audit-logged (admin only). There is no progress polling.
+The object-browser URL owns all view state:
 
-## 8. Out of scope
+```text
+/viewer/objects?q=<text>&type=<type>&size=<bucket>&status=<state>
+  &sort=<hash|type|size>&dir=<asc|desc>&limit=<25|50|100|250>
+  &offset=<non-negative>&selected=<digest>&tab=<metadata|bytes|actions>
+```
 
-- No JSON/data API (hypermedia only; no `/api/...`, no JSON responses). The product ships no programmatic data API; an app needing one copies the `examples/api` pattern.
-- No CSS/JS (no stylesheets, style elements, custom scripts; htmx is the only script, vendored/pinned).
-- No charting/dashboard libraries, no CSS frameworks, no build step.
-- No client-side rendering; no HTML string concatenation in Go.
-- No object editing — objects are immutable; the viewer only inspects, verifies, and (admin) deletes/GCs.
-- No typed references/graph (byte-layer tool).
+- Omitted values select defaults: hash ascending, `limit=25`, `offset=0`, no
+  filters, metadata panel.
+- Validate every parameter. Invalid enumerations, disallowed limits, malformed
+  selected digests, and negative/non-numeric offsets return 400; handlers MUST
+  NOT silently clamp invalid input.
+- Filtering or changing `limit` resets `offset` to zero. Sorting preserves
+  filters and selection only when the selected digest remains in the filtered
+  result set.
+- The server filters, sorts, counts, slices, and renders. It returns
+  `#object-list` (table plus pager) for htmx requests and the whole document
+  otherwise.
+- Search uses `hx-get`, `input changed delay:300ms`, `hx-include` of the
+  filter form, `hx-target="#object-list"`, and `hx-push-url="true"`.
+- Sort headers and pager are ordinary links with complete query state; htmx
+  may enhance them with `hx-get`/`hx-target`/`hx-push-url`, never replacing
+  their link behavior.
+- Selecting a row is a real link that sets `selected`. htmx may request the
+  same URL and swap `#object-inspector`; a direct request renders the complete
+  object-detail document.
+- Inspector panel links set `tab`; no browser-only tab state. The bytes panel
+  lazy-loads the hexdump through `hx-trigger="revealed"`.
+- Verify/delete/GC remain POST + CSRF + role checks + audit logging. Verify
+  swaps only `#integrity`; delete/GC swap their result containers.
 
-## 9. Acceptance checklist
+## 6. Security and accessibility
 
-- [x] Dashboard is the landing page: store-overview stats, addressing note, 10-object sample, search, nav — all with drill-down links
-- [x] Simple/elegant/usable: consistent layout, scannable tables, one purpose per page, no dead ends
-- [x] Every `viewer-security.md` requirement implemented
-- [x] No CSS, no hand-written JS in `internal/web/`
-- [x] HTML only via `html/template`, nested `{{define}}`/`{{template}}`, embedded `embed.FS`
-- [x] Full pages and fragments share partials (`object-table` reused by `object-table-fragment`; `hexdump-table` used by the `hexdump` fragment)
-- [x] Objects viewable: 8-char short-hash links (`objectRow.Short`; full digest on detail + link targets), the client's constant algorithm name `sha256`, type, size; the dashboard sample shows `<shorthash> (<type>)`
-- [x] No typed references/graph in `internal/web/` (byte-layer)
-- [x] Blobs viewable: hex dump table, lazy-loaded for large objects
-- [x] Mutations (verify/delete/GC) are POST + CSRF + role-checked + audit-logged; GET side-effect free
-- [x] Works with htmx disabled (links/forms still function)
-- [x] `{hash}` parsed with `sha256.Parse`; malformed → 400, missing session → 401 empty, insufficient role → 403 empty
+`viewer-security.md` applies unchanged: protected routes require a session;
+401/403 have empty bodies; mutations are role-gated, CSRF-protected, and
+audited; no token or secret reaches markup, logs, or browser state.
+
+Tables require captions, scoped headers, `aria-sort` for the active sort
+column, and an explicit empty row. Every form control has a label. The selected
+row exposes its state, status labels contain text rather than color alone, and
+all actions/links remain keyboard-operable. Focus styles in `viewer.css` MUST
+meet the mockup's visible focus-ring contract.
+
+## 7. Verification requirements
+
+Viewer tests MUST cover:
+
+- full-page and htmx rendering of each named component;
+- URL defaults, valid filter/sort/page combinations, and invalid query 400s;
+- pagination totals, boundaries, and pager links retaining query state;
+- direct-link and htmx selection behavior;
+- accessible table/sort/status markup and CSS asset headers;
+- session/role/CSRF/error behavior and bounded raw-byte preview.
+
+## 8. Checklist
+
+- [x] Master-detail browser uses server-rendered HTML, htmx, and one scoped stylesheet
+- [x] Component templates compose pages/fragments without duplicated rendering logic
+- [x] Filter/sort/page/selection/panel state is URL-addressable and validated
+- [x] Pagination is server-side and progressively enhanced
+- [x] No custom JavaScript, browser storage, typed graph, or invented metadata
+- [x] Security and accessibility requirements remain enforced

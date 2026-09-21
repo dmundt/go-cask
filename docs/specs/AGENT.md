@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v23
+version: v24
 tags: [go-cask]
 status: stable
 ---
@@ -43,7 +43,7 @@ Every topic file MUST begin with exactly four YAML keys, in this order:
 ```yaml
 ---
 type: Specification
-title: <Topic> — go-cask
+title: {Topic} — go-cask
 description: One sentence stating what the file requires/documents and who it applies to.
 version: v5
 ---
@@ -55,13 +55,13 @@ version: v5
 
 ## 4. Document structure
 
-1. H1 `# <Title>` identical to frontmatter title.
+1. H1 `# {Title}` identical to frontmatter title.
 2. Intro paragraph (2–6 lines) immediately after the H1 — plain prose, not a blockquote: what the file governs, and, where the file depends on siblings, a closing `Related:` line of backticked specs it must be read with.
 3. Numbered `## N.` sections (`## 1. <topic>` — `Purpose and scope` where that fits, a domain noun otherwise); subsections `### 3.1` (or `### 4.13`).
 4. No `---` separators in the body: a spec's only `---` lines are the two frontmatter delimiters.
 5. Closing `## N. Checklist` of acceptance items derived from the body.
 
-- Requirements stated once and referenced, never duplicated with drift. Tables for enumerations/contracts; fenced code (`go`, `yaml`, `text`, `mermaid`) for concrete shapes; prose for rationale. Reference the shared glossary (§6); do not redefine terms.
+- Requirements stated once and referenced, never duplicated with drift. Tables for enumerations/contracts; fenced code (`go`, `yaml`, `text`, `mermaid`) for concrete shapes; prose for rationale. Raw HTML, HTML comments, tags, layout wrappers, and HTML/XML/SVG code fences are forbidden in every `.md` file. Reference the shared glossary (§6); do not redefine terms.
 - **Codec wrappers are cascadeable by design.** Any new `Codec[T]` wrapper MUST preserve the single-stack rule: an outer codec wraps an inner codec and transforms only the serialized bytes. Set the canonical pattern in docs and tests; do not add constructor variants that break composition.
 
 ## 5. Normative language and tone
@@ -132,6 +132,7 @@ Before committing any change to a file in this folder:
 - [x] New files added to the `AGENTS.md` aggregator "Related specs" list
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
+- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences
 
 ## 11. Signed pull-request workflow
 

@@ -1,88 +1,110 @@
 ---
 type: Design Document
 title: Viewer Design Brief — go-cask
-description: The design brief for the viewer's next iteration (input for OpenDesign) — pure server-side Go templates + htmx only, no JS, no CSS in step 1; a master-detail object browser (list + inspector) with URL-as-state, informed by the cas-kit viewer prototype and the byte-layer viewer design, strictly aligned to the cas model.
-version: v5
+description: Extracted visual and component brief for translating the object-browser mockup into the server-rendered go-cask viewer.
+version: v6
 ---
 
 # Viewer Design Brief — go-cask
 
-Design brief for the next viewer (`internal/web/`) iteration — the input an OpenDesign pass works from. Fixes the target grammar (structure-only step 1, no JS/CSS), view set, component vocabulary, and htmx interaction map — informed by the **cas-kit viewer prototype** (master-detail, URL-as-state query, sortable result fragments, tabbed inspector, honest empty/error states) and **strictly aligned to the cas model and byte-layer viewer design** (viewer-design), not bucket/file-store models. Complements and MUST NOT contradict viewer-design, viewer-security, api-design, coding-guidelines. A deferred CSS step stays gated on an explicit decision to relax the no-CSS rule — this brief changes nothing by itself.
+This brief extracts the visual language and component anatomy from
+[`go-cask-viewer.html`](go-cask-viewer.html) and
+[`go-cask-object-browser.design.json`](go-cask-object-browser.design.json).
+It guides implementation of the viewer in `internal/web/`. The normative
+contract is `docs/specs/viewer-design.md`; where the prototype conflicts with
+that contract, the prototype is adapted to server-rendered URL state.
 
-## 1. Model alignment
+## 1. Product shape
 
-The viewer browses a **content-addressable store**, not buckets/files:
-- Identity is the **digest** (raw digest bytes, rendered as lowercase hex; the printable `sha256:hexdigest` form is a client rendering — the core names no algorithm); objects are **immutable blobs** in a self-describing envelope (`type@major` + payload); the type is **sniffed from the bytes** for display only.
-- The store exposes `Stats`, `Verify`, `Delete`, `GC`; object age = file mtime.
+Build a responsive, desktop-first master-detail object browser:
 
-Consequences: the viewer is a **byte-layer tool** (shows objects, bytes, integrity; never typed reference graphs — resolution is the app layer's job, e.g. `gitlike`, which the viewer does not import). **No buckets, no uploads** (ingestion via library/CLI; objects immutable), **no user settings**. Every screen drills down from the store root: overview → object index → object detail (metadata/bytes/integrity). Out of scope (no cas analog / demo-only): blake3/CID notation, media-type/path hints, tiers/compression (deferred extensions), pinned flags, refcounts/read stats, chunk maps (objects stored whole), reference graphs. The viewer never invents store state: integrity shown only as **on-demand `Verify` results** (verified / corrupt / not-yet-verified), never a persisted index column.
+```text
+top bar:      CA go-cask                                      action/nav
+filter bar:   search | type | size | integrity state | reset
+workspace:    object table + pager  |  selected-object inspector
+```
 
-## 2. Requirements
+The top and filter bars are deliberately compact. The list is dense,
+hash-first, and scrollable. The inspector preserves context beside the list on
+desktop and follows it as a full-width section on narrow screens.
 
-- Pure server-side rendering: `html/template`, one page per URL, fragments for htmx. No SPA, no client state.
-- No JavaScript: only script is the vendored htmx runtime; all interactivity hypermedia (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-push-url`/`hx-include`).
-- No CSS in step 1: clean semantic HTML first; style is a later gated step.
-- Desktop-first, responsive: dense master-detail at ≥1280px; side panel collapses below.
-- Information design inspired by the cas-kit prototype, GitHub, MinIO Console — restrained, hash-first, no chrome (not feature set).
-- Readability: short digests in lists (8 hex chars, e.g. `9f86d081`), the full hex digest in the inspector; monospace + tabular numerals for hashes/numbers/hex.
-- Every view is a URL: filters, sort, page, selection as query params; any state reconstructible/bookmarkable; a swapped fragment updates the URL via `HX-Push-Url` so back/forward works.
-- Security unchanged (viewer-security): startup-token login, session cookie, roles, CSRF on every mutation, empty-body 401/403, audit-logged mutations.
+## 2. Extracted visual grammar
 
-## 3. Views
+Use the mockup's token values exactly in the one central
+`internal/web/viewer.css` file:
 
-1. **Login** — token form only; no chrome.
-2. **Overview (hub)** — top-bar chips (objects · bytes), sample objects, search that jumps into the index.
-3. **Object index (master)** — center of the app: **filter bar** (search digest-prefix or type text; type filter [sniffed]; size buckets; rows/page 25/50/100/250; reset-filters when active); **results table** (short hash, `type@major`, size, age; sortable size/age columns with `aria-sort`; numeric cells right-aligned monospace); **pager** (`X–Y of N · <bytes>`, page-window elision, prev/next — swapped with the table so counts/sort/rows never disagree); **row click** loads the inspector fragment; rows degrade to full navigation without htmx.
-4. **Object detail (inspector)** — server-rendered side panel (or full page on narrow widths), swapped as one unit: **Metadata tab** (full hex digest, algorithm — the client's constant `sha256`, size, envelope type [sniffed], age; link to `/objects/{hash}/raw`); **Bytes tab** (hexdump of first bytes, offset/hex/ASCII — lazy via `revealed` or explicit "load"); **actions** — verify (POST, swaps only the integrity fragment: verified ✓ / corrupt ✕ with message / not-yet-verified), delete (admin, CSRF + `hx-confirm`). The same URL (`/objects/{hash}`) renders a full document on cold load and a fragment for htmx (`HX-Request`) — a shared URL never shows a bare panel.
-5. **Stats** — objects, bytes.
-6. **GC (admin)** — confirm + status fragment; no reachable-root editing UI (an app-root concern).
+- near-white background/surface, dark blue-gray foreground, muted metadata,
+  hairline borders, green accent, blue reference accent;
+- system UI body face; mono face with tabular numerals for hashes, numbers, and
+  hex;
+- 46px top bar, 47px filter bar, 14px horizontal page inset, 8px filter gap;
+- 30px inputs, 4–5px control radii, compact 27px pager controls;
+- 440px inspector, 4px divider, 700px minimum table width;
+- dense table rows, sticky uppercase mono headers, right-aligned numeric
+  columns, row hover/selection inset, visible two-pixel focus rings;
+- responsive transition at 900px: horizontal filter scrolling, list first,
+  then inspector, ordinary document scroll.
 
-Explicitly out of scope: buckets overview, upload dialog, settings, user management, typed reference graphs (byte-layer), the prototype's demo-only columns.
+No inline styles, remote fonts, imports, images, or additional stylesheets.
+The CSS never supplies content needed for navigation, state, labels, or
+accessibility.
 
-## 4. Components
+## 3. Component map
 
-- **Top bar** — brand + breadcrumb (`cas-kit / store / Objects`), status chips (objects, bytes; "corrupt N" chip appears only after a session verify found corruption), primary actions; sticky.
-- **Filter bar** — owns durable view state; every fragment request pulls it via `hx-include`; sort in a hidden field (never an ambiguous headers/filters pair).
-- **Search box** — detects hex digest prefix (prefix match, highlighted with a generated `mark` element, never interpolated) vs. free text (type match).
-- **Results table** — sticky header, sortable columns, empty-state row; numeric cells right-aligned.
-- **Pager** — offset/limit, page-window elision, per-page selector; carried in the URL; no client cursor state.
-- **Inspector** — radio-driven tabs, description-list metadata, preformatted hexdump, integrity fragment.
-- **Status tags** — textual tags (no colored pills without CSS): algorithm, `type@major`, verified/corrupt/unverified, `empty store`; colors arrive with the gated CSS step.
-- **Panel states** — distinct empty copy per state (no match for query vs. no objects at all); error panel with error text, trace id, retry — full-page vs. fragment variants.
+| Mockup region | Go template component | Server-driven adaptation |
+|---|---|---|
+| Brand/top bar | `top-bar` | link/navigation/action uses ordinary links or forms |
+| Filter bar | `filter-bar` | a GET form encodes query state |
+| Search and clear | `search-control` | clearing is a reset/query link, not client mutation |
+| Type/size/state selects | `filter-controls` | values are validated URL parameters |
+| Sortable headers | `sort-header` | complete-query links toggle server sort direction |
+| Object rows | `object-row` | row link selects a digest via URL |
+| Result/pager footer | `pager` | server computes slice/count; pager is links |
+| Inspector header | `object-inspector` | selected digest is URL state |
+| Metadata/bytes/actions | `inspector-panels` | panel is `tab` URL state; bytes lazy-load through htmx |
+| Integrity pill/result | `integrity` | only server-known on-demand result; never fabricated |
 
-## 5. htmx interaction map (no JS)
+`object-list` composes the object table and pager and is one htmx swap target.
+`object-inspector` is a distinct target. Components are named templates with
+pre-shaped Go data, so full pages and fragments reuse identical markup.
 
-- Overview: stats panel refreshes OOB (`load` + OOB).
-- Index: filter/search/sort/page all `hx-get` the results fragment with `hx-include="#filters"` + `HX-Push-Url`; table, counts, pager swap as one unit.
-- Row → inspector: `hx-get /objects/{hash}` → `#inspector`.
-- Verify: `hx-post` swaps only `#integrity` (pending → resolved; htmx indicator = recomputing).
-- Bytes: hexdump on `revealed` (or explicit load for large objects).
-- Delete/GC: CSRF POST behind `hx-confirm`.
-- Every nav link is a plain link; without htmx the viewer works via full navigation; a cold load of any fragment URL returns the full document.
+## 4. Prototype reconciliation
 
-## 6. Visual language (step 2 — deferred, gated)
+The mockup includes behaviors that cannot be copied literally without custom
+JavaScript or unsupported CAS data. Translate them as follows:
 
-- Tokens: `--bg`/`--surface` white-ish neutral, `--fg` dark gray, `--muted`, `--border` hairline; one **accent** hue (default blue `#0969da`, or green `oklch(58% 0.16 145)` — pick one at the CSS step). Status colors (ok/warn/danger/info); row hover + selected tint; sticky headers with hairline rules.
-- Fonts: system UI body; monospace (`JetBrains Mono`/`IBM Plex Mono`/`ui-monospace`) for hashes/numbers/hex.
-- Layout: 46px top bar + filter bar; results table flexes; inspector a fixed right column (~370px) hiding below ~1240px (detail route renders full page there).
-- Techniques: inspector tabs via **hidden radio inputs + CSS sibling selectors** (zero round trips/JS); "pressed" filter pills via `:has(input:checked)` — both pure CSS, land only in this step.
-- **Gate:** current specs forbid CSS in `internal/web` (viewer-design, coding-guidelines). Step 2 requires an explicit decision to relax that rule (viewer-security unaffected). Step 1 is structure-only regardless.
+| Mockup behavior | Viewer implementation |
+|---|---|
+| Live search | htmx GET plus normal GET-form fallback |
+| Sort, filters, page size, pager | validated query parameters and server render |
+| Row selection | `selected` query parameter; htmx inspector swap |
+| Metadata/Bytes/Actions tabs | `tab` query parameter; links/buttons, no client tab state |
+| Resizable divider | fixed responsive layout; no drag interaction |
+| Copy digest | full digest in selectable semantic text; no clipboard API |
+| Reference panels/refs count | omitted; byte layer cannot resolve typed references |
+| Written time | omitted until backend exposes truthful metadata |
+| Status state | `not verified` or result of an on-demand server verification |
+| Global Verify | not shown until an authorized bounded server operation exists |
 
-## 7. Step plan
+This preserves the mockup's information density, hierarchy, and visual
+language without shipping a second client application.
 
-1. **Structure-only pass** (this brief; no CSS/JS): normalize each view to the component grammar, reusing existing templates/fragment ids (`#object-table`, `#inspector`, `#integrity`, `#hexdump`, `#stats-panel`); make every view URL-as-state with `HX-Push-Url`; add empty/error states and reset-filters.
-2. **CSS step** (after explicit rule relaxation): token set, master-detail layout with responsive collapse, radio-tab panes, sticky headers, tags/pills, focus states.
-3. **Polish**: selected-row affordance, reduced-motion, keyboard focus order.
-4. **Fold-in and retire**: as outcomes are implemented, merge accepted results into `viewer-design.md` (version bump) and **delete this brief** — it is a proposal for a planned iteration, not a permanent spec.
+## 5. Implementation sequence
 
-## 8. Checklist
+1. Add and embed central `viewer.css`; add stylesheet link to the shared head.
+2. Split templates into composition-level components: shell/top bar, filter
+   bar, table/sort header/row, pager, inspector/panels, and result fragments.
+3. Add validated server-side filter, sort, pagination, selection, and panel
+   state; return the list and inspector as reusable fragments.
+4. Move current dashboard/object/detail markup onto composed components.
+5. Add route/template tests for direct loads, htmx swaps, pagination bounds,
+   query preservation, roles/CSRF, and narrow/desktop semantic structure.
 
-- [ ] §3 views map 1:1 to routes registered in `internal/web` (login, dashboard, objects, object, stats, gc)
-- [ ] No JS beyond the vendored htmx runtime; no CSS in step 1
-- [ ] Every state is a URL; fragments push the URL and degrade to full pages
-- [ ] Fragment ids from §4 reused; results swap as one unit; mutations return fragments only
-- [ ] Byte-layer: no typed reference graphs, no `gitlike` import in the viewer
-- [ ] No demo-only store state invented (no tiers/compression/pinned/refcounts/CID/chunk maps)
-- [ ] Terminology matches AGENT §6 (the viewer, hash, envelope) — no bucket/file-store vocabulary
-- [ ] viewer-security requirements unchanged and honored
-- [ ] CSS step (§6) not started until the no-CSS rule is explicitly relaxed
+## 6. Acceptance cues
+
+- Wide view reads as one calm operational workspace rather than cards.
+- A user can scan hash/type/size quickly, page without losing filters, and
+  inspect an object without losing the list.
+- Every state can be bookmarked or opened directly.
+- With htmx absent, forms and links still complete every navigation/action.
+- CSS failure leaves a complete, usable semantic document.

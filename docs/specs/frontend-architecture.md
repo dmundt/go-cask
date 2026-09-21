@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Frontend Architecture — go-cask
-description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
-version: v6
+description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
+version: v7
 ---
 
 # Frontend Architecture — go-cask
 
-Governs the browser-facing architecture of go-cask (applies to the viewer and any future frontend). Concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (no CSS/JS, templates+htmx), api-design.
+Governs the browser-facing architecture of go-cask (applies to the viewer and any future frontend). Concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (scoped viewer CSS/no custom JavaScript, templates+htmx), api-design.
 
 ## 1. Purpose and scope
 
@@ -36,18 +36,21 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 | Search/filter | active search: `hx-get="/viewer/objects"`, `hx-trigger="input changed delay:300ms"`, `hx-target="#object-list"` |
 | Partial updates | `hx-get`/`hx-post` + `hx-target` + `hx-swap` into semantic containers |
 | Lazy loading | `hx-trigger="revealed"` loads the hexdump table into `#hexdump` |
-| Paging | none in the viewer: the dashboard shows a fixed 10-object sample and the objects page lists all (filtered) digests |
+| Paging | offset/limit query state; table, result count, and pager render and swap together |
 | Long-running ops | no polling: verify/delete/gc answer with a `result` fragment |
 | Cross-panel update | none: every swap targets the panel that asked for it |
 | Destructive actions | POST forms + `hx-confirm` + CSRF token |
 
 - GET endpoints are side-effect free; every mutation is a POST form with CSRF (viewer-security).
-- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (search), `#object-table`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
+- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, and paging), `#object-table`, `#object-inspector`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
 - No custom events, no `_hyperscript`, no Alpine, no hand-written JS — htmx attributes only (coding-guidelines §4).
 
 ## 5. Navigation and state
 
-- **URLs are the state:** `hx-push-url` keeps navigation in the address bar; refresh and back/forward work; no client-side state to lose or rehydrate.
+- **URLs are the state:** `q`, `type`, `size`, `sort`, `dir`, `limit`,
+  `offset`, `selected`, and inspector `tab` identify an object-browser view.
+  `hx-push-url` keeps that state in the address bar; refresh and back/forward
+  work; no client-side state exists to lose or rehydrate.
 - Identity from the server session cookie (always `HttpOnly`,
   `SameSite=Strict`, and `Secure` — viewer-security); the browser never holds
   tokens/secrets.
@@ -55,12 +58,21 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 
 ## 6. Assets and embedding
 
-- Single binary: templates + vendored htmx embedded via `embed.FS`.
-- No npm, no build step, no static asset pipeline (coding-guidelines §10). Only script in the runtime is **htmx** (one pinned, vendored file).
+- Single binary: templates, `internal/web/viewer.css`, and vendored htmx
+  embedded via `embed.FS`.
+- No npm, no build step, and no static asset pipeline. The only viewer
+  stylesheet is the local, class-scoped
+  `/viewer/static/viewer.css`; no remote fonts, imports, images, or other
+  style dependencies. Only script in the runtime is **htmx** (one pinned,
+  vendored file).
 
 ## 7. Semantics and accessibility
 
-- Raw semantic HTML: main and navigation elements; tables with captions and scoped headers; description lists for metadata; preformatted blocks for bytes; forms with labels for input — no generic-container soup or inline styles.
+- Raw semantic HTML: main and navigation elements; tables with captions and
+  scoped headers; description lists for metadata; preformatted blocks for
+  bytes; forms with labels for input — no generic-container soup or inline
+  styles. CSS supplies layout and visual hierarchy only; semantics and
+  meaningful text remain in templates.
 - Accessibility: labels on all inputs, `alt` text, logical heading order, keyboard-operable links/forms. htmx keeps native elements native (progressive enhancement), so focus/semantics survive.
 - Elegance without CSS comes from structure, whitespace, consistent layout (viewer-design §2).
 
@@ -78,7 +90,8 @@ Reference implementation of this architecture: dashboard-first, low-level techni
 
 - [x] All HTML via `html/template`; templates nested via `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [x] Fragments reuse the same partials as full pages (one source of truth)
-- [x] Interactivity via htmx attributes only; no hand-written JS/CSS
+- [x] Interactivity via htmx attributes only; no hand-written JS
+- [x] One embedded, scoped viewer stylesheet; no inline or external CSS
 - [x] GET side-effect free; mutations = POST + CSRF
 - [x] URLs are the state (`hx-push-url`); refresh/back work
 - [x] Semantic HTML + accessibility per §7
