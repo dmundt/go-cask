@@ -303,6 +303,26 @@ func TestObjectsListAndRaw(t *testing.T) {
 		}
 	}
 
+	t.Run("htmx inspector selection", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/objects?selected="+url.QueryEscape(h.String())+"&tab=bytes", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("HX-Target", "object-inspector")
+		resp, err := viewer.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := string(body)
+		if resp.StatusCode != http.StatusOK || !strings.Contains(page, "Loading bytes") ||
+			!strings.Contains(page, `hx-trigger="revealed"`) || strings.Contains(page, "<!doctype html>") {
+			t.Fatalf("inspector fragment = (%d, %.400q), want bytes-only fragment", resp.StatusCode, page)
+		}
+	})
+
 	resp, err := viewer.Get(ts.URL + "/viewer/objects/not-a-digest")
 	if err != nil {
 		t.Fatal(err)

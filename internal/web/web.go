@@ -406,7 +406,11 @@ type objectBrowserData struct {
 	SortHashURL string
 	SortTypeURL string
 	SortSizeURL string
+	HasPrevious bool
+	HasNext     bool
 	Inspector   *browserInspector
+	CSRF        string
+	Role        string
 }
 
 type filterOption struct {
@@ -416,11 +420,15 @@ type filterOption struct {
 }
 
 type browserInspector struct {
-	Digest    string
-	Type      string
-	Size      int64
-	Status    string
-	DetailURL string
+	Digest      string
+	Type        string
+	Size        int64
+	Status      string
+	DetailURL   string
+	RawURL      string
+	MetadataURL string
+	BytesURL    string
+	ActionsURL  string
 }
 
 func (state objectBrowserState) url() string {
@@ -505,6 +513,8 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		State:   state,
 		Total:   len(digests),
 		Matched: len(rows),
+		CSRF:    s.csrfFor(r),
+		Role:    s.roleFor(r),
 	}
 	for typ := range types {
 		data.Types = append(data.Types, filterOption{
@@ -532,12 +542,22 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, row := range rows {
 		if row.Digest == state.Selected {
+			metadataState := state
+			metadataState.Tab = "metadata"
+			bytesState := state
+			bytesState.Tab = "bytes"
+			actionsState := state
+			actionsState.Tab = "actions"
 			data.Inspector = &browserInspector{
-				Digest:    row.Digest,
-				Type:      row.Type,
-				Size:      row.Size,
-				Status:    row.Status,
-				DetailURL: "/viewer/objects/" + row.Digest,
+				Digest:      row.Digest,
+				Type:        row.Type,
+				Size:        row.Size,
+				Status:      row.Status,
+				DetailURL:   "/viewer/objects/" + row.Digest,
+				RawURL:      "/viewer/objects/" + row.Digest + "/raw",
+				MetadataURL: metadataState.url(),
+				BytesURL:    bytesState.url(),
+				ActionsURL:  actionsState.url(),
 			}
 			break
 		}
@@ -549,7 +569,13 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	data.SortHashURL = sortURL(state, "hash")
 	data.SortTypeURL = sortURL(state, "type")
 	data.SortSizeURL = sortURL(state, "size")
+	data.HasPrevious = state.Offset > 0 && len(rows) > 0
+	data.HasNext = state.Offset+state.Limit < len(rows)
 	if r.Header.Get("HX-Request") == "true" {
+		if r.Header.Get("HX-Target") == "object-inspector" {
+			s.render(w, "object-inspector", data)
+			return
+		}
 		s.render(w, "object-table-fragment", data) // htmx search/refresh swap
 		return
 	}

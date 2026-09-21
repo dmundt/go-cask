@@ -179,6 +179,10 @@ body.viewer-shell {
   background: color-mix(in oklch, var(--viewer-fg) 3%, var(--viewer-surface));
 }
 
+.viewer-table tbody tr.viewer-selected td {
+  background: color-mix(in oklch, var(--viewer-accent) 12%, var(--viewer-surface));
+}
+
 .viewer-table .viewer-type {
   color: var(--viewer-muted);
 }
@@ -216,6 +220,11 @@ body.viewer-shell {
   text-decoration: none;
 }
 
+.viewer-pager [aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .viewer-inspector {
   min-width: 0;
   background: var(--viewer-surface);
@@ -224,6 +233,20 @@ body.viewer-shell {
 .viewer-inspector-header,
 .viewer-inspector-panel {
   padding: 14px;
+}
+
+.viewer-inspector-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--viewer-border);
+  font: 700 12px/1.3 var(--viewer-mono);
+}
+
+.viewer-inspector-tabs a[aria-current="page"] {
+  color: var(--viewer-fg);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
 }
 
 .viewer-inspector-header {

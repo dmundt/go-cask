@@ -37,6 +37,10 @@
 {{end}}
 
 {{define "filter-bar"}}<form class="viewer-filter-bar" method="get" action="/viewer/objects">
+<input name="sort" type="hidden" value="{{.State.Sort}}">
+<input name="dir" type="hidden" value="{{.State.Direction}}">
+{{if .State.Selected}}<input name="selected" type="hidden" value="{{.State.Selected}}">{{end}}
+{{if ne .State.Tab "metadata"}}<input name="tab" type="hidden" value="{{.State.Tab}}">{{end}}
 <label for="q">Search</label>
 <input id="q" name="q" type="search" value="{{.State.Query}}" placeholder="hash or type"
        hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
@@ -60,8 +64,8 @@
 <a href="/viewer/objects">Reset</a>
 </form>{{end}}
 
-{{define "object-row"}}<tr>
-<td><a href="{{.SelectURL}}">{{.Short}}</a></td>
+{{define "object-row"}}<tr{{if .Selected}} class="viewer-selected" aria-current="true"{{end}}>
+<td><a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-push-url="true">{{.Short}}</a></td>
 <td class="viewer-type">{{.Type}}</td>
 <td>{{.Size}}</td>
 <td><span class="viewer-status">{{.Status}}</span></td>
@@ -70,7 +74,7 @@
 {{define "object-table"}}
 <div class="viewer-table-wrap"><table class="viewer-table" id="object-table">
 <caption>Objects</caption>
-<thead><tr><th scope="col"{{if eq .State.Sort "hash"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortHashURL}}">Hash</a></th><th scope="col"{{if eq .State.Sort "type"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortTypeURL}}">Type</a></th><th scope="col"{{if eq .State.Sort "size"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortSizeURL}}">Size</a></th><th scope="col">Status</th></tr></thead>
+<thead><tr><th scope="col"{{if eq .State.Sort "hash"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortHashURL}}" hx-get="{{.SortHashURL}}" hx-target="#object-list" hx-push-url="true">Hash</a></th><th scope="col"{{if eq .State.Sort "type"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortTypeURL}}" hx-get="{{.SortTypeURL}}" hx-target="#object-list" hx-push-url="true">Type</a></th><th scope="col"{{if eq .State.Sort "size"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortSizeURL}}" hx-get="{{.SortSizeURL}}" hx-target="#object-list" hx-push-url="true">Size</a></th><th scope="col">Status</th></tr></thead>
 <tbody>
 {{range .Objects}}{{template "object-row" .}}{{end}}
 </tbody>
@@ -80,15 +84,26 @@
 {{define "pager"}}<footer class="viewer-pager">
 <span>{{.RangeStart}}–{{.RangeEnd}} of {{.Matched}} · {{.TotalSize}} bytes</span>
 <nav aria-label="Object pages">
-<a href="{{.FirstURL}}" hx-get="{{.FirstURL}}" hx-target="#object-list" hx-push-url="true">First</a>
-<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#object-list" hx-push-url="true">Previous</a>
-<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#object-list" hx-push-url="true">Next</a>
-<a href="{{.LastURL}}" hx-get="{{.LastURL}}" hx-target="#object-list" hx-push-url="true">Last</a>
+{{if .HasPrevious}}<a href="{{.FirstURL}}" hx-get="{{.FirstURL}}" hx-target="#object-list" hx-push-url="true">First</a>
+<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#object-list" hx-push-url="true">Previous</a>{{else}}<span aria-disabled="true">First</span><span aria-disabled="true">Previous</span>{{end}}
+{{if .HasNext}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#object-list" hx-push-url="true">Next</a>
+<a href="{{.LastURL}}" hx-get="{{.LastURL}}" hx-target="#object-list" hx-push-url="true">Last</a>{{else}}<span aria-disabled="true">Next</span><span aria-disabled="true">Last</span>{{end}}
 </nav>
 </footer>{{end}}
 
 {{define "object-inspector"}}{{if .Inspector}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-digest">{{.Inspector.Digest}}</p></div>
-<section class="viewer-inspector-panel"><dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p></section>
+<nav class="viewer-inspector-tabs" aria-label="Object inspector">
+<a href="{{.Inspector.MetadataURL}}"{{if eq .State.Tab "metadata"}} aria-current="page"{{end}} hx-get="{{.Inspector.MetadataURL}}" hx-target="#object-inspector" hx-push-url="true">Metadata</a>
+<a href="{{.Inspector.BytesURL}}"{{if eq .State.Tab "bytes"}} aria-current="page"{{end}} hx-get="{{.Inspector.BytesURL}}" hx-target="#object-inspector" hx-push-url="true">Bytes</a>
+<a href="{{.Inspector.ActionsURL}}"{{if eq .State.Tab "actions"}} aria-current="page"{{end}} hx-get="{{.Inspector.ActionsURL}}" hx-target="#object-inspector" hx-push-url="true">Actions</a>
+</nav>
+<section class="viewer-inspector-panel">{{if eq .State.Tab "metadata"}}<dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl>{{else if eq .State.Tab "bytes"}}<div id="hexdump" hx-get="{{.Inspector.RawURL}}" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">Loading bytes…</div>{{else}}{{if or (eq .Role "operator") (eq .Role "admin")}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/verify" hx-post="/viewer/objects/{{.Inspector.Digest}}/verify" hx-target="#inspector-action-result">
+<input name="csrf" type="hidden" value="{{.CSRF}}">
+<button class="viewer-action" type="submit">Verify</button>
+</form>{{end}}{{if eq .Role "admin"}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/delete" hx-post="/viewer/objects/{{.Inspector.Digest}}/delete" hx-target="#inspector-action-result" hx-confirm="Delete this object?">
+<input name="csrf" type="hidden" value="{{.CSRF}}">
+<button class="viewer-action" type="submit">Delete</button>
+</form>{{end}}<div id="inspector-action-result"></div><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p>{{end}}</section>
 {{else}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>{{end}}{{end}}
 
 {{define "hexdump-table"}}
