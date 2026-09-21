@@ -36,6 +36,10 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Added `cask seed-preview` to generate deterministic valid objects for local
+  object-browser previews.
+- Made the object browser the authenticated viewer landing; retained the
+  summary dashboard at `/viewer/dashboard`.
 - Consolidated the viewer into one global document shell with composable page,
   workspace, and fragment components; documented the concrete template tree.
 - Added URL-addressable filtering, sorting, pagination, selection, integrity

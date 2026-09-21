@@ -27,6 +27,7 @@ commands:
   gc --min-age <dur> <roots...>   reclaim unreachable objects older than the grace (default 1h; 0 = immediate, dangerous)
   prune --min-age <dur> <roots...> [--dry-run] | age-based retention (dry-run default)
   clean [--min-age <dur>]   remove orphan *.tmp files (crash leftovers)
+  seed-preview [-count <n>] add deterministic viewer preview objects
   web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]
   version
 `
@@ -116,6 +117,8 @@ func runOp(ctx context.Context, mf modeFlags, cmd string, args []string) int {
 		opErr = opPrune(ctx, t, args)
 	case "clean":
 		opErr = opClean(ctx, t, args)
+	case "seed-preview":
+		opErr = opSeedPreview(ctx, t, args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n%s", cmd, usage)
 		return 2

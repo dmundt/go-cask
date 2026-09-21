@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v17
+version: v18
 ---
 
 # Viewer Design — go-cask
@@ -25,8 +25,8 @@ JavaScript is prototype-only and MUST NOT ship.
 - Object identity is a raw lowercase-hex digest. Lists show `Digest.Prefix(8)`;
   the inspector shows the full digest. The client algorithm may appear in the
   metadata view as `sha256`, but MUST NOT prefix a displayed digest.
-- The object browser is the primary operational workspace. The dashboard
-  remains the landing hub and links into that workspace.
+- The object browser is the primary operational workspace and viewer landing
+  at `/viewer/`. The dashboard remains available at `/viewer/dashboard`.
 - Out of scope: mutable object editing, uploads, buckets, charting, JSON APIs,
   browser storage, client-side state, and custom JavaScript.
 
@@ -58,8 +58,9 @@ target MUST remain semantic HTML.
 
 | Route | View | Role |
 |---|---|---|
-| `/viewer/` | dashboard: summary, search, sample, link to browser | viewer |
-| `/viewer/objects` | master-detail object browser | viewer |
+| `/viewer/` | master-detail object browser landing | viewer |
+| `/viewer/objects` | object-browser compatibility route | viewer |
+| `/viewer/dashboard` | store summary, search, sample objects | viewer |
 | `/viewer/objects/{hash}` | cold-load object detail | viewer |
 | `/viewer/objects/{hash}/raw` | lazy hexdump fragment | viewer |
 | `/viewer/gc` | maintenance form | admin |

@@ -70,7 +70,7 @@ func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 func TestLoginFlow(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	// Unauthenticated dashboard redirects to the login page.
+	// Unauthenticated viewer landing redirects to the login page.
 	c := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
@@ -80,7 +80,7 @@ func TestLoginFlow(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/viewer/login" {
-		t.Fatalf("unauthenticated dashboard = %d, location=%q, want 303 /viewer/login", resp.StatusCode, resp.Header.Get("Location"))
+		t.Fatalf("unauthenticated viewer landing = %d, location=%q, want 303 /viewer/login", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
 	// Wrong token → 401.
@@ -93,7 +93,7 @@ func TestLoginFlow(t *testing.T) {
 		t.Fatalf("bad login = %d, want 401", resp.StatusCode)
 	}
 
-	// Startup token → 303 + session cookie, then dashboard renders.
+	// Startup token → 303 + session cookie, then object browser renders.
 	authClient := login(t, ts, testStartupToken)
 	resp, err = authClient.Get(ts.URL + "/viewer/")
 	if err != nil {
@@ -101,8 +101,8 @@ func TestLoginFlow(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "CASK viewer") {
-		t.Fatalf("dashboard = %d, %.80q", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `<caption>Objects</caption>`) {
+		t.Fatalf("viewer landing = %d, %.80q", resp.StatusCode, body)
 	}
 }
 
@@ -146,8 +146,8 @@ func TestDirectTokenLogin(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "CASK viewer") {
-		t.Fatalf("authed dashboard = %d, %.80q", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `<caption>Objects</caption>`) {
+		t.Fatalf("authed viewer landing = %d, %.80q", resp.StatusCode, body)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/index"
 )
 
 // run executes a cask operation in-process, returning its stdout and exit
@@ -87,6 +88,49 @@ func TestListRejectsOutOfRangeFlags(t *testing.T) {
 	} {
 		if _, code := run(t, mf, args[0], args[1:]...); code != 2 {
 			t.Errorf("%v: exit %d, want 2 (usage)", args, code)
+		}
+	}
+}
+
+func TestSeedPreview(t *testing.T) {
+	mf := localMF(t)
+	out, code := run(t, mf, "seed-preview", "-count", "6")
+	if code != 0 || out != "preview objects: added 6, deduplicated 0\n" {
+		t.Fatalf("first seed-preview = (%q, %d)", out, code)
+	}
+	raw, err := fs.New(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digests, err := raw.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 6 {
+		t.Fatalf("seeded objects = %d, want 6", len(digests))
+	}
+	for _, digest := range digests {
+		rc, err := raw.Get(context.Background(), digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if typ := index.EnvelopeType(data); typ == "" {
+			t.Fatalf("seeded object %s lacks a valid envelope type", digest)
+		}
+	}
+
+	out, code = run(t, mf, "seed-preview", "-count", "6")
+	if code != 0 || out != "preview objects: added 0, deduplicated 6\n" {
+		t.Fatalf("second seed-preview = (%q, %d)", out, code)
+	}
+	for _, args := range [][]string{{"-count", "0"}, {"-count", "10001"}, {"unexpected"}} {
+		if _, code := run(t, mf, "seed-preview", args...); code != 2 {
+			t.Fatalf("seed-preview %v exit = %d, want 2", args, code)
 		}
 	}
 }

@@ -93,9 +93,9 @@ func (s *Server) Handler() http.Handler {
 			http.Redirect(w, r, "/viewer/login", http.StatusSeeOther)
 			return
 		}
-		s.require(RoleViewer, s.dashboard)(w, r)
+		s.require(RoleViewer, s.objects)(w, r)
 	})
-	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, s.dashboardFragment))
+	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, s.dashboard))
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
 	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectDetail))
 	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))

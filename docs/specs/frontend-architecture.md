@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v7
+version: v8
 ---
 
 # Frontend Architecture — go-cask
@@ -78,7 +78,7 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 
 ## 8. The viewer (reference frontend)
 
-Reference implementation of this architecture: dashboard-first, low-level technical inspection (viewer-design §7). Any new frontend MUST follow this architecture and reuse template/htmx conventions; concrete screen design lives in `viewer-design.md`.
+Reference implementation of this architecture: object-browser-first, low-level technical inspection (viewer-design §7). Any new frontend MUST follow this architecture and reuse template/htmx conventions; concrete screen design lives in `viewer-design.md`.
 
 ## 9. Security
 

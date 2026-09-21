@@ -74,7 +74,7 @@ If remote access is required, the preferred architecture is **VPN + reverse prox
 
 ## 13. Defensive programming
 
-- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The dashboard landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
+- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The viewer landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
 
 ## 14. Security principle
 
