@@ -68,6 +68,11 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- The login throttle now reclaims stale per-IP state on every attempt. The
+  sweep ran only when an address exhausted its budget, so a caller rotating
+  source addresses — the case the sweep exists for — never triggered it and
+  the state map grew by one entry per address. Active blocks still survive the
+  sweep.
 - The viewer now reclaims abandoned sessions. An expired session was deleted
   only when something asked for it, so a session a browser simply walked away
   from lived until the process exited, holding one verification record per
