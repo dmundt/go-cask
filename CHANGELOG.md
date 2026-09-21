@@ -21,6 +21,15 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- The viewer reads each object's type, size, and write time once instead of on
+  every request. All three are properties of the addressed bytes and can never
+  change for a digest, so they are memoized; previously every keystroke in the
+  search box re-read and re-stat the entire store.
+- The viewer's audit log now names the acting session on every audited line —
+  login, single-object verify, verify-all, and a rejected CSRF. The session id
+  is the cookie value, so the log carries a one-way digest prefix of it
+  instead: it correlates one session's actions without being replayable as a
+  credential.
 - Gave the status pills a faint 1px outline drawn from their own text colour,
   so each keeps its hue and gains an edge without a second competing colour.
 - Settled every viewer control on one 28px height — the top-bar sweep, the

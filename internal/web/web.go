@@ -259,7 +259,7 @@ func (s *Server) require(role string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !csrfOK(r, sess) {
-			slog.Warn("viewer csrf rejected", "path", r.URL.Path)
+			slog.Warn("viewer csrf rejected", "path", r.URL.Path, "session", sessionHandle(sess.ID))
 			w.WriteHeader(http.StatusForbidden) // empty body
 			return
 		}
@@ -305,7 +305,7 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 		return
 	}
 	setSessionCookie(w, sess)
-	slog.Info("viewer login", "role", role, "ip", ip)
+	slog.Info("viewer login", "role", role, "ip", ip, "session", sessionHandle(sess.ID))
 	http.Redirect(w, r, "/viewer/", http.StatusSeeOther)
 }
 
@@ -1161,7 +1161,7 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 		s.sessions.setVerification(id, h.String(), "verified", verifiedOutcome(h))
 		verified++
 	}
-	slog.Info("viewer audit", "action", "object.verify-all", "objects", len(digests), "verified", verified, "corrupt", corrupt)
+	slog.Info("viewer audit", "action", "object.verify-all", "session", sessionHandle(id), "objects", len(digests), "verified", verified, "corrupt", corrupt)
 	w.Header().Set("HX-Trigger", "object-status-updated")
 	// The label stays "Verify": the per-object status cells already carry the
 	// outcome, so a count on the control would only duplicate them.
@@ -1201,27 +1201,28 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Every admin action is audit-logged (viewer-security §"audit logging"), so
-	// verify records its outcome like delete and gc do.
+	// Every operator action is audit-logged with the acting session, the
+	// affected object, and the result (viewer-security §9).
+	id := sessionID(r)
 	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
-		slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", false)
+		slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", false)
 		w.Header().Set("HX-Trigger", "object-status-updated")
 		outcome := s.describeVerifyFailure(r.Context(), h, err)
 		outcome.Integrity = "corrupt"
 		outcome.IntegrityLabel = integrityLabel("corrupt")
-		s.sessions.setVerification(sessionID(r), h.String(), "corrupt", outcome)
-		outcome.Checked = checkedLabel(s.sessions, sessionID(r), h.String())
+		s.sessions.setVerification(id, h.String(), "corrupt", outcome)
+		outcome.Checked = checkedLabel(s.sessions, id, h.String())
 		s.render(w, "result-swap", outcome)
 		return
 	}
-	slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", true)
+	slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", true)
 	w.Header().Set("HX-Trigger", "object-status-updated")
 	outcome := verifiedOutcome(h)
 	// The report is stored before the check time is stamped onto it: the label
 	// is relative ("3m ago"), so it has to be derived per render rather than
 	// frozen at the moment of the check.
-	s.sessions.setVerification(sessionID(r), h.String(), "verified", outcome)
-	outcome.Checked = checkedLabel(s.sessions, sessionID(r), h.String())
+	s.sessions.setVerification(id, h.String(), "verified", outcome)
+	outcome.Checked = checkedLabel(s.sessions, id, h.String())
 	s.render(w, "result-swap", outcome)
 }
 

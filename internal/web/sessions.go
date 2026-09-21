@@ -7,6 +7,7 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -250,6 +251,19 @@ func sessionID(r *http.Request) string {
 		return ""
 	}
 	return c.Value
+}
+
+// sessionHandle renders a session identifier for the audit log. The session id
+// is the cookie value, and viewer-security §9 requires the log to name the
+// session but forbids it from carrying the cookie, so the log gets a one-way
+// digest prefix instead: it correlates a session's actions with each other
+// without being replayable as a credential.
+func sessionHandle(id string) string {
+	if id == "" {
+		return "anonymous"
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:4])
 }
 
 // randomHex returns n cryptographically random bytes as lowercase hex, or
