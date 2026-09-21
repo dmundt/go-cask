@@ -10,8 +10,23 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the viewer's object delete action, its `POST
+  /viewer/objects/{hash}/delete` route, and the handler behind it. The viewer
+  inspects; it does not destroy. Deleting an object is a store-lifecycle
+  operation that belongs to the CLI, where it can be scripted, audited, and
+  paired with the roots a sweep needs. The route now returns 404, like the
+  dashboard and GC pages it joins.
+
 ### Changed
 
+- Gave the status pills a faint 1px outline drawn from their own text colour,
+  so each keeps its hue and gains an edge without a second competing colour.
+- Settled every viewer control on one 28px height — the top-bar sweep, the
+  filter row, the inspector actions, and the pager — so nothing in a row
+  stands taller than its neighbours. The inspector's `‹`/`›` history arrows
+  stay 22px: they are icon controls, not buttons.
 - Moved the inspector's `Inbound` count out of `Storage` and into `State`,
   after the reachability verdict. The count describes the reference axis, not
   how the object is stored, so it now sits beside the verdict it qualifies.

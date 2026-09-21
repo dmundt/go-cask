@@ -233,7 +233,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))
 	mux.HandleFunc("POST /viewer/objects/verify-all", s.require(RoleOperator, s.verifyAllFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/verify", s.require(RoleOperator, s.verifyFragment))
-	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleAdmin, s.deleteFragment))
+	// The viewer inspects; it does not destroy. Deleting an object is a
+	// store-lifecycle operation that belongs to the CLI, where it can be
+	// scripted, audited, and paired with the roots a sweep needs.
+	mux.HandleFunc("POST /viewer/objects/{hash}/delete", http.NotFound)
 	return mux
 }
 
@@ -243,7 +246,9 @@ const (
 	RoleViewer = "viewer"
 	// RoleOperator permits verification operations.
 	RoleOperator = "operator"
-	// RoleAdmin permits destructive operations.
+	// RoleAdmin is the highest rank. The viewer exposes no destructive
+	// operation, so it currently gates nothing the operator rank does not
+	// already reach; it stays because the ladder, not the viewer, defines it.
 	RoleAdmin = "admin"
 )
 
@@ -1181,7 +1186,7 @@ type verifyAllState struct {
 	Complete bool
 }
 
-// actionOutcome is the structured result of an object action (verify, delete).
+// actionOutcome is the structured result of an object action (verification).
 // It replaces the raw error string: a sentinel classifies the failure and the
 // recomputed digest shows the operator exactly how the bytes diverged.
 type actionOutcome struct {
@@ -1281,29 +1286,6 @@ func (s *Server) recomputeDigest(ctx context.Context, h cas.Digest) string {
 		return ""
 	}
 	return actual.String()
-}
-
-func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseDigest(w, r)
-	if !ok {
-		return
-	}
-	if err := s.store.Delete(r.Context(), h); err != nil {
-		s.render(w, "result-swap", actionOutcome{
-			Headline: "Not deleted",
-			Summary:  "The object could not be removed from the store.",
-			Expected: h.String(),
-			Detail:   err.Error(),
-		})
-		return
-	}
-	slog.Info("viewer audit", "action", "object.delete", "hash", h)
-	s.render(w, "result-swap", actionOutcome{
-		OK:       true,
-		Headline: "Deleted",
-		Summary:  "The object was removed from the store.",
-		Expected: h.String(),
-	})
 }
 
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {

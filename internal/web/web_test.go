@@ -292,7 +292,7 @@ func TestRemovedGCPostReturnsNotFound(t *testing.T) {
 	}
 }
 
-func TestVerifyAndDelete(t *testing.T) {
+func TestVerifyAndDeleteRemoved(t *testing.T) {
 	ctx := context.Background()
 	raw, err := fs.New(t.TempDir())
 	if err != nil {
@@ -336,16 +336,22 @@ func TestVerifyAndDelete(t *testing.T) {
 		t.Fatalf("verify = %d, want 200", resp.StatusCode)
 	}
 
-	// Delete with CSRF.
+	// The viewer inspects; it does not destroy. The route is gone, so even an
+	// admin with a valid CSRF token cannot reach it.
 	resp, err = admin.PostForm(ts.URL+"/viewer/objects/"+h.String()+"/delete",
 		url.Values{"csrf": {csrf}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("delete = %d, want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete = %d, want 404", resp.StatusCode)
 	}
+	rc, err := raw.Get(ctx, h)
+	if err != nil {
+		t.Fatalf("object must survive a delete attempt: %v", err)
+	}
+	rc.Close()
 }
 
 func TestStatic(t *testing.T) {
@@ -483,7 +489,7 @@ func TestControlFontResetCannotBeatComponentRules(t *testing.T) {
 func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 	// Every control is sized from one of the three scale steps. A control that
 	// declares no font inherits the 15.4px body size, which is set for prose and
-	// dwarfs a 30px control — that is the bug this guards.
+	// dwarfs a 28px control — that is the bug this guards.
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
 	for _, token := range []string{"--viewer-control:", "--viewer-control-sm:", "--viewer-control-xs:"} {
 		if !strings.Contains(css, token) {
@@ -511,6 +517,25 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 		end := strings.Index(css[start:], "}")
 		if end < 0 || !scale.MatchString(css[start:start+end]) {
 			t.Errorf("control %q does not size itself from the type scale", selector)
+		}
+	}
+	// One height across the viewer: a control that stands taller than the row
+	// it sits in reads as a different kind of control than it is.
+	heights := []string{
+		".viewer-filter-bar input,\n.viewer-filter-bar select,\n.viewer-filter-bar button,\n.viewer-action,\n.viewer-pager a",
+		".viewer-verify-all",
+		".viewer-reset",
+		".viewer-pager a,\n.viewer-pager select,\n.viewer-page-button",
+	}
+	for _, selector := range heights {
+		start := strings.Index(css, selector+" {")
+		if start < 0 {
+			t.Errorf("control rule not found: %q", selector)
+			continue
+		}
+		end := strings.Index(css[start:], "}")
+		if end < 0 || !strings.Contains(css[start:start+end], "height: 28px;") {
+			t.Errorf("control %q does not use the shared 28px height", selector)
 		}
 	}
 }
@@ -1275,13 +1300,16 @@ func TestObjectsListAndRaw(t *testing.T) {
 		page := string(body)
 		for _, want := range []string{
 			"Verify",
-			"Delete",
 			`hx-target="#integrity"`,
 			`id="integrity"`,
 		} {
 			if resp.StatusCode != http.StatusOK || !strings.Contains(page, want) {
 				t.Fatalf("admin actions panel missing %q: (%d, %.400q)", want, resp.StatusCode, page)
 			}
+		}
+		// Verification is the only action the inspector offers.
+		if strings.Contains(page, "Delete") {
+			t.Fatalf("inspector must not offer a delete action: %.400q", page)
 		}
 	})
 

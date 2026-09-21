@@ -12,8 +12,8 @@
 
   /* Control type scale, keyed to control height. Every interactive control
      MUST take its size from one of these three steps rather than inheriting
-     the 15.4px body font, which is sized for prose and dwarfs a 30px control.
-     --viewer-control: 30px form controls (search, filter selects, actions).
+     the 15.4px body font, which is sized for prose and dwarfs a 28px control.
+     --viewer-control: 28px form controls (search, filter selects, actions).
      --viewer-control-sm: 22-28px compact controls (verify-all, reset, pager,
      page size, history steps).
      --viewer-control-xs: icon-sized controls (sort arrows). */
@@ -156,12 +156,15 @@ body.viewer-shell {
   background: var(--viewer-surface);
 }
 
+/* One control height across the viewer: the top-bar sweep, the filter row,
+   the inspector actions, and the pager all share it, so nothing in a row
+   stands taller than its neighbours. */
 .viewer-filter-bar input,
 .viewer-filter-bar select,
 .viewer-filter-bar button,
 .viewer-action,
 .viewer-pager a {
-  height: 30px;
+  height: 28px;
   border: 1px solid var(--viewer-border);
   border-radius: 5px;
   background: var(--viewer-bg);
@@ -171,7 +174,10 @@ body.viewer-shell {
 }
 
 .viewer-reset {
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 4px;
   color: var(--viewer-muted);
   font-size: var(--viewer-control-sm);
@@ -366,7 +372,10 @@ body.viewer-shell {
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  border: 0;
+  /* The outline derives from the pill's own text colour, so each variant
+     keeps its hue and none of them gains a second, competing colour. Kept
+     faint: it should define the pill's edge, not announce itself. */
+  border: 1px solid color-mix(in oklch, currentColor 14%, transparent);
   border-radius: 3px;
   min-height: 19px;
   background: oklch(96% 0.006 240);
@@ -463,8 +472,8 @@ body.viewer-shell {
 .viewer-pager a,
 .viewer-pager select,
 .viewer-page-button {
-  min-width: 27px;
-  height: 27px;
+  min-width: 28px;
+  height: 28px;
   box-sizing: border-box;
   border: 1px solid var(--viewer-border);
   border-radius: 4px;

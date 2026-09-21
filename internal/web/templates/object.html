@@ -32,12 +32,6 @@
 <button class="viewer-action" type="submit">Verify</button>
 </form>
 {{end}}
-{{if eq .Role "admin"}}
-<form method="post" action="/viewer/objects/{{.Digest}}/delete" hx-post="/viewer/objects/{{.Digest}}/delete" hx-target="#action-result" hx-confirm="Delete this object?">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
-<button class="viewer-action" type="submit">Delete</button>
-</form>
-{{end}}
 <div id="action-result"></div>
 </section>{{end}}
 

@@ -48,7 +48,7 @@ monospace hashes/numbers/bytes. The CSS file is the only viewer stylesheet
 | Main workspace | flexible object-list column and 440px inspector column; the inspector resizes natively through CSS |
 | Inspector bounds | 280px–560px visual range; fixed 440px default |
 | Object table | dense mono data, sticky header, content-sized digest/size/inbound/integrity/references/written columns, type fills remaining width |
-| Controls | 30px form controls; compact bordered pager/action controls |
+| Controls | one 28px height across form controls, actions, and pager; compact bordered pager/action controls; icon-sized history arrows stay 22px |
 | Narrow view | at ≤900px, document scrolls; list precedes full-width inspector; filters scroll horizontally |
 
 Colors, font stack, spacing, radii, status-tag colors, row hover/selection
@@ -58,10 +58,11 @@ CSS provides appearance only: every control, value, state label, and focusable
 target MUST remain semantic HTML.
 
 Interactive controls MUST take their size from the three-step control type
-scale (`--viewer-control` for 30px form controls, `--viewer-control-sm` for
+scale (`--viewer-control` for 28px form controls, `--viewer-control-sm` for
 compact 22–28px controls, `--viewer-control-xs` for icon-sized controls) rather
-than inheriting the body font, which is sized for prose and overwhelms a 30px
-control. The control font reset that normalises the user-agent font onto the
+than inheriting the body font, which is sized for prose and overwhelms a 28px
+control. Status pills carry a faint outline derived from their own text colour
+(`color-mix` against `currentColor`), so each state keeps a single hue. The control font reset that normalises the user-agent font onto the
 shell font MUST stay at zero specificity (`:where(.viewer-shell) button, …`),
 because a specificity-bearing reset outranks every single-class component rule
 and silently discards the declared size.
@@ -172,7 +173,7 @@ The inspector contains a summary header and server-selected panels:
    carrying the integrity result with its last check time, the reachability
    verdict, and the inbound-reference count. The count belongs to the
    reference axis, not to the storage facts, so it sits beside the verdict it
-   qualifies. The section ends with the role-gated verify/delete forms. The
+   qualifies. The section ends with the role-gated verify form. The
    forms remain ordinary, CSRF-protected POSTs. No redundant cold-detail link
    appears. There is no separate Actions tab: acting on an object belongs next
    to the state that justifies the action.
@@ -292,8 +293,12 @@ The object-browser URL owns all view state:
   of band so those links adopt the new tab — otherwise the next pick silently
   throws the operator back to Metadata. The bytes panel lazy-loads the hexdump
   through `hx-trigger="revealed"`.
-- Verify/delete remain POST + CSRF + role checks + audit logging. Verify swaps
-  only `#integrity`; delete swaps its result container. Because that target is
+- Verify remains POST + CSRF + role checks + audit logging, and is the only
+  action the inspector offers. The viewer inspects; it does not destroy.
+  Deleting an object is a store-lifecycle operation that belongs to the CLI,
+  where it can be scripted, audited, and paired with the roots a sweep needs,
+  so the viewer MUST NOT expose a delete route or control. Verify swaps only
+  `#integrity`. Because that target is
   narrow, verify MUST also swap the inspector's integrity state out of band,
   and MUST NOT report counts on the sweep control that the status cells already
   carry. The out-of-band swap MUST live in a wrapper template used only by
