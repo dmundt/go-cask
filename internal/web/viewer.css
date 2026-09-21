@@ -50,14 +50,6 @@ body.viewer-shell {
   font: inherit;
 }
 
-.viewer-table,
-.viewer-digest,
-.viewer-meta dd,
-.viewer-pager,
-.viewer-hexdump {
-  font-variant-numeric: tabular-nums;
-}
-
 .viewer-shell :focus-visible {
   outline: 2px solid var(--viewer-accent);
   outline-offset: 2px;
@@ -249,6 +241,9 @@ body.viewer-shell {
   border-collapse: collapse;
   background: var(--viewer-surface);
   font: 13.2px/1.35 var(--viewer-mono);
+  /* After the font shorthand, which resets it. Digests, sizes and counts line
+     up column-wise only with tabular figures. */
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer-table th,
@@ -256,6 +251,8 @@ body.viewer-shell {
   padding: 8px 5px;
   border-bottom: 1px solid var(--viewer-border);
   text-align: left;
+  white-space: nowrap;
+  min-width: 25px;
 }
 
 /* The outer columns keep the content off the table edges. Every rule that
@@ -297,12 +294,6 @@ body.viewer-shell {
 .viewer-sort-button:hover,
 .viewer-sort-button.viewer-sort-active {
   color: var(--viewer-fg);
-}
-
-.viewer-table th,
-.viewer-table td {
-  white-space: nowrap;
-  min-width: 25px;
 }
 
 .viewer-status-cell {
@@ -451,6 +442,7 @@ body.viewer-shell {
   border-top: 1px solid var(--viewer-border);
   color: var(--viewer-muted);
   font: 12.65px var(--viewer-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer-pager nav {
@@ -629,6 +621,7 @@ span.viewer-history-step {
   background: var(--viewer-bg);
   color: var(--viewer-fg);
   font: 11px/1.45 var(--viewer-mono);
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
 }
 
@@ -655,6 +648,7 @@ span.viewer-history-step {
   margin: 0;
   overflow-wrap: anywhere;
   font: 13.2px/1.45 var(--viewer-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer-inspector-section {
@@ -761,6 +755,7 @@ span.viewer-history-step {
   padding: 14px;
   color: color-mix(in oklch, var(--viewer-fg) 85%, var(--viewer-muted));
   font: 12.1px/1.65 var(--viewer-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer-login {
