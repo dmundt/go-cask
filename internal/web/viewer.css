@@ -188,6 +188,34 @@ body.viewer-shell {
   text-align: center;
 }
 
+.viewer-status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--viewer-bg);
+  color: var(--viewer-muted);
+  font: 700 10px/1.4 var(--viewer-font);
+}
+
+.viewer-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--viewer-border);
+  color: var(--viewer-muted);
+  font: 13px var(--viewer-mono);
+}
+
+.viewer-pager nav {
+  display: flex;
+  gap: 5px;
+}
+
+.viewer-pager a {
+  text-decoration: none;
+}
+
 .viewer-inspector {
   min-width: 0;
   background: var(--viewer-surface);

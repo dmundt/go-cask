@@ -11,6 +11,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -230,6 +233,12 @@ type objectRow struct {
 	Type string
 	// Size is the stored payload size.
 	Size int64
+	// Status is the session-scoped integrity result.
+	Status string
+	// Selected reports whether this row backs the visible inspector.
+	Selected bool
+	// SelectURL opens this row in the browser inspector.
+	SelectURL string
 }
 
 func (s *Server) dashboardData(ctx context.Context) dashboardData {
@@ -243,7 +252,12 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 		return d
 	}
 	for _, h := range index.Paginate(digests, 0, 10) {
-		d.Sample = append(d.Sample, objectRow{h.String(), h.Prefix(8), s.objectType(ctx, h), s.objectSize(ctx, h)})
+		d.Sample = append(d.Sample, objectRow{
+			Digest: h.String(),
+			Short:  h.Prefix(8),
+			Type:   s.objectType(ctx, h),
+			Size:   s.objectSize(ctx, h),
+		})
 	}
 	d.HasSample = len(d.Sample) > 0
 	return d
@@ -251,34 +265,366 @@ func (s *Server) dashboardData(ctx context.Context) dashboardData {
 
 // --- objects list ---
 
+const (
+	defaultObjectLimit = 25
+	maxObjectLimit     = 250
+)
+
+type objectBrowserState struct {
+	Query     string
+	Type      string
+	Size      string
+	Status    string
+	Sort      string
+	Direction string
+	Limit     int
+	Offset    int
+	Selected  string
+	Tab       string
+}
+
+func defaultObjectBrowserState() objectBrowserState {
+	return objectBrowserState{
+		Sort:      "hash",
+		Direction: "asc",
+		Limit:     defaultObjectLimit,
+		Tab:       "metadata",
+	}
+}
+
+func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
+	state := defaultObjectBrowserState()
+	var err error
+	if state.Query, err = queryValue(values, "q"); err != nil {
+		return state, err
+	}
+	state.Query = strings.ToLower(strings.TrimSpace(state.Query))
+	if state.Type, err = queryValue(values, "type"); err != nil {
+		return state, err
+	}
+	if state.Size, err = queryValue(values, "size"); err != nil {
+		return state, err
+	}
+	if state.Size != "" && state.Size != "small" && state.Size != "medium" && state.Size != "large" {
+		return state, fmt.Errorf("invalid size filter")
+	}
+	if state.Status, err = queryValue(values, "status"); err != nil {
+		return state, err
+	}
+	if state.Status != "" && state.Status != "not-verified" && state.Status != "verified" && state.Status != "corrupt" {
+		return state, fmt.Errorf("invalid status filter")
+	}
+	if state.Sort, err = queryValue(values, "sort"); err != nil {
+		return state, err
+	}
+	if state.Sort == "" {
+		state.Sort = "hash"
+	}
+	if state.Sort != "hash" && state.Sort != "type" && state.Sort != "size" {
+		return state, fmt.Errorf("invalid sort")
+	}
+	if state.Direction, err = queryValue(values, "dir"); err != nil {
+		return state, err
+	}
+	if state.Direction == "" {
+		state.Direction = "asc"
+	}
+	if state.Direction != "asc" && state.Direction != "desc" {
+		return state, fmt.Errorf("invalid sort direction")
+	}
+	if state.Limit, err = queryInt(values, "limit", defaultObjectLimit); err != nil {
+		return state, err
+	}
+	if state.Limit != 25 && state.Limit != 50 && state.Limit != 100 && state.Limit != maxObjectLimit {
+		return state, fmt.Errorf("invalid limit")
+	}
+	if state.Offset, err = queryInt(values, "offset", 0); err != nil || state.Offset < 0 {
+		return state, fmt.Errorf("invalid offset")
+	}
+	if state.Selected, err = queryValue(values, "selected"); err != nil {
+		return state, err
+	}
+	if state.Selected != "" {
+		digest, parseErr := sha256.Parse(state.Selected)
+		if parseErr != nil {
+			return state, fmt.Errorf("invalid selected object: %w", parseErr)
+		}
+		state.Selected = digest.String()
+	}
+	if state.Tab, err = queryValue(values, "tab"); err != nil {
+		return state, err
+	}
+	if state.Tab == "" {
+		state.Tab = "metadata"
+	}
+	if state.Tab != "metadata" && state.Tab != "bytes" && state.Tab != "actions" {
+		return state, fmt.Errorf("invalid inspector tab")
+	}
+	return state, nil
+}
+
+func queryValue(values url.Values, key string) (string, error) {
+	all, ok := values[key]
+	if !ok {
+		return "", nil
+	}
+	if len(all) != 1 {
+		return "", fmt.Errorf("repeated %s", key)
+	}
+	return all[0], nil
+}
+
+func queryInt(values url.Values, key string, fallback int) (int, error) {
+	value, err := queryValue(values, key)
+	if err != nil {
+		return 0, err
+	}
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", key, err)
+	}
+	return parsed, nil
+}
+
+type objectBrowserData struct {
+	State       objectBrowserState
+	Objects     []objectRow
+	Types       []filterOption
+	HasAny      bool
+	Total       int
+	Matched     int
+	TotalSize   int64
+	RangeStart  int
+	RangeEnd    int
+	FirstURL    string
+	PreviousURL string
+	NextURL     string
+	LastURL     string
+	SortHashURL string
+	SortTypeURL string
+	SortSizeURL string
+	Inspector   *browserInspector
+}
+
+type filterOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+type browserInspector struct {
+	Digest    string
+	Type      string
+	Size      int64
+	Status    string
+	DetailURL string
+}
+
+func (state objectBrowserState) url() string {
+	values := url.Values{}
+	if state.Query != "" {
+		values.Set("q", state.Query)
+	}
+	if state.Type != "" {
+		values.Set("type", state.Type)
+	}
+	if state.Size != "" {
+		values.Set("size", state.Size)
+	}
+	if state.Status != "" {
+		values.Set("status", state.Status)
+	}
+	if state.Sort != "hash" {
+		values.Set("sort", state.Sort)
+	}
+	if state.Direction != "asc" {
+		values.Set("dir", state.Direction)
+	}
+	if state.Limit != defaultObjectLimit {
+		values.Set("limit", strconv.Itoa(state.Limit))
+	}
+	if state.Offset != 0 {
+		values.Set("offset", strconv.Itoa(state.Offset))
+	}
+	if state.Selected != "" {
+		values.Set("selected", state.Selected)
+	}
+	if state.Tab != "metadata" {
+		values.Set("tab", state.Tab)
+	}
+	encoded := values.Encode()
+	if encoded == "" {
+		return "/viewer/objects"
+	}
+	return "/viewer/objects?" + encoded
+}
+
 func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	state, err := parseObjectBrowserState(r.URL.Query())
+	if err != nil {
+		http.Error(w, "invalid object browser query", http.StatusBadRequest)
+		return
+	}
 	digests, err := s.store.List(r.Context())
 	if err != nil {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
 	var rows []objectRow
+	types := make(map[string]bool)
+	typeFound := state.Type == ""
 	for _, h := range digests {
-		typ := ""
-		if q != "" {
-			typ = s.objectType(r.Context(), h)
-			if !strings.Contains(h.String(), q) && !strings.Contains(typ, q) {
-				continue
-			}
+		typ := s.objectType(r.Context(), h)
+		if typ != "" {
+			types[typ] = true
 		}
-		rows = append(rows, objectRow{h.String(), h.Prefix(8), typ, s.objectSize(r.Context(), h)})
+		if state.Type == typ {
+			typeFound = true
+		}
+		row := objectRow{
+			Digest: h.String(),
+			Short:  h.Prefix(8),
+			Type:   typ,
+			Size:   s.objectSize(r.Context(), h),
+			Status: s.sessions.verification(sessionID(r), h.String()),
+		}
+		if !matchesObjectRow(row, state) {
+			continue
+		}
+		rows = append(rows, row)
 	}
-	data := struct {
-		Query   string
-		Objects []objectRow
-		HasAny  bool
-	}{q, rows, len(rows) > 0}
+	if !typeFound {
+		http.Error(w, "invalid object type", http.StatusBadRequest)
+		return
+	}
+	sortObjectRows(rows, state)
+	data := objectBrowserData{
+		State:   state,
+		Total:   len(digests),
+		Matched: len(rows),
+	}
+	for typ := range types {
+		data.Types = append(data.Types, filterOption{
+			Value:    typ,
+			Label:    typ,
+			Selected: state.Type == typ,
+		})
+	}
+	sort.Slice(data.Types, func(i, j int) bool { return data.Types[i].Value < data.Types[j].Value })
+	for _, row := range rows {
+		data.TotalSize += row.Size
+	}
+	if state.Offset < len(rows) {
+		end := min(state.Offset+state.Limit, len(rows))
+		data.RangeStart = state.Offset + 1
+		data.RangeEnd = end
+		data.Objects = rows[state.Offset:end]
+	}
+	data.HasAny = len(data.Objects) > 0
+	for i := range data.Objects {
+		rowState := state
+		rowState.Selected = data.Objects[i].Digest
+		data.Objects[i].Selected = data.Objects[i].Digest == state.Selected
+		data.Objects[i].SelectURL = rowState.url()
+	}
+	for _, row := range rows {
+		if row.Digest == state.Selected {
+			data.Inspector = &browserInspector{
+				Digest:    row.Digest,
+				Type:      row.Type,
+				Size:      row.Size,
+				Status:    row.Status,
+				DetailURL: "/viewer/objects/" + row.Digest,
+			}
+			break
+		}
+	}
+	data.FirstURL = paginationURL(state, 0)
+	data.PreviousURL = paginationURL(state, max(state.Offset-state.Limit, 0))
+	data.NextURL = paginationURL(state, min(state.Offset+state.Limit, max(len(rows)-1, 0)))
+	data.LastURL = paginationURL(state, ((max(len(rows)-1, 0))/state.Limit)*state.Limit)
+	data.SortHashURL = sortURL(state, "hash")
+	data.SortTypeURL = sortURL(state, "type")
+	data.SortSizeURL = sortURL(state, "size")
 	if r.Header.Get("HX-Request") == "true" {
 		s.render(w, "object-table-fragment", data) // htmx search/refresh swap
 		return
 	}
 	s.render(w, "objects", data)
+}
+
+func matchesObjectRow(row objectRow, state objectBrowserState) bool {
+	if state.Query != "" && !strings.Contains(row.Digest, state.Query) && !strings.Contains(strings.ToLower(row.Type), state.Query) {
+		return false
+	}
+	if state.Type != "" && row.Type != state.Type {
+		return false
+	}
+	if state.Status != "" && row.Status != state.Status {
+		return false
+	}
+	switch state.Size {
+	case "small":
+		return row.Size < 1<<10
+	case "medium":
+		return row.Size >= 1<<10 && row.Size <= 1<<20
+	case "large":
+		return row.Size > 1<<20
+	default:
+		return true
+	}
+}
+
+func sortObjectRows(rows []objectRow, state objectBrowserState) {
+	sort.Slice(rows, func(i, j int) bool {
+		var comparison int
+		switch state.Sort {
+		case "type":
+			comparison = strings.Compare(rows[i].Type, rows[j].Type)
+		case "size":
+			comparison = cmpInt64(rows[i].Size, rows[j].Size)
+		default:
+			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
+		}
+		if state.Direction == "desc" {
+			return comparison > 0
+		}
+		return comparison < 0
+	})
+}
+
+func cmpInt64(left, right int64) int {
+	switch {
+	case left < right:
+		return -1
+	case left > right:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func paginationURL(state objectBrowserState, offset int) string {
+	state.Offset = offset
+	return state.url()
+}
+
+func sortURL(state objectBrowserState, key string) string {
+	if state.Sort == key {
+		if state.Direction == "asc" {
+			state.Direction = "desc"
+		} else {
+			state.Direction = "asc"
+		}
+	} else {
+		state.Sort = key
+		state.Direction = "asc"
+	}
+	state.Offset = 0
+	return state.url()
 }
 
 // --- object detail ---
@@ -332,10 +678,12 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	// Every admin action is audit-logged (viewer-security §"audit logging"), so
 	// verify records its outcome like delete and gc do.
 	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
+		s.sessions.setVerification(sessionID(r), h.String(), "corrupt")
 		slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", false)
 		s.render(w, "result", "corrupt: "+template.HTMLEscapeString(err.Error()))
 		return
 	}
+	s.sessions.setVerification(sessionID(r), h.String(), "verified")
 	slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", true)
 	s.render(w, "result", "ok")
 }

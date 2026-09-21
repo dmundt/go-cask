@@ -38,26 +38,58 @@
 
 {{define "filter-bar"}}<form class="viewer-filter-bar" method="get" action="/viewer/objects">
 <label for="q">Search</label>
-<input id="q" name="q" type="search" value="{{.Query}}" placeholder="hash or type"
-       hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-target="#object-list" hx-push-url="true">
+<input id="q" name="q" type="search" value="{{.State.Query}}" placeholder="hash or type"
+       hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<label for="type">Type</label>
+<select id="type" name="type" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<option value="">All types</option>{{range .Types}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+</select>
+<label for="size">Size</label>
+<select id="size" name="size" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<option value="">Any size</option><option value="small"{{if eq .State.Size "small"}} selected{{end}}>&lt; 1 KiB</option><option value="medium"{{if eq .State.Size "medium"}} selected{{end}}>1 KiB–1 MiB</option><option value="large"{{if eq .State.Size "large"}} selected{{end}}>&gt; 1 MiB</option>
+</select>
+<label for="status">Status</label>
+<select id="status" name="status" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<option value="">Any status</option><option value="not-verified"{{if eq .State.Status "not-verified"}} selected{{end}}>Not verified</option><option value="verified"{{if eq .State.Status "verified"}} selected{{end}}>Verified</option><option value="corrupt"{{if eq .State.Status "corrupt"}} selected{{end}}>Corrupt</option>
+</select>
+<label for="limit">Rows</label>
+<select id="limit" name="limit" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<option value="25"{{if eq .State.Limit 25}} selected{{end}}>25</option><option value="50"{{if eq .State.Limit 50}} selected{{end}}>50</option><option value="100"{{if eq .State.Limit 100}} selected{{end}}>100</option><option value="250"{{if eq .State.Limit 250}} selected{{end}}>250</option>
+</select>
 <button type="submit">Search</button>
+<a href="/viewer/objects">Reset</a>
 </form>{{end}}
 
 {{define "object-row"}}<tr>
-<td><a href="/viewer/objects/{{.Digest}}">{{.Short}}</a></td>
+<td><a href="{{.SelectURL}}">{{.Short}}</a></td>
 <td class="viewer-type">{{.Type}}</td>
 <td>{{.Size}}</td>
+<td><span class="viewer-status">{{.Status}}</span></td>
 </tr>{{end}}
 
 {{define "object-table"}}
 <div class="viewer-table-wrap"><table class="viewer-table" id="object-table">
 <caption>Objects</caption>
-<thead><tr><th scope="col">Hash</th><th scope="col">Type</th><th scope="col">Size</th></tr></thead>
+<thead><tr><th scope="col"{{if eq .State.Sort "hash"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortHashURL}}">Hash</a></th><th scope="col"{{if eq .State.Sort "type"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortTypeURL}}">Type</a></th><th scope="col"{{if eq .State.Sort "size"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortSizeURL}}">Size</a></th><th scope="col">Status</th></tr></thead>
 <tbody>
 {{range .Objects}}{{template "object-row" .}}{{end}}
 </tbody>
 </table></div>
 {{end}}
+
+{{define "pager"}}<footer class="viewer-pager">
+<span>{{.RangeStart}}–{{.RangeEnd}} of {{.Matched}} · {{.TotalSize}} bytes</span>
+<nav aria-label="Object pages">
+<a href="{{.FirstURL}}" hx-get="{{.FirstURL}}" hx-target="#object-list" hx-push-url="true">First</a>
+<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#object-list" hx-push-url="true">Previous</a>
+<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#object-list" hx-push-url="true">Next</a>
+<a href="{{.LastURL}}" hx-get="{{.LastURL}}" hx-target="#object-list" hx-push-url="true">Last</a>
+</nav>
+</footer>{{end}}
+
+{{define "object-inspector"}}{{if .Inspector}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-digest">{{.Inspector.Digest}}</p></div>
+<section class="viewer-inspector-panel"><dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p></section>
+{{else}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>{{end}}{{end}}
 
 {{define "hexdump-table"}}
 {{if .Note}}<p class="note">{{.Note}}</p>{{end}}

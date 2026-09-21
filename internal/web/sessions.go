@@ -34,6 +34,9 @@ type Session struct {
 	LastSeen time.Time
 	// CSRF is the per-session CSRF token.
 	CSRF string
+	// Verifications holds the session-scoped integrity result for each object.
+	// Results disappear when the session expires or the server restarts.
+	Verifications map[string]string
 }
 
 // sessions is the in-memory session store: idle timeout and maximum
@@ -55,16 +58,38 @@ func (s *sessions) create(role string) (*Session, error) {
 		return nil, err
 	}
 	sess := &Session{
-		ID:       id,
-		Role:     role,
-		Created:  time.Now(),
-		LastSeen: time.Now(),
-		CSRF:     csrf,
+		ID:            id,
+		Role:          role,
+		Created:       time.Now(),
+		LastSeen:      time.Now(),
+		CSRF:          csrf,
+		Verifications: make(map[string]string),
 	}
 	s.mu.Lock()
 	s.byID[sess.ID] = sess
 	s.mu.Unlock()
 	return sess, nil
+}
+
+func (s *sessions) verification(id, digest string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	if !ok {
+		return "not-verified"
+	}
+	if result, ok := sess.Verifications[digest]; ok {
+		return result
+	}
+	return "not-verified"
+}
+
+func (s *sessions) setVerification(id, digest, result string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sess, ok := s.byID[id]; ok {
+		sess.Verifications[digest] = result
+	}
 }
 
 // get returns the session for id, enforcing idle and lifetime expiry and

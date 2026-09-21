@@ -4,12 +4,12 @@
 <body class="viewer-shell">{{template "top-bar" .}}{{template "filter-bar" .}}
 <main class="viewer-workspace">
 <section class="viewer-list" aria-label="Objects">
-<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}</div>
+<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}{{template "pager" .}}</div>
 </section>
 <aside class="viewer-inspector" id="object-inspector" aria-label="Object inspector">
-<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>
+{{template "object-inspector" .}}
 </aside>
 </main></body>
 </html>{{end}}
 
-{{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}{{end}}
+{{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}{{template "pager" .}}{{end}}

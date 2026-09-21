@@ -313,6 +313,77 @@ func TestObjectsListAndRaw(t *testing.T) {
 	}
 }
 
+func TestObjectBrowserQueryState(t *testing.T) {
+	ts, srv := newTestServer(t)
+	ctx := context.Background()
+	for i := 0; i < 30; i++ {
+		typeName := "blob@1"
+		if i == 0 {
+			typeName = "note@1"
+		}
+		data := tlvEnvelope(typeName, bytes.Repeat([]byte{byte(i)}, i+1))
+		digest := sha256.Of(data)
+		if err := srv.store.Put(ctx, digest, bytes.NewReader(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	viewer := login(t, ts, "viewer-tok")
+
+	t.Run("filter and first page", func(t *testing.T) {
+		resp, err := viewer.Get(ts.URL + "/viewer/objects?type=blob%401&limit=25")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("filtered list = %d, want 200", resp.StatusCode)
+		}
+		page := string(body)
+		if !strings.Contains(page, "1–25 of 29") {
+			t.Fatalf("first page summary missing: %.400q", page)
+		}
+		if !strings.Contains(page, "type=blob%401") || !strings.Contains(page, "offset=25") {
+			t.Fatalf("next pager did not retain query state: %.400q", page)
+		}
+	})
+
+	t.Run("last page", func(t *testing.T) {
+		resp, err := viewer.Get(ts.URL + "/viewer/objects?type=blob%401&limit=25&offset=25")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "26–29 of 29") {
+			t.Fatalf("last page = (%d, %.400q), want final summary", resp.StatusCode, body)
+		}
+	})
+
+	t.Run("invalid query", func(t *testing.T) {
+		for _, rawQuery := range []string{
+			"limit=10",
+			"offset=-1",
+			"sort=written",
+			"dir=sideways",
+			"size=huge",
+			"status=orphaned",
+			"selected=not-a-digest",
+			"tab=references",
+			"type=missing%401",
+		} {
+			resp, err := viewer.Get(ts.URL + "/viewer/objects?" + rawQuery)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("query %q = %d, want 400", rawQuery, resp.StatusCode)
+			}
+		}
+	})
+}
+
 func mustParse(t *testing.T, s string) cas.Digest {
 	t.Helper()
 	h, err := sha256.Parse(s)
@@ -547,6 +618,28 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 		}
 		if got := sessionID(req); got != "" {
 			t.Fatalf("sessionID without cookie = %q, want empty", got)
+		}
+	})
+
+	t.Run("session scoped verification", func(t *testing.T) {
+		sessions := newSessions()
+		first, err := sessions.create(RoleViewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := sessions.create(RoleViewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sessions.verification(first.ID, "digest"); got != "not-verified" {
+			t.Fatalf("initial verification = %q, want not-verified", got)
+		}
+		sessions.setVerification(first.ID, "digest", "verified")
+		if got := sessions.verification(first.ID, "digest"); got != "verified" {
+			t.Fatalf("first session verification = %q, want verified", got)
+		}
+		if got := sessions.verification(second.ID, "digest"); got != "not-verified" {
+			t.Fatalf("second session verification = %q, want not-verified", got)
 		}
 	})
 }
