@@ -52,9 +52,24 @@ be stored in browser-accessible cookies.
 ## 8. Authorization (roles)
 
 Authentication and authorization MUST be separated. Roles: `viewer`, `operator`, `admin`.
-- **viewer:** list buckets/objects, inspect metadata, download. Not: upload, delete, bucket management.
-- **operator:** viewer permissions + upload.
-- **admin:** operator permissions + delete, bucket management, maintenance.
+
+The viewer inspects; it does not mutate the store (see viewer-design §5 and
+§11 below). The ladder therefore gates what the viewer actually offers, and
+nothing else — an unimplemented permission in this table would read as a
+capability the viewer must ship:
+
+- **viewer:** list and browse objects, inspect metadata and references, read an
+  object's bytes. Not: any operation that writes to or removes from the store.
+- **operator:** viewer permissions + verify an object, and verify every object
+  in one sweep. Verification reads and re-digests; it never mutates.
+- **admin:** operator permissions. The viewer exposes no destructive operation,
+  so `admin` currently reaches nothing `operator` does not. The rank stays
+  because the ladder defines it, not because the viewer needs it today.
+
+Store-lifecycle operations — writing an object, deleting one, garbage
+collection — belong to the CLI, where they can be scripted, audited, and paired
+with the roots a sweep needs. A future viewer that gains one MUST extend this
+table in the same commit that ships it.
 
 ## 9. Audit logging
 
