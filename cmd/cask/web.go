@@ -72,7 +72,6 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	webSrv, err := web.New(raw, web.Config{
 		StartupToken: token,
 		RoleTokens:   roleTokens,
-		Secure:       false, // loopback default; set with TLS
 	})
 	if err != nil {
 		slog.Error("viewer setup", "err", err)

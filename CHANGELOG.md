@@ -12,6 +12,9 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Fixed
 
+- Made viewer session and deletion cookies unconditionally `Secure`, removing
+  the caller-controlled insecure path and covering the attributes over TLS in
+  integration tests.
 - Preserved line breaks in the injected Impressum address instead of collapsing
   it into one line.
 - Fixed the Impressum page rendering the literal `{{ IMPRESSUM }}` placeholder

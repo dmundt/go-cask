@@ -40,7 +40,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts, srv
 }
@@ -51,7 +51,7 @@ func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 	jar, _ := cookiejar.New(nil)
 	// Do not follow the 303 to the dashboard: the login response itself is
 	// what carries the session cookie.
-	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+	c := &http.Client{Transport: ts.Client().Transport, Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 	resp, err := c.PostForm(ts.URL+"/viewer/login", url.Values{"token": {token}})
@@ -71,7 +71,7 @@ func TestLoginFlow(t *testing.T) {
 	ts, _ := newTestServer(t)
 
 	// Unauthenticated dashboard redirects to the login page.
-	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+	c := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 	resp, err := c.Get(ts.URL + "/viewer/")
@@ -84,7 +84,7 @@ func TestLoginFlow(t *testing.T) {
 	}
 
 	// Wrong token → 401.
-	resp, err = http.PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+	resp, err = ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestRoleTokensLogin(t *testing.T) {
 func TestDirectTokenLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
 	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+	c := &http.Client{Transport: ts.Client().Transport, Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 
@@ -154,13 +154,13 @@ func TestDirectTokenLogin(t *testing.T) {
 func TestLoginThrottle(t *testing.T) {
 	ts, _ := newTestServer(t)
 	for i := 0; i < 5; i++ {
-		resp, err := http.PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+		resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
 	}
-	resp, err := http.PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+	resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestVerifyAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
 	admin := login(t, ts, testStartupToken)
@@ -242,7 +242,7 @@ func TestVerifyAndDelete(t *testing.T) {
 func TestStatic(t *testing.T) {
 	ts, _ := newTestServer(t)
 	// htmx is public (needed on the login page).
-	resp, err := http.Get(ts.URL + "/viewer/static/htmx.min.js")
+	resp, err := ts.Client().Get(ts.URL + "/viewer/static/htmx.min.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,10 +353,10 @@ func TestLoginRejectsEmptyToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	resp, err := http.PostForm(ts.URL+"/viewer/login", url.Values{"token": {""}})
+	resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {""}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestLargeObjectDetailAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := login(t, ts, testStartupToken)
 
@@ -519,9 +519,16 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 			t.Fatal("csrfOK should reject mismatched token")
 		}
 		rec := httptest.NewRecorder()
-		setSessionCookie(rec, sess, true)
-		if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != sessionCookie || c[0].Value != "abc" {
+		setSessionCookie(rec, sess)
+		if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != sessionCookie || c[0].Value != "abc" ||
+			!c[0].Secure || !c[0].HttpOnly || c[0].SameSite != http.SameSiteStrictMode {
 			t.Fatalf("setSessionCookie = %#v, want one secure session cookie", c)
+		}
+		rec = httptest.NewRecorder()
+		clearSessionCookie(rec)
+		if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != sessionCookie || c[0].MaxAge != -1 ||
+			!c[0].Secure || !c[0].HttpOnly || c[0].SameSite != http.SameSiteStrictMode {
+			t.Fatalf("clearSessionCookie = %#v, want one expired secure session cookie", c)
 		}
 		if got := sessionID(req); got != "" {
 			t.Fatalf("sessionID without cookie = %q, want empty", got)

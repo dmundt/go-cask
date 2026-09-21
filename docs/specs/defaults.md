@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v24
+version: v25
 ---
 
 # Defaults and Behavior — go-cask
@@ -66,7 +66,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Generic-list hash format | `<shorthash> (<type>)` | viewer-design §7 |
 | Session idle timeout | 30 min | viewer-security |
 | Session max lifetime | 8 h | viewer-security |
-| Session cookie | `HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS | viewer-security |
+| Session cookie | Always `HttpOnly`, `SameSite=Strict`, and `Secure` | viewer-security |
 | Login throttle | max 5 failures/IP/min with backoff | viewer-security |
 | Active-search trigger | `input changed delay:300ms` | viewer-design §5 |
 | GC progress polling | `hx-trigger="every 2s"` | viewer-design §5 |
