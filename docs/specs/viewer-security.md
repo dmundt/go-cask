@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v7
+version: v8
 ---
 
 # Viewer Security — go-cask
@@ -45,7 +45,9 @@ After successful auth: create a secure session, issue a session cookie, do not r
 
 ## 7. Cookie requirements
 
-Session cookies MUST use `HttpOnly` and `SameSite=Strict`; use `Secure` whenever HTTPS is enabled. Sensitive data must never be stored in browser-accessible cookies.
+Session cookies MUST always use `HttpOnly`, `SameSite=Strict`, and `Secure`.
+Callers MUST NOT be able to disable these attributes. Sensitive data must never
+be stored in browser-accessible cookies.
 
 ## 8. Authorization (roles)
 
@@ -84,7 +86,7 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 - [x] Auth required; login throttled (5/IP/min, backoff, audit-logged without the token) (§5)
 - [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
-- [x] Cookies `HttpOnly` + `SameSite=Strict` (+ `Secure` over HTTPS); no sensitive data in cookies (§7)
+- [x] Cookies always use `HttpOnly` + `SameSite=Strict` + `Secure`; no sensitive data in cookies (§7)
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)
 - [x] All admin actions audit-logged; secrets never logged (§9)
 - [x] Browser talks only to the backend API; all authz in the backend (§10)

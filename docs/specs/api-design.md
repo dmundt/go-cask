@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v6
+version: v7
 ---
 
 # API Design — go-cask
@@ -65,7 +65,9 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 
 ## 7. Authn/authz
 
-- Viewer: session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS); the startup token is accepted **only** by `POST /viewer/login`; every other endpoint requires a valid session.
+- Viewer: session cookie (always `HttpOnly`, `SameSite=Strict`, and `Secure`);
+  the startup token is accepted **only** by `POST /viewer/login`; every other
+  endpoint requires a valid session.
 - Example JSON surfaces: `Authorization: Bearer <token>`, configured per-role tokens.
 - Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance).
 - CSRF: every viewer mutation is POST + server-validated CSRF token.

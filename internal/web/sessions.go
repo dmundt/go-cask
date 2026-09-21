@@ -92,23 +92,22 @@ func (s *sessions) delete(id string) {
 	s.mu.Unlock()
 }
 
-// setCookie writes the session cookie (HttpOnly, SameSite=Strict; Secure
-// when the server is HTTPS).
-func setSessionCookie(w http.ResponseWriter, sess *Session, secure bool) {
+// setCookie writes the session cookie (HttpOnly, SameSite=Strict; Secure).
+func setSessionCookie(w http.ResponseWriter, sess *Session) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sess.ID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter, secure bool) {
+func clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
 	})
 }
 

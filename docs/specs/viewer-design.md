@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — simple, elegant, and usable; dashboard-first hypermedia UI with nested Go templates + htmx only (no JS/CSS), exposing the object store at a low technical level (objects, blobs, stats). The viewer is a byte-layer tool: it shows objects, bytes, and integrity, never typed reference graphs.
-version: v14
+version: v15
 ---
 
 # Viewer Design — go-cask
@@ -27,7 +27,8 @@ Simple/elegant/usable: (6) **dashboard-first** landing (numbers that matter, sam
 
 `viewer-security.md` applies verbatim; design consequences:
 - Runs only when invoked (`cask web`; no `enabled` switch). Localhost default; non-loopback requires HTTPS or `allow_insecure_bind: true` + startup warning.
-- Auth: startup admin token + session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS); idle 30 min / max 8 h.
+- Auth: startup admin token + session cookie (always `HttpOnly`,
+  `SameSite=Strict`, and `Secure`); idle 30 min / max 8 h.
 - Roles: `viewer` (dashboard, list, metadata, download raw — all GET); `operator` (+ run `verify`, POST); `admin` (+ `delete`, `GC`, maintenance, POST).
 - Every mutation is a POST with server-validated CSRF token (hidden form field; htmx forms are ordinary forms).
 - Audit-log all admin actions (delete, GC, verify); never log tokens/secrets.

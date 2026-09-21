@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and the no-CSS/no-JS embedding model.
-version: v5
+version: v6
 ---
 
 # Frontend Architecture — go-cask
@@ -48,7 +48,9 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 ## 5. Navigation and state
 
 - **URLs are the state:** `hx-push-url` keeps navigation in the address bar; refresh and back/forward work; no client-side state to lose or rehydrate.
-- Identity from the server session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS — viewer-security); the browser never holds tokens/secrets.
+- Identity from the server session cookie (always `HttpOnly`,
+  `SameSite=Strict`, and `Secure` — viewer-security); the browser never holds
+  tokens/secrets.
 - Fragments reachable both standalone and as parts of full pages — the URL always identifies the resource, not a client-side view.
 
 ## 6. Assets and embedding

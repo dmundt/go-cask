@@ -34,8 +34,6 @@ type Config struct {
 	StartupToken string
 	// RoleTokens maps role names to bearer tokens.
 	RoleTokens map[string]string
-	// Secure enables the Secure cookie attribute for HTTPS.
-	Secure bool
 }
 
 // Server is the viewer: login, sessions, role authorization, CSRF, and the
@@ -170,7 +168,7 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	setSessionCookie(w, sess, s.cfg.Secure)
+	setSessionCookie(w, sess)
 	slog.Info("viewer login", "role", role, "ip", ip)
 	http.Redirect(w, r, "/viewer/", http.StatusSeeOther)
 }
