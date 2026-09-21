@@ -21,6 +21,11 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- `cask web` now logs the prominent startup warning viewer-security §4 requires
+  when `-allow-insecure-bind` exposes a non-loopback address, and says what the
+  override actually costs: session cookies are always `Secure`, so the address
+  has to be reached through a TLS-terminating proxy or the login will never
+  hold a session.
 - The viewer reads each object's type, size, and write time once instead of on
   every request. All three are properties of the addressed bytes and can never
   change for a digest, so they are memoized; previously every keystroke in the

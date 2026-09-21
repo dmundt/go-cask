@@ -35,7 +35,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default) |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
 | `seed-preview [-count <n>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
-| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; refuses a non-loopback bind unless `-allow-insecure-bind` (viewer-security §4); config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).

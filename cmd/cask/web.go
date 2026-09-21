@@ -42,9 +42,19 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if !isLoopbackBind(*bind) && !*allowInsecure {
-		slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
-		os.Exit(1)
+	if !isLoopbackBind(*bind) {
+		if !*allowInsecure {
+			slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
+			os.Exit(1)
+		}
+		// The session cookie is always Secure (viewer-security §7) and callers
+		// cannot disable that, so a browser reaching this bind over plain
+		// http:// will discard the cookie and never hold a session. The
+		// override therefore needs a TLS-terminating proxy in front of it to
+		// be usable at all — say so rather than let login fail silently.
+		slog.Warn("viewer bound to a non-loopback address",
+			"bind", *bind,
+			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session")
 	}
 
 	raw, err := fsbackend.New(*store)
