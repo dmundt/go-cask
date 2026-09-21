@@ -12,6 +12,12 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Removed
 
+- Removed the viewer's separate cold-load object detail page. Nothing linked to
+  it, it described an object in a different shape than the inspector, and its
+  Verify button targeted a panel that its own markup did not contain.
+  `/viewer/objects/{hash}` stays a valid bookmark: it now redirects into the
+  browser with that object selected, so a shared link opens the one object view
+  the viewer has. An object that is not in the store still answers 404.
 - Removed the viewer's object delete action, its `POST
   /viewer/objects/{hash}/delete` route, and the handler behind it. The viewer
   inspects; it does not destroy. Deleting an object is a store-lifecycle

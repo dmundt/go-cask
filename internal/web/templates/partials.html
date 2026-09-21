@@ -9,7 +9,6 @@
 <head>{{template "head" .}}</head>
 <body class="viewer-shell">{{if ne .View "login"}}{{template "top-bar" .Data}}{{end}}
 {{if eq .View "objects"}}{{template "objects-content" .Data}}
-{{else if eq .View "object"}}{{template "object-content" .Data}}
 {{else if eq .View "login"}}{{template "login-content" .Data}}
 {{end}}</body>
 </html>{{end}}

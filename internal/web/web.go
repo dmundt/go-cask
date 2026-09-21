@@ -1093,24 +1093,22 @@ func sortURL(state objectBrowserState, key string) string {
 
 // --- object detail ---
 
+// objectDetail is the cold-load entry point for a single object
+// (viewer-design §3): a bookmark or a shared link. The viewer has exactly one
+// object view — the browser's inspector — so this route selects the object
+// there rather than rendering a second, divergent detail page.
 func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseDigest(w, r)
 	if !ok {
 		return
 	}
-	meta := s.objectMetaFor(r.Context(), h)
-	if meta.Unreadable {
+	if s.objectMetaFor(r.Context(), h).Unreadable {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	s.renderPage(w, "object", struct {
-		Digest    string
-		Algorithm string
-		Type      string
-		Size      int64
-		CSRF      string
-		Role      string
-	}{h.String(), sha256.Name, meta.Type, meta.Size, s.csrfFor(r), s.roleFor(r)})
+	state := defaultObjectBrowserState()
+	state.Selected = h.String()
+	http.Redirect(w, r, state.url(), http.StatusSeeOther)
 }
 
 func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
@@ -1127,7 +1125,7 @@ func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
 	if truncated {
 		note = fmt.Sprintf("preview truncated at %s of %s", formatBytes(previewLimit), formatBytes(s.objectMetaFor(r.Context(), h).Size))
 	}
-	s.render(w, "hexdump", struct {
+	s.render(w, "hexdump-table", struct {
 		Rows []dumpRow
 		Note string
 	}{hexdump(data), note})

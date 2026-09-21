@@ -73,7 +73,7 @@ and silently discards the declared size.
 |---|---|---|
 | `/viewer/` | master-detail object browser landing | viewer |
 | `/viewer/objects` | object-browser compatibility route | viewer |
-| `/viewer/objects/{hash}` | cold-load object detail | viewer |
+| `/viewer/objects/{hash}` | cold-load object link: redirects (303) to the browser with that object selected | viewer |
 | `/viewer/objects/{hash}/raw` | lazy hexdump fragment | viewer |
 
 The browser has a top bar, filter bar, table/pager master column, and inspector

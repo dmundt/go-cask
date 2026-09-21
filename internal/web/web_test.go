@@ -2195,3 +2195,46 @@ func csrfFromPage(page string) string {
 	}
 	return rest[:end]
 }
+
+// TestColdObjectLinkSelectsInTheBrowser covers the cold-load route
+// (viewer-design §3): a bookmarked object link opens the one object view the
+// viewer has — the browser inspector — with that object selected.
+func TestColdObjectLinkSelectsInTheBrowser(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	if err := raw.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("cold")))); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	admin := login(t, ts, testStartupToken)
+
+	admin.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := admin.Get(ts.URL + "/viewer/objects/" + h.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("cold object link = %d, want 303", resp.StatusCode)
+	}
+	if got, want := resp.Header.Get("Location"), "/viewer/objects?selected="+h.String(); got != want {
+		t.Fatalf("cold object link redirects to %q, want %q", got, want)
+	}
+	admin.CheckRedirect = nil
+
+	// An object that is not in the store has nothing to select.
+	missing := mustParse(t, "sha256:"+strings.Repeat("cd", 32))
+	if code := statusCode(t, admin, ts.URL+"/viewer/objects/"+missing.String()); code != http.StatusNotFound {
+		t.Fatalf("cold link to an absent object = %d, want 404", code)
+	}
+}
