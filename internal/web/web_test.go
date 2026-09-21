@@ -2245,3 +2245,44 @@ func TestColdObjectLinkSelectsInTheBrowser(t *testing.T) {
 		t.Fatalf("cold link to an absent object = %d, want 404", code)
 	}
 }
+
+// TestEveryRowCellCarriesTheSelectionLink guards the shared row-link
+// attributes: every cell in an object row must be the same selecting link, so
+// a cell that lost the htmx target or the selection header cannot pass
+// unnoticed just because it still looks right.
+func TestEveryRowCellCarriesTheSelectionLink(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	if err := raw.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("row")))); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	page := getBody(t, login(t, ts, testStartupToken), ts.URL+"/viewer/objects")
+	start := strings.Index(page, "<tbody")
+	end := strings.Index(page, "</tbody>")
+	if start < 0 || end < start {
+		t.Fatalf("object table has no body: %.400q", page)
+	}
+	body := page[start:end]
+	cells := strings.Count(body, "<td")
+	for _, attr := range []string{
+		`class="viewer-row-link"`,
+		`hx-target="#object-inspector"`,
+		`X-Viewer-Selection`,
+		`hx-push-url="true"`,
+	} {
+		if got := strings.Count(body, attr); got != cells {
+			t.Fatalf("row carries %q %d times, want once per cell (%d)", attr, got, cells)
+		}
+	}
+}

@@ -155,6 +155,17 @@ func Version() string {
 	return "dev"
 }
 
+// rowLinkAttrs renders the attributes every object-row cell link carries: the
+// href for a cold click, the htmx request that swaps the inspector in place,
+// and the header that marks the request as a selection. The URL is escaped
+// here because the result is injected as raw attribute text.
+func rowLinkAttrs(selectURL string) template.HTMLAttr {
+	escaped := template.HTMLEscapeString(selectURL)
+	return template.HTMLAttr(fmt.Sprintf(
+		`href="%s" hx-get="%s" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true"`,
+		escaped, escaped))
+}
+
 // Server is the viewer: login, sessions, role authorization, CSRF, and the
 // hypermedia pages/fragments.
 type Server struct {
@@ -176,6 +187,11 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		// objectRow.Short.
 		"shortDigest": shortDigest,
 		"formatBytes": formatBytes,
+		// Every cell in an object row is the same link to the same object, and
+		// a row has seven of them. Emitting the shared attributes from one
+		// place keeps a copy from drifting — a cell that quietly lost the
+		// selection header would still look right.
+		"rowLink": rowLinkAttrs,
 		// The top bar is rendered from several page payloads that share only a
 		// CSRF token, so the Verify control builds its own state from it.
 		"verifyAll": func(csrf string) verifyAllState {
