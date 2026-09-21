@@ -1,7 +1,7 @@
 site_name: go-cask
 site_description: Content-addressable storage for Go
 site_url: https://go-cask.dev/
-copyright: © 2026 Daniel Mundt · <a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutz</a> · <a href="https://github.com/dmundt/go-cask">GitHub</a>
+copyright: © 2026 Daniel Mundt · <a href="/impressum/">Impressum</a> · <a href="/privacy/">Privacy</a> · <a href="https://github.com/dmundt/go-cask">GitHub</a>
 
 docs_dir: website
 site_dir: site
