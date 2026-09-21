@@ -26,6 +26,9 @@ var templateFS embed.FS
 //go:embed htmx.min.js
 var htmxJS []byte
 
+//go:embed viewer.css
+var viewerCSS []byte
+
 // Config selects viewer behavior. The viewer runs only when the caller
 // (`cmd/cask web`) constructs it — there is no Enabled switch
 // (viewer-security §3).
@@ -75,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/login", s.loginPage)
 	mux.HandleFunc("POST /viewer/login", s.loginPost)
 	mux.HandleFunc("GET /viewer/static/htmx.min.js", s.htmx)
+	mux.HandleFunc("GET /viewer/static/viewer.css", s.css)
 	mux.HandleFunc("GET /viewer/", func(w http.ResponseWriter, r *http.Request) {
 		// Never let a token in the URL leak via Referer.
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -377,6 +381,13 @@ func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write(htmxJS)
+}
+
+func (s *Server) css(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	if _, err := w.Write(viewerCSS); err != nil {
+		slog.Error("viewer css write", "err", err)
+	}
 }
 
 // gcCount deletes every object not in reachable and returns how many were

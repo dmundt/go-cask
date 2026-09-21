@@ -1,14 +1,9 @@
 {{define "dashboard"}}<!doctype html>
 <html lang="en">
 <head>{{template "head" .}}</head>
-<body><main>
-<nav><p><a href="/viewer/objects">Objects</a> · <a href="/viewer/gc">GC</a></p></nav>
+<body class="viewer-shell">{{template "top-bar" .}}<main class="viewer-main">
 <h1>CASK viewer</h1>
-<form method="get" action="/viewer/objects">
-<label for="q">Search</label>
-<input id="q" name="q" type="search" placeholder="hash or type">
-<button type="submit">Search</button>
-</form>
+<form class="viewer-filter-bar" method="get" action="/viewer/objects"><label for="q">Search</label><input id="q" name="q" type="search" placeholder="hash or type"><button type="submit">Search</button></form>
 {{template "stat-cards" .}}
 {{template "digest-note" .}}
 {{template "sample-table" .}}

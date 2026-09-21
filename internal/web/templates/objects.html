@@ -1,15 +1,14 @@
 {{define "objects"}}<!doctype html>
 <html lang="en">
 <head>{{template "head" .}}</head>
-<body><main>
-<nav><p><a href="/viewer/">Dashboard</a></p></nav>
-<h1>Objects</h1>
-<form method="get" action="/viewer/objects">
-<label for="q">Search</label>
-<input id="q" name="q" type="search" value="{{.Query}}" placeholder="hash or type"
-       hx-get="/viewer/objects" hx-trigger="input changed delay:300ms" hx-target="#object-list" hx-push-url="true">
-</form>
-<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p>no objects</p>{{end}}</div>
+<body class="viewer-shell">{{template "top-bar" .}}{{template "filter-bar" .}}
+<main class="viewer-workspace">
+<section class="viewer-list" aria-label="Objects">
+<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}</div>
+</section>
+<aside class="viewer-inspector" id="object-inspector" aria-label="Object inspector">
+<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>
+</aside>
 </main></body>
 </html>{{end}}
 

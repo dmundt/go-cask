@@ -241,14 +241,29 @@ func TestVerifyAndDelete(t *testing.T) {
 
 func TestStatic(t *testing.T) {
 	ts, _ := newTestServer(t)
-	// htmx is public (needed on the login page).
-	resp, err := ts.Client().Get(ts.URL + "/viewer/static/htmx.min.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("htmx = %d, want 200", resp.StatusCode)
+	for _, asset := range []struct {
+		path        string
+		contentType string
+		want        string
+	}{
+		{"/viewer/static/htmx.min.js", "application/javascript", "htmx"},
+		{"/viewer/static/viewer.css", "text/css", ".viewer-shell"},
+	} {
+		resp, err := ts.Client().Get(ts.URL + asset.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s = %d, want 200", asset.path, resp.StatusCode)
+		}
+		if !strings.HasPrefix(resp.Header.Get("Content-Type"), asset.contentType) {
+			t.Fatalf("%s content type = %q, want prefix %q", asset.path, resp.Header.Get("Content-Type"), asset.contentType)
+		}
+		if !strings.Contains(string(body), asset.want) {
+			t.Fatalf("%s did not contain %q", asset.path, asset.want)
+		}
 	}
 }
 
