@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Go Coding Guidelines — go-cask
-description: Idiomatic Go with a minimal dependency policy, no custom JavaScript, scoped viewer CSS, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v20
+description: Idiomatic Go with a minimal dependency policy, scoped viewer CSS, no viewer script beyond vendored htmx, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
+version: v21
 ---
 
 # Go Coding Guidelines — go-cask
 
-Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; minimal dependencies; **no custom JavaScript and scoped viewer CSS only**; server-side `html/template` + **htmx**; prefer raw HTML; document every exported identifier; latest Go generics where they help.
+Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` (what to build) and `viewer-security.md` (how the viewer must be secured). On conflict with an older sketch in another document, this file wins. Rules: idiomatic Go; minimal dependencies; scoped viewer CSS; server-side `html/template` + **htmx**; no viewer script beyond vendored htmx; prefer raw HTML; document every exported identifier; latest Go generics where they help.
 
 ## 1. Go version and toolchain
 
@@ -44,7 +44,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 Check Go 1.27 release notes before adding an external package. External packages SHALL NOT be added unless **necessary** (no feature-equivalent std-lib solution). The approved exception is `golang.org/x/sys`, used only by `cas/bloom/persistent` for portable mmap flushing where the standard library has no equivalent. Any new external dependency MUST be justified in the commit/PR and added to `go.mod`/`go.sum`; vendoring is optional unless required by an offline build environment.
 Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mutex` or `sync.Map`-backed) — cas-core §8 decision 3; hashing goes through the injected `cas.Hasher` seam (the shipped `cas/hash/sha256` is the client-side default; the core names no algorithm and has no registry, cas-core §4.2); the only frontend exception is **htmx** (§5).
 
-## 4. Scoped viewer CSS, no custom JavaScript
+## 4. Scoped viewer CSS, and no viewer script
 
 - Outside `internal/web/`, SHALL NOT add CSS (no `.css`, no style elements, no inline `style` attributes).
 - The viewer MAY ship exactly one stylesheet:
@@ -55,10 +55,18 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
   presentation layer, not a source of application state or behavior.
 - The viewer MUST NOT use inline `style` attributes or CSS-generated content
   for information or controls required to understand or operate the UI.
-- SHALL NOT add JavaScript (no `.js`, no hand-written script elements, no client-side logic).
-- Only script allowed in the viewer is **htmx** (one pinned vendored file, or CDN URL with integrity attribute) — a framework, not "our" JS.
-- Interactivity is expressed only via htmx attributes (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-trigger`…) requesting HTML fragments; no client-side state.
-- Rationale: minimal attack surface/auditability (viewer-security), no build pipeline, no browser secrets, viewer works with JavaScript disabled except htmx, while the embedded stylesheet preserves the technical browser's visual hierarchy.
+- SHALL NOT add JavaScript. Vendored htmx is the only script the viewer
+  serves.
+- Presentation-only affordances that would otherwise need a script MUST be
+  expressed in CSS or plain HTML instead — the object inspector resizes
+  through the CSS `resize` property bounded by `min-width`/`max-width`, and
+  the full digest is a readonly field the operator selects and copies rather
+  than a clipboard control.
+- Other interactivity is expressed only via htmx attributes
+  (`hx-get`/`hx-post`/`hx-target`/`hx-swap`/`hx-trigger`…) requesting HTML
+  fragments; no other client-side state.
+- Rationale: minimal attack surface and auditability (viewer-security), no
+  build pipeline, no browser secrets, and server-owned application state.
 
 ## 5. Server-side rendering: templates + htmx
 

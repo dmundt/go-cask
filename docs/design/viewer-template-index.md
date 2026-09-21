@@ -2,7 +2,7 @@
 type: Design
 title: Viewer Template Index — go-cask
 description: Concrete component relationships and composition rules for the embedded viewer templates.
-version: v1
+version: v3
 ---
 
 # Viewer Template Index — go-cask
@@ -27,12 +27,8 @@ responsibilities and composition relationships. It is an implementation guide;
 | File | Template | Kind | Responsibility |
 |---|---|---|---|
 | `partials.html` | `shell` | global shell | Owns document chrome and selects one page content component. |
-| `partials.html` | `head` | shell child | Metadata, local stylesheet, vendored htmx. |
+| `partials.html` | `head` | shell child | Metadata, local stylesheet, vendored htmx, and divider script. |
 | `partials.html` | `top-bar` | shell child | Brand and global navigation. |
-| `dashboard.html` | `dashboard-content` | page | Composes dashboard heading, search, and panels. |
-| `dashboard.html` | `dashboard-heading` | leaf | Dashboard heading. |
-| `dashboard.html` | `dashboard-search` | leaf | Browser search form. |
-| `dashboard.html` | `dashboard-panels` | composite | Composes stats, addressing note, and sample table. |
 | `objects.html` | `objects-content` | page | Composes filter bar and object browser workspace. |
 | `objects.html` | `object-browser` | composite | Composes list and inspector columns. |
 | `objects.html` | `object-list` | fragment boundary | Owns `#object-list` and composes table fragment. |
@@ -51,7 +47,7 @@ responsibilities and composition relationships. It is an implementation guide;
 | `partials.html` | `object-table` | composite | Accessible headers and object rows. |
 | `partials.html` | `object-row` | leaf | One normalized object row. |
 | `partials.html` | `pager` | leaf | Result range and page navigation. |
-| `partials.html` | `object-inspector` | fragment boundary | Selected-object header and inspector panel. |
+| `partials.html` | `object-inspector` | fragment boundary | Selected-object header and metadata, references, bytes, or action panel. |
 | `partials.html` | `hexdump-table` | fragment | Bounded raw-byte view. |
 | `partials.html` | `result` | fragment | Mutation outcome. |
 
@@ -62,13 +58,6 @@ shell
 ├── head
 ├── top-bar, except login
 └── selected page content
-    ├── dashboard-content
-    │   ├── dashboard-heading
-    │   ├── dashboard-search
-    │   └── dashboard-panels
-    │       ├── stat-cards
-    │       ├── digest-note
-    │       └── sample-table
     ├── objects-content
     │   ├── filter-bar
     │   └── object-browser
@@ -102,7 +91,6 @@ The server executes components directly only for htmx fragments:
 
 | Route behavior | Template |
 |---|---|
-| Dashboard refresh | `dashboard_panels` compatibility fragment |
 | Object-list filter, sort, or paging | `object-table-fragment` |
 | Object selection or inspector tab | `object-inspector` |
 | Raw bytes | `hexdump` then `hexdump-table` |

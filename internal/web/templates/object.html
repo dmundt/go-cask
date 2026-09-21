@@ -22,7 +22,7 @@
 <dt>Hash</dt><dd>{{.Digest}}</dd>
 <dt>Algorithm</dt><dd>{{.Algorithm}}</dd>
 <dt>Type</dt><dd>{{.Type}}</dd>
-<dt>Size</dt><dd>{{.Size}} bytes</dd>
+<dt>Size</dt><dd>{{formatBytes .Size}}</dd>
 </dl></section>{{end}}
 
 {{define "object-detail-actions"}}<section class="viewer-actions" aria-label="Actions">

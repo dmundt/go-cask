@@ -52,6 +52,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
 	}
+	references, err := previewReferences(ctx, raw)
+	if err != nil {
+		slog.Error("build preview references", "err", err)
+		os.Exit(1)
+	}
 	// The viewer does not hold the store lock: its mutations are in-process
 	// on its own store instance, and writers/reads are lock-free across
 	// processes. External maintenance sweeps (cask gc/prune) may run while
@@ -72,6 +77,8 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	webSrv, err := web.New(raw, web.Config{
 		StartupToken: token,
 		RoleTokens:   roleTokens,
+		References:   references,
+		Reachability: references,
 	})
 	if err != nil {
 		slog.Error("viewer setup", "err", err)

@@ -1,7 +1,7 @@
 // Package web implements the embedded technical viewer (internal/web): the
 // browser-facing hypermedia surface at /viewer/* — login with the startup
 // token, session cookies, role authorization, CSRF-protected mutations,
-// htmx fragments, and the dashboard/object/stats/graph pages — per
+// htmx fragments and object pages — per
 // viewer-design and viewer-security (which MUST NOT be weakened).
 package web
 
@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 )
@@ -36,7 +37,32 @@ type Session struct {
 	CSRF string
 	// Verifications holds the session-scoped integrity result for each object.
 	// Results disappear when the session expires or the server restarts.
-	Verifications map[string]string
+	Verifications map[string]verification
+	// Trail is the ordered list of objects inspected in this session, and
+	// TrailPos points at the current one (-1 while the trail is empty). It
+	// backs the inspector's Prev/Next controls, which walk only objects this
+	// session already visited — browser history would also replay filter and
+	// sort changes, which are not object navigation.
+	Trail    []string
+	TrailPos int
+}
+
+// maxTrail bounds the session-scoped visit trail. It is a navigation aid, not
+// an audit log, so the oldest entries are dropped rather than grown without end.
+const maxTrail = 100
+
+// verification is one recorded integrity check: its result, when it ran, and
+// the report the check produced. The time makes a stale result visible as
+// stale — bytes can rot after a check — and keeping the report lets the
+// inspector show the finding again on every later visit instead of only in the
+// response to the click that produced it.
+type verification struct {
+	// Result is the recorded integrity state.
+	Result string
+	// Checked is when the check ran.
+	Checked time.Time
+	// Report is the outcome the check rendered, replayed on reselection.
+	Report actionOutcome
 }
 
 // sessions is the in-memory session store: idle timeout and maximum
@@ -63,7 +89,8 @@ func (s *sessions) create(role string) (*Session, error) {
 		Created:       time.Now(),
 		LastSeen:      time.Now(),
 		CSRF:          csrf,
-		Verifications: make(map[string]string),
+		Verifications: make(map[string]verification),
+		TrailPos:      -1,
 	}
 	s.mu.Lock()
 	s.byID[sess.ID] = sess
@@ -72,24 +99,104 @@ func (s *sessions) create(role string) (*Session, error) {
 }
 
 func (s *sessions) verification(id, digest string) string {
+	record, _ := s.verificationRecord(id, digest)
+	return record
+}
+
+// verificationRecord reports the recorded result and when it was checked. The
+// zero time means the object has not been checked in this session.
+func (s *sessions) verificationRecord(id, digest string) (string, time.Time) {
+	record, checked, _ := s.verificationReport(id, digest)
+	return record, checked
+}
+
+// verificationReport adds the stored report to verificationRecord, so the
+// inspector can render a past finding without re-running the check.
+func (s *sessions) verificationReport(id, digest string) (string, time.Time, actionOutcome) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.byID[id]
 	if !ok {
-		return "not-verified"
+		return "not-verified", time.Time{}, actionOutcome{}
 	}
-	if result, ok := sess.Verifications[digest]; ok {
-		return result
+	if record, ok := sess.Verifications[digest]; ok {
+		return record.Result, record.Checked, record.Report
 	}
-	return "not-verified"
+	return "not-verified", time.Time{}, actionOutcome{}
 }
 
-func (s *sessions) setVerification(id, digest, result string) {
+func (s *sessions) setVerification(id, digest, result string, report actionOutcome) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if sess, ok := s.byID[id]; ok {
-		sess.Verifications[digest] = result
+		sess.Verifications[digest] = verification{Result: result, Checked: time.Now(), Report: report}
 	}
+}
+
+// visit records digest as the newest trail entry. Revisiting the current entry
+// changes nothing, and visiting after stepping back drops the forward entries:
+// a new branch replaces the abandoned one, exactly as browser history does.
+func (s *sessions) visit(id, digest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	if !ok || digest == "" {
+		return
+	}
+	if sess.TrailPos >= 0 && sess.TrailPos < len(sess.Trail) && sess.Trail[sess.TrailPos] == digest {
+		return
+	}
+	sess.Trail = append(sess.Trail[:sess.TrailPos+1], digest)
+	if len(sess.Trail) > maxTrail {
+		sess.Trail = sess.Trail[len(sess.Trail)-maxTrail:]
+	}
+	sess.TrailPos = len(sess.Trail) - 1
+}
+
+// restart begins a new trail at digest, discarding what came before. Picking a
+// row in the object table is a fresh point of departure, so the Prev/Next
+// controls must not offer a chain the operator abandoned.
+func (s *sessions) restart(id, digest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	if !ok || digest == "" {
+		return
+	}
+	sess.Trail = []string{digest}
+	sess.TrailPos = 0
+}
+
+// seek moves the cursor onto digest without disturbing the trail. It backs
+// Prev/Next, which navigate the trail rather than extend it.
+func (s *sessions) seek(id, digest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	if !ok {
+		return
+	}
+	if i := slices.Index(sess.Trail, digest); i >= 0 {
+		sess.TrailPos = i
+	}
+}
+
+// trailNeighbors reports the objects on either side of the cursor. An empty
+// string means that direction is exhausted, which disables its control.
+func (s *sessions) trailNeighbors(id string) (prev, next string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	if !ok {
+		return "", ""
+	}
+	if sess.TrailPos > 0 {
+		prev = sess.Trail[sess.TrailPos-1]
+	}
+	if sess.TrailPos >= 0 && sess.TrailPos+1 < len(sess.Trail) {
+		next = sess.Trail[sess.TrailPos+1]
+	}
+	return prev, next
 }
 
 // get returns the session for id, enforcing idle and lifetime expiry and

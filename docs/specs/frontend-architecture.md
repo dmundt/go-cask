@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Frontend Architecture — go-cask
-description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx-only interactivity, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v8
+description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
+version: v10
 ---
 
 # Frontend Architecture — go-cask
 
-Governs the browser-facing architecture of go-cask (applies to the viewer and any future frontend). Concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (scoped viewer CSS/no custom JavaScript, templates+htmx), api-design.
+Governs the browser-facing architecture of go-cask (applies to the viewer and any future frontend). Concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (scoped viewer CSS, no viewer script, templates+htmx), api-design.
 
 ## 1. Purpose and scope
 
@@ -40,15 +40,18 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 | Long-running ops | no polling: verify/delete/gc answer with a `result` fragment |
 | Cross-panel update | none: every swap targets the panel that asked for it |
 | Destructive actions | POST forms + `hx-confirm` + CSRF token |
+| Inspector width | native CSS `resize` bounded by `min-width`/`max-width`; no script, no persistence or application state |
 
 - GET endpoints are side-effect free; every mutation is a POST form with CSRF (viewer-security).
 - `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, and paging), `#object-table`, `#object-inspector`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
-- No custom events, no `_hyperscript`, no Alpine, no hand-written JS — htmx attributes only (coding-guidelines §4).
+- No custom events, no `_hyperscript`, no Alpine, and no hand-written JS at
+  all: htmx is the only script the viewer ships (coding-guidelines §4).
 
 ## 5. Navigation and state
 
 - **URLs are the state:** `q`, `type`, `size`, `sort`, `dir`, `limit`,
-  `offset`, `selected`, and inspector `tab` identify an object-browser view.
+  `offset`, `selected`, and inspector `tab` (`metadata`, `references`, `bytes`,
+  or `actions`) identify an object-browser view.
   `hx-push-url` keeps that state in the address bar; refresh and back/forward
   work; no client-side state exists to lose or rehydrate.
 - Identity from the server session cookie (always `HttpOnly`,
@@ -63,8 +66,7 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 - No npm, no build step, and no static asset pipeline. The only viewer
   stylesheet is the local, class-scoped
   `/viewer/static/viewer.css`; no remote fonts, imports, images, or other
-  style dependencies. Only script in the runtime is **htmx** (one pinned,
-  vendored file).
+  style dependencies. The only runtime script is vendored htmx.
 
 ## 7. Semantics and accessibility
 
@@ -90,7 +92,7 @@ Reference implementation of this architecture: object-browser-first, low-level t
 
 - [x] All HTML via `html/template`; templates nested via `{{define}}`/`{{template}}`/`{{block}}`; embedded with `embed.FS`
 - [x] Fragments reuse the same partials as full pages (one source of truth)
-- [x] Interactivity via htmx attributes only; no hand-written JS
+- [x] htmx owns application interactions; the inspector resizes through CSS alone
 - [x] One embedded, scoped viewer stylesheet; no inline or external CSS
 - [x] GET side-effect free; mutations = POST + CSRF
 - [x] URLs are the state (`hx-push-url`); refresh/back work

@@ -1,13 +1,13 @@
 ---
 type: Specification
 title: Examples — go-cask
-description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product viewer (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v17
+description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
+version: v18
 ---
 
 # Examples — go-cask
 
-How example programs are written and which exist: `files` (Git-like file store), `artifacts` (artifact cache), `notes` (own object model), `api` (HTTP-exposure pattern); `viewer` is covered by the product viewer in `internal/web/` (§3.5). Examples are runnable reference programs that compile, demonstrate the documented APIs in real use, and are tested where behavior is assertable. They are NOT part of `cas`/`gitlike`. Related: cas-core, coding-guidelines, api-design, viewer-security, viewer-design.
+How example programs are written and which exist: `files` (Git-like file store), `artifacts` (artifact cache), `notes` (own object model), `api` (HTTP-exposure pattern); `viewer` is covered by the product object browser in `internal/web/` (§3.5). Examples are runnable reference programs that compile, demonstrate the documented APIs in real use, and are tested where behavior is assertable. They are NOT part of `cas`/`gitlike`. Related: cas-core, coding-guidelines, api-design, viewer-security, viewer-design.
 
 ## 1. Purpose
 
@@ -65,7 +65,7 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 ### 3.5 `examples/viewer` → the product viewer
 
-Covered by the **product viewer** in `internal/web/` (nested Go templates + htmx, dashboard, security); see viewer-design/security.
+Covered by the **product object browser** in `internal/web/` (nested Go templates + htmx, security); see viewer-design/security.
 
 ## 4. Aspect coverage matrix
 
@@ -86,7 +86,7 @@ Covered by the **product viewer** in `internal/web/` (nested Go templates + htmx
 | Background `Preloader` | | | ✓ | | |
 | `Stats`/`Verify`/`GC` | ✓ | ✓ | | ✓ | product |
 | HTTP-exposure pattern | | | | ✓ | |
-| Viewer (templates + htmx + dashboard) | | | | | product |
+| Viewer (templates + htmx + object browser) | | | | | product |
 | Security (authn/authz, sessions, CSRF) | | | | ✓ bearer | product |
 | Streaming (`io.Reader`/`io.ReadCloser`) | ✓ | ✓ | | ✓ | product |
 

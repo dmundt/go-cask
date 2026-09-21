@@ -2,7 +2,7 @@
 type: Design Document
 title: Viewer Design Brief — go-cask
 description: Extracted visual and component brief for translating the object-browser mockup into the server-rendered go-cask viewer.
-version: v6
+version: v7
 ---
 
 # Viewer Design Brief — go-cask
@@ -39,7 +39,7 @@ Use the mockup's token values exactly in the one central
   hex;
 - 46px top bar, 47px filter bar, 14px horizontal page inset, 8px filter gap;
 - 30px inputs, 4–5px control radii, compact 27px pager controls;
-- 440px inspector, 4px divider, 700px minimum table width;
+- 440px inspector, natively resizable, 700px minimum table width;
 - dense table rows, sticky uppercase mono headers, right-aligned numeric
   columns, row hover/selection inset, visible two-pixel focus rings;
 - responsive transition at 900px: horizontal filter scrolling, list first,
@@ -78,9 +78,9 @@ JavaScript or unsupported CAS data. Translate them as follows:
 | Live search | htmx GET plus normal GET-form fallback |
 | Sort, filters, page size, pager | validated query parameters and server render |
 | Row selection | `selected` query parameter; htmx inspector swap |
-| Metadata/Bytes/Actions tabs | `tab` query parameter; links/buttons, no client tab state |
-| Resizable divider | fixed responsive layout; no drag interaction |
-| Copy digest | full digest in selectable semantic text; no clipboard API |
+| Metadata/References/Bytes tabs | `tab` query parameter; links/buttons, no client tab state |
+| Resizable inspector | CSS `resize` bounded by `min-width`/`max-width`; width resets on reload |
+| Copy digest | full digest in a readonly selectable field; no clipboard API |
 | Reference panels/refs count | omitted; byte layer cannot resolve typed references |
 | Written time | omitted until backend exposes truthful metadata |
 | Status state | `not verified` or result of an on-demand server verification |
@@ -96,7 +96,7 @@ language without shipping a second client application.
    bar, table/sort header/row, pager, inspector/panels, and result fragments.
 3. Add validated server-side filter, sort, pagination, selection, and panel
    state; return the list and inspector as reusable fragments.
-4. Move current dashboard/object/detail markup onto composed components.
+4. Move current object/detail markup onto composed components.
 5. Add route/template tests for direct loads, htmx swaps, pagination bounds,
    query preservation, roles/CSRF, and narrow/desktop semantic structure.
 

@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Specification Set
 description: Index of every instruction file by concern. See docs/index.md for path-first lookup.
-version: v1
+version: v2
 ---
 
 # go-cask Specification Set
@@ -18,7 +18,7 @@ All files in this folder. [`AGENT.md`](AGENT.md) governs them. Start at [`docs/i
 | CLI (subcommands, flags, output, exit codes) | [`cli.md`](cli.md) |
 | Server-side (viewer wiring, middleware, lifecycle) | [`backend-architecture.md`](backend-architecture.md) |
 | Browser-facing (hypermedia, htmx, URL-as-state) | [`frontend-architecture.md`](frontend-architecture.md) |
-| Viewer UI (dashboard, hexdump, maintenance) | [`viewer-design.md`](viewer-design.md) |
+| Viewer UI (object browser, hexdump, maintenance) | [`viewer-design.md`](viewer-design.md) |
 | Viewer security (authn/authz, sessions, CSRF, audit) | [`viewer-security.md`](viewer-security.md) |
 | HTTP conventions (status codes, errors, streaming) | [`api-design.md`](api-design.md) |
 | Example rules + five proposed examples | [`examples.md`](examples.md) |

@@ -2,7 +2,7 @@
 type: Design
 title: Viewer Mockup Parity Audit — go-cask
 description: Visual and behavioral comparison of the object-browser mockup and server-rendered viewer.
-version: v1
+version: v5
 ---
 
 # Viewer Mockup Parity Audit — go-cask
@@ -28,11 +28,12 @@ remain in [`../specs/viewer-design.md`](../specs/viewer-design.md).
 
 | Mockup feature | Decision | Reason |
 |---|---|---|
-| Reference-count column | Excluded | Byte-layer backend has no truthful reference count. |
-| Written-time column | Excluded | Backend does not expose persisted object creation time. |
-| References tab and rows | Excluded | Viewer does not resolve typed object graphs. |
+| Inbound reference count | Supported when indexed | Inspector and table expose host-supplied inbound counts; raw-only stores show zero. |
+| Written-time column | Supported | Filesystem modification time is rendered as mockup-style elapsed `h ago`/`d ago` metadata; it is not persisted object creation time. |
+| Timestamp metadata | Supported | Same filesystem modification time is exposed in UTC RFC 3339 for exact inspection. |
+| References tab and rows | Supported when indexed | Viewer renders digest-sorted By/Out edges from a host-supplied reference source; raw-only stores show empty states. |
 | Copy button | Excluded | Clipboard access needs client JavaScript. |
-| Resizable splitter | Excluded | Persistent sizing needs client state or custom JavaScript. |
+| Resizable splitter | Supported | Pointer and keyboard resize is bounded to 280px–560px and resets on reload. |
 | Global Verify button | Excluded | Global verification needs an authorized bounded server operation. |
 | Mockup’s generated data | Replaced | `cask seed-preview` creates valid stored envelopes instead of browser-only data. |
 

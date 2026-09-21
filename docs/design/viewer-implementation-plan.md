@@ -2,7 +2,7 @@
 type: Design Document
 title: Viewer Implementation Plan — go-cask
 description: Phased implementation plan for the server-rendered master-detail viewer described by the object-browser mockup.
-version: v1
+version: v2
 ---
 
 # Viewer Implementation Plan — go-cask
@@ -10,14 +10,15 @@ version: v1
 This plan implements the master-detail viewer contract in
 `docs/specs/viewer-design.md`, using the formal translation in
 [`object-browser-logic.md`](object-browser-logic.md). It does not copy the
-mockup's custom JavaScript; it delivers equivalent server/htmx behavior where
-the byte-layer data model supports it.
+mockup's custom JavaScript, except the bounded divider enhancement; it delivers
+equivalent server/htmx behavior where the byte-layer data model supports it.
 
 ## 1. Scope
 
 Included:
 
-- One embedded [viewer.css](../../internal/web/viewer.css) asset.
+- One embedded [viewer.css](../../internal/web/viewer.css) asset and a bounded
+  [viewer.js](../../internal/web/viewer.js) divider enhancement.
 - Composed Go templates for the top bar, filters, list, table, pager,
   inspector, integrity result, and hexdump.
 - Validated URL state for filtering, sorting, pagination, selection, and
@@ -28,7 +29,7 @@ Included:
 Excluded:
 
 - Custom JavaScript, browser persistence, and runtime CSS generation.
-- Mockup-only reference graph/counts, timestamps, draggable splitter,
+- Mockup-only reference graph/counts, timestamps,
   clipboard, client history, and verify-all behavior.
 - Changes to `cas` public APIs or backend metadata contracts.
 
@@ -48,8 +49,8 @@ Excluded:
    `integrity`, and `hexdump-table`.
 4. Give every component a focused pre-shaped view model. Components do not
    read request parameters, call storage, or calculate view state.
-5. Compose dashboard, objects, and object-detail documents from these
-   components. Preserve existing auth, CSRF, raw preview, and result behavior.
+5. Compose object-browser and object-detail documents from these components.
+   Preserve existing auth, CSRF, raw preview, and result behavior.
 6. Implement CSS tokens/layout from the design JSON: desktop two-column
    workspace, compact bars and controls, table state styles, and the 900px
    responsive layout.
@@ -106,7 +107,7 @@ fragment executes the same component named by its full-page composition.
    each sort direction, every page boundary, empty filtered result, and
    query-preserving pager links.
 3. Test direct and htmx selection/panel URLs, all named templates, CSS response
-   headers, and absence of custom JavaScript.
+   headers, and bounded divider-script behavior.
 4. Assert semantic captions/scoped headers, labels, active `aria-sort`,
    selected-row state, status text, and empty inspector state.
 5. Retain existing role/CSRF/audit/raw-preview coverage; run targeted web

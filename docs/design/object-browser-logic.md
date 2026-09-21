@@ -2,7 +2,7 @@
 type: Design Document
 title: Object Browser Logic — go-cask
 description: Formal server-side state, transition, rendering, and invariants contract for the viewer object browser.
-version: v1
+version: v9
 ---
 
 # Object Browser Logic — go-cask
@@ -24,14 +24,37 @@ The server creates a normalized record for each listed digest:
 | Field | Source | Rule |
 |---|---|---|
 | Digest | `Backend.List` | Full lowercase hexadecimal identity |
-| Short digest | `Digest.Prefix(8)` | Display only; links retain full digest |
+| Short digest | `Digest.Prefix(8)` + `...` | Display only; links retain full digest |
 | Type | TLV envelope prefix | Best effort; empty when unreadable |
 | Size | `Backend.Size` | Exact byte count |
 | Integrity | session-scoped verification result | `not verified` until verified |
+| Written | filesystem object modification time | Physical metadata rendered as whole `m ago`/`h ago`/`d ago`; not object creation time |
+| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied |
+| Reachability | optional viewer `ReachabilityIndex` | Host-supplied root reachability; only source for Orphaned |
+| Timestamp | filesystem object modification time | Same physical metadata in UTC RFC 3339; not object creation time |
 
-The viewer MUST NOT expose the mockup's generated reference counts, object
-ages, timestamps, reference rows, or deterministic digest-derived byte preview.
-Those values are not byte-layer backend facts.
+The viewer MUST NOT expose generated reference counts, object ages, or
+deterministic digest-derived byte preview. The filesystem modification time is
+allowed only when supplied by the active backend; it is physical metadata, not
+an immutable object timestamp. `References` and reference rows use a
+host-supplied complete viewer reference source. Inbound and outbound
+rows are sorted by digest, link to the selected object, and show its stored
+envelope type when readable.
+
+Integrity and reachability are separate facts rendered as separate pills in one
+status cell: an integrity pill (`not-verified` / `verified` / `corrupt`) and,
+for orphans only, an additional `Orphaned` pill. Reachable objects show a
+single pill. The inspector renders both axes as pills. Verify stays enabled for
+orphaned objects, because they are both the likeliest to rot and the next
+candidates for reclamation.
+
+Every recorded verification stores its check time. The Metadata tab's Integrity
+section reports the
+last result with that timestamp and its age, so a stale result reads as stale.
+The top bar's Verify control sweeps the whole store in one request, records
+each result, and reports the verified/corrupt counts on the control. A failed
+action renders as a classified state pill plus prose, and a digest mismatch
+shows both the expected address and the digest the stored bytes hash to.
 
 ## 2. URL state
 
@@ -39,8 +62,8 @@ The object browser has one canonical state representation:
 
 ```text
 /viewer/objects?q={text}&type={type}&size={bucket}&status={integrity}
-  &sort={hash|type|size}&dir={asc|desc}&limit={25|50|100|250}
-  &offset={non-negative}&selected={digest}&tab={metadata|bytes|actions}
+  &sort={hash|type|size|status|written}&dir={asc|desc}&limit={25|50|100|250}
+  &offset={non-negative}&selected={digest}&tab={metadata|references|bytes|actions}
 ```
 
 | Key | Default | Valid values | Effect |
@@ -48,13 +71,15 @@ The object browser has one canonical state representation:
 | `q` | empty | trimmed text | Case-insensitive digest/type substring |
 | `type` | empty | type present in the current result domain | Exact envelope type |
 | `size` | empty | `small`, `medium`, `large` | `<1 KiB`, `1 KiB–1 MiB`, `>1 MiB` |
-| `status` | empty | `not-verified`, `verified`, `corrupt` | Session integrity result |
-| `sort` | `hash` | `hash`, `type`, `size` | Primary order |
+| `status` | empty | `not-verified`, `verified`, `corrupt` | Integrity axis; exclusive states, empty means every state |
+| `reach` | empty | `reachable`, `orphaned` | Reachability axis; combines with `status` by AND and requires configured reachability |
+| `sort` | `hash` | `hash`, `type`, `size`, `status`, `written` | Primary order |
 | `dir` | `asc` | `asc`, `desc` | Sort direction |
 | `limit` | `25` | `25`, `50`, `100`, `250` | Maximum rows per response |
 | `offset` | `0` | non-negative integer | First result position |
-| `selected` | empty | valid listed digest | Inspector target |
-| `tab` | `metadata` | `metadata`, `bytes`, `actions` | Inspector panel |
+| `selected` | first matched row | valid listed digest, or empty to deselect | Inspector target |
+| `tab` | `metadata` | `metadata`, `references`, `bytes`, `actions` | Inspector panel |
+| `nav` | absent | `ref`, `trail` | How the selection was reached; decides whether the trail is extended, stepped, or restarted |
 
 Malformed values return HTTP 400. The server MUST NOT silently substitute a
 different enum, limit, offset, or digest. A valid offset beyond the matched
@@ -65,20 +90,38 @@ set returns the empty result page with a valid pager state.
 Each `GET /viewer/objects` response applies the following deterministic steps:
 
 1. Parse and validate URL state.
-2. List digests and form normalized records.
+2. List digests and form normalized records, including host reachability when
+   configured.
 3. Apply `q`, `type`, `size`, and `status` filters.
 4. Sort records using the requested key/direction. Digest/type comparisons use
-   lexical order; size comparisons use exact integer bytes.
+   lexical order; size comparisons use exact integer bytes; written comparisons
+   use backend modification time.
 5. Calculate matched count and total matched bytes.
-6. Take the offset/limit slice.
-7. Resolve `selected`: retain it only if it is in the matched set; otherwise
-   no inspector selection exists.
-8. Render the object-list component containing table, result summary, and
+6. When `offset` is absent from the request and `selected` names a matched
+   record, set the offset to the page holding that record, so browsing by
+   reference brings its row into view. An explicitly supplied `offset` — every
+   pager link supplies one — always wins.
+7. Take the offset/limit slice.
+8. Resolve `selected`: retain it only if it is in the matched set. When it is
+   absent from the request, select the first row of the page. When it is
+   present but empty the operator deselected explicitly, so no inspector
+   selection exists and the empty inspector is rendered.
+9. Render the object-list component containing table, result summary, and
    pager. Render the inspector component independently from the selected
    normalized record.
 
-The result summary reports the shown range, matched count, and total bytes over
-the complete matched set, never only the visible page.
+Each rendered selection is appended to a session-scoped visit trail that backs
+the inspector's `‹`/`›` controls. Stepping through the trail carries `trail=1`,
+which moves the cursor without extending the trail; any other selection
+truncates the forward entries, as browser history does. The trail is capped,
+lives only in the server session, and never reaches storage.
+
+The bytes inspector reads at most the first 256 bytes. It renders a truncation
+note containing both the 256-byte limit and formatted stored size when more
+bytes exist.
+
+The result summary reports the shown range, matched count, and IEC-formatted
+total bytes over the complete matched set, never only the visible page.
 
 ## 4. State transitions
 
@@ -88,10 +131,12 @@ the complete matched set, never only the visible page.
 | Sort header | Toggle `dir` for same `sort`; otherwise set sort and `asc`; set `offset=0` | Object-list fragment |
 | Page-size control | Set `limit`; set `offset=0` | Object-list fragment |
 | First/previous/next/last pager link | Set bounded offset from matched count | Object-list fragment |
-| Object-row link | Set `selected`; retain legal list state | Inspector fragment or full detail |
-| Inspector panel link | Set `tab`; retain selection/list state | Inspector fragment |
+| Object-row link | Set `selected`, or clear it when the row is already selected; retain legal list state | Inspector fragment or full detail |
+| Reference link | Set `selected` to the referenced digest; page the list to its row | Inspector and object-list fragments |
+| Inspector `‹`/`›` | Move the session trail cursor; set `selected` and `trail=1`; inert when the trail is exhausted | Inspector and object-list fragments |
+| Inspector panel link | Set `tab`; retain selection/list state and selected-row highlight | Inspector fragment |
 | Verify form | Recompute selected object with injected hasher; store result only in server session | Integrity fragment |
-| Delete/GC form | Perform existing authorized mutation; audit log | Existing result fragment |
+| Delete form | Perform existing authorized mutation; audit log | Existing result fragment |
 
 All filter/sort/pager/row/panel controls are ordinary GET links or forms first.
 htmx enhances them through `hx-get`, `hx-target`, and `hx-push-url`; the
@@ -123,6 +168,7 @@ viewer-page
             ├── inspector-header
             ├── inspector-panels
             │   ├── metadata-panel
+            │   ├── references-panel
             │   ├── bytes-panel
             │   │   └── hexdump-table
             │   └── actions-panel
@@ -163,9 +209,9 @@ template components produce both forms.
 | Mutable JavaScript selection | `selected` URL state |
 | JavaScript pagination clamp | Valid offset is preserved; empty page is explicit |
 | Client tab keyboard model | Panel links with standard focus/navigation |
-| Draggable/keyboard splitter | Fixed 440px desktop column and responsive breakpoint |
-| Clipboard copy | Selectable full digest text |
-| Reference history and graph | Excluded from byte-layer viewer |
+| Draggable/keyboard splitter | CSS `resize` bounded by `min-width`/`max-width`; no keyboard resize |
+| Clipboard copy | Readonly full-digest field as a single selection target |
+| Reference history and graph | Session-scoped `‹`/`›` visit trail; no graph view |
 | Verify all | Excluded pending an authorized bounded server operation |
 | Digest-derived hexdump | Actual bounded object bytes |
 
@@ -176,10 +222,11 @@ template components produce both forms.
 - No response fabricates backend facts.
 - Table, result count, and pager derive from one filtered/sorted sequence.
 - A selected object is never rendered when it is absent from the matched set.
-- A missing selection renders explicit empty inspector content.
+- A missing selection renders explicit empty inspector content, and an
+  explicit deselection is never overridden by the first-row default.
 - 401/403 behavior, roles, CSRF, and audit logging remain governed by
   `viewer-security.md`.
-- Raw bytes remain bounded by the existing 256 KiB preview limit.
+- Raw bytes remain bounded by the existing 256-byte preview limit.
 
 ## 8. Verification matrix
 

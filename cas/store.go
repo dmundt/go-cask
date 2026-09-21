@@ -254,5 +254,8 @@ func (s *Store[T]) Delete(ctx context.Context, d Digest) error {
 	if err := s.check(d, "store: delete"); err != nil {
 		return err
 	}
-	return s.raw.Delete(ctx, d)
+	if err := s.raw.Delete(ctx, d); err != nil {
+		return err
+	}
+	return nil
 }

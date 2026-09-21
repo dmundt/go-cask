@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/index"
@@ -109,6 +110,46 @@ func TestSeedPreview(t *testing.T) {
 	if len(digests) != 6 {
 		t.Fatalf("seeded objects = %d, want 6", len(digests))
 	}
+	references, err := previewReferences(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if references == nil {
+		t.Fatal("preview references = nil")
+	}
+	objects := make([]cas.Digest, 0, 6)
+	for ordinal := range 6 {
+		object := previewObjectFor(ordinal, objects)
+		objects = append(objects, object.digest)
+	}
+	if got := references.Outbound(objects[3]); len(got) != 3 || !got[0].Equal(objects[2]) || !got[1].Equal(objects[1]) || !got[2].Equal(objects[0]) {
+		t.Fatalf("preview outbound = %v, want [%s %s %s]", got, objects[2], objects[1], objects[0])
+	}
+	for _, test := range []struct {
+		digest cas.Digest
+		want   int
+	}{
+		{objects[0], 3},
+		{objects[4], 1},
+		{objects[5], 0},
+	} {
+		if got := len(references.Inbound(test.digest)); got != test.want {
+			t.Fatalf("preview inbound %s = %d, want %d", test.digest, got, test.want)
+		}
+	}
+	for _, test := range []struct {
+		digest cas.Digest
+		want   bool
+	}{
+		{objects[0], true},
+		{objects[3], true},
+		{objects[4], false},
+		{objects[5], false},
+	} {
+		if got := references.IsReachable(test.digest); got != test.want {
+			t.Fatalf("preview reachability %s = %t, want %t", test.digest, got, test.want)
+		}
+	}
 	for _, digest := range digests {
 		rc, err := raw.Get(context.Background(), digest)
 		if err != nil {
@@ -122,6 +163,21 @@ func TestSeedPreview(t *testing.T) {
 		if typ := index.EnvelopeType(data); typ == "" {
 			t.Fatalf("seeded object %s lacks a valid envelope type", digest)
 		}
+	}
+
+	// Ordinal 1 is seeded with tampered bytes and sits inside a reachable
+	// block, so the browser gets corrupt objects that are not orphaned.
+	if !previewCorruptOrdinal(1) || previewCorruptOrdinal(0) {
+		t.Fatalf("unexpected corrupt ordinal selection")
+	}
+	if !references.IsReachable(objects[1]) {
+		t.Fatalf("corrupt preview object %s must stay reachable", objects[1])
+	}
+	if err := raw.Verify(context.Background(), objects[1], sha256.New()); err == nil {
+		t.Fatalf("corrupt preview object %s must fail verification", objects[1])
+	}
+	if err := raw.Verify(context.Background(), objects[0], sha256.New()); err != nil {
+		t.Fatalf("intact preview object %s must verify: %v", objects[0], err)
 	}
 
 	out, code = run(t, mf, "seed-preview", "-count", "6")

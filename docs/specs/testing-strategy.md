@@ -45,6 +45,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 | Maintenance ops (`Stats`/`Verify`/`GC`/`Prune`) | one test per op, incl. dry-run + destructive |
 | Object versioning | versioned `Type()` names, coexisting majors, `ErrUnknownType` |
 | Object invariants (`cas.Validator`) | `Put`/`PutDedup` reject an invalid object, `Get` reports `ErrCorrupt`, `GetRaw` does not validate, nil object/payload rejected (`cas/validator_test.go`) |
+| Viewer references | host-provided inbound/outbound edges render in the table, inspector count, and references tab |
 | Defaults | each default asserted (fan-out (2,1), the shipped `sha256` hasher, perms) |
 | Branch/CLI/versioning docs | where code exists (`cmd/cask`, `version` output) |
 

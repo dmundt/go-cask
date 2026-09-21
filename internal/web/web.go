@@ -5,13 +5,17 @@ import (
 	"context"
 	"crypto/subtle"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +44,124 @@ type Config struct {
 	StartupToken string
 	// RoleTokens maps role names to bearer tokens.
 	RoleTokens map[string]string
+	// References provides host-maintained graph edges for the optional
+	// References inspector tab. Nil leaves references unavailable.
+	References ReferenceIndex
+	// Reachability provides host-computed root reachability for the optional
+	// Orphaned object state. Nil leaves orphan status unavailable.
+	Reachability ReachabilityIndex
+}
+
+// ReferenceIndex supplies application-level graph edges to the viewer. The
+// viewer never infers references from opaque CAS payloads and never mutates
+// this source; the host owns its lifecycle and completeness.
+type ReferenceIndex interface {
+	Inbound(cas.Digest) []cas.Digest
+	Outbound(cas.Digest) []cas.Digest
+}
+
+// ReachabilityIndex reports whether an object is reachable from host-owned
+// roots. The viewer never derives reachability from inbound-reference counts.
+type ReachabilityIndex interface {
+	IsReachable(cas.Digest) bool
+}
+
+func (s *Server) objectModTime(ctx context.Context, d cas.Digest) time.Time {
+	written, err := s.store.ModTime(ctx, d)
+	if err != nil {
+		return time.Time{}
+	}
+	return written
+}
+
+func formatWritten(written time.Time) string {
+	return formatWrittenAt(written, time.Now())
+}
+
+func formatWrittenAt(written, now time.Time) string {
+	if written.IsZero() {
+		return ""
+	}
+	age := now.Sub(written)
+	if age < 0 {
+		age = 0
+	}
+	minutes := int(age / time.Minute)
+	if minutes < 60 {
+		return fmt.Sprintf("%dm ago", minutes)
+	}
+	hours := minutes / 60
+	if hours < 24 {
+		return fmt.Sprintf("%dh ago", hours)
+	}
+	return fmt.Sprintf("%dd ago", hours/24)
+}
+
+// checkedLabel renders when an object was last verified in this session. A
+// verification result is only as good as its age, so the report states the
+// clock time and the elapsed age together.
+func checkedLabel(store *sessions, id, digest string) string {
+	_, checked := store.verificationRecord(id, digest)
+	if checked.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%s (%s)", checked.UTC().Format("2006-01-02 15:04:05 UTC"), formatWritten(checked))
+}
+
+// storedReport replays the last check of digest in this session, or nil when
+// there is none. The check time is stamped on at render time because the label
+// carries a relative age that keeps moving after the check ran.
+func storedReport(store *sessions, id, digest string) *actionOutcome {
+	_, checked, report := store.verificationReport(id, digest)
+	if checked.IsZero() {
+		return nil
+	}
+	report.Checked = fmt.Sprintf("%s (%s)", checked.UTC().Format("2006-01-02 15:04:05 UTC"), formatWritten(checked))
+	return &report
+}
+
+func formatTimestamp(written time.Time) string {
+	if written.IsZero() {
+		return ""
+	}
+	return written.UTC().Format(time.RFC3339Nano)
+}
+
+func formatBytes(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	}
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	value := float64(size)
+	unit := 0
+	for value >= 1024 && unit < len(units)-1 {
+		value /= 1024
+		unit++
+	}
+	if value >= 10 || value == math.Trunc(value) {
+		return fmt.Sprintf("%.0f %s", value, units[unit])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[unit])
+}
+
+func shortDigest(d cas.Digest) string {
+	prefix := d.Prefix(8)
+	if len(d.String()) <= len(prefix) {
+		return prefix
+	}
+	return prefix + "…"
+}
+
+// Version reports the build's module version, rendered as the viewer and the
+// CLI both show it. It comes from build info, so it is a pseudo-version until
+// the first tag and "dev" for an untracked build (versioning §2).
+func Version() string {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		if bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+			return bi.Main.Version
+		}
+	}
+	return "dev"
 }
 
 // Server is the viewer: login, sessions, role authorization, CSRF, and the
@@ -60,7 +182,14 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		// (cas.Digest.Prefix); templates that render a digest they hold as a
 		// string use this, while the list rows use the precomputed
 		// objectRow.Short.
-		"shortDigest": func(d cas.Digest) string { return d.Prefix(8) },
+		"shortDigest": shortDigest,
+		"formatBytes": formatBytes,
+		// The top bar is rendered from several page payloads that share only a
+		// CSRF token, so the Verify control builds its own state from it.
+		"verifyAll": func(csrf string) verifyAllState {
+			return verifyAllState{CSRF: csrf, Label: "Verify"}
+		},
+		"version": Version,
 	}).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -95,14 +224,16 @@ func (s *Server) Handler() http.Handler {
 		}
 		s.require(RoleViewer, s.objects)(w, r)
 	})
-	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, s.dashboard))
+	mux.HandleFunc("GET /viewer/dashboard", http.NotFound)
+	mux.HandleFunc("GET /viewer/dashboard/", http.NotFound)
+	mux.HandleFunc("GET /viewer/gc", http.NotFound)
+	mux.HandleFunc("POST /viewer/gc", http.NotFound)
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
 	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectDetail))
 	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))
+	mux.HandleFunc("POST /viewer/objects/verify-all", s.require(RoleOperator, s.verifyAllFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/verify", s.require(RoleOperator, s.verifyFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleAdmin, s.deleteFragment))
-	mux.HandleFunc("GET /viewer/gc", s.require(RoleAdmin, s.gcPage))
-	mux.HandleFunc("POST /viewer/gc", s.require(RoleAdmin, s.gcFragment))
 	return mux
 }
 
@@ -203,27 +334,6 @@ func (s *Server) resolveToken(token string) (string, bool) {
 	return "", false
 }
 
-// --- dashboard ---
-
-func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
-	s.renderPage(w, "dashboard", s.dashboardData(r.Context()))
-}
-
-func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "dashboard_panels", s.dashboardData(r.Context()))
-}
-
-type dashboardData struct {
-	// ObjectCount is the number of stored objects.
-	ObjectCount int64
-	// TotalSize is the total stored payload size.
-	TotalSize int64
-	// Sample contains representative object rows.
-	Sample []objectRow
-	// HasSample reports whether Sample is non-empty.
-	HasSample bool
-}
-
 type objectRow struct {
 	// Digest is the full object digest.
 	Digest string
@@ -233,36 +343,28 @@ type objectRow struct {
 	Type string
 	// Size is the stored payload size.
 	Size int64
-	// Status is the session-scoped integrity result.
-	Status string
-	// StatusLabel is the human-readable integrity result.
-	StatusLabel string
+	// References is the number of host-indexed inbound references, when known.
+	References int
+	// ReferencesAvailable reports whether References came from the configured source.
+	ReferencesAvailable bool
+	// Integrity is the session-scoped integrity result, independent of reachability.
+	Integrity string
+	// IntegrityLabel is the human-readable integrity result.
+	IntegrityLabel string
+	// Orphaned reports that no configured root reaches this object.
+	Orphaned bool
+	// ReachabilityKnown reports whether Orphaned was computed at all. The
+	// reference column is a row-level decision because the row template only
+	// ever sees the row.
+	ReachabilityKnown bool
+	// Written is physical object write metadata from the filesystem backend.
+	Written time.Time
+	// WrittenLabel is the formatted physical write time.
+	WrittenLabel string
 	// Selected reports whether this row backs the visible inspector.
 	Selected bool
 	// SelectURL opens this row in the browser inspector.
 	SelectURL string
-}
-
-func (s *Server) dashboardData(ctx context.Context) dashboardData {
-	st, err := s.store.Stats(ctx)
-	if err != nil {
-		st = &cas.Stats{}
-	}
-	d := dashboardData{ObjectCount: st.ObjectCount, TotalSize: st.TotalSize}
-	digests, err := s.store.List(ctx)
-	if err != nil {
-		return d
-	}
-	for _, h := range index.Paginate(digests, 0, 10) {
-		d.Sample = append(d.Sample, objectRow{
-			Digest: h.String(),
-			Short:  h.Prefix(8),
-			Type:   s.objectType(ctx, h),
-			Size:   s.objectSize(ctx, h),
-		})
-	}
-	d.HasSample = len(d.Sample) > 0
-	return d
 }
 
 // --- objects list ---
@@ -277,13 +379,35 @@ type objectBrowserState struct {
 	Type      string
 	Size      string
 	Status    string
+	Reach     string
 	Sort      string
 	Direction string
 	Limit     int
 	Offset    int
+	// OffsetSet records an explicitly requested page. Without it the browser
+	// is free to page to whichever rows the selection lives on.
+	OffsetSet bool
 	Selected  string
-	Tab       string
+	// Deselected records an explicitly empty selection: the operator clicked
+	// the selected row again. It is distinct from an absent one, which still
+	// auto-selects the first visible row.
+	Deselected bool
+	// Nav records how the operator arrived at this selection, which decides
+	// what happens to the session trail. It describes a single click, so it
+	// is never carried by url(): only navURL emits it.
+	Nav string
+	Tab string
 }
+
+// Navigation markers. An absent marker means the selection did not come from
+// the inspector, so the trail restarts at it.
+const (
+	navReference = "ref"
+	navTrail     = "trail"
+	// navStay marks a click that re-renders the same selection — switching
+	// inspector tabs. The selection did not move, so the trail must not.
+	navStay = "stay"
+)
 
 func defaultObjectBrowserState() objectBrowserState {
 	return objectBrowserState{
@@ -313,8 +437,14 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	if state.Status, err = queryValue(values, "status"); err != nil {
 		return state, err
 	}
-	if state.Status != "" && state.Status != "not-verified" && state.Status != "verified" && state.Status != "corrupt" {
+	if state.Status != "" && !slices.Contains(objectStates, state.Status) {
 		return state, fmt.Errorf("invalid status filter")
+	}
+	if state.Reach, err = queryValue(values, "reach"); err != nil {
+		return state, err
+	}
+	if state.Reach != "" && state.Reach != "reachable" && state.Reach != "orphaned" {
+		return state, fmt.Errorf("invalid reachability filter")
 	}
 	if state.Sort, err = queryValue(values, "sort"); err != nil {
 		return state, err
@@ -322,7 +452,7 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	if state.Sort == "" {
 		state.Sort = "hash"
 	}
-	if state.Sort != "hash" && state.Sort != "type" && state.Sort != "size" {
+	if !slices.Contains(objectSortKeys, state.Sort) {
 		return state, fmt.Errorf("invalid sort")
 	}
 	if state.Direction, err = queryValue(values, "dir"); err != nil {
@@ -337,12 +467,15 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	if state.Limit, err = queryInt(values, "limit", defaultObjectLimit); err != nil {
 		return state, err
 	}
-	if state.Limit != 25 && state.Limit != 50 && state.Limit != 100 && state.Limit != maxObjectLimit {
-		return state, fmt.Errorf("invalid limit")
-	}
+	// A page size is a preference, not an assertion about the store, so an
+	// out-of-range one is clamped rather than rejected: a hand-edited or
+	// stale URL should still render a page. Only a non-numeric limit is a
+	// malformed query, and queryInt has already rejected that.
+	state.Limit = min(max(state.Limit, 1), maxObjectLimit)
 	if state.Offset, err = queryInt(values, "offset", 0); err != nil || state.Offset < 0 {
 		return state, fmt.Errorf("invalid offset")
 	}
+	_, state.OffsetSet = values["offset"]
 	if state.Selected, err = queryValue(values, "selected"); err != nil {
 		return state, err
 	}
@@ -352,6 +485,14 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 			return state, fmt.Errorf("invalid selected object: %w", parseErr)
 		}
 		state.Selected = digest.String()
+	} else if _, present := values["selected"]; present {
+		state.Deselected = true
+	}
+	if state.Nav, err = queryValue(values, "nav"); err != nil {
+		return state, err
+	}
+	if state.Nav != "" && state.Nav != navReference && state.Nav != navTrail && state.Nav != navStay {
+		return state, fmt.Errorf("invalid navigation marker")
 	}
 	if state.Tab, err = queryValue(values, "tab"); err != nil {
 		return state, err
@@ -359,11 +500,22 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	if state.Tab == "" {
 		state.Tab = "metadata"
 	}
-	if state.Tab != "metadata" && state.Tab != "bytes" && state.Tab != "actions" {
+	if state.Tab == "actions" {
+		state.Tab = "metadata"
+	}
+	if state.Tab != "metadata" && state.Tab != "references" && state.Tab != "bytes" {
 		return state, fmt.Errorf("invalid inspector tab")
 	}
 	return state, nil
 }
+
+// objectSortKeys lists every sortable column. "status" and "reach" are the two
+// integrity/reachability axes; "inbound" is the reference count.
+var objectSortKeys = []string{"hash", "type", "size", "inbound", "status", "reach", "written"}
+
+// objectStates lists the selectable integrity filters in display order.
+// Reachability is the other, independent axis and has its own filter.
+var objectStates = []string{"verified", "not-verified", "corrupt"}
 
 func queryValue(values url.Values, key string) (string, error) {
 	all, ok := values[key]
@@ -392,27 +544,37 @@ func queryInt(values url.Values, key string, fallback int) (int, error) {
 }
 
 type objectBrowserData struct {
-	State       objectBrowserState
-	Objects     []objectRow
-	Types       []filterOption
-	HasAny      bool
-	Total       int
-	Matched     int
-	TotalSize   int64
-	RangeStart  int
-	RangeEnd    int
-	FirstURL    string
-	PreviousURL string
-	NextURL     string
-	LastURL     string
-	SortHashURL string
-	SortTypeURL string
-	SortSizeURL string
-	HasPrevious bool
-	HasNext     bool
-	Inspector   *browserInspector
-	CSRF        string
-	Role        string
+	State           objectBrowserState
+	RefreshURL      string
+	HasReachability bool
+	StatusOptions   []filterOption
+	LimitOptions    []filterOption
+	Objects         []objectRow
+	Types           []filterOption
+	HasAny          bool
+	Total           int
+	Matched         int
+	TotalSize       int64
+	RangeStart      int
+	RangeEnd        int
+	CurrentPage     int
+	PageCount       int
+	FirstURL        string
+	PreviousURL     string
+	NextURL         string
+	LastURL         string
+	SortHashURL     string
+	SortTypeURL     string
+	SortSizeURL     string
+	SortInboundURL  string
+	SortStatusURL   string
+	SortReachURL    string
+	SortWrittenURL  string
+	HasPrevious     bool
+	HasNext         bool
+	Inspector       *browserInspector
+	CSRF            string
+	Role            string
 }
 
 type filterOption struct {
@@ -422,15 +584,38 @@ type filterOption struct {
 }
 
 type browserInspector struct {
-	Digest      string
-	Type        string
-	Size        int64
-	Status      string
-	DetailURL   string
-	RawURL      string
-	MetadataURL string
-	BytesURL    string
-	ActionsURL  string
+	Digest         string
+	Type           string
+	Size           int64
+	Integrity      string
+	IntegrityLabel string
+	// Report is the finding of the last check of this object in this session,
+	// replayed so the inspector states the outcome and its age on every visit
+	// rather than only in the response to the click that produced it. It is nil
+	// when the object has not been checked.
+	Report              *actionOutcome
+	Orphaned            bool
+	WrittenLabel        string
+	InboundReferences   int
+	ReferencesAvailable bool
+	Inbound             []referenceRow
+	Outbound            []referenceRow
+	Timestamp           string
+	RawURL              string
+	MetadataURL         string
+	BytesURL            string
+	ReferencesURL       string
+	// PrevURL and NextURL step through the objects this session already
+	// inspected; an empty one disables that control.
+	PrevURL string
+	NextURL string
+}
+
+type referenceRow struct {
+	Digest    string
+	Short     string
+	Type      string
+	SelectURL string
 }
 
 func (state objectBrowserState) url() string {
@@ -447,6 +632,9 @@ func (state objectBrowserState) url() string {
 	if state.Status != "" {
 		values.Set("status", state.Status)
 	}
+	if state.Reach != "" {
+		values.Set("reach", state.Reach)
+	}
 	if state.Sort != "hash" {
 		values.Set("sort", state.Sort)
 	}
@@ -456,11 +644,13 @@ func (state objectBrowserState) url() string {
 	if state.Limit != defaultObjectLimit {
 		values.Set("limit", strconv.Itoa(state.Limit))
 	}
-	if state.Offset != 0 {
+	if state.Offset != 0 || state.OffsetSet {
 		values.Set("offset", strconv.Itoa(state.Offset))
 	}
 	if state.Selected != "" {
 		values.Set("selected", state.Selected)
+	} else if state.Deselected {
+		values.Set("selected", "")
 	}
 	if state.Tab != "metadata" {
 		values.Set("tab", state.Tab)
@@ -472,10 +662,27 @@ func (state objectBrowserState) url() string {
 	return "/viewer/objects?" + encoded
 }
 
+// navURL renders the state and marks how the operator arrived at it. The
+// marker lives outside url() on purpose: it describes one click, so it must
+// never survive into the filter, sort, or pager links built from the same
+// state.
+func (state objectBrowserState) navURL(mode string) string {
+	raw := state.url()
+	separator := "?"
+	if strings.Contains(raw, "?") {
+		separator = "&"
+	}
+	return raw + separator + "nav=" + mode
+}
+
 func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	state, err := parseObjectBrowserState(r.URL.Query())
 	if err != nil {
 		http.Error(w, "invalid object browser query", http.StatusBadRequest)
+		return
+	}
+	if state.Reach != "" && s.cfg.Reachability == nil {
+		http.Error(w, "reachability filter unavailable", http.StatusBadRequest)
 		return
 	}
 	digests, err := s.store.List(r.Context())
@@ -495,13 +702,21 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 			typeFound = true
 		}
 		row := objectRow{
-			Digest: h.String(),
-			Short:  h.Prefix(8),
-			Type:   typ,
-			Size:   s.objectSize(r.Context(), h),
-			Status: s.sessions.verification(sessionID(r), h.String()),
+			Digest:    h.String(),
+			Short:     shortDigest(h),
+			Type:      typ,
+			Size:      s.objectSize(r.Context(), h),
+			Integrity: s.sessions.verification(sessionID(r), h.String()),
 		}
-		row.StatusLabel = integrityLabel(row.Status)
+		row.ReachabilityKnown = s.cfg.Reachability != nil
+		row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)
+		row.IntegrityLabel = integrityLabel(row.Integrity)
+		row.Written = s.objectModTime(r.Context(), h)
+		row.WrittenLabel = formatWritten(row.Written)
+		if s.cfg.References != nil {
+			row.References = len(s.cfg.References.Inbound(h))
+			row.ReferencesAvailable = true
+		}
 		if !matchesObjectRow(row, state) {
 			continue
 		}
@@ -513,11 +728,15 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	}
 	sortObjectRows(rows, state)
 	data := objectBrowserData{
-		State:   state,
-		Total:   len(digests),
-		Matched: len(rows),
-		CSRF:    s.csrfFor(r),
-		Role:    s.roleFor(r),
+		State:           state,
+		RefreshURL:      state.url(),
+		HasReachability: s.cfg.Reachability != nil,
+		StatusOptions:   statusOptions(state.Status),
+		LimitOptions:    limitOptions(state.Limit),
+		Total:           len(digests),
+		Matched:         len(rows),
+		CSRF:            s.csrfFor(r),
+		Role:            s.roleFor(r),
 	}
 	for typ := range types {
 		data.Types = append(data.Types, filterOption{
@@ -530,38 +749,115 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		data.TotalSize += row.Size
 	}
+	if !state.OffsetSet && state.Selected != "" {
+		// Following a reference selects a row the current page may not hold, so
+		// the browser pages to it. An explicit pager click stays put.
+		if idx := slices.IndexFunc(rows, func(row objectRow) bool { return row.Digest == state.Selected }); idx >= 0 {
+			state.Offset = idx / state.Limit * state.Limit
+			data.State = state
+		}
+	}
 	if state.Offset < len(rows) {
 		end := min(state.Offset+state.Limit, len(rows))
 		data.RangeStart = state.Offset + 1
 		data.RangeEnd = end
 		data.Objects = rows[state.Offset:end]
 	}
+	data.CurrentPage = state.Offset/state.Limit + 1
+	data.PageCount = max((len(rows)+state.Limit-1)/state.Limit, 1)
 	data.HasAny = len(data.Objects) > 0
+	// An empty inspector beside a populated list is wasted space, so the first
+	// visible row stands in — both before the operator picks one and after a
+	// filter drops the one they had picked. A selection that merely sits on
+	// another page still stands, so paging never steals it, and an explicit
+	// deselect is honoured rather than undone. The URL is left alone: the
+	// default is a rendering choice, not navigation.
+	if data.HasAny && !state.Deselected && !slices.ContainsFunc(rows, func(row objectRow) bool { return row.Digest == state.Selected }) {
+		state.Selected = data.Objects[0].Digest
+		data.State = state
+		// The refresher reloads from this URL, so it has to name the fallback
+		// too: the original URL would resurrect the row the filter dropped.
+		data.RefreshURL = state.url()
+	}
 	for i := range data.Objects {
 		rowState := state
-		rowState.Selected = data.Objects[i].Digest
+		rowState.Nav = ""
 		data.Objects[i].Selected = data.Objects[i].Digest == state.Selected
+		// Clicking the selected row again clears the inspector, so its link
+		// points at the deselected state instead of at itself.
+		if data.Objects[i].Selected {
+			rowState.Selected = ""
+			rowState.Deselected = true
+		} else {
+			rowState.Selected = data.Objects[i].Digest
+			rowState.Deselected = false
+		}
 		data.Objects[i].SelectURL = rowState.url()
 	}
+	// The trail records how the operator browsed references. Following a
+	// reference extends it, the Prev/Next controls only move its cursor, and
+	// picking a row in the table starts over: a table pick is a new point of
+	// departure, not a step in the chain that led here.
+	if state.Selected != "" {
+		switch state.Nav {
+		case navStay:
+			// A tab switch re-renders the same object: nothing to record.
+		case navTrail:
+			s.sessions.seek(sessionID(r), state.Selected)
+		case navReference:
+			s.sessions.visit(sessionID(r), state.Selected)
+		default:
+			s.sessions.restart(sessionID(r), state.Selected)
+		}
+	}
+	prevDigest, nextDigest := s.sessions.trailNeighbors(sessionID(r))
 	for _, row := range rows {
 		if row.Digest == state.Selected {
 			metadataState := state
 			metadataState.Tab = "metadata"
 			bytesState := state
 			bytesState.Tab = "bytes"
-			actionsState := state
-			actionsState.Tab = "actions"
-			data.Inspector = &browserInspector{
-				Digest:      row.Digest,
-				Type:        row.Type,
-				Size:        row.Size,
-				Status:      row.Status,
-				DetailURL:   "/viewer/objects/" + row.Digest,
-				RawURL:      "/viewer/objects/" + row.Digest + "/raw",
-				MetadataURL: metadataState.url(),
-				BytesURL:    bytesState.url(),
-				ActionsURL:  actionsState.url(),
+			referencesState := state
+			referencesState.Tab = "references"
+			inboundReferences := 0
+			referencesAvailable := s.cfg.References != nil
+			if referencesAvailable {
+				digest, err := sha256.Parse(row.Digest)
+				if err != nil {
+					http.Error(w, "malformed stored hash", http.StatusInternalServerError)
+					return
+				}
+				inboundReferences = len(s.cfg.References.Inbound(digest))
 			}
+			data.Inspector = &browserInspector{
+				Digest:              row.Digest,
+				Type:                row.Type,
+				Size:                row.Size,
+				Integrity:           row.Integrity,
+				IntegrityLabel:      row.IntegrityLabel,
+				Report:              storedReport(s.sessions, sessionID(r), row.Digest),
+				Orphaned:            row.Orphaned,
+				WrittenLabel:        row.WrittenLabel,
+				InboundReferences:   inboundReferences,
+				ReferencesAvailable: referencesAvailable,
+				Timestamp:           formatTimestamp(row.Written),
+				RawURL:              "/viewer/objects/" + row.Digest + "/raw",
+				MetadataURL:         metadataState.navURL(navStay),
+				BytesURL:            bytesState.navURL(navStay),
+				ReferencesURL:       referencesState.navURL(navStay),
+				PrevURL:             trailURL(state, prevDigest),
+				NextURL:             trailURL(state, nextDigest),
+			}
+			if referencesAvailable {
+				digest, err := sha256.Parse(row.Digest)
+				if err != nil {
+					http.Error(w, "malformed stored hash", http.StatusInternalServerError)
+					return
+				}
+				data.Inspector.Inbound = s.referenceRows(r.Context(), state, s.cfg.References.Inbound(digest))
+				data.Inspector.Outbound = s.referenceRows(r.Context(), state, s.cfg.References.Outbound(digest))
+			}
+
 			break
 		}
 	}
@@ -572,19 +868,109 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	data.SortHashURL = sortURL(state, "hash")
 	data.SortTypeURL = sortURL(state, "type")
 	data.SortSizeURL = sortURL(state, "size")
+	data.SortInboundURL = sortURL(state, "inbound")
+	data.SortStatusURL = sortURL(state, "status")
+	data.SortReachURL = sortURL(state, "reach")
+	data.SortWrittenURL = sortURL(state, "written")
 	data.HasPrevious = state.Offset > 0 && len(rows) > 0
 	data.HasNext = state.Offset+state.Limit < len(rows)
 	if r.Header.Get("HX-Request") == "true" {
 		if r.Header.Get("HX-Target") == "object-inspector" {
+			if r.Header.Get("X-Viewer-Selection") == "true" {
+				s.render(w, "object-selection", data)
+				return
+			}
 			s.render(w, "object-inspector", data)
 			return
 		}
-		s.render(w, "object-table-fragment", data) // htmx search/refresh swap
+		s.render(w, "object-list-swap", data) // htmx search/refresh swap
 		return
 	}
 	s.renderPage(w, "objects", data)
 }
 
+func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, digests []cas.Digest) []referenceRow {
+	rows := make([]referenceRow, 0, len(digests))
+	for _, digest := range digests {
+		rowState := state
+		rowState.Query = ""
+		rowState.Type = ""
+		rowState.Size = ""
+		rowState.Status = ""
+		rowState.Reach = ""
+		rowState.Offset = 0
+		rowState.OffsetSet = false
+		rowState.Selected = digest.String()
+		rowState.Deselected = false
+		rowState.Nav = ""
+		rows = append(rows, referenceRow{
+			Digest:    digest.String(),
+			Short:     shortDigest(digest),
+			Type:      strings.TrimSuffix(s.objectType(ctx, digest), "@1"),
+			SelectURL: rowState.navURL(navReference),
+		})
+	}
+	return rows
+}
+
+// trailURL selects a neighbouring trail entry. An empty digest yields an empty
+// URL, which renders the control disabled rather than as a dead link.
+func trailURL(state objectBrowserState, digest string) string {
+	if digest == "" {
+		return ""
+	}
+	state.Selected = digest
+	state.Deselected = false
+	// The trail entry may live on another page, so the jump that follows a
+	// reference link applies here too.
+	state.Offset = 0
+	state.OffsetSet = false
+	return state.navURL(navTrail)
+}
+
+// objectPageSizes lists the offered page sizes. A URL may still request any
+// size up to maxObjectLimit, which limitOptions surfaces as an extra choice so
+// the control never misreports the page it is showing.
+var objectPageSizes = []int{25, 50, 100, maxObjectLimit}
+
+// statusOptions renders the integrity filter's choices. Integrity states are
+// alternatives on one axis, so exactly one of them can be selected.
+func statusOptions(selected string) []filterOption {
+	options := make([]filterOption, 0, len(objectStates))
+	for _, state := range objectStates {
+		options = append(options, filterOption{
+			Value:    state,
+			Label:    integrityLabel(state),
+			Selected: state == selected,
+		})
+	}
+	return options
+}
+
+// limitOptions renders the page-size control. A size the URL asked for but the
+// control does not offer is inserted in order, so a clamped or hand-edited
+// limit shows the page size actually in effect instead of silently reading as
+// one of the presets.
+func limitOptions(selected int) []filterOption {
+	sizes := objectPageSizes
+	if index, found := slices.BinarySearch(sizes, selected); !found {
+		sizes = slices.Insert(slices.Clone(sizes), index, selected)
+	}
+	options := make([]filterOption, 0, len(sizes))
+	for _, size := range sizes {
+		label := strconv.Itoa(size)
+		options = append(options, filterOption{
+			Value:    label,
+			Label:    label,
+			Selected: size == selected,
+		})
+	}
+	return options
+}
+
+// integrityLabel renders the byte-integrity axis. Reachability is a separate
+// axis with its own column and filter, so Orphaned is never an integrity
+// verdict and never appears here.
 func integrityLabel(status string) string {
 	switch status {
 	case "not-verified":
@@ -605,8 +991,20 @@ func matchesObjectRow(row objectRow, state objectBrowserState) bool {
 	if state.Type != "" && row.Type != state.Type {
 		return false
 	}
-	if state.Status != "" && row.Status != state.Status {
+	// Integrity and reachability are independent axes, so each narrows the
+	// match on its own: a corrupt orphan needs both facts to match.
+	if state.Status != "" && row.Integrity != state.Status {
 		return false
+	}
+	switch state.Reach {
+	case "orphaned":
+		if !row.Orphaned {
+			return false
+		}
+	case "reachable":
+		if row.Orphaned {
+			return false
+		}
 	}
 	switch state.Size {
 	case "small":
@@ -628,6 +1026,15 @@ func sortObjectRows(rows []objectRow, state objectBrowserState) {
 			comparison = strings.Compare(rows[i].Type, rows[j].Type)
 		case "size":
 			comparison = cmpInt64(rows[i].Size, rows[j].Size)
+		case "inbound":
+			comparison = cmpInt64(int64(rows[i].References), int64(rows[j].References))
+		case "status":
+			comparison = strings.Compare(rows[i].Integrity, rows[j].Integrity)
+		case "reach":
+			// Ascending puts the sound state first, matching the other axes.
+			comparison = cmpInt64(boolOrder(rows[i].Orphaned), boolOrder(rows[j].Orphaned))
+		case "written":
+			comparison = cmpInt64(rows[i].Written.UnixNano(), rows[j].Written.UnixNano())
 		default:
 			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
 		}
@@ -639,6 +1046,16 @@ func sortObjectRows(rows []objectRow, state objectBrowserState) {
 		}
 		return comparison < 0
 	})
+}
+
+// boolOrder ranks a flag so the false state sorts first, which keeps an
+// ascending sort on a two-state axis reading "sound before suspect" like the
+// other columns.
+func boolOrder(flag bool) int64 {
+	if flag {
+		return 1
+	}
+	return 0
 }
 
 func cmpInt64(left, right int64) int {
@@ -654,6 +1071,9 @@ func cmpInt64(left, right int64) int {
 
 func paginationURL(state objectBrowserState, offset int) string {
 	state.Offset = offset
+	// A pager link is an explicit page request, so it must survive even when it
+	// lands on page 1 and even when the selection lives elsewhere.
+	state.OffsetSet = true
 	return state.url()
 }
 
@@ -707,12 +1127,75 @@ func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	note := ""
 	if truncated {
-		note = fmt.Sprintf("preview truncated at %d KiB of %d bytes", previewLimit>>10, s.objectSize(r.Context(), h))
+		note = fmt.Sprintf("preview truncated at %s of %s", formatBytes(previewLimit), formatBytes(s.objectSize(r.Context(), h)))
 	}
 	s.render(w, "hexdump", struct {
 		Rows []dumpRow
 		Note string
 	}{hexdump(data), note})
+}
+
+// verifyAllFragment verifies every stored object and records each result in the
+// session. It is the bulk counterpart of verifyFragment: one audit line per
+// object would flood the log, so it audits the sweep as a single event with
+// counts.
+func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
+	digests, err := s.store.List(r.Context())
+	if err != nil {
+		http.Error(w, "list failed", http.StatusInternalServerError)
+		return
+	}
+	id := sessionID(r)
+	hasher := sha256.New()
+	verified, corrupt := 0, 0
+	for _, h := range digests {
+		if err := r.Context().Err(); err != nil {
+			return
+		}
+		if err := s.store.Verify(r.Context(), h, hasher); err != nil {
+			outcome := s.describeVerifyFailure(r.Context(), h, err)
+			outcome.Integrity = "corrupt"
+			outcome.IntegrityLabel = integrityLabel("corrupt")
+			s.sessions.setVerification(id, h.String(), "corrupt", outcome)
+			corrupt++
+			continue
+		}
+		s.sessions.setVerification(id, h.String(), "verified", verifiedOutcome(h))
+		verified++
+	}
+	slog.Info("viewer audit", "action", "object.verify-all", "objects", len(digests), "verified", verified, "corrupt", corrupt)
+	w.Header().Set("HX-Trigger", "object-status-updated")
+	// The label stays "Verify": the per-object status cells already carry the
+	// outcome, so a count on the control would only duplicate them.
+	s.render(w, "verify-all-button", verifyAllState{
+		CSRF:     s.csrfFor(r),
+		Label:    "Verify",
+		Complete: true,
+	})
+}
+
+// verifyAllState backs the top-bar Verify control.
+type verifyAllState struct {
+	CSRF     string
+	Label    string
+	Complete bool
+}
+
+// actionOutcome is the structured result of an object action (verify, delete).
+// It replaces the raw error string: a sentinel classifies the failure and the
+// recomputed digest shows the operator exactly how the bytes diverged.
+type actionOutcome struct {
+	OK       bool
+	Headline string
+	Summary  string
+	Expected string
+	Actual   string
+	Detail   string
+	Checked  string
+	// Integrity and IntegrityLabel refresh the inspector's Status row out of
+	// band; they stay empty for actions that leave no object behind.
+	Integrity      string
+	IntegrityLabel string
 }
 
 func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
@@ -723,14 +1206,81 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	// Every admin action is audit-logged (viewer-security §"audit logging"), so
 	// verify records its outcome like delete and gc do.
 	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
-		s.sessions.setVerification(sessionID(r), h.String(), "corrupt")
 		slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", false)
-		s.render(w, "result", "corrupt: "+template.HTMLEscapeString(err.Error()))
+		w.Header().Set("HX-Trigger", "object-status-updated")
+		outcome := s.describeVerifyFailure(r.Context(), h, err)
+		outcome.Integrity = "corrupt"
+		outcome.IntegrityLabel = integrityLabel("corrupt")
+		s.sessions.setVerification(sessionID(r), h.String(), "corrupt", outcome)
+		outcome.Checked = checkedLabel(s.sessions, sessionID(r), h.String())
+		s.render(w, "result-swap", outcome)
 		return
 	}
-	s.sessions.setVerification(sessionID(r), h.String(), "verified")
 	slog.Info("viewer audit", "action", "object.verify", "hash", h, "valid", true)
-	s.render(w, "result", "ok")
+	w.Header().Set("HX-Trigger", "object-status-updated")
+	outcome := verifiedOutcome(h)
+	// The report is stored before the check time is stamped onto it: the label
+	// is relative ("3m ago"), so it has to be derived per render rather than
+	// frozen at the moment of the check.
+	s.sessions.setVerification(sessionID(r), h.String(), "verified", outcome)
+	outcome.Checked = checkedLabel(s.sessions, sessionID(r), h.String())
+	s.render(w, "result-swap", outcome)
+}
+
+// verifiedOutcome is the report of a successful check. The sweep and the
+// per-object action share it so a swept object and a clicked one describe
+// themselves identically.
+func verifiedOutcome(h cas.Digest) actionOutcome {
+	return actionOutcome{
+		OK:             true,
+		Headline:       "Verified",
+		Summary:        "Stored bytes hash to this address.",
+		Expected:       h.String(),
+		Integrity:      "verified",
+		IntegrityLabel: integrityLabel("verified"),
+	}
+}
+
+// describeVerifyFailure turns a verification error into operator-facing prose.
+func (s *Server) describeVerifyFailure(ctx context.Context, h cas.Digest, err error) actionOutcome {
+	switch {
+	case errors.Is(err, cas.ErrDigestMismatch):
+		return actionOutcome{
+			Headline: "Corrupt",
+			Summary:  "Stored bytes no longer hash to this address, so the content has changed since it was written. The object is unusable and must be restored from a backup or re-ingested.",
+			Expected: h.String(),
+			Actual:   s.recomputeDigest(ctx, h),
+		}
+	case errors.Is(err, cas.ErrNotFound):
+		return actionOutcome{
+			Headline: "Missing",
+			Summary:  "The object is no longer present in the store.",
+			Expected: h.String(),
+		}
+	default:
+		return actionOutcome{
+			Headline: "Unreadable",
+			Summary:  "The object could not be read for verification, so its integrity is unknown.",
+			Expected: h.String(),
+			Detail:   err.Error(),
+		}
+	}
+}
+
+// recomputeDigest reports the digest the stored bytes actually hash to, so a
+// mismatch shows both sides rather than one unexplained number. It returns an
+// empty string when the bytes cannot be re-read.
+func (s *Server) recomputeDigest(ctx context.Context, h cas.Digest) string {
+	rc, err := s.store.Get(ctx, h)
+	if err != nil {
+		return ""
+	}
+	defer rc.Close()
+	actual, err := sha256.New().Digest(rc)
+	if err != nil {
+		return ""
+	}
+	return actual.String()
 }
 
 func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
@@ -739,36 +1289,21 @@ func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Delete(r.Context(), h); err != nil {
-		s.render(w, "result", "delete failed")
+		s.render(w, "result-swap", actionOutcome{
+			Headline: "Not deleted",
+			Summary:  "The object could not be removed from the store.",
+			Expected: h.String(),
+			Detail:   err.Error(),
+		})
 		return
 	}
 	slog.Info("viewer audit", "action", "object.delete", "hash", h)
-	s.render(w, "result", "deleted")
-}
-
-// --- gc ---
-
-func (s *Server) gcPage(w http.ResponseWriter, r *http.Request) {
-	s.renderPage(w, "gc", struct{ CSRF string }{s.csrfFor(r)})
-}
-
-func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
-	roots, err := parseDigestLines(r.FormValue("roots"))
-	if err != nil {
-		s.render(w, "result", "invalid root hash")
-		return
-	}
-	reachable := make(map[string]bool, len(roots))
-	for _, h := range roots {
-		reachable[h.String()] = true
-	}
-	deleted, err := gcCount(r.Context(), s.store, reachable)
-	if err != nil {
-		s.render(w, "result", "gc failed")
-		return
-	}
-	slog.Info("viewer audit", "action", "gc", "deleted", deleted)
-	s.render(w, "result", fmt.Sprintf("gc: deleted %d objects", deleted))
+	s.render(w, "result-swap", actionOutcome{
+		OK:       true,
+		Headline: "Deleted",
+		Summary:  "The object was removed from the store.",
+		Expected: h.String(),
+	})
 }
 
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {
@@ -781,23 +1316,6 @@ func (s *Server) css(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(viewerCSS); err != nil {
 		slog.Error("viewer css write", "err", err)
 	}
-}
-
-// gcCount deletes every object not in reachable and returns how many were
-// deleted (stats delta; cas GC itself returns no count).
-func gcCount(ctx context.Context, store *fs.Backend, reachable map[string]bool) (int64, error) {
-	before, err := store.Stats(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if err := store.GC(ctx, reachable); err != nil {
-		return 0, err
-	}
-	after, err := store.Stats(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return before.ObjectCount - after.ObjectCount, nil
 }
 
 // --- helpers ---
@@ -830,7 +1348,7 @@ func (s *Server) renderPage(w http.ResponseWriter, view string, data any) {
 }
 
 // previewLimit bounds the hexdump preview; larger objects are truncated.
-const previewLimit = 256 << 10
+const previewLimit = 256
 
 // typePrefixLimit bounds the bytes read for envelope type sniffing: only the
 // TLV header ([version][uvarint typeLen][type]) is needed, not the payload.
@@ -897,22 +1415,6 @@ func parseDigest(w http.ResponseWriter, r *http.Request) (cas.Digest, bool) {
 		return nil, false
 	}
 	return d, true
-}
-
-func parseDigestLines(s string) ([]cas.Digest, error) {
-	var out []cas.Digest
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		d, err := sha256.Parse(line)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, nil
 }
 
 // hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).

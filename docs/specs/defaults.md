@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v26
+version: v27
 ---
 
 # Defaults and Behavior — go-cask
@@ -72,7 +72,6 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Object-list pagination | `limit=25`, `offset=0`; allowed limits `25`, `50`, `100`, `250` | viewer-design §5 |
 | Object-list initial sort | hash ascending; sort/filter/page state is URL-addressable | viewer-design §5 |
 | GC progress polling | none; GC returns one result fragment | viewer-design §5 |
-| Dashboard stat cards | total objects, total size + the addressing note (digests are raw hex; this viewer uses `sha256`) | viewer-design §7 |
 | Roles | viewer (read) / operator (+store, verify) / admin (+delete, GC, prune) | viewer-security |
 
 ## 5. Maintenance and consistency defaults

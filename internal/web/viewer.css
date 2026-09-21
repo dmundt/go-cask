@@ -5,8 +5,21 @@
   --viewer-muted: oklch(50% 0.018 240);
   --viewer-border: oklch(90% 0.008 240);
   --viewer-accent: oklch(48% 0.14 145);
+  --viewer-blue: oklch(50% 0.13 250);
+  --viewer-blue-soft: oklch(96% 0.035 250);
   --viewer-font: "Segoe UI", Helvetica, system-ui, sans-serif;
   --viewer-mono: "JetBrains Mono", "IBM Plex Mono", Consolas, ui-monospace, monospace;
+
+  /* Control type scale, keyed to control height. Every interactive control
+     MUST take its size from one of these three steps rather than inheriting
+     the 15.4px body font, which is sized for prose and dwarfs a 30px control.
+     --viewer-control: 30px form controls (search, filter selects, actions).
+     --viewer-control-sm: 22-28px compact controls (verify-all, reset, pager,
+     page size, history steps).
+     --viewer-control-xs: icon-sized controls (sort arrows). */
+  --viewer-control: 13.2px;
+  --viewer-control-sm: 12.1px;
+  --viewer-control-xs: 9.9px;
 }
 
 * {
@@ -27,15 +40,22 @@ body.viewer-shell {
   overflow: hidden;
 }
 
-.viewer-shell button,
-.viewer-shell input,
-.viewer-shell select,
-.viewer-shell textarea {
+/* The reset normalises the UA control font onto the shell font. :where() keeps
+   it at zero specificity so a component class can set its own size without
+   having to out-specify a reset — the control scale below depends on that. */
+:where(.viewer-shell) button,
+:where(.viewer-shell) input,
+:where(.viewer-shell) select,
+:where(.viewer-shell) textarea {
   font: inherit;
 }
 
-.viewer-shell a {
-  color: var(--viewer-accent);
+.viewer-table,
+.viewer-digest,
+.viewer-meta dd,
+.viewer-pager,
+.viewer-hexdump {
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer-shell :focus-visible {
@@ -53,15 +73,55 @@ body.viewer-shell {
   background: var(--viewer-surface);
 }
 
+.viewer-verify-all {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 4px;
+  background: var(--viewer-bg);
+  color: var(--viewer-fg);
+  font-size: var(--viewer-control-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.viewer-verify-all:hover:not(:disabled) {
+  border-color: var(--viewer-fg);
+  background: color-mix(in oklch, var(--viewer-fg) 6%, var(--viewer-surface));
+}
+
+.viewer-verify-all:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.viewer-top-bar #verify-all {
+  margin-left: auto;
+}
+
+.viewer-top-bar form {
+  margin: 0;
+}
+
 .viewer-brand {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   color: var(--viewer-fg);
-  font-size: 18px;
+  font-size: 17.6px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-decoration: none;
+}
+
+/* The build version sits beside the name as secondary text: it identifies the
+   running binary without competing with the brand. */
+.viewer-version {
+  align-self: center;
+  color: var(--viewer-muted);
+  font: 11px/1 var(--viewer-mono);
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .viewer-mark {
@@ -72,19 +132,7 @@ body.viewer-shell {
   border-radius: 5px;
   background: var(--viewer-fg);
   color: var(--viewer-surface);
-  font: 700 10px var(--viewer-mono);
-}
-
-.viewer-nav {
-  margin-left: auto;
-}
-
-.viewer-nav ul {
-  display: flex;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  font: 700 9.9px var(--viewer-mono);
 }
 
 .viewer-main {
@@ -119,6 +167,20 @@ body.viewer-shell {
   background: var(--viewer-bg);
   color: var(--viewer-fg);
   padding: 4px 9px;
+  font-size: var(--viewer-control);
+}
+
+.viewer-reset {
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--viewer-muted);
+  font-size: var(--viewer-control-sm);
+  text-decoration: none;
+}
+
+.viewer-reset:hover {
+  background: color-mix(in oklch, var(--viewer-fg) 6%, var(--viewer-surface));
+  color: var(--viewer-fg);
 }
 
 .viewer-filter-bar input {
@@ -137,7 +199,7 @@ body.viewer-shell {
   position: absolute;
   left: 9px;
   color: var(--viewer-muted);
-  font-size: 20px;
+  font: 19.8px/1 var(--viewer-font);
   pointer-events: none;
 }
 
@@ -160,7 +222,7 @@ body.viewer-shell {
 .viewer-workspace {
   display: grid;
   height: calc(100vh - 93px);
-  grid-template-columns: minmax(0, 1fr) 4px 440px;
+  grid-template-columns: minmax(0, 1fr) auto;
   background: var(--viewer-surface);
 }
 
@@ -169,10 +231,6 @@ body.viewer-shell {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-}
-
-.viewer-divider {
-  background: var(--viewer-border);
 }
 
 #object-list {
@@ -191,8 +249,7 @@ body.viewer-shell {
 
 .viewer-table {
   width: 100%;
-  min-width: 700px;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   background: var(--viewer-surface);
   font: 13.2px/1.35 var(--viewer-mono);
@@ -200,10 +257,19 @@ body.viewer-shell {
 
 .viewer-table th,
 .viewer-table td {
-  width: 14%;
-  padding: 8px;
+  padding: 8px 5px;
   border-bottom: 1px solid var(--viewer-border);
   text-align: left;
+}
+
+/* The outer columns keep the content off the table edges. Every rule that
+   mirrors the cell padding — the row link below — has to follow suit. */
+.viewer-table tr > :first-child {
+  padding-left: 20px;
+}
+
+.viewer-table tr > :last-child {
+  padding-right: 20px;
 }
 
 .viewer-table th {
@@ -217,9 +283,35 @@ body.viewer-shell {
   text-transform: uppercase;
 }
 
-.viewer-table th:first-child,
-.viewer-table td:first-child {
-  width: 30%;
+.viewer-sort-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.viewer-sort-button {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  color: var(--viewer-muted);
+  font: var(--viewer-control-xs) / 1 var(--viewer-mono);
+  text-decoration: none;
+}
+
+.viewer-sort-button:hover,
+.viewer-sort-button.viewer-sort-active {
+  color: var(--viewer-fg);
+}
+
+.viewer-table th,
+.viewer-table td {
+  white-space: nowrap;
+  min-width: 25px;
+}
+
+.viewer-status-cell {
+  width: 1%;
+  min-width: 34px;
 }
 
 .viewer-table td:last-child,
@@ -243,24 +335,56 @@ body.viewer-shell {
   color: var(--viewer-muted);
 }
 
+/* The link fills its cell so the whole row is clickable. Its inset must mirror
+   the cell padding exactly: a wider one overhangs the last column and gives the
+   table a horizontal scrollbar it does not need. */
+.viewer-row-link {
+  display: block;
+  margin: -8px -5px;
+  padding: 8px 5px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.viewer-table td:first-child .viewer-row-link {
+  margin-left: -20px;
+  padding-left: 20px;
+  color: inherit;
+}
+
+.viewer-table td:last-child .viewer-row-link {
+  margin-right: -20px;
+  padding-right: 20px;
+}
+
 .viewer-empty {
   color: var(--viewer-muted);
   text-align: center;
 }
 
 .viewer-status {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 1px 6px;
+  border: 0;
   border-radius: 3px;
   min-height: 19px;
   background: oklch(96% 0.006 240);
   color: oklch(45% 0.012 240);
   font: 700 10px/1.2 var(--viewer-font);
+  letter-spacing: 0;
+  text-transform: capitalize;
 }
 
-.viewer-status-verified {
+.viewer-status-verified,
+.viewer-status-reachable {
   background: oklch(97% 0.03 145);
   color: oklch(40% 0.12 145);
+}
+
+.viewer-status-orphaned {
+  background: oklch(97% 0.03 78);
+  color: oklch(50% 0.115 70);
 }
 
 .viewer-status-corrupt {
@@ -268,8 +392,60 @@ body.viewer-shell {
   color: oklch(49% 0.15 25);
 }
 
+.viewer-result {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 5px;
+  background: var(--viewer-surface);
+}
+
+.viewer-result-bad {
+  border-color: oklch(85% 0.06 25);
+  background: oklch(99% 0.008 25);
+}
+
+.viewer-result-head {
+  margin: 0;
+}
+
+.viewer-result-summary {
+  margin: 7px 0 0;
+  color: var(--viewer-muted);
+  font-size: 12.1px;
+  line-height: 1.45;
+}
+
+/* The inset separates the digest pair from the explanation above it. The
+   selector carries the extra class because the later `.viewer-meta { margin: 0 }`
+   shorthand ties on specificity and would otherwise win on source order. */
+.viewer-result .viewer-result-meta {
+  margin-top: 9px;
+}
+
+.viewer-result-digest {
+  font-family: var(--viewer-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.viewer-result-detail {
+  margin: 8px 0 0;
+  color: var(--viewer-muted);
+  font-family: var(--viewer-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.viewer-result-checked {
+  margin: 8px 0 0;
+  color: var(--viewer-muted);
+  font-size: 11px;
+}
+
 .viewer-pager {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 7px 14px;
@@ -285,35 +461,65 @@ body.viewer-shell {
 }
 
 .viewer-pager a,
-.viewer-pager select {
+.viewer-pager select,
+.viewer-page-button {
   min-width: 27px;
   height: 27px;
-  padding: 4px 8px;
+  box-sizing: border-box;
   border: 1px solid var(--viewer-border);
   border-radius: 4px;
   background: var(--viewer-surface);
   color: var(--viewer-fg);
-  font: 12.1px var(--viewer-mono);
+  font: var(--viewer-control-sm) var(--viewer-mono);
   text-decoration: none;
+}
+
+.viewer-pager a,
+.viewer-page-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-page-button {
+  padding: 0;
+}
+
+.viewer-pager a:hover {
+  background: var(--viewer-bg);
+  border-color: var(--viewer-fg);
 }
 
 .viewer-pager select {
   width: 68px;
+  padding: 4px 8px;
 }
 
 .viewer-pager label {
-  font: 12.1px var(--viewer-mono);
+  font: var(--viewer-control-sm) var(--viewer-mono);
 }
 
 .viewer-pager [aria-disabled="true"] {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
+/* Native CSS resizing, so the inspector width needs no script. `direction:
+   rtl` moves the resize grip to the bottom-left corner, which is the edge
+   that faces the list; the inner wrapper restores ltr for the content. The
+   width is never persisted — a reload restores the default. */
 .viewer-inspector {
   overflow: auto;
-  min-width: 0;
+  min-width: 280px;
+  width: 440px;
+  max-width: 560px;
+  resize: horizontal;
+  direction: rtl;
   background: var(--viewer-surface);
+}
+
+.viewer-inspector > * {
+  direction: ltr;
 }
 
 .viewer-inspector-header,
@@ -323,34 +529,113 @@ body.viewer-shell {
 
 .viewer-inspector-tabs {
   display: flex;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 2px;
+  padding: 6px 8px 0;
   border-bottom: 1px solid var(--viewer-border);
-  font: 700 12px/1.3 var(--viewer-mono);
+  font: var(--viewer-control) / 1.25 var(--viewer-font);
 }
 
+.viewer-inspector-tabs a {
+  padding: 8px 10px 7px;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  color: var(--viewer-muted);
+  font-weight: 510;
+  text-decoration: none;
+}
+
+.viewer-inspector-tabs a:hover {
+  color: var(--viewer-fg);
+  background: color-mix(in oklch, var(--viewer-fg) 4%, var(--viewer-surface));
+}
+
+/* The underline marks the active tab, so it matches that tab's own label
+   colour. The green accent read as a status signal beside the integrity
+   tags, which are the only colour-bearing state in the inspector. */
 .viewer-inspector-tabs a[aria-current="page"] {
   color: var(--viewer-fg);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
+  border-bottom-color: var(--viewer-fg);
+  font-weight: 650;
 }
 
 .viewer-inspector-header {
+  padding: 13px 14px 11px;
   border-bottom: 1px solid var(--viewer-border);
   background: var(--viewer-bg);
 }
 
 .viewer-inspector-heading {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--viewer-muted);
-  font: 700 13px/1.2 var(--viewer-mono);
+  font: 700 12.65px/1.2 var(--viewer-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
+.viewer-inspector-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 7px;
+}
+
+.viewer-history {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.viewer-history-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 4px;
+  background: var(--viewer-surface);
+  color: var(--viewer-fg);
+  font: var(--viewer-control-sm) / 1 var(--viewer-mono);
+  text-decoration: none;
+}
+
+a.viewer-history-step:hover {
+  background: var(--viewer-bg);
+  border-color: var(--viewer-fg);
+}
+
+/* A span, not a link: an exhausted direction is inert rather than a dead
+   link, so it is dimmed and takes no pointer. */
+span.viewer-history-step {
+  color: var(--viewer-muted);
+  background: var(--viewer-bg);
+  cursor: default;
+}
+
+.viewer-hash-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* A readonly field rather than a paragraph: it gives the digest a single
+   selection target, so click plus Ctrl+A copies the whole address without a
+   clipboard script. */
 .viewer-digest {
-  overflow-wrap: anywhere;
-  font-family: var(--viewer-mono);
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 4px;
+  background: var(--viewer-bg);
+  color: var(--viewer-fg);
+  font: 11px/1.45 var(--viewer-mono);
+  text-overflow: ellipsis;
+}
+
+.viewer-digest:focus {
+  outline: 2px solid var(--viewer-accent);
+  outline-offset: -2px;
 }
 
 .viewer-meta {
@@ -362,19 +647,108 @@ body.viewer-shell {
 
 .viewer-meta dt {
   color: var(--viewer-muted);
+  font-size: 12.1px;
+  font-weight: 450;
+  line-height: 1.45;
 }
 
 .viewer-meta dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-family: var(--viewer-mono);
+  font: 13.2px/1.45 var(--viewer-mono);
 }
 
+.viewer-inspector-section {
+  margin-bottom: 20px;
+}
+
+.viewer-inspector-section:last-child {
+  margin-bottom: 0;
+}
+
+.viewer-inspector-section h2 {
+  margin: 0 0 8px;
+  color: var(--viewer-muted);
+  font: 700 12.1px/1.2 var(--viewer-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.viewer-reference-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.viewer-reference-empty,
+.viewer-hexdump-note {
+  margin: 0;
+  color: var(--viewer-muted);
+  font: 11px/1.45 var(--viewer-font);
+}
+
+/* The note trails the hexdump, so it aligns with the dump's own inset
+   instead of the panel edge. */
+.viewer-hexdump-note {
+  padding: 0 14px 14px;
+}
+
+.viewer-reference-list li {
+  display: grid;
+  grid-template-columns: 10px max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 12.1px/1.3 var(--viewer-mono);
+}
+
+.viewer-reference-type {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--viewer-blue-soft);
+  color: var(--viewer-blue);
+  font: 700 9.9px/1.2 var(--viewer-font);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.viewer-reference-list a {
+  overflow: hidden;
+  /* A grid item is blockified and would stretch the hover block across the
+     whole column; this keeps it hugging the digest like the Reset button. */
+  justify-self: start;
+  max-width: 100%;
+  /* The negative margin lets the hover block bleed past the text box without
+     widening the grid column, so the row keeps its rhythm while idle. */
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--viewer-fg);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The reference reads as a control on hover, matching the Reset button: a
+   tinted block rather than an underline. */
+.viewer-reference-list a:hover {
+  background: color-mix(in oklch, var(--viewer-fg) 6%, var(--viewer-surface));
+  color: var(--viewer-fg);
+  text-decoration: none;
+}
+
+/* The rule separates the actions from the metadata above it, so it needs room
+   on both sides: without the top margin it sits tight under the last value. */
 .viewer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 14px;
+  margin-top: 14px;
+  /* Vertical padding only: a horizontal inset would indent the buttons past
+     the content edge the section's headings and metadata rows sit on. */
+  padding: 14px 0;
   border-top: 1px solid var(--viewer-border);
 }
 
@@ -386,7 +760,8 @@ body.viewer-shell {
   overflow: auto;
   margin: 0;
   padding: 14px;
-  font: 12px/1.65 var(--viewer-mono);
+  color: color-mix(in oklch, var(--viewer-fg) 85%, var(--viewer-muted));
+  font: 12.1px/1.65 var(--viewer-mono);
 }
 
 .viewer-login {
@@ -414,8 +789,11 @@ body.viewer-shell {
     border-bottom: 1px solid var(--viewer-border);
   }
 
-  .viewer-divider {
-    display: none;
+  .viewer-inspector {
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    resize: none;
   }
 
   #object-list {

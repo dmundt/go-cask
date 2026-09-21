@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.4",
+  "schemaVersion": "2.5",
   "regeneratedFrom": "go-cask-viewer.html",
   "artifact": {
     "name": "go-cask object browser",
@@ -112,7 +112,7 @@
       "controlHeight": "30px",
       "pageInset": "14px",
       "filterGap": "8px",
-      "rowPadding": "8px horizontal and vertical; header row 7px vertical",
+      "rowPadding": "5px horizontal, 8px vertical; header row 5px horizontal and 7px vertical",
       "tableMinWidth": "700px",
       "hashColumnWidth": "30%",
       "otherColumnWidth": "14%",
@@ -331,7 +331,10 @@
       "verified": "light green fill",
       "unverified": "neutral gray fill",
       "orphaned": "light amber fill",
-      "corrupt": "light red fill"
+      "corrupt": "light red fill",
+      "axes": "integrity and reachability are independent pills in one status cell; no state is ever collapsed into another",
+      "statusCell": "integrity pill always; an additional orphaned pill beside it only when the object is orphaned",
+      "reachable": "adds no pill in the table; the inspector shows a green Reachable pill"
     },
     "pagination": {
       "placement": "bottom of object list, pinned below table scroll area, bg surface, 7px 14px, 12px gap",

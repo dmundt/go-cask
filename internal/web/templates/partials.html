@@ -8,45 +8,21 @@
 <html lang="en">
 <head>{{template "head" .}}</head>
 <body class="viewer-shell">{{if ne .View "login"}}{{template "top-bar" .Data}}{{end}}
-{{if eq .View "dashboard"}}{{template "dashboard-content" .Data}}
-{{else if eq .View "objects"}}{{template "objects-content" .Data}}
+{{if eq .View "objects"}}{{template "objects-content" .Data}}
 {{else if eq .View "object"}}{{template "object-content" .Data}}
-{{else if eq .View "gc"}}{{template "gc-content" .Data}}
 {{else if eq .View "login"}}{{template "login-content" .Data}}
 {{end}}</body>
 </html>{{end}}
 
 {{define "top-bar"}}<header class="viewer-top-bar">
-<a class="viewer-brand" href="/viewer/"><span class="viewer-mark">CA</span>go-cask</a>
-<nav class="viewer-nav" aria-label="Viewer">
-<ul><li><a href="/viewer/">Objects</a></li><li><a href="/viewer/dashboard">Dashboard</a></li><li><a href="/viewer/gc">GC</a></li></ul>
-</nav>
+<a class="viewer-brand" href="/viewer/"><span class="viewer-mark">CA</span>go-cask<span class="viewer-version">{{version}}</span></a>
+{{if .CSRF}}<div id="verify-all">{{template "verify-all-button" (verifyAll .CSRF)}}</div>{{end}}
 </header>{{end}}
 
-{{define "stat-cards"}}
-<section class="viewer-summary" aria-label="Store overview">
-<p><strong>{{.ObjectCount}}</strong> objects · <strong>{{.TotalSize}}</strong> bytes total</p>
-</section>
-{{end}}
-
-{{define "digest-note"}}
-<table>
-<caption>Addressing</caption>
-<thead><tr><th scope="col">Digest</th><th scope="col">Algorithms</th></tr></thead>
-<tbody><tr><td>raw digest bytes, hex-encoded</td><td>client-side (this viewer: sha256)</td></tr></tbody>
-</table>
-{{end}}
-
-{{define "sample-table"}}
-<div class="viewer-table-wrap"><table class="viewer-table" id="sample-table">
-<caption>Sample objects</caption>
-<thead><tr><th scope="col">Hash</th><th scope="col">Size</th></tr></thead>
-<tbody>
-{{range .Sample}}<tr><td><a href="/viewer/objects/{{.Digest}}">{{.Short}}{{if .Type}} ({{.Type}}){{end}}</a></td><td>{{.Size}}</td></tr>{{end}}
-</tbody>
-</table></div>
-{{if .HasSample}}<p><a href="/viewer/objects">see all objects</a></p>{{end}}
-{{end}}
+{{define "verify-all-button"}}<form hx-post="/viewer/objects/verify-all" hx-target="#verify-all" hx-swap="innerHTML" hx-disabled-elt="find button">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button class="viewer-verify-all{{if .Complete}} viewer-verify-all-done{{end}}" type="submit" title="Verify every stored object">{{.Label}}</button>
+</form>{{end}}
 
 {{define "filter-bar"}}<form class="viewer-filter-bar" method="get" action="/viewer/objects">
 <input name="sort" type="hidden" value="{{.State.Sort}}">
@@ -64,25 +40,31 @@
 <select id="size" name="size" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
 <option value="">Any size</option><option value="small"{{if eq .State.Size "small"}} selected{{end}}>&lt; 1 KiB</option><option value="medium"{{if eq .State.Size "medium"}} selected{{end}}>1 KiB–1 MiB</option><option value="large"{{if eq .State.Size "large"}} selected{{end}}>&gt; 1 MiB</option>
 </select>
-<label class="viewer-sr-only" for="status">Object state</label>
+<label class="viewer-sr-only" for="status">Integrity</label>
 <select id="status" name="status" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
-<option value="">Any status</option><option value="not-verified"{{if eq .State.Status "not-verified"}} selected{{end}}>Not verified</option><option value="verified"{{if eq .State.Status "verified"}} selected{{end}}>Verified</option><option value="corrupt"{{if eq .State.Status "corrupt"}} selected{{end}}>Corrupt</option>
+<option value="">Any integrity</option>{{range .StatusOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
 </select>
+{{if .HasReachability}}<label class="viewer-sr-only" for="reach">References</label>
+<select id="reach" name="reach" hx-get="/viewer/objects" hx-trigger="change" hx-include="closest form" hx-target="#object-list" hx-push-url="true">
+<option value="">Any references</option><option value="reachable"{{if eq .State.Reach "reachable"}} selected{{end}}>Resolved</option><option value="orphaned"{{if eq .State.Reach "orphaned"}} selected{{end}}>Orphaned</option>
+</select>{{end}}
 <button class="viewer-sr-only" type="submit">Search</button>
-<a href="/viewer/objects">Reset</a>
+<a class="viewer-reset" href="/viewer/objects">Reset</a>
 </form>{{end}}
 
 {{define "object-row"}}<tr{{if .Selected}} class="viewer-selected" aria-current="true"{{end}}>
-<td><a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-push-url="true">{{.Short}}</a></td>
-<td class="viewer-type">{{.Type}}</td>
-<td>{{.Size}}</td>
-<td><span class="viewer-status viewer-status-{{.Status}}">{{.StatusLabel}}</span></td>
+<td><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{.Short}}</a></td>
+<td class="viewer-type"><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{.Type}}</a></td>
+<td><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{formatBytes .Size}}</a></td>
+<td class="viewer-references"><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{.References}}</a></td>
+<td class="viewer-status-cell"><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true"><span class="viewer-status viewer-status-{{.Integrity}}">{{.IntegrityLabel}}</span></a></td>{{if .ReachabilityKnown}}<td class="viewer-status-cell"><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{if .Orphaned}}<span class="viewer-status viewer-status-orphaned">Orphaned</span>{{else}}<span class="viewer-status viewer-status-reachable">Resolved</span>{{end}}</a></td>{{end}}
+<td><a class="viewer-row-link" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">{{.WrittenLabel}}</a></td>
 </tr>{{end}}
 
 {{define "object-table"}}
 <div class="viewer-table-wrap"><table class="viewer-table" id="object-table">
-<caption>Objects</caption>
-<thead><tr><th scope="col"{{if eq .State.Sort "hash"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortHashURL}}" hx-get="{{.SortHashURL}}" hx-target="#object-list" hx-push-url="true">Hash</a></th><th scope="col"{{if eq .State.Sort "type"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortTypeURL}}" hx-get="{{.SortTypeURL}}" hx-target="#object-list" hx-push-url="true">Type</a></th><th scope="col"{{if eq .State.Sort "size"}} aria-sort="{{.State.Direction}}ending"{{end}}><a href="{{.SortSizeURL}}" hx-get="{{.SortSizeURL}}" hx-target="#object-list" hx-push-url="true">Size</a></th><th scope="col">Status</th></tr></thead>
+<caption class="viewer-sr-only">Objects</caption>
+<thead><tr><th scope="col"{{if eq .State.Sort "hash"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Hash<a class="viewer-sort-button{{if eq .State.Sort "hash"}} viewer-sort-active{{end}}" href="{{.SortHashURL}}" hx-get="{{.SortHashURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort hash {{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}">{{if and (eq .State.Sort "hash") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th><th scope="col"{{if eq .State.Sort "type"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Type<a class="viewer-sort-button{{if eq .State.Sort "type"}} viewer-sort-active{{end}}" href="{{.SortTypeURL}}" hx-get="{{.SortTypeURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort type {{if eq .State.Sort "type"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "type") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th><th scope="col"{{if eq .State.Sort "size"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Size<a class="viewer-sort-button{{if eq .State.Sort "size"}} viewer-sort-active{{end}}" href="{{.SortSizeURL}}" hx-get="{{.SortSizeURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort size {{if eq .State.Sort "size"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "size") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th><th class="viewer-references" scope="col"{{if eq .State.Sort "inbound"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Inbound<a class="viewer-sort-button{{if eq .State.Sort "inbound"}} viewer-sort-active{{end}}" href="{{.SortInboundURL}}" hx-get="{{.SortInboundURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort inbound references {{if eq .State.Sort "inbound"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "inbound") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th><th class="viewer-status-cell" scope="col"{{if eq .State.Sort "status"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Integrity<a class="viewer-sort-button{{if eq .State.Sort "status"}} viewer-sort-active{{end}}" href="{{.SortStatusURL}}" hx-get="{{.SortStatusURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort integrity {{if eq .State.Sort "status"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "status") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th>{{if .HasReachability}}<th class="viewer-status-cell" scope="col"{{if eq .State.Sort "reach"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">References<a class="viewer-sort-button{{if eq .State.Sort "reach"}} viewer-sort-active{{end}}" href="{{.SortReachURL}}" hx-get="{{.SortReachURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort references {{if eq .State.Sort "reach"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "reach") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th>{{end}}<th scope="col"{{if eq .State.Sort "written"}} aria-sort="{{.State.Direction}}ending"{{end}}><span class="viewer-sort-head">Written<a class="viewer-sort-button{{if eq .State.Sort "written"}} viewer-sort-active{{end}}" href="{{.SortWrittenURL}}" hx-get="{{.SortWrittenURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort written {{if eq .State.Sort "written"}}{{if eq .State.Direction "asc"}}descending{{else}}ascending{{end}}{{else}}ascending{{end}}">{{if and (eq .State.Sort "written") (eq .State.Direction "desc")}}▼{{else}}▲{{end}}</a></span></th></tr></thead>
 <tbody>
 {{range .Objects}}{{template "object-row" .}}{{end}}
 </tbody>
@@ -90,43 +72,51 @@
 {{end}}
 
 {{define "pager"}}<footer class="viewer-pager">
-<span>{{.RangeStart}}–{{.RangeEnd}} of {{.Matched}} · {{.TotalSize}} bytes</span>
+<span>{{.RangeStart}}–{{.RangeEnd}} of {{.Matched}} · {{formatBytes .TotalSize}}</span>
 <nav aria-label="Object pages">
 <label for="limit">Rows</label>
 <select id="limit" name="limit" hx-get="/viewer/objects" hx-trigger="change" hx-include=".viewer-filter-bar" hx-target="#object-list" hx-push-url="true">
-<option value="25"{{if eq .State.Limit 25}} selected{{end}}>25</option><option value="50"{{if eq .State.Limit 50}} selected{{end}}>50</option><option value="100"{{if eq .State.Limit 100}} selected{{end}}>100</option><option value="250"{{if eq .State.Limit 250}} selected{{end}}>250</option>
+{{range .LimitOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
 </select>
-{{if .HasPrevious}}<a href="{{.FirstURL}}" hx-get="{{.FirstURL}}" hx-target="#object-list" hx-push-url="true">First</a>
-<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#object-list" hx-push-url="true">Previous</a>{{else}}<span aria-disabled="true">First</span><span aria-disabled="true">Previous</span>{{end}}
-{{if .HasNext}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#object-list" hx-push-url="true">Next</a>
-<a href="{{.LastURL}}" hx-get="{{.LastURL}}" hx-target="#object-list" hx-push-url="true">Last</a>{{else}}<span aria-disabled="true">Next</span><span aria-disabled="true">Last</span>{{end}}
+{{if .HasPrevious}}<a class="viewer-page-button" href="{{.FirstURL}}" hx-get="{{.FirstURL}}" hx-target="#object-list" hx-push-url="true" aria-label="First page">«</a>
+<a class="viewer-page-button" href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Previous page">‹</a>{{else}}<span class="viewer-page-button" aria-disabled="true" aria-label="First page">«</span><span class="viewer-page-button" aria-disabled="true" aria-label="Previous page">‹</span>{{end}}
+<span class="viewer-page-status">Page {{.CurrentPage}} of {{.PageCount}}</span>
+{{if .HasNext}}<a class="viewer-page-button" href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Next page">›</a>
+<a class="viewer-page-button" href="{{.LastURL}}" hx-get="{{.LastURL}}" hx-target="#object-list" hx-push-url="true" aria-label="Last page">»</a>{{else}}<span class="viewer-page-button" aria-disabled="true" aria-label="Next page">›</span><span class="viewer-page-button" aria-disabled="true" aria-label="Last page">»</span>{{end}}
 </nav>
 </footer>{{end}}
 
-{{define "object-inspector"}}{{if .Inspector}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-digest">{{.Inspector.Digest}}</p></div>
-<nav class="viewer-inspector-tabs" aria-label="Object inspector">
-<a href="{{.Inspector.MetadataURL}}"{{if eq .State.Tab "metadata"}} aria-current="page"{{end}} hx-get="{{.Inspector.MetadataURL}}" hx-target="#object-inspector" hx-push-url="true">Metadata</a>
-<a href="{{.Inspector.BytesURL}}"{{if eq .State.Tab "bytes"}} aria-current="page"{{end}} hx-get="{{.Inspector.BytesURL}}" hx-target="#object-inspector" hx-push-url="true">Bytes</a>
-<a href="{{.Inspector.ActionsURL}}"{{if eq .State.Tab "actions"}} aria-current="page"{{end}} hx-get="{{.Inspector.ActionsURL}}" hx-target="#object-inspector" hx-push-url="true">Actions</a>
+{{define "object-inspector"}}{{if .Inspector}}{{template "object-inspector-refresher" .}}<div class="viewer-inspector-header"><div class="viewer-inspector-title"><h1 class="viewer-inspector-heading">Object</h1><nav class="viewer-history" aria-label="Visited objects">{{if .Inspector.PrevURL}}<a class="viewer-history-step" href="{{.Inspector.PrevURL}}" hx-get="{{.Inspector.PrevURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true" aria-label="Previously inspected object" title="Previously inspected object">&#8249;</a>{{else}}<span class="viewer-history-step" aria-disabled="true" aria-label="No previously inspected object" title="No previously inspected object">&#8249;</span>{{end}}{{if .Inspector.NextURL}}<a class="viewer-history-step" href="{{.Inspector.NextURL}}" hx-get="{{.Inspector.NextURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true" aria-label="Next inspected object" title="Next inspected object">&#8250;</a>{{else}}<span class="viewer-history-step" aria-disabled="true" aria-label="No next inspected object" title="No next inspected object">&#8250;</span>{{end}}</nav></div><div class="viewer-hash-row"><input class="viewer-digest" type="text" value="{{.Inspector.Digest}}" readonly aria-label="Full object digest, select and copy" spellcheck="false"></div></div>
+<nav class="viewer-inspector-tabs" aria-label="Object inspector" role="tablist">
+<a href="{{.Inspector.MetadataURL}}" role="tab"{{if eq .State.Tab "metadata"}} aria-current="page" aria-selected="true"{{else}} aria-selected="false"{{end}} hx-get="{{.Inspector.MetadataURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">Metadata</a>
+<a href="{{.Inspector.ReferencesURL}}" role="tab"{{if eq .State.Tab "references"}} aria-current="page" aria-selected="true"{{else}} aria-selected="false"{{end}} hx-get="{{.Inspector.ReferencesURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">References</a>
+<a href="{{.Inspector.BytesURL}}" role="tab"{{if eq .State.Tab "bytes"}} aria-current="page" aria-selected="true"{{else}} aria-selected="false"{{end}} hx-get="{{.Inspector.BytesURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true">Bytes</a>
 </nav>
-<section class="viewer-inspector-panel">{{if eq .State.Tab "metadata"}}<dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl>{{else if eq .State.Tab "bytes"}}<div id="hexdump" hx-get="{{.Inspector.RawURL}}" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">Loading bytes…</div>{{else}}{{if or (eq .Role "operator") (eq .Role "admin")}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/verify" hx-post="/viewer/objects/{{.Inspector.Digest}}/verify" hx-target="#integrity">
-<input name="csrf" type="hidden" value="{{.CSRF}}">
+<section class="viewer-inspector-panel">{{if eq .State.Tab "metadata"}}<section class="viewer-inspector-section"><h2>Identity</h2><dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd></dl></section><section class="viewer-inspector-section"><h2>Storage</h2><dl class="viewer-meta"><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Written</dt><dd>{{.Inspector.WrittenLabel}}</dd><dt>Timestamp</dt><dd>{{.Inspector.Timestamp}}</dd></dl></section><section class="viewer-inspector-section"><h2>State</h2><dl class="viewer-meta"><dt>Integrity</dt><dd><span id="inspector-status" class="viewer-status viewer-status-{{.Inspector.Integrity}}">{{.Inspector.IntegrityLabel}}</span></dd>{{if .HasReachability}}<dt>References</dt><dd>{{if .Inspector.Orphaned}}<span class="viewer-status viewer-status-orphaned">Orphaned</span>{{else}}<span class="viewer-status viewer-status-reachable">Resolved</span>{{end}}</dd>{{end}}<dt>Inbound</dt><dd>{{.Inspector.InboundReferences}}</dd></dl>{{if or (eq .Role "operator") (eq .Role "admin")}}<div class="viewer-actions"><form method="post" action="/viewer/objects/{{.Inspector.Digest}}/verify" hx-post="/viewer/objects/{{.Inspector.Digest}}/verify" hx-target="#integrity">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
 <button class="viewer-action" type="submit">Verify</button>
-</form>{{end}}{{if eq .Role "admin"}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/delete" hx-post="/viewer/objects/{{.Inspector.Digest}}/delete" hx-target="#integrity" hx-confirm="Delete this object?">
-<input name="csrf" type="hidden" value="{{.CSRF}}">
+</form>{{if eq .Role "admin"}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/delete" hx-post="/viewer/objects/{{.Inspector.Digest}}/delete" hx-target="#integrity" hx-confirm="Delete this object?">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
 <button class="viewer-action" type="submit">Delete</button>
-</form>{{end}}<div id="integrity"></div><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p>{{end}}</section>
+</form>{{end}}</div>{{end}}<div id="integrity">{{if .Inspector.Report}}{{template "result" .Inspector.Report}}{{end}}</div></section>{{else if eq .State.Tab "references"}}<section class="viewer-inspector-section"><h2>Inbound</h2>{{if .Inspector.Inbound}}<ul class="viewer-reference-list">{{range .Inspector.Inbound}}<li><span aria-hidden="true">←</span><span class="viewer-reference-type">{{if .Type}}{{.Type}}{{else}}unknown{{end}}</span><a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true" title="{{.Digest}}">{{.Short}}</a></li>{{end}}</ul>{{else}}<p class="viewer-reference-empty">No objects reference this object.</p>{{end}}</section><section class="viewer-inspector-section"><h2>Outbound</h2>{{if .Inspector.Outbound}}<ul class="viewer-reference-list">{{range .Inspector.Outbound}}<li><span aria-hidden="true">→</span><span class="viewer-reference-type">{{if .Type}}{{.Type}}{{else}}unknown{{end}}</span><a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true" title="{{.Digest}}">{{.Short}}</a></li>{{end}}</ul>{{else}}<p class="viewer-reference-empty">This object references no other objects.</p>{{end}}</section>{{else if eq .State.Tab "bytes"}}<div id="hexdump" hx-get="{{.Inspector.RawURL}}" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">Loading bytes…</div>{{end}}</section>
 {{else}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>{{end}}{{end}}
 
 {{define "hexdump-table"}}
-{{if .Note}}<p class="note">{{.Note}}</p>{{end}}
-<div class="viewer-table-wrap"><table class="viewer-table" id="hexdump">
-<caption>Hexdump</caption>
-<thead><tr><th scope="col">Offset</th><th scope="col">Hex</th><th scope="col">ASCII</th></tr></thead>
-<tbody>
-{{range .Rows}}<tr><td>{{.Offset}}</td><td>{{.Hex}}</td><td>{{.ASCII}}</td></tr>{{end}}
-</tbody>
-</table></div>
+<pre class="viewer-hexdump" id="hexdump">{{range .Rows}}{{.Offset}}  {{printf "%-47s" .Hex}}  {{.ASCII}}
+{{end}}</pre>{{if .Note}}<p class="viewer-hexdump-note">{{.Note}}</p>{{end}}
 {{end}}
 
-{{define "result"}}<p class="result">{{.}}</p>{{end}}
+{{define "result"}}<div class="viewer-result{{if .OK}} viewer-result-ok{{else}} viewer-result-bad{{end}}" role="status">
+<p class="viewer-result-head"><span class="viewer-status {{if .OK}}viewer-status-verified{{else}}viewer-status-corrupt{{end}}">{{.Headline}}</span></p>
+<p class="viewer-result-summary">{{.Summary}}</p>
+{{if .Actual}}<dl class="viewer-meta viewer-result-meta"><dt>Expected</dt><dd class="viewer-result-digest">{{.Expected}}</dd><dt>Actual</dt><dd class="viewer-result-digest">{{.Actual}}</dd></dl>{{end}}
+{{if .Detail}}<p class="viewer-result-detail">{{.Detail}}</p>{{end}}
+{{if .Checked}}<p class="viewer-result-checked">Checked {{.Checked}}</p>{{end}}
+</div>{{end}}
+
+<!-- The action targets the result panel only, so the Integrity Status row it
+     just invalidated is swapped out of band rather than left stale. The swap
+     lives here and not in "result" because the inspector also renders a stored
+     report inline, where an out-of-band element would show up as stray markup. -->
+{{define "result-swap"}}{{template "result" .}}
+{{if .Integrity}}<span id="inspector-status" hx-swap-oob="true" class="viewer-status viewer-status-{{.Integrity}}">{{.IntegrityLabel}}</span>{{end}}{{end}}
