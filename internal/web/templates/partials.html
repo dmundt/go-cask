@@ -97,13 +97,13 @@
 <a href="{{.Inspector.BytesURL}}"{{if eq .State.Tab "bytes"}} aria-current="page"{{end}} hx-get="{{.Inspector.BytesURL}}" hx-target="#object-inspector" hx-push-url="true">Bytes</a>
 <a href="{{.Inspector.ActionsURL}}"{{if eq .State.Tab "actions"}} aria-current="page"{{end}} hx-get="{{.Inspector.ActionsURL}}" hx-target="#object-inspector" hx-push-url="true">Actions</a>
 </nav>
-<section class="viewer-inspector-panel">{{if eq .State.Tab "metadata"}}<dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl>{{else if eq .State.Tab "bytes"}}<div id="hexdump" hx-get="{{.Inspector.RawURL}}" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">Loading bytes…</div>{{else}}{{if or (eq .Role "operator") (eq .Role "admin")}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/verify" hx-post="/viewer/objects/{{.Inspector.Digest}}/verify" hx-target="#inspector-action-result">
+<section class="viewer-inspector-panel">{{if eq .State.Tab "metadata"}}<dl class="viewer-meta"><dt>Type</dt><dd>{{.Inspector.Type}}</dd><dt>Size</dt><dd>{{.Inspector.Size}} bytes</dd><dt>Status</dt><dd>{{.Inspector.Status}}</dd></dl>{{else if eq .State.Tab "bytes"}}<div id="hexdump" hx-get="{{.Inspector.RawURL}}" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">Loading bytes…</div>{{else}}{{if or (eq .Role "operator") (eq .Role "admin")}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/verify" hx-post="/viewer/objects/{{.Inspector.Digest}}/verify" hx-target="#integrity">
 <input name="csrf" type="hidden" value="{{.CSRF}}">
 <button class="viewer-action" type="submit">Verify</button>
-</form>{{end}}{{if eq .Role "admin"}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/delete" hx-post="/viewer/objects/{{.Inspector.Digest}}/delete" hx-target="#inspector-action-result" hx-confirm="Delete this object?">
+</form>{{end}}{{if eq .Role "admin"}}<form method="post" action="/viewer/objects/{{.Inspector.Digest}}/delete" hx-post="/viewer/objects/{{.Inspector.Digest}}/delete" hx-target="#integrity" hx-confirm="Delete this object?">
 <input name="csrf" type="hidden" value="{{.CSRF}}">
 <button class="viewer-action" type="submit">Delete</button>
-</form>{{end}}<div id="inspector-action-result"></div><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p>{{end}}</section>
+</form>{{end}}<div id="integrity"></div><p><a href="{{.Inspector.DetailURL}}">Open full details</a></p>{{end}}</section>
 {{else}}<div class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-empty">Select an object to inspect it.</p></div>{{end}}{{end}}
 
 {{define "hexdump-table"}}

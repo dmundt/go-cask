@@ -36,6 +36,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Added URL-addressable filtering, sorting, pagination, selection, integrity
+  status, and htmx fragment updates to the embedded viewer object browser.
 - Defined the embedded viewer's visual master-detail object-browser contract:
   one central scoped stylesheet, composable Go templates, and URL-driven
   server-side filtering, sorting, selection, and pagination.

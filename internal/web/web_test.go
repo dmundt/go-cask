@@ -301,7 +301,41 @@ func TestObjectsListAndRaw(t *testing.T) {
 		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), request.want) {
 			t.Fatalf("GET %s = (%d, %.200q), want 200 containing %q", request.path, resp.StatusCode, body, request.want)
 		}
+		if request.path == "/viewer/objects" {
+			page := string(body)
+			for _, want := range []string{
+				"<!doctype html>",
+				`<caption>Objects</caption>`,
+				`for="q"`,
+				`aria-sort="ascending"`,
+				"Select an object to inspect it.",
+			} {
+				if !strings.Contains(page, want) {
+					t.Fatalf("object browser missing %q: %.400q", want, page)
+				}
+			}
+		}
 	}
+
+	t.Run("selection page state", func(t *testing.T) {
+		resp, err := viewer.Get(ts.URL + "/viewer/objects?selected=" + url.QueryEscape(h.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := string(body)
+		for _, want := range []string{
+			`class="viewer-selected" aria-current="true"`,
+			h.String(),
+			"Metadata",
+			"not-verified",
+		} {
+			if resp.StatusCode != http.StatusOK || !strings.Contains(page, want) {
+				t.Fatalf("selection page missing %q: (%d, %.400q)", want, resp.StatusCode, page)
+			}
+		}
+	})
 
 	t.Run("htmx inspector selection", func(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/objects?selected="+url.QueryEscape(h.String())+"&tab=bytes", nil)
@@ -320,6 +354,27 @@ func TestObjectsListAndRaw(t *testing.T) {
 		if resp.StatusCode != http.StatusOK || !strings.Contains(page, "Loading bytes") ||
 			!strings.Contains(page, `hx-trigger="revealed"`) || strings.Contains(page, "<!doctype html>") {
 			t.Fatalf("inspector fragment = (%d, %.400q), want bytes-only fragment", resp.StatusCode, page)
+		}
+	})
+
+	t.Run("actions panel respects role", func(t *testing.T) {
+		admin := login(t, ts, testStartupToken)
+		resp, err := admin.Get(ts.URL + "/viewer/objects?selected=" + url.QueryEscape(h.String()) + "&tab=actions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := string(body)
+		for _, want := range []string{
+			"Verify",
+			"Delete",
+			`hx-target="#integrity"`,
+			`id="integrity"`,
+		} {
+			if resp.StatusCode != http.StatusOK || !strings.Contains(page, want) {
+				t.Fatalf("admin actions panel missing %q: (%d, %.400q)", want, resp.StatusCode, page)
+			}
 		}
 	})
 
@@ -380,6 +435,48 @@ func TestObjectBrowserQueryState(t *testing.T) {
 		}
 	})
 
+	t.Run("empty and out of range pages", func(t *testing.T) {
+		for _, test := range []struct {
+			query string
+			want  string
+		}{
+			{query: "q=missing", want: "0–0 of 0"},
+			{query: "type=blob%401&limit=25&offset=100", want: "0–0 of 29"},
+		} {
+			resp, err := viewer.Get(ts.URL + "/viewer/objects?" + test.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), test.want) {
+				t.Fatalf("page %q = (%d, %.400q), want %q", test.query, resp.StatusCode, body, test.want)
+			}
+		}
+	})
+
+	t.Run("sort and filter controls", func(t *testing.T) {
+		resp, err := viewer.Get(ts.URL + "/viewer/objects?sort=size&dir=desc&offset=25")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := string(body)
+		for _, want := range []string{
+			`aria-sort="descending"`,
+			`name="sort" type="hidden" value="size"`,
+			`name="dir" type="hidden" value="desc"`,
+		} {
+			if resp.StatusCode != http.StatusOK || !strings.Contains(page, want) {
+				t.Fatalf("sort controls missing %q: (%d, %.400q)", want, resp.StatusCode, page)
+			}
+		}
+		if strings.Contains(page, `name="offset"`) {
+			t.Fatalf("filter form must reset pagination: %.400q", page)
+		}
+	})
+
 	t.Run("invalid query", func(t *testing.T) {
 		for _, rawQuery := range []string{
 			"limit=10",
@@ -391,6 +488,7 @@ func TestObjectBrowserQueryState(t *testing.T) {
 			"selected=not-a-digest",
 			"tab=references",
 			"type=missing%401",
+			"q=one&q=two",
 		} {
 			resp, err := viewer.Get(ts.URL + "/viewer/objects?" + rawQuery)
 			if err != nil {
@@ -402,6 +500,32 @@ func TestObjectBrowserQueryState(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestSortObjectRows(t *testing.T) {
+	rows := []objectRow{
+		{Digest: "b", Type: "tree@1", Size: 12},
+		{Digest: "a", Type: "blob@1", Size: 4},
+		{Digest: "c", Type: "blob@1", Size: 8},
+	}
+	for _, test := range []struct {
+		state objectBrowserState
+		want  string
+	}{
+		{state: objectBrowserState{Sort: "hash", Direction: "asc"}, want: "abc"},
+		{state: objectBrowserState{Sort: "type", Direction: "desc"}, want: "bca"},
+		{state: objectBrowserState{Sort: "size", Direction: "asc"}, want: "acb"},
+	} {
+		sorted := append([]objectRow(nil), rows...)
+		sortObjectRows(sorted, test.state)
+		var got strings.Builder
+		for _, row := range sorted {
+			got.WriteString(row.Digest)
+		}
+		if got.String() != test.want {
+			t.Fatalf("sort %+v = %q, want %q", test.state, got.String(), test.want)
+		}
+	}
 }
 
 func mustParse(t *testing.T, s string) cas.Digest {

@@ -615,6 +615,9 @@ func sortObjectRows(rows []objectRow, state objectBrowserState) {
 		default:
 			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
 		}
+		if comparison == 0 {
+			comparison = strings.Compare(rows[i].Digest, rows[j].Digest)
+		}
 		if state.Direction == "desc" {
 			return comparison > 0
 		}
