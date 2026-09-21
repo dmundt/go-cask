@@ -300,6 +300,7 @@ func TestContextCancellationFS(t *testing.T) {
 		{"Exists", func() error { _, err := s.Exists(ctx, h); return err }},
 		{"Delete", func() error { return s.Delete(ctx, h) }},
 		{"Size", func() error { _, err := s.Size(ctx, h); return err }},
+		{"ModTime", func() error { _, err := s.ModTime(ctx, h); return err }},
 		{"List", func() error { _, err := s.List(ctx); return err }},
 		{"Stats", func() error { _, err := s.Stats(ctx); return err }},
 		{"Verify", func() error { return s.Verify(ctx, h, sha256.New()) }},
@@ -488,6 +489,33 @@ func TestSize(t *testing.T) {
 	}
 }
 
+// TestModTime verifies ModTime reports the stored file's write time and
+// ErrNotFound for a missing object. The time is physical backend metadata, so
+// the test bounds it by the wall clock around the write rather than asserting
+// an exact instant: filesystems carry coarser timestamps than Go's clock.
+func TestModTime(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+	content := []byte("timed content")
+	h := digestOf(content)
+	before := time.Now().Add(-2 * time.Second)
+	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(2 * time.Second)
+	written, err := s.ModTime(ctx, h)
+	if err != nil {
+		t.Fatalf("ModTime = %v, want nil", err)
+	}
+	if written.Before(before) || written.After(after) {
+		t.Fatalf("ModTime = %v, want within [%v, %v]", written, before, after)
+	}
+	missing := digestOf([]byte("missing"))
+	if _, err := s.ModTime(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("ModTime missing = %v; want ErrNotFound", err)
+	}
+}
+
 // TestCleanTmpRemoval covers Clean's tmp-file removal semantics: recent tmp
 // files survive an olderThan sweep; old tmp files are removed and counted.
 func TestCleanTmpRemoval(t *testing.T) {
@@ -607,6 +635,9 @@ func TestDigestPathRejectsAbsentDigest(t *testing.T) {
 	}
 	if _, err := s.Size(ctx, absent); !errors.Is(err, cas.ErrInvalidDigest) {
 		t.Fatalf("Size(absent) = %v, want ErrInvalidDigest", err)
+	}
+	if _, err := s.ModTime(ctx, absent); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("ModTime(absent) = %v, want ErrInvalidDigest", err)
 	}
 	if err := s.Verify(ctx, absent, sha256.New()); !errors.Is(err, cas.ErrInvalidDigest) {
 		t.Fatalf("Verify(absent) = %v, want ErrInvalidDigest", err)

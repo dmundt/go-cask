@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -253,6 +254,9 @@ func TestShortDigestRejectedNotPanicking(t *testing.T) {
 			if _, err := s.Size(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
 				t.Errorf("Size = %v, want ErrInvalidDigest", err)
 			}
+			if _, err := s.ModTime(ctx, d); !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Errorf("ModTime = %v, want ErrInvalidDigest", err)
+			}
 			if err := s.Verify(ctx, d, sha256.New()); !errors.Is(err, cas.ErrInvalidDigest) {
 				t.Errorf("Verify = %v, want ErrInvalidDigest", err)
 			}
@@ -301,4 +305,107 @@ func TestSweepsSkipUnaddressableDigestNames(t *testing.T) {
 	if _, err := os.Stat(stray); err != nil {
 		t.Fatalf("stray file must survive the sweeps (it is not an object of this layout): %v", err)
 	}
+}
+
+// TestBackendErrorBranchesOnMissingBase covers the paths a store takes when
+// its own base directory disappears underneath it — a crash-recovery or
+// operator-error shape, not a hypothetical. Clean treats it as nothing to do;
+// the walkers report it; GC and Prune surface the walk failure rather than
+// silently sweeping an empty list, which would look like "everything is
+// unreachable" and delete nothing.
+func TestBackendErrorBranchesOnMissingBase(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "store")
+	s, err := New(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(base); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := s.Clean(ctx, 0); err != nil || removed != 0 {
+		t.Fatalf("Clean(missing base) = (%d, %v), want (0, nil)", removed, err)
+	}
+	if _, err := s.List(ctx); err == nil {
+		t.Fatal("List(missing base) = nil error, want error")
+	}
+	if _, err := s.Stats(ctx); err == nil {
+		t.Fatal("Stats(missing base) = nil error, want error")
+	}
+	if err := s.GC(ctx, map[string]bool{}); err == nil {
+		t.Fatal("GC(missing base) = nil error, want error")
+	}
+	if _, err := s.Prune(ctx, nil, 0, true); err == nil {
+		t.Fatal("Prune(missing base) = nil error, want error")
+	}
+}
+
+// TestVerifyNilBackend pins the nil-receiver guard: Verify is reachable
+// through the cas.Backend interface, where a typed nil is easy to hand in, so
+// it reports an error instead of panicking.
+func TestVerifyNilBackend(t *testing.T) {
+	var s *Backend
+	if err := s.Verify(context.Background(), digestOf([]byte("x")), sha256.New()); err == nil {
+		t.Fatal("Verify on a nil backend = nil error, want error")
+	}
+}
+
+// TestCleanReportsAnUnreadableDirectory covers the two failure branches Clean
+// keeps for a store it cannot fully traverse: a directory it may not read at
+// all, and one it may read but not write, so the temp file inside it cannot be
+// removed. Both are wrapped and returned rather than reported as a clean sweep,
+// because "removed 0, no error" would tell an operator the store is tidy when
+// it is not.
+//
+// POSIX permission bits are the only portable way to produce those errors, so
+// the test is skipped on Windows (ACLs, not mode bits) and under a superuser
+// account (permission checks do not apply).
+func TestCleanReportsAnUnreadableDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permission bits and an unprivileged user")
+	}
+	ctx := context.Background()
+
+	t.Run("unreadable", func(t *testing.T) {
+		base := filepath.Join(t.TempDir(), "store")
+		s, err := New(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sealed := filepath.Join(base, "aa")
+		if err := os.MkdirAll(sealed, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(sealed, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+
+		if _, err := s.Clean(ctx, 0); err == nil {
+			t.Fatal("Clean over an unreadable directory = nil error, want error")
+		}
+	})
+
+	t.Run("undeletable", func(t *testing.T) {
+		base := filepath.Join(t.TempDir(), "store")
+		s, err := New(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		locked := filepath.Join(base, "bb")
+		if err := os.MkdirAll(locked, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(locked, "stale.tmp"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+		if _, err := s.Clean(ctx, 0); err == nil {
+			t.Fatal("Clean over an undeletable temp file = nil error, want error")
+		}
+	})
 }
