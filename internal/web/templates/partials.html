@@ -4,6 +4,18 @@
 <link rel="stylesheet" href="/viewer/static/viewer.css">
 <script src="/viewer/static/htmx.min.js"></script>{{end}}
 
+{{define "shell"}}<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body class="viewer-shell">{{if ne .View "login"}}{{template "top-bar" .Data}}{{end}}
+{{if eq .View "dashboard"}}{{template "dashboard-content" .Data}}
+{{else if eq .View "objects"}}{{template "objects-content" .Data}}
+{{else if eq .View "object"}}{{template "object-content" .Data}}
+{{else if eq .View "gc"}}{{template "gc-content" .Data}}
+{{else if eq .View "login"}}{{template "login-content" .Data}}
+{{end}}</body>
+</html>{{end}}
+
 {{define "top-bar"}}<header class="viewer-top-bar">
 <a class="viewer-brand" href="/viewer/"><span class="viewer-mark">CA</span>go-cask</a>
 <nav class="viewer-nav" aria-label="Viewer">

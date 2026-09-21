@@ -1,14 +1,12 @@
-{{define "gc"}}<!doctype html>
-<html lang="en">
-<head>{{template "head" .}}</head>
-<body class="viewer-shell">{{template "top-bar" .}}<main class="viewer-main">
-<h1>Maintenance GC</h1>
+{{define "gc-content"}}<main class="viewer-main">
+{{template "gc-form" .}}
+</main>{{end}}
+
+{{define "gc-form"}}<h1>Maintenance GC</h1>
 <form hx-post="/viewer/gc" hx-target="#gc-result" hx-swap="innerHTML">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label for="roots">Root hashes (one per line)</label>
 <textarea id="roots" name="roots" rows="5" cols="64" required></textarea>
 <button type="submit">Run GC</button>
 </form>
-<div id="gc-result"></div>
-</main></body>
-</html>{{end}}
+<div id="gc-result"></div>{{end}}

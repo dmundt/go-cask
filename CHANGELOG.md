@@ -36,6 +36,8 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- Consolidated the viewer into one global document shell with composable page,
+  workspace, and fragment components; documented the concrete template tree.
 - Added URL-addressable filtering, sorting, pagination, selection, integrity
   status, and htmx fragment updates to the embedded viewer object browser.
 - Defined the embedded viewer's visual master-detail object-browser contract:

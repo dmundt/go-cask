@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v16
+version: v17
 ---
 
 # Viewer Design — go-cask
@@ -86,13 +86,18 @@ contract supplies truthful data and URL-addressable behavior.
 ## 4. Rendering architecture and composition
 
 The viewer uses `html/template`, parsed from `embed.FS`, and executes named
-templates into a buffer before writing a response. Templates are deliberately
-small and compose into pages and fragments:
+templates into a buffer before writing a response. `shell` is the only
+template that MAY emit document structure. It owns document type, language,
+head, and body, and selects one page content component through a typed shell
+view model. Page content components MUST NOT emit their own document chrome.
+Templates are deliberately small and compose into pages and fragments:
 
 | Component | Responsibility |
 |---|---|
+| `shell` | Only document shell; selects one page content component |
 | `head` | metadata, `/viewer/static/viewer.css`, vendored htmx |
 | `top-bar` | brand, navigation, operational action |
+| `*-content` | page-specific composition without document chrome |
 | `filter-bar` | one GET form for durable browser state |
 | `object-table` | accessible headers, rows, empty state |
 | `pager` | result summary plus first/previous/next/last links |
@@ -105,7 +110,8 @@ small and compose into pages and fragments:
 Full pages compose these components; fragments execute the same named
 components standalone. A component MUST receive pre-shaped data: templates may
 range and branch but MUST NOT calculate filtering, sorting, pagination,
-integrity, or layout.
+integrity, or layout. The concrete implementation inventory and composition
+tree live in [`../design/viewer-template-index.md`](../design/viewer-template-index.md).
 
 ## 5. URL state and htmx interactions
 

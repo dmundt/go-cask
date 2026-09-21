@@ -148,7 +148,7 @@ func roleAllows(sessionRole, required string) bool {
 // --- login ---
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "login", nil)
+	s.renderPage(w, "login", nil)
 }
 
 // loginPost validates the submitted token against the startup token (admin)
@@ -206,7 +206,7 @@ func (s *Server) resolveToken(token string) (string, bool) {
 // --- dashboard ---
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "dashboard", s.dashboardData(r.Context()))
+	s.renderPage(w, "dashboard", s.dashboardData(r.Context()))
 }
 
 func (s *Server) dashboardFragment(w http.ResponseWriter, r *http.Request) {
@@ -579,7 +579,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "object-table-fragment", data) // htmx search/refresh swap
 		return
 	}
-	s.render(w, "objects", data)
+	s.renderPage(w, "objects", data)
 }
 
 func matchesObjectRow(row objectRow, state objectBrowserState) bool {
@@ -669,7 +669,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	typ := index.EnvelopeType(data)
-	s.render(w, "object", struct {
+	s.renderPage(w, "object", struct {
 		Digest    string
 		Algorithm string
 		Type      string
@@ -733,7 +733,7 @@ func (s *Server) deleteFragment(w http.ResponseWriter, r *http.Request) {
 // --- gc ---
 
 func (s *Server) gcPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "gc", struct{ CSRF string }{s.csrfFor(r)})
+	s.renderPage(w, "gc", struct{ CSRF string }{s.csrfFor(r)})
 }
 
 func (s *Server) gcFragment(w http.ResponseWriter, r *http.Request) {
@@ -799,6 +799,18 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		slog.Error("render write", "template", name, "err", err)
 	}
+}
+
+type shellData struct {
+	View string
+	Data any
+}
+
+// renderPage renders a complete viewer document through the single shell.
+// Page-specific templates are content components; only shell owns the document
+// and body structure.
+func (s *Server) renderPage(w http.ResponseWriter, view string, data any) {
+	s.render(w, "shell", shellData{View: view, Data: data})
 }
 
 // previewLimit bounds the hexdump preview; larger objects are truncated.

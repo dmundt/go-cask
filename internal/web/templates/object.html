@@ -1,17 +1,31 @@
-{{define "object"}}<!doctype html>
-<html lang="en">
-<head>{{template "head" .}}</head>
-<body class="viewer-shell">{{template "top-bar" .}}<main class="viewer-workspace">
-<section class="viewer-list" aria-label="Objects"><div class="viewer-inspector-panel"><p><a href="/viewer/objects">Back to objects</a></p></div></section>
+{{define "object-content"}}<main class="viewer-workspace">
+{{template "object-detail-backlink" .}}
 <aside class="viewer-inspector" id="object-inspector">
-<header class="viewer-inspector-header"><h1 class="viewer-inspector-heading">Object</h1><p class="viewer-digest">{{.Digest}}</p></header>
-<section class="viewer-inspector-panel"><dl class="viewer-meta" id="object-meta">
+{{template "object-detail-header" .}}
+{{template "object-detail-metadata" .}}
+{{template "object-detail-actions" .}}
+{{template "object-detail-bytes" .}}
+</aside>
+</main>{{end}}
+
+{{define "object-detail-backlink"}}<section class="viewer-list" aria-label="Objects">
+<div class="viewer-inspector-panel"><p><a href="/viewer/objects">Back to objects</a></p></div>
+</section>{{end}}
+
+{{define "object-detail-header"}}<header class="viewer-inspector-header">
+<h1 class="viewer-inspector-heading">Object</h1>
+<p class="viewer-digest">{{.Digest}}</p>
+</header>{{end}}
+
+{{define "object-detail-metadata"}}<section class="viewer-inspector-panel">
+<dl class="viewer-meta" id="object-meta">
 <dt>Hash</dt><dd>{{.Digest}}</dd>
 <dt>Algorithm</dt><dd>{{.Algorithm}}</dd>
 <dt>Type</dt><dd>{{.Type}}</dd>
 <dt>Size</dt><dd>{{.Size}} bytes</dd>
-</dl></section>
-<section class="viewer-actions" aria-label="Actions">
+</dl></section>{{end}}
+
+{{define "object-detail-actions"}}<section class="viewer-actions" aria-label="Actions">
 {{if or (eq .Role "operator") (eq .Role "admin")}}
 <form method="post" action="/viewer/objects/{{.Digest}}/verify" hx-post="/viewer/objects/{{.Digest}}/verify" hx-target="#action-result">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -25,15 +39,14 @@
 </form>
 {{end}}
 <div id="action-result"></div>
-</section>
-<section class="viewer-inspector-panel">
+</section>{{end}}
+
+{{define "object-detail-bytes"}}<section class="viewer-inspector-panel">
 <h2 class="viewer-inspector-heading">Raw bytes</h2>
 <div id="hexdump"
      hx-get="/viewer/objects/{{.Digest}}/raw" hx-trigger="revealed" hx-target="#hexdump" hx-swap="outerHTML">
 <p>loading hexdump…</p>
 </div>
-</section></aside>
-</main></body>
-</html>{{end}}
+</section>{{end}}
 
 {{define "hexdump"}}{{template "hexdump-table" .}}{{end}}

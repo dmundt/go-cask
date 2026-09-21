@@ -1,15 +1,16 @@
-{{define "objects"}}<!doctype html>
-<html lang="en">
-<head>{{template "head" .}}</head>
-<body class="viewer-shell">{{template "top-bar" .}}{{template "filter-bar" .}}
+{{define "objects-content"}}{{template "filter-bar" .}}
+{{template "object-browser" .}}{{end}}
+
+{{define "object-browser"}}
 <main class="viewer-workspace">
 <section class="viewer-list" aria-label="Objects">
-<div id="object-list">{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}{{template "pager" .}}</div>
+{{template "object-list" .}}
 </section>
 <aside class="viewer-inspector" id="object-inspector" aria-label="Object inspector">
 {{template "object-inspector" .}}
 </aside>
-</main></body>
-</html>{{end}}
+</main>{{end}}
+
+{{define "object-list"}}<div id="object-list">{{template "object-table-fragment" .}}</div>{{end}}
 
 {{define "object-table-fragment"}}{{template "object-table" .}}{{if not .HasAny}}<p class="viewer-empty">no objects</p>{{end}}{{template "pager" .}}{{end}}

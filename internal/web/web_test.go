@@ -267,6 +267,37 @@ func TestStatic(t *testing.T) {
 	}
 }
 
+func TestShellIsOnlyDocumentOwner(t *testing.T) {
+	entries, err := templateFS.ReadDir("templates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var documentTypes, htmlTags, headTags, bodyTags int
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		content, err := templateFS.ReadFile("templates/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		source := string(content)
+		documentTypes += strings.Count(source, "<!doctype html>")
+		htmlTags += strings.Count(source, "<html")
+		headTags += strings.Count(source, "<head>")
+		bodyTags += strings.Count(source, "<body")
+	}
+	if documentTypes != 1 || htmlTags != 1 || headTags != 1 || bodyTags != 1 {
+		t.Fatalf(
+			"document chrome counts = doctype:%d html:%d head:%d body:%d, want exactly one shell",
+			documentTypes,
+			htmlTags,
+			headTags,
+			bodyTags,
+		)
+	}
+}
+
 func TestObjectsListAndRaw(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
