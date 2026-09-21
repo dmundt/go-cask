@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: Design Docs — go-cask
 description: Non-normative design documents. See docs/index.md for top-level rule index.
-version: v1
+version: v2
 ---
 
 # Design Docs — go-cask
@@ -14,5 +14,7 @@ Non-normative. Inform, never override instruction specs.
 | [`core-overview.md`](core-overview.md) | Pointer to `cas-core.md` §3.3 interface diagram |
 | [`object-descriptor-checksum.md`](object-descriptor-checksum.md) | Design sketch for an optional object descriptor + sidecar checksum layer above the backend |
 | [`viewer-brief.md`](viewer-brief.md) | Viewer next-iteration design brief (OpenDesign input) |
+| [`object-browser-logic.md`](object-browser-logic.md) | Formal server-state and rendering translation of mockup logic |
+| [`viewer-implementation-plan.md`](viewer-implementation-plan.md) | Phased viewer implementation plan |
 | [`go-cask-viewer.html`](go-cask-viewer.html) | Viewer HTML mockup |
 | [`go-cask-object-browser.design.json`](go-cask-object-browser.design.json) | Object browser design artifact |

@@ -484,6 +484,145 @@
       "Do not render an unbounded result list; paginate before DOM/server response rendering."
     ]
   },
+  "serverImplementationLogic": {
+    "authority": "The server reconstructs every view from Backend.List, Backend.Size, the bounded envelope prefix, and session-scoped verification results. No browser storage, generated demo data, or client-side state ships.",
+    "composition": {
+      "principle": "Pages are thin assemblies of reusable named Go templates. Components own one semantic responsibility, receive pre-shaped view models, and never read request state or storage directly.",
+      "tree": {
+        "viewer-page": [
+          "head",
+          "top-bar",
+          "object-browser"
+        ],
+        "object-browser": [
+          "filter-bar",
+          "browser-workspace"
+        ],
+        "filter-bar": [
+          "search-control",
+          "filter-controls"
+        ],
+        "browser-workspace": [
+          "object-list",
+          "object-inspector"
+        ],
+        "object-list": [
+          "object-table",
+          "pager"
+        ],
+        "object-table": [
+          "sort-header",
+          "object-row"
+        ],
+        "object-inspector": [
+          "inspector-header",
+          "inspector-panels",
+          "integrity"
+        ],
+        "inspector-panels": [
+          "metadata-panel",
+          "bytes-panel",
+          "actions-panel"
+        ],
+        "bytes-panel": [
+          "hexdump-table"
+        ]
+      },
+      "fragmentReuse": "object-list and object-inspector are independent htmx swap boundaries. The same named templates render within a full page and as standalone fragments; no duplicate fragment markup is allowed."
+    },
+    "urlState": {
+      "route": "/viewer/objects",
+      "parameters": {
+        "q": {
+          "default": "",
+          "validation": "trimmed text",
+          "effect": "case-insensitive substring match against bare digest and envelope type"
+        },
+        "type": {
+          "default": "",
+          "validation": "empty or a type present in the current result domain",
+          "effect": "exact envelope-type filter"
+        },
+        "size": {
+          "default": "",
+          "validation": "empty|small|medium|large",
+          "effect": "small is below 1 KiB; medium is 1 KiB through 1 MiB; large exceeds 1 MiB"
+        },
+        "status": {
+          "default": "",
+          "validation": "empty|not-verified|verified|corrupt",
+          "effect": "filter session-scoped integrity result"
+        },
+        "sort": {
+          "default": "hash",
+          "validation": "hash|type|size"
+        },
+        "dir": {
+          "default": "asc",
+          "validation": "asc|desc"
+        },
+        "limit": {
+          "default": 25,
+          "validation": "25|50|100|250"
+        },
+        "offset": {
+          "default": 0,
+          "validation": "non-negative integer"
+        },
+        "selected": {
+          "default": "",
+          "validation": "empty or a listed lowercase hexadecimal digest"
+        },
+        "tab": {
+          "default": "metadata",
+          "validation": "metadata|bytes|actions"
+        }
+      },
+      "invalidInput": "Return HTTP 400. Never silently clamp or replace invalid enum, limit, offset, or digest values."
+    },
+    "pipeline": [
+      "Parse and validate URL state.",
+      "List digests and normalize digest, short digest, envelope type, exact size, and session integrity state.",
+      "Apply query, type, size, and status filters.",
+      "Sort by digest/type lexical order or exact integer size.",
+      "Calculate matched count and total matched bytes.",
+      "Slice the sorted result by offset and limit.",
+      "Retain selection only when selected digest remains in matched set.",
+      "Render table, result summary, pager, and inspector from the same normalized state."
+    ],
+    "transitions": {
+      "filter": "Set the changed filter and offset=0; retain valid sort, limit, selection, and tab.",
+      "sort": "Toggle direction for the active sort key; otherwise choose ascending; set offset=0.",
+      "limit": "Set limit and offset=0.",
+      "pager": "Generate first/previous/next/last URLs from matched count and limit.",
+      "select": "Set selected digest through an ordinary link; htmx may replace only the inspector.",
+      "panel": "Set tab through an ordinary link; bytes retain lazy bounded hexdump loading.",
+      "verify": "POST with CSRF recomputes selected object integrity and stores a truthful result in the server session."
+    },
+    "fragmentBoundaries": {
+      "objectList": "#object-list contains table, result summary, and pager",
+      "objectInspector": "#object-inspector contains selected metadata, panel navigation, and actions",
+      "integrity": "#integrity contains current server-known verification result",
+      "hexdump": "#hexdump replaces the lazy bytes placeholder"
+    },
+    "prototypeAdaptations": {
+      "references": "Omit: byte-layer viewer cannot resolve typed object references.",
+      "timestamps": "Omit until backend exposes truthful metadata.",
+      "splitter": "Use fixed 440px desktop inspector plus responsive layout; omit JavaScript resizing.",
+      "clipboard": "Expose selectable full digest text; omit clipboard API.",
+      "history": "Use browser URL history; omit client selection stack.",
+      "verifyAll": "Omit until authorized bounded server-side operation exists.",
+      "hexdump": "Render bounded actual stored bytes, never digest-derived preview."
+    },
+    "invariants": [
+      "GET is side-effect free.",
+      "Table, summary, and pager derive from one filtered and sorted sequence.",
+      "No selected inspector renders for a digest absent from the matched set.",
+      "No backend fact is invented.",
+      "Full-page and htmx responses reuse named Go templates.",
+      "Every htmx behavior has an ordinary link or form fallback."
+    ]
+  },
   "accessibility": {
     "focus": "2px accent ring on all focusable controls; inputs and selects use 2px offset, compact row controls (sort arrows, pager buttons, copy, reference rows, history back) use 1px offset, and table rows use a 2px inset outline",
     "contrast": "All quiet hover states keep foreground text at or above its resting contrast: muted text moves to fg, and fills move rather than the text color",
