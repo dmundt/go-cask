@@ -88,15 +88,20 @@ func formatWrittenAt(written, now time.Time) string {
 	return fmt.Sprintf("%dd ago", hours/24)
 }
 
-// checkedLabel renders when an object was last verified in this session. A
-// verification result is only as good as its age, so the report states the
-// clock time and the elapsed age together.
-func checkedLabel(store *sessions, id, digest string) string {
-	_, checked := store.verificationRecord(id, digest)
+// formatChecked renders a verification timestamp. A verification result is
+// only as good as its age, so the label states the clock time and the elapsed
+// age together.
+func formatChecked(checked time.Time) string {
 	if checked.IsZero() {
 		return ""
 	}
 	return fmt.Sprintf("%s (%s)", checked.UTC().Format("2006-01-02 15:04:05 UTC"), formatWritten(checked))
+}
+
+// checkedLabel renders when an object was last verified in this session.
+func checkedLabel(store *sessions, id, digest string) string {
+	_, checked := store.verificationRecord(id, digest)
+	return formatChecked(checked)
 }
 
 // storedReport replays the last check of digest in this session, or nil when
@@ -107,7 +112,7 @@ func storedReport(store *sessions, id, digest string) *actionOutcome {
 	if checked.IsZero() {
 		return nil
 	}
-	report.Checked = fmt.Sprintf("%s (%s)", checked.UTC().Format("2006-01-02 15:04:05 UTC"), formatWritten(checked))
+	report.Checked = formatChecked(checked)
 	return &report
 }
 
@@ -1202,8 +1207,8 @@ type actionOutcome struct {
 	Actual   string
 	Detail   string
 	Checked  string
-	// Integrity and IntegrityLabel refresh the inspector's Status row out of
-	// band; they stay empty for actions that leave no object behind.
+	// Integrity and IntegrityLabel refresh the inspector's Integrity row out
+	// of band; they stay empty for actions that leave no object behind.
 	Integrity      string
 	IntegrityLabel string
 }

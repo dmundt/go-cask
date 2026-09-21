@@ -1510,8 +1510,8 @@ func TestVerificationRefreshesObjectList(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("HX-Trigger") != "object-status-updated" || !strings.Contains(string(body), "viewer-result-ok") {
 		t.Fatalf("verify = (%d, trigger=%q, body=%.400q), want successful status refresh", resp.StatusCode, resp.Header.Get("HX-Trigger"), body)
 	}
-	// The action only targets the result panel, so the inspector's Status row
-	// must arrive as an out-of-band swap.
+	// The action only targets the result panel, so the inspector's Integrity
+	// row must arrive as an out-of-band swap.
 	if !strings.Contains(string(body), `id="inspector-status" hx-swap-oob="true"`) {
 		t.Fatalf("verify must refresh the inspector status out of band: %.500q", body)
 	}

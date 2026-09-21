@@ -110,8 +110,7 @@
 {{if .Checked}}<p class="viewer-result-checked">Checked {{.Checked}}</p>{{end}}
 </div>{{end}}
 
-<!-- The action targets the result panel only, so the Integrity Status row it
-     just invalidated is swapped out of band rather than left stale. The swap
+<!-- The action targets the result panel only, so the Integrity row it just invalidated is swapped out of band rather than left stale. The swap
      lives here and not in "result" because the inspector also renders a stored
      report inline, where an out-of-band element would show up as stray markup. -->
 {{define "result-swap"}}{{template "result" .}}
