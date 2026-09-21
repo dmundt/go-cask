@@ -135,16 +135,6 @@ body.viewer-shell {
   font: 700 9.9px var(--viewer-mono);
 }
 
-.viewer-main {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 20px 14px;
-}
-
-.viewer-main > h1 {
-  margin-top: 0;
-}
-
 .viewer-filter-bar {
   display: flex;
   height: 47px;
@@ -807,9 +797,5 @@ span.viewer-history-step {
 
   #object-list {
     min-height: 440px;
-  }
-
-  .viewer-main {
-    padding: 14px;
   }
 }

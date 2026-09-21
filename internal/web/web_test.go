@@ -2144,12 +2144,6 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 			!c[0].Secure || !c[0].HttpOnly || c[0].SameSite != http.SameSiteStrictMode {
 			t.Fatalf("setSessionCookie = %#v, want one secure session cookie", c)
 		}
-		rec = httptest.NewRecorder()
-		clearSessionCookie(rec)
-		if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != sessionCookie || c[0].MaxAge != -1 ||
-			!c[0].Secure || !c[0].HttpOnly || c[0].SameSite != http.SameSiteStrictMode {
-			t.Fatalf("clearSessionCookie = %#v, want one expired secure session cookie", c)
-		}
 		if got := sessionID(req); got != "" {
 			t.Fatalf("sessionID without cookie = %q, want empty", got)
 		}

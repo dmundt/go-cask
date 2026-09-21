@@ -98,9 +98,11 @@ not been checked in this session MUST show no finding at all: a row saying so
 states only that the operator has not clicked yet.
 
 The top bar MUST offer a Verify control that verifies every stored object in
-one request, records each result in the session, refreshes the object table
-through the same status event, and reports the resulting counts on the control
-itself. A sweep changes the integrity of the object currently open in the
+one request, records each result in the session, and refreshes the object table
+through the same status event. The control MUST NOT report the resulting counts
+(§5): the per-object status cells already carry them, so a count on the control
+would only duplicate them. A sweep changes the integrity of the object currently
+open in the
 inspector too, so the inspector MUST subscribe to that status event and
 re-render alongside the table. The sweep is audited as a single event with
 counts, because one audit line per object would flood the log.

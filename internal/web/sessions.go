@@ -239,12 +239,6 @@ func (s *sessions) get(id string) (*Session, bool) {
 	return sess, true
 }
 
-func (s *sessions) delete(id string) {
-	s.mu.Lock()
-	delete(s.byID, id)
-	s.mu.Unlock()
-}
-
 // setCookie writes the session cookie (HttpOnly, SameSite=Strict; Secure).
 func setSessionCookie(w http.ResponseWriter, sess *Session) {
 	http.SetCookie(w, &http.Cookie{
@@ -254,13 +248,6 @@ func setSessionCookie(w http.ResponseWriter, sess *Session) {
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
-	})
-}
-
-func clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
 	})
 }
 

@@ -1180,17 +1180,15 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 	// The label stays "Verify": the per-object status cells already carry the
 	// outcome, so a count on the control would only duplicate them.
 	s.render(w, "verify-all-button", verifyAllState{
-		CSRF:     s.csrfFor(r),
-		Label:    "Verify",
-		Complete: true,
+		CSRF:  s.csrfFor(r),
+		Label: "Verify",
 	})
 }
 
 // verifyAllState backs the top-bar Verify control.
 type verifyAllState struct {
-	CSRF     string
-	Label    string
-	Complete bool
+	CSRF  string
+	Label string
 }
 
 // actionOutcome is the structured result of an object action (verification).
