@@ -24,7 +24,6 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
-	"github.com/dmundt/go-cask/internal/index"
 )
 
 //go:embed templates/*.html
@@ -64,14 +63,6 @@ type ReferenceIndex interface {
 // roots. The viewer never derives reachability from inbound-reference counts.
 type ReachabilityIndex interface {
 	IsReachable(cas.Digest) bool
-}
-
-func (s *Server) objectModTime(ctx context.Context, d cas.Digest) time.Time {
-	written, err := s.store.ModTime(ctx, d)
-	if err != nil {
-		return time.Time{}
-	}
-	return written
 }
 
 func formatWritten(written time.Time) string {
@@ -171,6 +162,7 @@ type Server struct {
 	cfg           Config
 	sessions      *sessions
 	loginThrottle *throttle
+	meta          *metaCache
 	tmpl          *template.Template
 }
 
@@ -199,6 +191,7 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		cfg:           cfg,
 		sessions:      newSessions(),
 		loginThrottle: newThrottle(5, time.Minute),
+		meta:          newMetaCache(),
 		tmpl:          tmpl,
 	}, nil
 }
@@ -699,7 +692,8 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	types := make(map[string]bool)
 	typeFound := state.Type == ""
 	for _, h := range digests {
-		typ := s.objectType(r.Context(), h)
+		meta := s.objectMetaFor(r.Context(), h)
+		typ := meta.Type
 		if typ != "" {
 			types[typ] = true
 		}
@@ -710,13 +704,13 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 			Digest:    h.String(),
 			Short:     shortDigest(h),
 			Type:      typ,
-			Size:      s.objectSize(r.Context(), h),
+			Size:      meta.Size,
 			Integrity: s.sessions.verification(sessionID(r), h.String()),
 		}
 		row.ReachabilityKnown = s.cfg.Reachability != nil
 		row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)
 		row.IntegrityLabel = integrityLabel(row.Integrity)
-		row.Written = s.objectModTime(r.Context(), h)
+		row.Written = meta.Written
 		row.WrittenLabel = formatWritten(row.Written)
 		if s.cfg.References != nil {
 			row.References = len(s.cfg.References.Inbound(h))
@@ -911,7 +905,7 @@ func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, di
 		rows = append(rows, referenceRow{
 			Digest:    digest.String(),
 			Short:     shortDigest(digest),
-			Type:      strings.TrimSuffix(s.objectType(ctx, digest), "@1"),
+			Type:      strings.TrimSuffix(s.objectMetaFor(ctx, digest).Type, "@1"),
 			SelectURL: rowState.navURL(navReference),
 		})
 	}
@@ -1104,12 +1098,11 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.readN(r.Context(), h, typePrefixLimit)
-	if err != nil {
+	meta := s.objectMetaFor(r.Context(), h)
+	if meta.Unreadable {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	typ := index.EnvelopeType(data)
 	s.renderPage(w, "object", struct {
 		Digest    string
 		Algorithm string
@@ -1117,7 +1110,7 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 		Size      int64
 		CSRF      string
 		Role      string
-	}{h.String(), sha256.Name, typ, s.objectSize(r.Context(), h), s.csrfFor(r), s.roleFor(r)})
+	}{h.String(), sha256.Name, meta.Type, meta.Size, s.csrfFor(r), s.roleFor(r)})
 }
 
 func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
@@ -1132,7 +1125,7 @@ func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	note := ""
 	if truncated {
-		note = fmt.Sprintf("preview truncated at %s of %s", formatBytes(previewLimit), formatBytes(s.objectSize(r.Context(), h)))
+		note = fmt.Sprintf("preview truncated at %s of %s", formatBytes(previewLimit), formatBytes(s.objectMetaFor(r.Context(), h).Size))
 	}
 	s.render(w, "hexdump", struct {
 		Rows []dumpRow
@@ -1361,19 +1354,7 @@ func (s *Server) readPreview(ctx context.Context, d cas.Digest) ([]byte, bool, e
 
 // objectSize returns an object's size in bytes (0 when unavailable).
 func (s *Server) objectSize(ctx context.Context, d cas.Digest) int64 {
-	n, err := s.store.Size(ctx, d)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func (s *Server) objectType(ctx context.Context, d cas.Digest) string {
-	data, err := s.readN(ctx, d, typePrefixLimit)
-	if err != nil {
-		return ""
-	}
-	return index.EnvelopeType(data)
+	return s.objectMetaFor(ctx, d).Size
 }
 
 func (s *Server) csrfFor(r *http.Request) string {
