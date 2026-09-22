@@ -49,6 +49,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The library baseline is the documented Go 1.24 again: `go.mod` declares
   `go 1.24.0`, which required pinning the approved `golang.org/x/sys` dependency
   to the last release that does not itself require a newer toolchain.
+- The viewer's zero-inbound reachable reference state is renamed from `Head`
+  to `Root`, to avoid colliding with Git's HEAD concept in a store that already
+  uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
+  filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
+  now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
 
 ### Fixed
 

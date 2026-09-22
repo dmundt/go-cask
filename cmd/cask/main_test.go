@@ -143,7 +143,7 @@ func TestSeedPreview(t *testing.T) {
 	}
 	// A full eight-object block settles into a fixed inbound pattern: 0/1/2
 	// accumulate inbound edges from later in-block members, 3 is the root
-	// (Head: reachable, zero inbound), 4/5/6 are orphaned with inbound edges
+	// (Root: reachable, zero inbound), 4/5/6 are orphaned with inbound edges
 	// from later members, and 7 ends the block with no later sibling
 	// referencing it back (Detached). The second block (8-15) repeats the
 	// same pattern, since references never cross a block boundary.
@@ -183,8 +183,8 @@ func TestSeedPreview(t *testing.T) {
 		11: true,
 		15: false,
 	} {
-		if got := previewHeadOrdinal(ordinal); got != want {
-			t.Fatalf("previewHeadOrdinal(%d) = %v, want %v", ordinal, got, want)
+		if got := previewRootOrdinal(ordinal); got != want {
+			t.Fatalf("previewRootOrdinal(%d) = %v, want %v", ordinal, got, want)
 		}
 	}
 	for _, test := range []struct {

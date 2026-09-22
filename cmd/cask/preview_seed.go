@@ -22,13 +22,13 @@ const defaultPreviewObjectCount = 500
 const maxPreviewCount = 10000
 
 // previewBlockSize is the number of objects in one preview graph block. Each
-// block carries one Head root, orphan members with inbound edges, and one
+// block carries one Root, orphan members with inbound edges, and one
 // detached entry (cli.md §2).
 const previewBlockSize = 8
 
-// previewHeadOffset is the in-block offset of the reachable Head root: the
-// member no other member of its block references (previewHeadOrdinal).
-const previewHeadOffset = 3
+// previewRootOffset is the in-block offset of the reachable Root: the
+// member no other member of its block references (previewRootOrdinal).
+const previewRootOffset = 3
 
 // previewDetachedOffset is the in-block offset of the detached orphan: the last
 // member, which no later sibling references back (previewDetachedOrdinal).
@@ -177,7 +177,7 @@ func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 }
 
 // previewObjectReferences makes a preview block contain a reachable root at
-// previewHeadOffset (which doubles as a Head object: reachable with no inbound
+// previewRootOffset (which doubles as a Root object: reachable with no inbound
 // edge of its own), orphans with inbound references after it, and a detached
 // orphan (no inbound edge at all) at previewDetachedOffset.
 func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
@@ -200,12 +200,12 @@ func previewDetachedOrdinal(ordinal int) bool {
 	return ordinal%previewBlockSize == previewDetachedOffset
 }
 
-// previewHeadOrdinal reports whether ordinal seeds a Head preview object: it
-// is the reachable root of its preview block (offset previewHeadOffset) and,
+// previewRootOrdinal reports whether ordinal seeds a Root preview object: it
+// is the reachable root of its preview block (offset previewRootOffset) and,
 // because nothing in the block references a root, it also carries no inbound
 // edge.
-func previewHeadOrdinal(ordinal int) bool {
-	return ordinal%previewBlockSize == previewHeadOffset
+func previewRootOrdinal(ordinal int) bool {
+	return ordinal%previewBlockSize == previewRootOffset
 }
 
 func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) []byte {
@@ -290,7 +290,7 @@ func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceI
 			visit(reference)
 		}
 	}
-	for root := previewHeadOffset; root < len(digests); root += previewBlockSize {
+	for root := previewRootOffset; root < len(digests); root += previewBlockSize {
 		visit(digests[root])
 	}
 	return index, nil

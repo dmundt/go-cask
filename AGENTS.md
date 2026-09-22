@@ -164,7 +164,7 @@ Related specs that also constrain work in this repo:
   embedded technical viewer (simple/elegant/usable, dashboard-first,
   hypermedia-driven, nested Go templates + htmx, one scoped stylesheet,
   low-level object/blob inspection); defines the four reference states
-  (`Resolved`/`Head`/`Orphaned`/`Detached`, also summarized in
+  (`Resolved`/`Root`/`Orphaned`/`Detached`, also summarized in
   [README.md](README.md) "Viewer reference states").
 - `docs/design/viewer-brief.md` — the design brief for the viewer's next
   iteration (OpenDesign input, not a normative spec): extracted visual system,
