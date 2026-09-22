@@ -236,7 +236,8 @@ for filename in sorted(files):
         if re.match(r'^\s*(?:```|~~~)\s*(?:html|xml|svg)\b', line, re.I):
             errors.append(f'{filename}: HTML/XML/SVG code fences are not allowed')
     for match in list(inline.finditer(text)) + list(reference.finditer(text)):
-        target = (match.group('angled') or match.group('target') or '').strip()
+        groups = match.groupdict()
+        target = (groups.get('angled') or groups.get('target') or '').strip()
         parsed = urlsplit(target)
         if not parsed.path or parsed.scheme or parsed.netloc or target.startswith('#'):
             continue
