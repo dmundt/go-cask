@@ -1348,7 +1348,9 @@ func (s *Server) recomputeDigest(ctx context.Context, h cas.Digest) string {
 
 func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
-	w.Write(htmxJS)
+	if _, err := w.Write(htmxJS); err != nil {
+		slog.Error("viewer htmx write", "err", err)
+	}
 }
 
 func (s *Server) css(w http.ResponseWriter, r *http.Request) {
@@ -1415,11 +1417,6 @@ func (s *Server) readPreview(ctx context.Context, d cas.Digest) ([]byte, bool, e
 		return data[:previewLimit], true, nil
 	}
 	return data, false, nil
-}
-
-// objectSize returns an object's size in bytes (0 when unavailable).
-func (s *Server) objectSize(ctx context.Context, d cas.Digest) int64 {
-	return s.objectMetaFor(ctx, d).Size
 }
 
 func (s *Server) csrfFor(r *http.Request) string {

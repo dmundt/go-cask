@@ -2358,3 +2358,41 @@ func TestResponsesCarryHardeningHeaders(t *testing.T) {
 		}
 	}
 }
+
+// TestSortHeaderLabelsFollowTheActiveColumn pins the accessible name of every
+// sort control. An inactive column always sorts ascending on the next click,
+// so only the active column may announce a flip — a header that reads the
+// direction without first checking it owns the sort tells a screen reader the
+// opposite of what clicking it does.
+func TestSortHeaderLabelsFollowTheActiveColumn(t *testing.T) {
+	ts, srv := newTestServer(t)
+	ctx := context.Background()
+	data := tlvEnvelope("blob@1", []byte("sort-header"))
+	if err := srv.store.Put(ctx, sha256.Of(data), bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	viewer := login(t, ts, "viewer-tok")
+
+	// The reachability column is absent without a Reachability index, which
+	// this server has none of, so the six always-present columns are pinned.
+	columns := []string{"hash", "type", "size", "inbound references", "integrity", "written"}
+	for _, sorted := range []string{"hash", "size", "written"} {
+		resp, err := viewer.Get(ts.URL + "/viewer/objects?sort=" + sorted + "&dir=asc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := string(body)
+		for _, column := range columns {
+			want := "ascending"
+			if column == sorted {
+				want = "descending"
+			}
+			label := `aria-label="Sort ` + column + " " + want + `"`
+			if !strings.Contains(page, label) {
+				t.Errorf("sort=%s: missing %s", sorted, label)
+			}
+		}
+	}
+}
