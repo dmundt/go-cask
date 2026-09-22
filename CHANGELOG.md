@@ -8,7 +8,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No unreleased changes.
+## [v1.6.2] - 2026-09-22
+
+### Changed
+
+- Refined the embedded viewer into a denser VS Code-style workbench with flat
+  docked panels, compact type and table rhythm, quieter inspector/status
+  presentation, and consistent interactive states.
 
 ## [v1.6.1] - 2026-09-22
 
@@ -162,7 +168,9 @@ No unreleased changes.
 
 - Initial public design and prototype APIs.
 
-[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.6.2...HEAD
+[v1.6.2]: https://github.com/dmundt/go-cask/compare/v1.6.1...v1.6.2
+[v1.6.1]: https://github.com/dmundt/go-cask/compare/v1.6.0...v1.6.1
 [v1.6.0]: https://github.com/dmundt/go-cask/compare/v1.5.0...v1.6.0
 [v1.5.0]: https://github.com/dmundt/go-cask/compare/v1.4.6...v1.5.0
 [v1.4.6]: https://github.com/dmundt/go-cask/compare/v1.4.5...v1.4.6

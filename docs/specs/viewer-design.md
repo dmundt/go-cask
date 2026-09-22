@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v31
+version: v32
 ---
 
 # Viewer Design — go-cask
@@ -35,19 +35,20 @@ JavaScript is prototype-only and MUST NOT ship.
 
 ## 2. Visual system
 
-The viewer MUST reproduce the mockup's restrained technical-browser hierarchy
-through `internal/web/viewer.css`: a white/near-white surface, dark foreground,
-muted metadata, hairline borders, one green accent, system body font, and
-monospace hashes/numbers/bytes. The CSS file is the only viewer stylesheet
+The viewer MUST use a flat VS Code-style workbench hierarchy through
+`internal/web/viewer.css`: white workspace, near-white panel/header surfaces,
+dark foreground, muted metadata, hairline borders, one blue accent
+(`#007acc`), system body font, and monospace hashes/numbers/bytes. Panels
+must not use shadows, gradients, elevation, or card-like decoration. The CSS file is the only viewer stylesheet
 (coding-guidelines §4).
 
 | Token/metric | Contract |
 |---|---|
-| Top bar | 46px; `CA` mark, `go-cask` wordmark, and the build version as secondary text |
-| Filter bar | 47px; search, type, size, and integrity filters plus reset |
+| Top bar | 36px; `CA` mark, `go-cask` wordmark, and the build version as secondary text |
+| Filter bar | 36px; search, type, size, and integrity filters plus reset |
 | Main workspace | flexible object-list column and 440px inspector column; the inspector resizes natively through CSS |
 | Inspector bounds | 280px–560px visual range; fixed 440px default |
-| Object table | dense mono data, sticky header, content-sized digest/size/inbound/integrity/references/written columns, type fills remaining width |
+| Object table | fixed 26px dense mono rows, sticky 11px/600 muted header, content-sized digest/size/inbound/integrity/references/written columns, type fills remaining width |
 | Controls | one 28px height across form controls, actions, and pager; compact bordered pager/action controls; icon-sized history arrows stay 22px |
 | Narrow view | at ≤900px, document scrolls; list precedes full-width inspector; filters scroll horizontally |
 
@@ -57,12 +58,27 @@ tints, and focus indicators MUST follow the token values in
 CSS provides appearance only: every control, value, state label, and focusable
 target MUST remain semantic HTML.
 
+Neutral UI surfaces use a constrained VS Code-style palette: white surface,
+`#f3f3f3` panel/header and quiet hover, `#f8f8f8` workspace/disabled surface,
+`#e5e5e5` divider/disabled border, `#c8c8c8` control border, `#999999`
+secondary control border/scrollbar hover, and `#dddddd` pressed state. New
+gray values require a component-specific contrast justification.
+
+Controls use 26px buttons and 28px inputs/selects with 0–2px radii. Inspector
+metadata uses an 88px label column with an 8px value gap. Active
+tabs use only a 1px blue bottom indicator. Hover states remain subtle and
+non-animated apart from short background/border transitions; selection uses a
+muted blue background without text inversion. Hashes, identifiers, algorithm
+values, hexadecimal content, and byte views use the monospace stack.
+
 Interactive controls MUST take their size from the three-step control type
 scale (`--viewer-control` for 28px form controls, `--viewer-control-sm` for
 compact 22–28px controls, `--viewer-control-xs` for icon-sized controls) rather
 than inheriting the body font, which is sized for prose and overwhelms a 28px
 control. Status pills carry a faint outline derived from their own text colour
-(`color-mix` against `currentColor`), so each state keeps a single hue. The control font reset that normalises the user-agent font onto the
+(`currentColor`), so each state keeps a single hue; the outline itself stays
+transparent at rest and appears only through the state fill. The control font
+reset that normalises the user-agent font onto the
 shell font MUST stay at zero specificity (`:where(.viewer-shell) button, …`),
 because a specificity-bearing reset outranks every single-class component rule
 and silently discards the declared size.
