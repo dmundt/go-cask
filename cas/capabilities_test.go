@@ -1,0 +1,54 @@
+package cas_test
+
+import (
+	"testing"
+
+	"github.com/dmundt/go-cask/cas"
+	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	packfs "github.com/dmundt/go-cask/cas/backend/packfs"
+)
+
+// TestCapabilitiesOfFS pins fs.Backend as implementing every optional
+// maintenance interface: it exposes Clean, Size and ModTime with the exact
+// signatures Cleaner/Statter require.
+func TestCapabilitiesOfFS(t *testing.T) {
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cas.CapabilitiesOf(raw)
+	want := cas.Capabilities{Verify: true, Sweep: true, Clean: true, Stat: true}
+	if got != want {
+		t.Fatalf("CapabilitiesOf(fs) = %+v, want %+v", got, want)
+	}
+	var _ cas.Cleaner = raw
+	var _ cas.Statter = raw
+}
+
+// TestCapabilitiesOfMem pins mem.Backend as the minimal-interface reference:
+// it implements neither Cleaner nor Statter, so VerifyAll/Sweep (which need
+// only List/Get/Delete) are its only supported maintenance operations.
+func TestCapabilitiesOfMem(t *testing.T) {
+	got := cas.CapabilitiesOf(mem.New())
+	want := cas.Capabilities{Verify: true, Sweep: true, Clean: false, Stat: false}
+	if got != want {
+		t.Fatalf("CapabilitiesOf(mem) = %+v, want %+v", got, want)
+	}
+}
+
+// TestCapabilitiesOfPackfs pins packfs.Backend the same way as mem: it packs
+// several objects into one append-only file, so it has no per-object temp
+// scratch state to clean and no per-object mtime to report.
+func TestCapabilitiesOfPackfs(t *testing.T) {
+	raw, err := packfs.New(t.TempDir(), packfs.WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	got := cas.CapabilitiesOf(raw)
+	want := cas.Capabilities{Verify: true, Sweep: true, Clean: false, Stat: false}
+	if got != want {
+		t.Fatalf("CapabilitiesOf(packfs) = %+v, want %+v", got, want)
+	}
+}

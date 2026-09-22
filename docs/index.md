@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v14
+version: v15
 ---
 
 # go-cask Rules Index
@@ -15,7 +15,7 @@ version: v14
 | `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 + architecture boundary rule: backends stay storage-only; helper packages must not become implicit backends |
 | `cas/hash/sha256/` (the shipped client hasher) | [`cas-core.md`](specs/cas-core.md) §4.2 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
-| `cas/verifier.go`, `cas/verifier_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification is a separate maintenance layer above the storage contract |
+| `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification/sweep are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
 | `cas/verify/*` / `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification helpers are maintenance-only and must not redefine the storage model |
 | `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |

@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v55
+version: v56
 ---
 
 # CAS Core — go-cask
@@ -390,7 +390,7 @@ Keeps objects in `map[string][]byte` keyed by the **raw digest bytes** (`string(
 - **Contracts:** same `Backend` semantics as fs — idempotent `Put`; `Get` returns a reader the caller MUST close (missing → `ErrNotFound`); `Delete` no-op on missing; an absent digest rejected with `ErrInvalidDigest`; `List()` returns every stored digest.
 - **Buffering:** `Put` buffers the whole stream (`io.ReadAll`) through a context-checking reader, so a `Put` canceled mid-read stops and stores nothing (the same guarantee fs gets from its streaming copy); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`). With `WithMaxSize` the read is bounded to the remaining budget first, so an oversized `Put` is rejected without allocating past the cap.
 - **Concurrency:** `RWMutex` (the lock-free rename trick doesn't apply; still far faster than disk).
-- **Stats/listing:** implements `Backend.Stats` (`*cas.Stats`) and `List`, rebuilding digests from the map keys with `cas.NewDigest` (the empty key is skipped — `CheckDigest` makes it unreachable) and recomputing total bytes/object count each call — no desynchronized counter. No `Verify`/`GC`/`Prune` (fs-only, §4.11).
+- **Stats/listing:** implements `Backend.Stats` (`*cas.Stats`) and `List`, rebuilding digests from the map keys with `cas.NewDigest` (the empty key is skipped — `CheckDigest` makes it unreachable) and recomputing total bytes/object count each call — no desynchronized counter. No backend-native `Verify`/`GC`/`Prune`/`Clean`/`Size`/`ModTime` — but `cas.VerifyAll` and `cas.Sweep` (§4.11) work against it directly, since they need only the minimal `Backend` interface.
 - **Construction:** `memory.New(...)` (package `memory`, directory `cas/backend/mem`; optional `memory.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.
 
 ### 4.6 `Codec[T]` — serialization contract
@@ -477,11 +477,15 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 
 ### 4.11 Maintenance
 
-- **`Backend.Stats(ctx)`** → `*cas.Stats` (`TotalSize`, `ObjectCount`) with `String()` rendering `"N objects, M bytes"`; part of the `Backend` interface so **every backend** reports it (fs walks the tree; mem recomputes from its map). **There is no per-algorithm breakdown** — the core does not know which algorithm produced a digest (§4.2), so it cannot group objects by one; a client that needs that groups its own digests. `Verify`, `GC`, `Prune`, `Clean`, `Size` and the tree walk are fs-specific.
+- **`Backend.Stats(ctx)`** → `*cas.Stats` (`TotalSize`, `ObjectCount`) with `String()` rendering `"N objects, M bytes"`; part of the `Backend` interface so **every backend** reports it (fs walks the tree; mem recomputes from its map). **There is no per-algorithm breakdown** — the core does not know which algorithm produced a digest (§4.2), so it cannot group objects by one; a client that needs that groups its own digests.
 - **`cas.Verify(ctx, raw Backend, d Digest, hasher Hasher) error`** and **`(*cas.Verifier).Verify(ctx, d Digest) error`** — re-read the object and recompute its digest with the injected hasher, streaming so a large object is never buffered; they check `d` (`CheckDigest` + `hasher.Validate`) first and report `ErrDigestMismatch` when the stored bytes no longer digest to `d`. The filesystem backend still exposes `Verify(ctx, d, hasher)` as a thin compatibility wrapper that delegates to this shared verifier layer.
-- **`fs.Backend.GC(ctx, reachable map[string]bool) error`** — mark-and-sweep: deletes every object whose `d.String()` is not in `reachable`; the caller computes the reachable set.
-- **`fs.Backend.Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool) ([]Digest, error)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); returns the doomed digests, or the would-be-deleted set when `dryRun` is set. Detection/consistency in `consistency.md`.
-- **`fs.Backend.Clean(ctx, olderThan time.Duration) (int, error)`** — sweeps orphan temp files older than the threshold and returns the count.
+- **`cas.VerifyAll(ctx, raw Backend, hasher Hasher) (*Report, error)`** — the generic, backend-agnostic form: lists every digest and re-verifies each, collecting mismatches in `Report.Bad` instead of aborting on the first one (any other read failure still aborts, wrapped). Works against any `Backend`, including one that implements no maintenance methods of its own — it needs only `List` and `Get` (go-cask#137).
+- **`cas.Sweep(ctx, raw Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error)`** — the generic, backend-agnostic mark-and-sweep: deletes every listed digest absent from `reachable` (the caller computes the reachable set — `cas.Reachable` for one type, `cas/repo.Reachable` across several). `SweepOptions.MinAge > 0` restricts deletion to objects older than that age and requires the backend to implement `Statter` (`ErrUnsupported` otherwise); `SweepOptions.DryRun` reports the doomed set without deleting. Needs only `List` and `Delete`, so it works against any backend, including `packfs`, which has no backend-native GC/Prune of its own (go-cask#137).
+- **`cas.Capabilities` / `cas.CapabilitiesOf(raw Backend) Capabilities`** — reports which optional maintenance operations a backend supports. `Verify` and `Sweep` are always `true` (the two functions above need nothing beyond the minimal `Backend` interface); `Clean`/`Stat` report whether `raw` implements the optional `cas.Cleaner`/`cas.Statter` interfaces.
+- **`cas.Cleaner`** (`Clean(ctx, olderThan time.Duration) (int, error)`) and **`cas.Statter`** (`Size(ctx, d) (int64, error)`, `ModTime(ctx, d) (time.Time, error)`) — optional capability interfaces a backend opts into structurally; `fs.Backend` satisfies both, `mem.Backend` and `packfs.Backend` satisfy neither.
+- **`fs.Backend.GC(ctx, reachable map[string]bool) error`** — mark-and-sweep: deletes every object whose `d.String()` is not in `reachable`; the caller computes the reachable set. A faster, fs-native path than `cas.Sweep` for the common case; `cas.Sweep` is the documented cross-backend equivalent.
+- **`fs.Backend.Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool) ([]Digest, error)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); returns the doomed digests, or the would-be-deleted set when `dryRun` is set. Detection/consistency in `consistency.md`. A faster, fs-native path than `cas.Sweep(..., SweepOptions{MinAge: ...})`.
+- **`fs.Backend.Clean(ctx, olderThan time.Duration) (int, error)`** — sweeps orphan temp files older than the threshold and returns the count. fs-specific: "orphan scratch state" is not a concept the minimal `Backend` interface exposes, so there is no generic equivalent.
 
 ### 4.12 Shared reference layer: `gitlike` (NOT generic core)
 

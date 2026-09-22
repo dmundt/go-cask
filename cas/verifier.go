@@ -2,8 +2,55 @@ package cas
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
+
+// Report summarizes a VerifyAll run: how many objects were checked and which
+// digests failed verification.
+type Report struct {
+	// Checked is the number of objects VerifyAll examined.
+	Checked int
+	// Bad lists digests whose stored bytes no longer match their digest
+	// (ErrDigestMismatch). A digest that failed to read for any other
+	// reason aborts VerifyAll instead of being added here — Bad reports
+	// confirmed corruption, not "could not check".
+	Bad []Digest
+}
+
+// VerifyAll re-reads every object raw.List reports and recomputes its digest
+// with hasher, using only the minimal Backend interface (List, Get) — so it
+// works against any backend, including one that implements no maintenance
+// methods of its own. A concrete backend may still expose a faster
+// backend-native Verify; VerifyAll is the portable fallback every backend
+// supports (see Capabilities.Verify, which is always true).
+func VerifyAll(ctx context.Context, raw Backend, hasher Hasher) (*Report, error) {
+	if raw == nil {
+		return nil, fmt.Errorf("cas: verify all: nil backend")
+	}
+	if hasher == nil {
+		return nil, fmt.Errorf("cas: verify all: nil hasher")
+	}
+	digests, err := raw.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	report := &Report{}
+	for _, d := range digests {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		report.Checked++
+		if err := Verify(ctx, raw, d, hasher); err != nil {
+			if errors.Is(err, ErrDigestMismatch) {
+				report.Bad = append(report.Bad, d)
+				continue
+			}
+			return report, fmt.Errorf("cas: verify all %s: %w", d, err)
+		}
+	}
+	return report, nil
+}
 
 // Verifier performs integrity checks against a Backend using the caller's
 // Hasher. The storage model remains unchanged: identity and byte storage stay in
