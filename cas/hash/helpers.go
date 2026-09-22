@@ -32,7 +32,10 @@ func FormatDigest(name string, d cas.Digest) string {
 }
 
 // ParseDigest accepts either the algorithm-prefixed form or bare hex and then
-// validates the digest against the expected width.
+// validates the digest against the expected width. The returned error keeps the
+// underlying cause on the chain — both cas.ParseDigest and ValidateDigestSize
+// already wrap cas.ErrInvalidDigest — so a caller can still match the sentinel
+// with errors.Is while keeping the detail that explains the rejection.
 func ParseDigest(name, s string, size int) (cas.Digest, error) {
 	body, ok := strings.CutPrefix(s, name+":")
 	if !ok {
@@ -43,10 +46,10 @@ func ParseDigest(name, s string, size int) (cas.Digest, error) {
 	}
 	d, err := cas.ParseDigest(body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
+		return nil, fmt.Errorf("%q: %w", s, err)
 	}
 	if err := ValidateDigestSize(d, name, size); err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
+		return nil, fmt.Errorf("%q: %w", s, err)
 	}
 	return d, nil
 }

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/backend"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -32,7 +31,7 @@ func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
 	return io.ReadAll(rc)
 }
 
-func mustFS(t *testing.T, opts ...backend.Option) *Backend {
+func mustFS(t *testing.T, opts ...Option) *Backend {
 	s, err := New(t.TempDir(), opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -48,13 +47,13 @@ func TestFanOutLayouts(t *testing.T) {
 	}
 	cases := []struct {
 		name     string
-		opts     []backend.Option
+		opts     []Option
 		wantPath string
 	}{
-		{"flat", []backend.Option{WithFanOut(0), WithFanLevels(0)}, digest},
+		{"flat", []Option{WithFanOut(0), WithFanLevels(0)}, digest},
 		{"gitlike-default", nil, filepath.Join("a1", digest)},
-		{"deep-2-2", []backend.Option{WithFanOut(2), WithFanLevels(2)}, filepath.Join("a1", "a1", digest)},
-		{"wide-4-1", []backend.Option{WithFanOut(4), WithFanLevels(1)}, filepath.Join("a1a1", digest)},
+		{"deep-2-2", []Option{WithFanOut(2), WithFanLevels(2)}, filepath.Join("a1", "a1", digest)},
+		{"wide-4-1", []Option{WithFanOut(4), WithFanLevels(1)}, filepath.Join("a1a1", digest)},
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
@@ -68,14 +67,14 @@ func TestFanOutLayouts(t *testing.T) {
 
 func TestFanOutBounds(t *testing.T) {
 	for _, tc := range []struct {
-		opts []backend.Option
+		opts []Option
 		ok   bool
 	}{
-		{[]backend.Option{WithFanOut(0), WithFanLevels(0)}, true},
-		{[]backend.Option{WithFanOut(33), WithFanLevels(2)}, false},
-		{[]backend.Option{WithFanOut(64), WithFanLevels(1)}, true},
-		{[]backend.Option{WithFanOut(-1)}, false},
-		{[]backend.Option{WithFanLevels(-1)}, false},
+		{[]Option{WithFanOut(0), WithFanLevels(0)}, true},
+		{[]Option{WithFanOut(33), WithFanLevels(2)}, false},
+		{[]Option{WithFanOut(64), WithFanLevels(1)}, true},
+		{[]Option{WithFanOut(-1)}, false},
+		{[]Option{WithFanLevels(-1)}, false},
 	} {
 		_, err := New(t.TempDir(), tc.opts...)
 		if tc.ok && err != nil {
@@ -91,7 +90,7 @@ func TestLayoutEquivalence(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("the same bytes")
 	h := digestOf(content)
-	layouts := [][]backend.Option{
+	layouts := [][]Option{
 		nil,
 		{WithFanOut(0), WithFanLevels(0)},
 		{WithFanOut(2), WithFanLevels(2)},
@@ -116,7 +115,7 @@ func TestLayoutEquivalence(t *testing.T) {
 func TestPathRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	h := digestOf([]byte("path round trip"))
-	for _, opts := range [][]backend.Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
+	for _, opts := range [][]Option{nil, {WithFanOut(0), WithFanLevels(0)}, {WithFanOut(2), WithFanLevels(2)}, {WithFanOut(4), WithFanLevels(1)}} {
 		s := mustFS(t, opts...)
 		if err := s.Put(ctx, h, strings.NewReader("path round trip")); err != nil {
 			t.Fatal(err)
@@ -201,13 +200,13 @@ func TestFSPolicyAndSyncParentDirErrors(t *testing.T) {
 	if err := ValidateBase("."); err == nil {
 		t.Fatal("ValidateBase(\".\") should fail")
 	}
-	if err := EnsureBase(filepath.Join(t.TempDir(), "missing")); err != nil {
+	if err := EnsureBase(context.Background(), filepath.Join(t.TempDir(), "missing")); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureBase(""); err == nil {
+	if err := EnsureBase(context.Background(), ""); err == nil {
 		t.Fatal("EnsureBase(empty) should fail")
 	}
-	if err := CleanupTemp(filepath.Join(t.TempDir(), "missing")); err != nil {
+	if err := CleanupTemp(context.Background(), filepath.Join(t.TempDir(), "missing")); err != nil {
 		t.Fatal("CleanupTemp(missing) should treat missing path as harmless")
 	}
 	base := t.TempDir()
@@ -215,7 +214,7 @@ func TestFSPolicyAndSyncParentDirErrors(t *testing.T) {
 	if err := os.WriteFile(tempPath, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CleanupTemp(base); err != nil {
+	if err := CleanupTemp(context.Background(), base); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
@@ -251,11 +250,11 @@ func TestFSListIgnoresRootStray(t *testing.T) {
 func TestFSDigestPathClamp(t *testing.T) {
 	h := digestOf([]byte("clamp"))
 	cases := []struct {
-		opts []backend.Option
+		opts []Option
 	}{
-		{[]backend.Option{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk ends at 48
-		{[]backend.Option{WithFanOut(16), WithFanLevels(4)}}, // covers all 64 hex chars
-		{[]backend.Option{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
+		{[]Option{WithFanOut(16), WithFanLevels(3)}}, // 3rd chunk ends at 48
+		{[]Option{WithFanOut(16), WithFanLevels(4)}}, // covers all 64 hex chars
+		{[]Option{WithFanOut(8), WithFanLevels(8)}},  // many levels, digest exhausted
 	}
 	for _, tc := range cases {
 		s := mustFS(t, tc.opts...)
@@ -1041,7 +1040,7 @@ func TestDigestPathDepthBound(t *testing.T) {
 	}
 	h := digestOf([]byte("clamp me"))
 	digest := h.String() // 64 hex chars
-	for _, opts := range [][]backend.Option{
+	for _, opts := range [][]Option{
 		{WithFanOut(2), WithFanLevels(1)},
 		{WithFanOut(4), WithFanLevels(16)}, // 4 × 16 == MaxFanDepth exactly
 		{WithFanOut(64), WithFanLevels(1)},
@@ -1161,5 +1160,129 @@ func TestPutCreateTempExhausted(t *testing.T) {
 	}
 	if err := s.Put(ctx, h, strings.NewReader(string(content))); err == nil {
 		t.Fatal("Put must error when the temp-file namespace is exhausted")
+	}
+}
+
+// cancelAfterNErr wraps a context and reports cancellation from its nth Err
+// call on, so the mid-walk cancellation checks in Clean and CleanupTemp are
+// reached deterministically instead of racing a real cancel.
+type cancelAfterNErr struct {
+	context.Context
+	n     int
+	calls int
+}
+
+func (c *cancelAfterNErr) Err() error {
+	c.calls++
+	if c.calls >= c.n {
+		return context.Canceled
+	}
+	return nil
+}
+
+// TestCleanCancelsMidWalk covers Clean's per-entry context check: the sweep
+// stops with the caller's cancellation and reports it instead of finishing the
+// walk. err reports cancellation on its third call (the entry check, then the
+// first two walk entries).
+func TestCleanCancelsMidWalk(t *testing.T) {
+	s := mustFS(t)
+	base := s.base
+	if err := os.WriteFile(filepath.Join(base, "a.tmp"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "b.tmp"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &cancelAfterNErr{Context: context.Background(), n: 3}
+	if _, err := s.Clean(ctx, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Clean with a canceled sweep = %v, want context.Canceled", err)
+	}
+}
+
+// TestCleanupTempCancelsMidWalk covers the same per-entry check in CleanupTemp.
+func TestCleanupTempCancelsMidWalk(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "a.tmp"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "b.tmp"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &cancelAfterNErr{Context: context.Background(), n: 3}
+	if err := CleanupTemp(ctx, base); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CleanupTemp with a canceled sweep = %v, want context.Canceled", err)
+	}
+}
+
+// TestSweepsReportRemovalErrors covers the non-ErrNotExist removal branch of
+// both sweeps. Windows refuses to delete a file another handle holds open; a
+// platform that allows it simply removes the file and reports no error.
+func TestSweepsReportRemovalErrors(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+	base := s.base
+	locked := filepath.Join(base, "locked.tmp")
+	f, err := os.OpenFile(locked, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	cleanErr := func() error {
+		_, err := s.Clean(ctx, 0)
+		return err
+	}()
+	cleanupErr := CleanupTemp(ctx, base)
+	if runtime.GOOS == "windows" {
+		if cleanErr == nil {
+			t.Error("Clean must report a temp file it cannot remove")
+		}
+		if cleanupErr == nil {
+			t.Error("CleanupTemp must report a temp file it cannot remove")
+		}
+		return
+	}
+	if cleanErr != nil {
+		t.Errorf("Clean removed the open temp file, want nil: %v", cleanErr)
+	}
+	if cleanupErr != nil {
+		t.Errorf("CleanupTemp removed the open temp file, want nil: %v", cleanupErr)
+	}
+}
+
+// TestCleanUnstattableBase covers Clean's wrapped walk error, and
+// TestOpenWithRetryUnstattablePath covers openWithRetry's non-retryable branch:
+// a path the OS cannot even stat fails immediately instead of spinning through
+// the retry budget.
+func TestCleanUnstattableBase(t *testing.T) {
+	s := mustFS(t)
+	s.base = "bad\x00base"
+	if _, err := s.Clean(context.Background(), 0); err == nil {
+		t.Fatal("Clean over an unstattable base must error")
+	}
+}
+
+func TestOpenWithRetryUnstattablePath(t *testing.T) {
+	_, err := openWithRetry(func(string) (*os.File, error) { return nil, errors.New("boom") }, "bad\x00path")
+	if err == nil {
+		t.Fatal("openWithRetry over an unstattable path must error")
+	}
+}
+
+// TestEnsureBaseMkdirFailure covers EnsureBase's create error: a base below a
+// regular file cannot be created, and the failure is reported rather than
+// ignored. CleanupTemp covers the non-ErrNotExist walk error with the same
+// unstattable path shape.
+func TestEnsureBaseMkdirFailure(t *testing.T) {
+	ctx := context.Background()
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureBase(ctx, filepath.Join(file, "store")); err == nil {
+		t.Fatal("EnsureBase below a regular file must fail")
+	}
+	if err := CleanupTemp(ctx, "bad\x00base"); err == nil {
+		t.Fatal("CleanupTemp over an unstattable base must fail")
 	}
 }

@@ -20,8 +20,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +76,8 @@ func newApp(dir string) (*app, error) {
 }
 
 // readRef reads a ref file: the printable "sha256:hexdigest" form (or bare
-// hex).
+// hex). A missing file surfaces as io/fs.ErrNotExist; unreadable bytes or a
+// malformed digest surface as their own errors.
 func (a *app) readRef(path string) (cas.Digest, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -89,6 +93,23 @@ func (a *app) writeRef(path string, d cas.Digest) error {
 func (a *app) currentTree() (cas.Digest, error) { return a.readRef(a.index) }
 
 func (a *app) headCommit() (cas.Digest, error) { return a.readRef(a.head) }
+
+// headCommitOrAbsent reads HEAD and distinguishes "the store has no HEAD yet"
+// from "HEAD exists but cannot be read". Only a genuinely missing HEAD file
+// (or a zero digest) is absent — the first-commit case. An unreadable or
+// malformed HEAD is corruption, and callers must see it instead of silently
+// treating the store as empty.
+func (a *app) headCommitOrAbsent() (cas.Digest, bool, error) {
+	d, err := a.headCommit()
+	switch {
+	case err == nil:
+		return d, !d.IsZero(), nil
+	case errors.Is(err, iofs.ErrNotExist):
+		return nil, false, nil // no HEAD file yet: nothing committed
+	default:
+		return nil, false, fmt.Errorf("read HEAD: %w", err)
+	}
+}
 
 func objectPath(dir, h string) string {
 	return filepath.Join(dir, h[:2], h)
@@ -179,13 +200,17 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
 }
 
 // commit creates a Commit pointing at the current tree, with the previous
-// head as parent (if any), and advances HEAD.
+// head as parent (if any), and advances HEAD. The first commit has no parent
+// because HEAD is absent, not because reading it failed.
 func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
 	tree, err := a.currentTree()
 	if err != nil {
 		return nil, fmt.Errorf("no tree to commit (run add first): %w", err)
 	}
-	parent, _ := a.headCommit() // absent for the first commit
+	parent, _, err := a.headCommitOrAbsent()
+	if err != nil {
+		return nil, err
+	}
 	c := &gitlike.Commit{
 		Tree:    tree,
 		Parent:  parent,
@@ -205,9 +230,12 @@ func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
 
 // log walks the commit chain from HEAD backwards (parents only).
 func (a *app) log(ctx context.Context, out io.Writer) error {
-	h, err := a.headCommit()
+	h, present, err := a.headCommitOrAbsent()
 	if err != nil {
-		return fmt.Errorf("no commits yet: %w", err)
+		return err
+	}
+	if !present {
+		return errors.New("no commits yet")
 	}
 	for !h.IsZero() {
 		c, err := a.repo.Commits.Get(ctx, h)
@@ -267,29 +295,35 @@ func printable(d cas.Digest) string {
 // run executes the CLI and returns the process exit code. It is factored out
 // of main so the subcommand dispatch is testable. stdout/stderr are injectable
 // for tests; in production they are os.Stdout/os.Stderr.
+//
+// The optional -store flag is parsed by the standard flag package, so
+// -store=dir, --store dir, -h and an unknown flag all behave as they do in any
+// Go CLI. Parsing stops at the subcommand, which owns the remaining arguments;
+// a usage error is exit 2, a runtime error exit 1 (cli.md §3).
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) < 1 {
+	flags := flag.NewFlagSet("files", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("store", "./objects", "filesystem store directory")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, usage)
+		flags.PrintDefaults()
+	}
+	if err := flags.Parse(args); err != nil {
+		// flag has already reported the problem — or printed the usage for
+		// -h/-help — to stderr, so only the exit code is left to set.
+		return 2
+	}
+	rest := flags.Args()
+	if len(rest) < 1 {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	dir := "./objects"
-	if args[0] == "-store" {
-		if len(args) < 2 {
-			fmt.Fprintln(stderr, usage)
-			return 2
-		}
-		dir, args = args[1], args[2:]
-		if len(args) < 1 {
-			fmt.Fprintln(stderr, usage)
-			return 2
-		}
-	}
-	a, err := newApp(dir)
+	a, err := newApp(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	cmd, rest := args[0], args[1:]
+	cmd, rest := rest[0], rest[1:]
 	switch cmd {
 	case "add":
 		if len(rest) == 0 {

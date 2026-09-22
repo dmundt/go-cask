@@ -6,7 +6,7 @@ Package `cbor` provides a `Codec[T]` for the generic `cas` core using a small, e
 
 - `Codec[T]` is the public contract.
 - `NewRaw[T](encode, decode)` builds a compact direct CBOR codec from explicit conversion functions.
-- `New[T](next, encode, decode)` and `NewWithNext[T](next, encode, decode)` support wrapper-style chaining with an inner codec.
+- `New[T](next, encode, decode)` supports wrapper-style chaining with an inner codec.
 - `NewMap()` and `NewValue()` are the convenience constructors for the compact map/value model used by metadata and manifest payloads.
 - The implementation focuses on embedded metadata and manifests rather than a full RFC 8949 transport layer.
 

@@ -247,29 +247,29 @@ func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 	}
 }
 
-func TestHeadStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
+func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	ctx := context.Background()
 	raw, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	head := sha256.Of([]byte("head"))
+	root := sha256.Of([]byte("root"))
 	interior := sha256.Of([]byte("interior"))
 	orphaned := sha256.Of([]byte("orphaned"))
-	for _, digest := range []cas.Digest{head, interior, orphaned} {
+	for _, digest := range []cas.Digest{root, interior, orphaned} {
 		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	references := newTestReferenceIndex()
-	// head has no inbound edges recorded, so it can only be reachable as an
-	// entry point; interior gets an inbound edge from head, so it is
-	// reachable but not a Head.
-	references.Record(head, []cas.Digest{interior})
+	// root has no inbound edges recorded, so it can only be reachable as an
+	// entry point; interior gets an inbound edge from root, so it is
+	// reachable but not a Root.
+	references.Record(root, []cas.Digest{interior})
 	srv, err := New(raw, Config{
 		StartupToken: testStartupToken,
 		References:   references,
-		Reachability: testReachabilityIndex{head.String(): true, interior.String(): true},
+		Reachability: testReachabilityIndex{root.String(): true, interior.String(): true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -278,22 +278,22 @@ func TestHeadStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	t.Cleanup(ts.Close)
 	viewer := login(t, ts, testStartupToken)
 
-	page := getBody(t, viewer, ts.URL+"/viewer/objects?reach=head")
-	if !strings.Contains(page, shortDigest(head)) ||
+	page := getBody(t, viewer, ts.URL+"/viewer/objects?reach=root")
+	if !strings.Contains(page, shortDigest(root)) ||
 		strings.Contains(page, shortDigest(interior)) ||
 		strings.Contains(page, shortDigest(orphaned)) ||
-		!strings.Contains(page, `viewer-status-head">Head`) {
-		t.Fatalf("head filter = %.900q", page)
+		!strings.Contains(page, `viewer-status-root">Root`) {
+		t.Fatalf("root filter = %.900q", page)
 	}
 
-	page = getBody(t, viewer, ts.URL+"/viewer/objects?selected="+url.QueryEscape(head.String()))
-	if !strings.Contains(page, `viewer-status-head">Head`) {
-		t.Fatalf("head inspector state = %.900q", page)
+	page = getBody(t, viewer, ts.URL+"/viewer/objects?selected="+url.QueryEscape(root.String()))
+	if !strings.Contains(page, `viewer-status-root">Root`) {
+		t.Fatalf("root inspector state = %.900q", page)
 	}
 
 	withoutReferences, err := New(raw, Config{
 		StartupToken: testStartupToken,
-		Reachability: testReachabilityIndex{head.String(): true, interior.String(): true},
+		Reachability: testReachabilityIndex{root.String(): true, interior.String(): true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -301,8 +301,8 @@ func TestHeadStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	withoutReferencesServer := httptest.NewTLSServer(withoutReferences.Handler())
 	t.Cleanup(withoutReferencesServer.Close)
 	withoutReferencesViewer := login(t, withoutReferencesServer, testStartupToken)
-	if code := statusCode(t, withoutReferencesViewer, withoutReferencesServer.URL+"/viewer/objects?reach=head"); code != http.StatusBadRequest {
-		t.Fatalf("head filter without references = %d, want 400", code)
+	if code := statusCode(t, withoutReferencesViewer, withoutReferencesServer.URL+"/viewer/objects?reach=root"); code != http.StatusBadRequest {
+		t.Fatalf("root filter without references = %d, want 400", code)
 	}
 }
 
@@ -317,22 +317,22 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	head := sha256.Of([]byte("all-states-head"))                      // reachable, inbound 0
+	root := sha256.Of([]byte("all-states-root"))                      // reachable, inbound 0
 	resolved := sha256.Of([]byte("all-states-resolved"))              // reachable, inbound > 0
 	orphaned := sha256.Of([]byte("all-states-orphaned-with-inbound")) // unreachable, inbound > 0
 	detached := sha256.Of([]byte("all-states-detached"))              // unreachable, inbound 0
-	for _, digest := range []cas.Digest{head, resolved, orphaned, detached} {
+	for _, digest := range []cas.Digest{root, resolved, orphaned, detached} {
 		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	references := newTestReferenceIndex()
-	references.Record(head, []cas.Digest{resolved})
+	references.Record(root, []cas.Digest{resolved})
 	references.Record(resolved, []cas.Digest{orphaned})
 	srv, err := New(raw, Config{
 		StartupToken: testStartupToken,
 		References:   references,
-		Reachability: testReachabilityIndex{head.String(): true, resolved.String(): true},
+		Reachability: testReachabilityIndex{root.String(): true, resolved.String(): true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -346,7 +346,7 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 		digest cas.Digest
 		pill   string
 	}{
-		{"reachable", head, `viewer-status-head">Head`},
+		{"reachable", root, `viewer-status-root">Root`},
 		{"reachable", resolved, `viewer-status-reachable">Resolved`},
 		{"orphaned", orphaned, `viewer-status-orphaned">Orphaned`},
 		{"detached", detached, `viewer-status-detached">Detached`},
@@ -360,16 +360,16 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 	// reach= expected membership per digest. "orphaned" matches every
 	// unreachable row, including the Detached one (Detached is a stricter
 	// subset of Orphaned: it just wins pill priority); "reachable" matches
-	// every reachable row, including Head.
+	// every reachable row, including Root.
 	membership := map[string]map[string]bool{
-		"reachable": {head.String(): true, resolved.String(): true},
-		"head":      {head.String(): true},
+		"reachable": {root.String(): true, resolved.String(): true},
+		"root":      {root.String(): true},
 		"orphaned":  {orphaned.String(): true, detached.String(): true},
 		"detached":  {detached.String(): true},
 	}
 	for reach, want := range membership {
 		page := getBody(t, viewer, ts.URL+"/viewer/objects?reach="+reach)
-		for _, other := range []cas.Digest{head, resolved, orphaned, detached} {
+		for _, other := range []cas.Digest{root, resolved, orphaned, detached} {
 			shouldMatch := want[other.String()]
 			contains := strings.Contains(page, shortDigest(other))
 			if shouldMatch && !contains {
@@ -382,12 +382,12 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 	}
 
 	// The dropdown offers every state exactly once, in Resolved/Orphaned/
-	// Head/Detached order, and marks the active selection.
+	// Root/Detached order, and marks the active selection.
 	dropdown := getBody(t, viewer, ts.URL+"/viewer/objects?reach=detached")
 	for _, option := range []string{
 		`value="reachable"`,
 		`value="orphaned"`,
-		`value="head"`,
+		`value="root"`,
 		`value="detached" selected`,
 	} {
 		if !strings.Contains(dropdown, option) {

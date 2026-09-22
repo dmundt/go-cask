@@ -12,6 +12,9 @@ import (
 	stdfilter "github.com/dmundt/go-cask/cas/bloom/standard"
 )
 
+// A Guard must stay a drop-in cas.Backend for the backend it wraps.
+var _ cas.Backend = (*bloom.Guard)(nil)
+
 func TestGuardPutAddsDigestToFilter(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
@@ -20,7 +23,10 @@ func TestGuardPutAddsDigestToFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := cas.NewDigest([]byte("guard put"))
 	if err := guard.Put(ctx, d, io.NopCloser(bytes.NewReader([]byte("payload")))); err != nil {
 		t.Fatal(err)
@@ -42,7 +48,10 @@ func TestGuardExistsShortCircuitsOnNegativeBloomResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := cas.NewDigest([]byte("absent"))
 
 	ok, err := guard.Exists(ctx, d)
@@ -74,7 +83,10 @@ func TestGuardDeleteRemovesFromFilterWhenSupported(t *testing.T) {
 	ctx := context.Background()
 	raw := mem.New()
 	filter := &countingLikeFilter{present: map[string]bool{}}
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := cas.NewDigest([]byte("delete me"))
 	if err := guard.Put(ctx, d, io.NopCloser(bytes.NewReader([]byte("payload")))); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package flate
 
 import (
+	"compress/flate"
 	"errors"
 	"io"
 	"testing"
@@ -33,15 +34,41 @@ func TestHelperErrorBranches(t *testing.T) {
 	}, 0); err != nil {
 		t.Fatal("valid helper encode should succeed")
 	}
-	if _, err := decodeCompressed(jsoncodec.New[payload](), []byte("bad"), func(io.Reader) (io.ReadCloser, error) {
+	if _, err := decodeCompressed(jsoncodec.New[payload](), []byte("bad"), MaxDecodedBytes, func(io.Reader) (io.ReadCloser, error) {
 		return nil, errors.New("open boom")
 	}); err == nil {
 		t.Fatal("reader creation failure should propagate")
 	}
-	if _, err := decodeCompressed(jsoncodec.New[payload](), []byte("bad"), func(io.Reader) (io.ReadCloser, error) {
+	if _, err := decodeCompressed(jsoncodec.New[payload](), []byte("bad"), MaxDecodedBytes, func(io.Reader) (io.ReadCloser, error) {
 		return failingReadCloser{}, nil
 	}); err == nil {
 		t.Fatal("read failure should propagate")
+	}
+}
+
+// TestDecodeRejectsPayloadOverLimit pins the decompression ceiling: the stored
+// bytes are untrusted, so a payload that inflates past the limit is rejected
+// instead of allocated. The limit is passed explicitly so the test exercises
+// the boundary without materializing a gigabyte.
+func TestDecodeRejectsPayloadOverLimit(t *testing.T) {
+	next := jsoncodec.New[payload]()
+	blob, err := encodeCompressed(next, payload{Name: "expand me"}, func(w io.Writer, level int) (io.WriteCloser, error) {
+		return flate.NewWriter(w, level)
+	}, flate.DefaultCompression)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := next.Encode(payload{Name: "expand me"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := func(r io.Reader) (io.ReadCloser, error) { return flate.NewReader(r), nil }
+
+	if _, err := decodeCompressed(next, blob, int64(len(plain)), open); err != nil {
+		t.Fatalf("decode exactly at the ceiling = %v, want success", err)
+	}
+	if _, err := decodeCompressed(next, blob, int64(len(plain))-1, open); !errors.Is(err, ErrDecodedTooLarge) {
+		t.Fatalf("decode one byte over the ceiling = %v, want ErrDecodedTooLarge", err)
 	}
 }
 

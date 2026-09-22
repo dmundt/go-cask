@@ -88,12 +88,13 @@ type Preloader struct {
 }
 
 // NewPreloader starts workers goroutines (default 2 when workers <= 0)
-// preloading into cached.
-func NewPreloader(cached *CachedRepository, workers int) *Preloader {
+// preloading into cached. The workers run until Stop is called or ctx is
+// cancelled, so a caller's deadline reaches the background I/O.
+func NewPreloader(ctx context.Context, cached *CachedRepository, workers int) *Preloader {
 	if workers <= 0 {
 		workers = 2
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	p := &Preloader{cached: cached, jobs: make(chan cas.Digest, 64), cancel: cancel}
 	for i := 0; i < workers; i++ {
 		p.wg.Add(1)

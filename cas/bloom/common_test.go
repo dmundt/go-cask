@@ -1,6 +1,9 @@
 package bloom
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestValidateFalsePositiveRateEdgeCases(t *testing.T) {
 	for _, tc := range []struct {
@@ -52,7 +55,10 @@ func TestParametersEdgeCases(t *testing.T) {
 		{name: "tiny rate", expectedItems: 100, rate: 0.0001},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gotM, gotK := Parameters(tc.expectedItems, tc.rate)
+			gotM, gotK, err := Parameters(tc.expectedItems, tc.rate)
+			if err != nil {
+				t.Fatalf("Parameters(%d, %v) returned unexpected error: %v", tc.expectedItems, tc.rate, err)
+			}
 			if gotM == 0 || gotK <= 0 {
 				t.Fatalf("Parameters returned invalid dimensions: m=%d k=%d", gotM, gotK)
 			}
@@ -60,6 +66,44 @@ func TestParametersEdgeCases(t *testing.T) {
 				t.Fatalf("Parameters(0, %v) = (%d, %d), want (1, 1)", tc.rate, gotM, gotK)
 			}
 		})
+	}
+}
+
+func TestParametersRejectsUnrepresentableRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		expectedItems uint64
+		rate          float64
+	}{
+		{name: "unbounded items", expectedItems: 4e15, rate: 0.01},
+		{name: "just above ceiling", expectedItems: MaxBits / 2, rate: 0.01},
+		{name: "nan rate", expectedItems: 100, rate: math.NaN()},
+		{name: "zero rate", expectedItems: 100, rate: 0},
+		{name: "negative rate", expectedItems: 100, rate: -0.5},
+		{name: "rate above one", expectedItems: 100, rate: 1.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, k, err := Parameters(tc.expectedItems, tc.rate)
+			if err == nil {
+				t.Fatalf("Parameters(%d, %v) = (%d, %d), want error", tc.expectedItems, tc.rate, m, k)
+			}
+			if m != 0 || k != 0 {
+				t.Fatalf("Parameters(%d, %v) returned m=%d k=%d with an error, want zeros", tc.expectedItems, tc.rate, m, k)
+			}
+		})
+	}
+}
+
+func TestParametersStaysWithinCeiling(t *testing.T) {
+	m, k, err := Parameters(MaxBits/10, 0.01)
+	if err != nil {
+		t.Fatalf("Parameters at the ceiling returned unexpected error: %v", err)
+	}
+	if m > MaxBits {
+		t.Fatalf("Parameters returned m=%d, above MaxBits=%d", m, MaxBits)
+	}
+	if k <= 0 {
+		t.Fatalf("Parameters returned k=%d, want a positive probe count", k)
 	}
 }
 

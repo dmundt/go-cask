@@ -14,7 +14,7 @@ The backend layer is the non-generic byte store beneath the typed `cas` API. It 
 - Hash choice stays with the caller via `cas.Hasher`.
 - Codec choice stays with the caller via `Codec[T]`.
 - A backend does not define object identity semantics or serialization format.
-- Backends use the shared [options.go](./options.go) contract: each backend defines its own `With...` setters, all returning the common `backend.Option` type.
+- Backends use the [options.go](./options.go) contract: each backend declares its own `With...` setters and its own concrete `Option` type over its own config struct, so a cross-backend option is a compile-time error. The package itself shares only streaming plumbing (`ContextReader`, `WriteAll`, `ReadAll`, `ReadPayload`).
 
 ## Typical use
 

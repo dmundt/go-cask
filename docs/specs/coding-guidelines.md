@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go with a minimal dependency policy, scoped viewer CSS, no viewer script beyond vendored htmx, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v21
+version: v22
 ---
 
 # Go Coding Guidelines — go-cask
@@ -20,7 +20,7 @@ Applies to all Go code (`cas/`, `internal/`, `cmd/`). Complements `cas-core.md` 
 
 - `gofmt` before every commit; `goimports` grouping (std, third-party, local).
 - Naming: mixedCaps; exported uppercase; initialisms keep case (`ID`, `URL`, `API`, `HTTP`); no package-name stutter (`cas.Store`, never `cas.CasStore`); short names for short scopes.
-- Constructors mirror how many primary types the package exposes: plain `New()` when one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.New[T]`, `binary.New(...)`, `binary.NewRaw(...)`, `lru.New`, `sha256.New`) or the package's primary `Store` even with others (`cas.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructor type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`). Keep `New*` for real (non-trivial) setup; prefer a useful zero value otherwise. Codec wrappers share the same stack pattern: inner codec first, outer transform second — no ad hoc constructor variants. Every codec that wraps another codec MUST accept the inner codec as `next` in its constructor (`next`-first chaining is the default pattern; the direct/raw constructors are the exception).
+- Constructors mirror how many primary types the package exposes: plain `New()` when one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.NewRaw[T]()`, `binary.New(...)`, `binary.NewRaw(...)`, `lru.New`, `sha256.New`) or the package's primary `Store` even with others (`cas.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructor type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`). Keep `New*` for real (non-trivial) setup; prefer a useful zero value otherwise. Codec wrappers share the same stack pattern: inner codec first, outer transform second — no ad hoc constructor variants. Every codec that wraps another codec MUST accept the inner codec as `next` in its constructor (`next`-first chaining is the default pattern; the direct/raw constructors are the exception).
 - Errors: handle or explicitly ignore (`_ =` + comment why). Wrap with `%w`; unwrap with `errors.Is`/`errors.As`. Sentinel errors for expected conditions; never string-match. Never `panic` in library code — only in `main` for unrecoverable setup.
 - `context.Context` MUST be the first parameter of any I/O-capable/cancellable function; never store it in a struct — derive and pass down.
 - Prefer small consumer-side interfaces; "accept interfaces, return concrete types."

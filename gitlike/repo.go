@@ -104,20 +104,32 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 	return r.repo.Tags.Get(ctx, d)
 }
 
+// envelopeHeaderLimit bounds the prefix read to learn an object's type. The
+// envelope header is [version u8][uvarint typeLen][type] — a few dozen bytes for
+// any realistic type name — so this is generous while keeping the read cost of
+// resolution independent of the object's size.
+const envelopeHeaderLimit = 1 << 10
+
 // ResolveAny determines the object's type from the self-describing envelope
 // and dispatches to the matching typed resolver. It returns
 // (nil, ErrUnknownType) for an object type this repository does not know.
+//
+// Only the envelope header is read to learn the type — never the payload — so
+// resolving a large Blob costs one bounded read, not a copy of the object.
 func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
 	rc, err := r.repo.raw.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	data, err := io.ReadAll(rc)
-	rc.Close()
+	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
 	if err != nil {
-		return nil, fmt.Errorf("gitlike: read object for resolution: %w", err)
+		_ = rc.Close() // the read error is the one worth reporting
+		return nil, fmt.Errorf("gitlike: read object header for resolution: %w", err)
 	}
-	typ, err := parseType(data)
+	if err := rc.Close(); err != nil {
+		return nil, fmt.Errorf("gitlike: close object header reader: %w", err)
+	}
+	typ, err := parseType(prefix)
 	if err != nil {
 		return nil, err
 	}

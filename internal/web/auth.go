@@ -30,7 +30,7 @@ func (s *Server) require(role string, next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusUnauthorized) // empty body
 			return
 		}
-		if sess.Role != role && !roleAllows(sess.Role, role) {
+		if !roleAllows(sess.Role, role) {
 			w.WriteHeader(http.StatusForbidden) // empty body
 			return
 		}
@@ -44,10 +44,28 @@ func (s *Server) require(role string, next http.HandlerFunc) http.HandlerFunc {
 }
 
 // roleAllows reports whether the session role satisfies the required role
-// (admin ⊃ operator ⊃ viewer).
+// (admin ⊃ operator ⊃ viewer). A role always allows itself, so callers compare
+// through this function alone rather than testing equality first.
 func roleAllows(sessionRole, required string) bool {
-	rank := map[string]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
-	return rank[sessionRole] >= rank[required]
+	return roleRank(sessionRole) >= roleRank(required)
+}
+
+// roleRank ranks one role on the viewer's authorization ladder. An unknown
+// role ranks 0, below every named role, so a role the viewer does not know
+// never satisfies a route. Two unknown-but-equal roles still compare equal:
+// the rank comparison is what the ladder means, and a session carrying an
+// unknown role cannot reach any of the routes the viewer registers.
+func roleRank(role string) int {
+	switch role {
+	case RoleViewer:
+		return 1
+	case RoleOperator:
+		return 2
+	case RoleAdmin:
+		return 3
+	default:
+		return 0
+	}
 }
 
 // --- login ---

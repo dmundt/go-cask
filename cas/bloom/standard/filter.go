@@ -40,7 +40,10 @@ func NewFilter(cfg Config) (*Filter, error) {
 	if err := bloom.ValidateFalsePositiveRate(cfg.FalsePositiveRate, "bloom/standard"); err != nil {
 		return nil, err
 	}
-	m, k := bloom.Parameters(cfg.ExpectedItems, cfg.FalsePositiveRate)
+	m, k, err := bloom.Parameters(cfg.ExpectedItems, cfg.FalsePositiveRate)
+	if err != nil {
+		return nil, fmt.Errorf("bloom/standard: %w", err)
+	}
 	bits := make([]uint64, (m+63)/64)
 	return &Filter{bits: bits, k: k, m: m, hash: bloom.ResolveIndexHash(cfg.Hash)}, nil
 }

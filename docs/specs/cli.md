@@ -45,7 +45,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges, and
   alternating root-reachable graph segments. Each eight-object graph block
-  includes a Head root (reachable, no inbound edges), orphans with inbound
+  includes a Root (reachable, no inbound edges), orphans with inbound
   edges, and a Detached orphan entry (unreachable, no inbound edges), so the
   viewer can demonstrate all four reference states. Consecutive objects cycle
   through zero, one, two, and three outgoing references, producing varied

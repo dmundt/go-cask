@@ -1,9 +1,3 @@
-// Package packfs provides an opt-in append-only backend for the CAS core.
-//
-// This package stores objects by digest in pack files and keeps an index of
-// payload offsets. It is a storage backend, not a helper layer and not a codec;
-// callers use it when they need large-object packing while the typed object
-// model still lives in the core cas and application packages.
 package packfs
 
 import (
@@ -14,10 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,40 +24,32 @@ import (
 
 var errInvalidPackRecord = errors.New("invalid pack record")
 
-// Config is the opt-in pack backend configuration.
+// config is the pack backend's own configuration. Option is a func over this
+// concrete type, so only packfs options can configure packfs.
 type config struct {
 	enabled        bool
 	packMaxBytes   int64
 	packMaxEntries int
 }
 
+// Option configures a packfs Backend.
+type Option func(*config)
+
 // WithEnabled turns packfile mode on. Packfiles are intentionally opt-in.
-func WithEnabled() backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.enabled = true
-		}
-	}
+func WithEnabled() Option {
+	return func(c *config) { c.enabled = true }
 }
 
 // WithPackMaxBytes rotates the active pack when the append-only file reaches the
 // configured size. 0 means unlimited.
-func WithPackMaxBytes(maxBytes int64) backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.packMaxBytes = maxBytes
-		}
-	}
+func WithPackMaxBytes(maxBytes int64) Option {
+	return func(c *config) { c.packMaxBytes = maxBytes }
 }
 
 // WithPackMaxEntries rotates the active pack once the in-memory index grows past
 // the configured count. 0 means unlimited.
-func WithPackMaxEntries(maxEntries int) backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.packMaxEntries = maxEntries
-		}
-	}
+func WithPackMaxEntries(maxEntries int) Option {
+	return func(c *config) { c.packMaxEntries = maxEntries }
 }
 
 type packRecord struct {
@@ -79,26 +66,153 @@ type manifest struct {
 	Entries map[string]packRecord `json:"entries"`
 }
 
-var (
-	mkdirAllFn  = os.MkdirAll
-	openFileFn  = os.OpenFile
-	readFileFn  = os.ReadFile
-	writeFileFn = os.WriteFile
-	renameFn    = os.Rename
-	openFn      = os.Open
-	loosePutFn  = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error {
+// ops holds every filesystem and loose-backend operation a pack backend
+// performs. New installs the real implementations (realOps); a nil field falls
+// back to the real one, so a zero-value ops — and a Backend built directly by a
+// test — still behaves correctly. The seams live on the struct rather than in
+// package-level variables, so two backends in one process cannot interfere and
+// tests may run in parallel.
+type ops struct {
+	mkdirAll   func(string, os.FileMode) error
+	openFile   func(string, int, os.FileMode) (*os.File, error)
+	readFile   func(string) ([]byte, error)
+	writeFile  func(string, []byte, os.FileMode) error
+	rename     func(string, string) error
+	open       func(string) (*os.File, error)
+	createTemp func(string, string) (*os.File, error)
+
+	loosePut    func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error
+	looseGet    func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error)
+	looseExists func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error)
+	looseDelete func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error
+	looseList   func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error)
+	looseStats  func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error)
+}
+
+// realOps returns the operations a pack backend uses in production.
+func realOps() ops {
+	return ops{
+		mkdirAll:   os.MkdirAll,
+		openFile:   os.OpenFile,
+		readFile:   os.ReadFile,
+		writeFile:  os.WriteFile,
+		rename:     os.Rename,
+		open:       os.Open,
+		createTemp: os.CreateTemp,
+		loosePut: func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error {
+			return loose.Put(ctx, d, r)
+		},
+		looseGet: func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) {
+			return loose.Get(ctx, d)
+		},
+		looseExists: func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) {
+			return loose.Exists(ctx, d)
+		},
+		looseDelete: func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error { return loose.Delete(ctx, d) },
+		looseList:   func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) { return loose.List(ctx) },
+		looseStats:  func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) { return loose.Stats(ctx) },
+	}
+}
+
+// mkdirAll creates dir and any missing parent, or calls the installed seam.
+func (o ops) mkdirAllDo(dir string, perm os.FileMode) error {
+	if o.mkdirAll == nil {
+		return os.MkdirAll(dir, perm)
+	}
+	return o.mkdirAll(dir, perm)
+}
+
+// openFileDo opens or creates a file, or calls the installed seam.
+func (o ops) openFileDo(name string, flag int, perm os.FileMode) (*os.File, error) {
+	if o.openFile == nil {
+		return os.OpenFile(name, flag, perm)
+	}
+	return o.openFile(name, flag, perm)
+}
+
+// readFileDo reads a whole file, or calls the installed seam.
+func (o ops) readFileDo(name string) ([]byte, error) {
+	if o.readFile == nil {
+		return os.ReadFile(name)
+	}
+	return o.readFile(name)
+}
+
+// writeFileDo writes a whole file, or calls the installed seam.
+func (o ops) writeFileDo(name string, data []byte, perm os.FileMode) error {
+	if o.writeFile == nil {
+		return os.WriteFile(name, data, perm)
+	}
+	return o.writeFile(name, data, perm)
+}
+
+// renameDo renames a file, or calls the installed seam.
+func (o ops) renameDo(oldPath, newPath string) error {
+	if o.rename == nil {
+		return os.Rename(oldPath, newPath)
+	}
+	return o.rename(oldPath, newPath)
+}
+
+// openDo opens a file for reading, or calls the installed seam.
+func (o ops) openDo(name string) (*os.File, error) {
+	if o.open == nil {
+		return os.Open(name)
+	}
+	return o.open(name)
+}
+
+// createTempDo creates a scratch file, or calls the installed seam.
+func (o ops) createTempDo(dir, pattern string) (*os.File, error) {
+	if o.createTemp == nil {
+		return os.CreateTemp(dir, pattern)
+	}
+	return o.createTemp(dir, pattern)
+}
+
+// putDo, getDo, existsDo, deleteDo, listDo and statsDo forward to the installed
+// loose-backend seam.
+func (o ops) putDo(ctx context.Context, loose *fsbackend.Backend, d cas.Digest, r io.Reader) error {
+	if o.loosePut == nil {
 		return loose.Put(ctx, d, r)
 	}
-	looseGetFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) {
+	return o.loosePut(ctx, loose, d, r)
+}
+
+func (o ops) getDo(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (io.ReadCloser, error) {
+	if o.looseGet == nil {
 		return loose.Get(ctx, d)
 	}
-	looseExistsFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) {
+	return o.looseGet(ctx, loose, d)
+}
+
+func (o ops) existsDo(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) (bool, error) {
+	if o.looseExists == nil {
 		return loose.Exists(ctx, d)
 	}
-	looseDeleteFn = func(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error { return loose.Delete(ctx, d) }
-	looseListFn   = func(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) { return loose.List(ctx) }
-	looseStatsFn  = func(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) { return loose.Stats(ctx) }
-)
+	return o.looseExists(ctx, loose, d)
+}
+
+func (o ops) deleteDo(ctx context.Context, loose *fsbackend.Backend, d cas.Digest) error {
+	if o.looseDelete == nil {
+		return loose.Delete(ctx, d)
+	}
+	return o.looseDelete(ctx, loose, d)
+}
+
+func (o ops) listDo(ctx context.Context, loose *fsbackend.Backend) ([]cas.Digest, error) {
+	if o.looseList == nil {
+		return loose.List(ctx)
+	}
+	return o.looseList(ctx, loose)
+}
+
+func (o ops) statsDo(ctx context.Context, loose *fsbackend.Backend) (*cas.Stats, error) {
+	if o.looseStats == nil {
+		return loose.Stats(ctx)
+	}
+	return o.looseStats(ctx, loose)
+}
 
 // Backend is a filesystem-backed pack extension. It stores objects in a loose
 // backend and optionally mirrors them into an append-only pack file plus a small
@@ -115,22 +229,29 @@ type Backend struct {
 	packEntries  int
 	cfg          config
 	index        map[string]packRecord
+	op           ops
 }
 
 var _ cas.Backend = (*Backend)(nil)
 
 // New creates a pack-backed filesystem backend. It stays opt-in: without
 // WithEnabled, the backend behaves like the regular loose fs backend.
-func New(basePath string, opts ...backend.Option) (*Backend, error) {
+func New(basePath string, opts ...Option) (*Backend, error) {
+	return newWithOps(basePath, realOps(), opts...)
+}
+
+// newWithOps is New with the operation seams supplied, so in-package tests can
+// exercise construction failures without package-level state.
+func newWithOps(basePath string, op ops, opts ...Option) (*Backend, error) {
 	cfg := config{packMaxBytes: 64 << 20, packMaxEntries: 10000}
 	for _, o := range opts {
 		o(&cfg)
 	}
-	if err := mkdirAllFn(basePath, 0o755); err != nil {
+	if err := op.mkdirAllDo(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack base: %w", err)
 	}
 	packDir := filepath.Join(basePath, "packs")
-	if err := mkdirAllFn(packDir, 0o755); err != nil {
+	if err := op.mkdirAllDo(packDir, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack dir: %w", err)
 	}
 	loose, err := fsbackend.New(filepath.Join(basePath, "loose"))
@@ -144,6 +265,7 @@ func New(basePath string, opts ...backend.Option) (*Backend, error) {
 		manifestPath: filepath.Join(packDir, "index.json"),
 		cfg:          cfg,
 		index:        make(map[string]packRecord),
+		op:           op,
 	}
 	if err := b.loadIndex(); err != nil {
 		return nil, err
@@ -155,9 +277,9 @@ func New(basePath string, opts ...backend.Option) (*Backend, error) {
 }
 
 func (b *Backend) loadIndex() error {
-	data, err := readFileFn(b.manifestPath)
+	data, err := b.op.readFileDo(b.manifestPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("cas: read pack manifest: %w", err)
@@ -203,7 +325,7 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 	}
 	info, err := os.Lstat(rec.Pack)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
 		return false, err
@@ -224,10 +346,10 @@ func (b *Backend) persistIndex() error {
 		return fmt.Errorf("cas: encode pack manifest: %w", err)
 	}
 	tmp := b.manifestPath + ".tmp"
-	if err := writeFileFn(tmp, data, 0o644); err != nil {
+	if err := b.op.writeFileDo(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("cas: write pack manifest: %w", err)
 	}
-	return renameFn(tmp, b.manifestPath)
+	return b.op.renameDo(tmp, b.manifestPath)
 }
 
 func (b *Backend) ensurePackFile() error {
@@ -235,7 +357,7 @@ func (b *Backend) ensurePackFile() error {
 		return nil
 	}
 	path := filepath.Join(b.packDir, "current.pack")
-	f, err := openFileFn(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+	f, err := b.op.openFileDo(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: open pack file: %w", err)
 	}
@@ -255,7 +377,7 @@ func (b *Backend) rotatePackFile() error {
 		b.packFile = nil
 	}
 	path := filepath.Join(b.packDir, fmt.Sprintf("pack-%d.pack", time.Now().UnixNano()))
-	f, err := openFileFn(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+	f, err := b.op.openFileDo(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: rotate pack file: %w", err)
 	}
@@ -266,7 +388,10 @@ func (b *Backend) rotatePackFile() error {
 	return nil
 }
 
-func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
+// appendPackRecord appends one length-prefixed record for d to the active pack
+// file, copying payloadSize bytes from r. The caller owns r and must position
+// it at the payload start.
+func (b *Backend) appendPackRecord(ctx context.Context, d cas.Digest, r io.Reader, payloadSize int64) error {
 	if !b.cfg.enabled {
 		return nil
 	}
@@ -286,7 +411,6 @@ func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
 	if err := b.ensurePackFile(); err != nil {
 		return err
 	}
-	payloadSize := int64(len(data))
 	payloadOffset, err := b.packFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return fmt.Errorf("cas: seek pack file: %w", err)
@@ -295,10 +419,10 @@ func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
 	binary.BigEndian.PutUint32(header[0:4], uint32(len(d)))
 	copy(header[4:4+len(d)], d)
 	binary.BigEndian.PutUint64(header[4+len(d):4+len(d)+8], uint64(payloadSize))
-	if _, err := b.packFile.Write(header); err != nil {
+	if err := backend.WriteAll(ctx, b.packFile, header); err != nil {
 		return fmt.Errorf("cas: write pack header: %w", err)
 	}
-	if _, err := b.packFile.Write(data); err != nil {
+	if _, err := io.Copy(b.packFile, backend.ContextReader{Ctx: ctx, R: io.LimitReader(r, payloadSize)}); err != nil {
 		return fmt.Errorf("cas: write pack payload: %w", err)
 	}
 	b.packBytes += int64(4+len(d)+8) + payloadSize
@@ -307,8 +431,10 @@ func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
 	return b.persistIndex()
 }
 
-// Put stores an object in the loose backend and mirrors it into a pack file when
-// the pack layer is enabled.
+// Put stores an object under d. The write streams: with packing disabled the
+// reader goes straight to the loose backend, and with packing enabled it is
+// spooled to a scratch file first so the length-prefixed pack record can be
+// written without ever holding the object in memory.
 func (b *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -319,17 +445,48 @@ func (b *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	data, err := io.ReadAll(backend.ContextReader{Ctx: ctx, R: r})
-	if err != nil {
-		return fmt.Errorf("cas: read object: %w", err)
+	if !b.cfg.enabled {
+		return b.op.putDo(ctx, b.loose, d, r)
 	}
-	if err := loosePutFn(ctx, b.loose, d, bytes.NewReader(data)); err != nil {
+
+	spool, size, err := b.spoolObject(ctx, r)
+	if err != nil {
 		return err
 	}
-	if !b.cfg.enabled {
-		return nil
+	defer func() {
+		// Best effort: the spool file is scratch. Close before removing it,
+		// because Windows cannot delete an open file.
+		_ = spool.Close()
+		_ = os.Remove(spool.Name())
+	}()
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("cas: rewind spool file: %w", err)
 	}
-	return b.appendPackRecord(d, data)
+	if err := b.op.putDo(ctx, b.loose, d, spool); err != nil {
+		return err
+	}
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("cas: rewind spool file: %w", err)
+	}
+	return b.appendPackRecord(ctx, d, spool, size)
+}
+
+// spoolObject copies r to a scratch file in the pack directory and returns that
+// file positioned at its end, plus the number of bytes copied.
+func (b *Backend) spoolObject(ctx context.Context, r io.Reader) (*os.File, int64, error) {
+	f, err := b.op.createTempDo(b.packDir, ".put-*.tmp")
+	if err != nil {
+		return nil, 0, fmt.Errorf("cas: create spool file: %w", err)
+	}
+	size, err := io.Copy(f, backend.ContextReader{Ctx: ctx, R: r})
+	if err != nil {
+		// Best effort: the spool file is scratch and the copy error is primary.
+		// Close before removing — Windows cannot delete an open file.
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, 0, fmt.Errorf("cas: spool object: %w", err)
+	}
+	return f, size, nil
 }
 
 // Get returns bytes from the pack index when present; otherwise it falls back to the loose backend.
@@ -353,7 +510,7 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 				return nil, persistErr
 			}
 		} else {
-			f, err := openFn(rec.Pack)
+			f, err := b.op.openDo(rec.Pack)
 			if err != nil {
 				return nil, fmt.Errorf("cas: open pack file: %w", err)
 			}
@@ -363,7 +520,7 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 			}, nil
 		}
 	}
-	return looseGetFn(ctx, b.loose, d)
+	return b.op.getDo(ctx, b.loose, d)
 }
 
 // Exists reports whether the object is present in either the pack index or the loose backend.
@@ -391,7 +548,7 @@ func (b *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 			return true, nil
 		}
 	}
-	return looseExistsFn(ctx, b.loose, d)
+	return b.op.existsDo(ctx, b.loose, d)
 }
 
 type sectionReadCloser struct {
@@ -414,7 +571,7 @@ func (b *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if err := looseDeleteFn(ctx, b.loose, d); err != nil {
+	if err := b.op.deleteDo(ctx, b.loose, d); err != nil {
 		return err
 	}
 	delete(b.index, string(d))
@@ -431,7 +588,7 @@ func (b *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	looseList, err := looseListFn(ctx, b.loose)
+	looseList, err := b.op.listDo(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +605,10 @@ func (b *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 		seen[key] = struct{}{}
 		out = append(out, cas.NewDigest([]byte(key)))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	// Hex order equals byte order, so comparing raw digest bytes sorts exactly
+	// like comparing the rendered hex strings — without allocating two strings
+	// per comparison.
+	slices.SortFunc(out, func(a, b cas.Digest) int { return bytes.Compare(a, b) })
 	return out, nil
 }
 
@@ -460,11 +620,11 @@ func (b *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.pruneMissingPackEntriesLocked()
-	stats, err := looseStatsFn(ctx, b.loose)
+	stats, err := b.op.statsDo(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}
-	looseList, err := looseListFn(ctx, b.loose)
+	looseList, err := b.op.listDo(ctx, b.loose)
 	if err != nil {
 		return nil, err
 	}

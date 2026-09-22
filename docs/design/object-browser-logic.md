@@ -29,7 +29,7 @@ The server creates a normalized record for each listed digest:
 | Size | `Backend.Size` | Exact byte count |
 | Integrity | session-scoped verification result | `not verified` until verified |
 | Written | filesystem object modification time | Physical metadata rendered as whole `m ago`/`h ago`/`d ago`; not object creation time |
-| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied; also the source for the `Head`/`Detached` refinement of Reachability below |
+| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied; also the source for the `Root`/`Detached` refinement of Reachability below |
 | Reachability | optional viewer `ReachabilityIndex` | Host-supplied root reachability; only source for Orphaned |
 | Timestamp | filesystem object modification time | Same physical metadata in UTC RFC 3339; not object creation time |
 
@@ -43,7 +43,7 @@ envelope type when readable.
 
 Integrity and reachability are separate facts rendered as separate pills in one
 status cell: an integrity pill (`not-verified` / `verified` / `corrupt`) and a
-reference-state pill for reachable objects with no inbound reference (`Head`)
+reference-state pill for reachable objects with no inbound reference (`Root`)
 or unreachable objects (`Orphaned`, or `Detached` when they also have no
 inbound reference). Interior reachable objects (reachable, inbound > 0) show
 only the integrity pill. The inspector renders both axes as pills. Verify stays

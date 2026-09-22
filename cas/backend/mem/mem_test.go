@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 
@@ -375,13 +376,13 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 			binary.BigEndian.PutUint16(data[8:10], snapshotVersion+1)
 		}},
 		{"count too large", func(data []byte) {
-			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt())+1)
+			binary.BigEndian.PutUint64(data[10:18], uint64(math.MaxInt)+1)
 		}},
 		{"large count with missing records", func(data []byte) {
-			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt()))
+			binary.BigEndian.PutUint64(data[10:18], uint64(math.MaxInt))
 		}},
 		{"declared total too large", func(data []byte) {
-			binary.BigEndian.PutUint64(data[18:26], uint64(maxInt())+1)
+			binary.BigEndian.PutUint64(data[18:26], uint64(math.MaxInt)+1)
 		}},
 		{"digest size zero", func(data []byte) {
 			binary.BigEndian.PutUint64(data[26:34], 0)
@@ -390,7 +391,7 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 			binary.BigEndian.PutUint64(data[26:34], maxSnapshotDigestSize+1)
 		}},
 		{"payload size too large", func(data []byte) {
-			binary.BigEndian.PutUint64(data[34:42], uint64(maxInt())+1)
+			binary.BigEndian.PutUint64(data[34:42], uint64(math.MaxInt)+1)
 		}},
 		{"payload exceeds declared total", func(data []byte) {
 			binary.BigEndian.PutUint64(data[18:26], 0)
@@ -407,6 +408,31 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 				t.Fatal("Restore must reject malformed metadata")
 			}
 		})
+	}
+}
+
+// TestMemoryBackendRestoreDoesNotAllocateDeclaredPayloadSize pins the bounded
+// payload read: the record header is untrusted input, so a payloadSize far
+// larger than the archive must fail on the bytes that are actually missing
+// instead of allocating the declared amount.
+func TestMemoryBackendRestoreDoesNotAllocateDeclaredPayloadSize(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	digest := sha256.Of([]byte("value"))
+	if err := source.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	data := append([]byte(nil), snapshot.Bytes()...)
+	binary.BigEndian.PutUint64(data[18:26], 1<<40) // declared total
+	binary.BigEndian.PutUint64(data[34:42], 1<<40) // payload size
+
+	err := New().Restore(ctx, bytes.NewReader(data))
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("Restore(oversized declared payload) error = %v, want io.ErrUnexpectedEOF", err)
 	}
 }
 

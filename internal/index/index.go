@@ -5,11 +5,8 @@ package index
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
 	"io"
-	"sort"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
@@ -33,13 +30,6 @@ func Paginate[T any](items []T, offset, limit int) []T {
 	return items[offset:hi]
 }
 
-// envelopeVersion mirrors the current TLV envelope version (cas-core §8
-// decision 1, cas.envelopeVersion).
-const envelopeVersion byte = 1
-
-// errNotEnvelope reports bytes that do not start with a valid envelope header.
-var errNotEnvelope = errors.New("index: not an envelope header")
-
 // EnvelopeType extracts the versioned type name ("blob@1", …) from the
 // self-describing TLV envelope (cas-core §8 decision 1) on a best-effort
 // basis; "" when the bytes are not an envelope (raw objects have no type).
@@ -48,34 +38,16 @@ var errNotEnvelope = errors.New("index: not an envelope header")
 //
 // Only the header — [version][uvarint typeLen][type] — is inspected, so a
 // truncated object prefix (the viewer reads a bounded prefix, not the whole
-// object) still yields its type. This mirrors the header logic of the
-// unexported cas parser; keep the two in step.
+// object) still yields its type. It delegates the header layout to
+// cas.EnvelopeType, which owns the format, and reports that parser's error as
+// the absent type: an unreadable header is exactly what an untyped object
+// looks like to a best-effort sniff.
 func EnvelopeType(data []byte) string {
-	typ, err := envelopeType(data)
+	typ, err := cas.EnvelopeType(data)
 	if err != nil {
 		return ""
 	}
 	return typ
-}
-
-func envelopeType(data []byte) (string, error) {
-	if len(data) < 1 || data[0] != envelopeVersion {
-		return "", errNotEnvelope
-	}
-
-	typeLen, n := binary.Uvarint(data[1:])
-	if n <= 0 {
-		return "", errNotEnvelope
-	}
-	off := 1 + n
-	if typeLen == 0 || typeLen > uint64(len(data)-off) {
-		return "", errNotEnvelope
-	}
-	name := string(data[off : off+int(typeLen)])
-	if !strings.Contains(name, "@") {
-		name += "@1" // legacy unversioned type name
-	}
-	return name, nil
 }
 
 // Entry is the immutable metadata used by the viewer query path. Keeping the
@@ -159,6 +131,6 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 	for typ := range types {
 		s.Types = append(s.Types, typ)
 	}
-	sort.Strings(s.Types)
+	slices.Sort(s.Types)
 	return s, nil
 }

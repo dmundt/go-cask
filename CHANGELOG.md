@@ -8,6 +8,78 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `cas.EnvelopeType` returns an object's versioned type name from its envelope
+  header alone, so callers that only need to know what an object is (the viewer
+  index, `gitlike` resolution) read a bounded prefix instead of buffering the
+  whole object.
+- `gob.NewRaw[T]()` builds a gob codec with no inner codec; `gob.New[T](next)`
+  now takes the inner codec explicitly.
+- `cas/backend` shares `WriteAll`, `ReadAll` and `ReadPayload` between backend
+  implementations; `ReadPayload` sizes its buffer from the bytes that are
+  actually present rather than from a declared header length.
+- `flate`, `gzip` and `zlib` expose `MaxDecodedBytes` and `ErrDecodedTooLarge`,
+  and `bloom/persistent.Filter` exposes `IsMapped` (Windows never memory-maps).
+- `lru.Cache.CachedStore()` reaches the wrapped lazy-loading store for observers
+  (metrics, key lookups) without touching the cache's recency bookkeeping.
+
+### Changed
+
+- Backend options are typed per backend (`fs.Option`, `mem.Option`,
+  `packfs.Option`). The shared `backend.Option` accepted any configuration
+  struct, so an option built for one backend compiled against another and
+  silently did nothing; that is now a compile error.
+- `bloom.NewGuard` reports nil arguments as an error instead of panicking, and
+  the advisory filter contract is the exported `bloom.Filter`.
+- `bloom.Parameters` returns an error and refuses a filter larger than the
+  documented ceiling instead of panicking inside `make`.
+- `bloom.Guard.Exists` rejects an absent digest with `cas.ErrInvalidDigest`, like
+  the concrete backends, instead of reporting it as absent.
+- `bloom/persistent.Filter.Close` is idempotent, and using a closed filter is a
+  safe no-op (`Contains` reports false) rather than touching unmapped memory.
+- `memory.CachedStore.Preload` and `Warmup` report every failure joined with
+  `errors.Join`, and `OnNew` may now be installed at any time.
+- `lru.Cache` no longer embeds `memory.CachedStore`: it exposes the methods it
+  owns rather than the wrapped type's entire method set, and reaches the wrapped
+  store only through `CachedStore()`.
+- `gitlike.NewPreloader` and `fs.EnsureBase`/`fs.CleanupTemp` take a
+  `context.Context`, so background preloading and large temporary-file sweeps
+  honour the caller's cancellation.
+- The library baseline is the documented Go 1.24 again: `go.mod` declares
+  `go 1.24.0`, which required pinning the approved `golang.org/x/sys` dependency
+  to the last release that does not itself require a newer toolchain.
+- The viewer's zero-inbound reachable reference state is renamed from `Head`
+  to `Root`, to avoid colliding with Git's HEAD concept in a store that already
+  uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
+  filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
+  now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
+
+### Fixed
+
+- The viewer's object browser returns 500 when the store-wide metadata snapshot
+  fails instead of panicking on a nil row slice.
+- Malformed CBOR payloads (oversized or overflowing declared lengths) return an
+  error rather than panicking or attempting an impossible allocation.
+- Snapshot restore derives its payload buffer from the bytes actually present,
+  so a crafted archive header can no longer demand an enormous allocation.
+- `gitlike` resolution reads only the envelope header and reports a failed
+  close; a large blob is no longer buffered twice just to learn its type.
+- Cache prefetching is bounded in concurrency, visits each digest at most
+  once, and no longer inherits a request-scoped caller context's
+  cancellation — its own `prefetchTimeout` is the only thing that can cut it
+  short, so a prefetch launched from a handler is no longer killed the
+  instant the handler returns.
+- `flate`, `gzip` and `zlib` stop inflating at `MaxDecodedBytes` (1 GiB) and
+  return `ErrDecodedTooLarge`, so a small stored payload can no longer expand
+  without limit.
+- `fs.ValidateBase` rejects parent-traversal roots (`..`), which previously let
+  `CleanupTemp` delete temporary files outside the store.
+- The example HTTP surface's GC handler no longer races on its in-memory size
+  index and no longer panics when collecting stats fails.
+- CLI runtime store failures exit with code 1 instead of being reported as usage
+  errors (exit code 2).
+
 ## [v1.6.5] - 2026-09-22
 
 ### Added

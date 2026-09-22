@@ -19,6 +19,7 @@ The counting filter stores counts in those positions, and `Contains` is true onl
 ## Policy
 
 - counter widths are configurable as 4, 8 or 16 bits
+- sizes are bounded by `bloom.MaxBits`; because each bit costs a 32-bit counter, a filter at that ceiling holds `MaxBits*4` bytes, so shard large key spaces instead of sizing one filter to the limit
 - `Contains` returns true only when every chosen slot has a non-zero count
 - the filter is still advisory; it does not replace the real CAS store or reachability graph
 - `counting.Config.Hash` lets callers replace the default index hash without changing the CAS digest semantics
