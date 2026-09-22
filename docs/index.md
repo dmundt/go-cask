@@ -21,6 +21,7 @@ version: v13
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6 |
 | `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
+| `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) |
