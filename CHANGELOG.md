@@ -8,16 +8,23 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
+No unreleased changes.
 
-- Added a subtle gray separator between the object table and inspector,
-  matching the viewer's existing border system.
+## [v1.6.0] - 2026-09-22
+
+### Added
+
 - `cask web` accepts `-hash-algo sha256|sha512|sha512_256`; the selected
   algorithm is shown in object metadata.
+
+### Changed
+
 - Viewer digest parsing and verification use the configured `cas.Hasher`
   instead of assuming SHA-256.
 - Viewer object routes use `/dump` for the HTML byte dump and `/verify` for
   bulk verification.
+- Added a subtle gray separator between the object table and inspector,
+  matching the viewer's existing border system.
 
 ## [v1.5.0] - 2026-09-21
 
@@ -147,6 +154,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial public design and prototype APIs.
 
 [Unreleased]: https://github.com/dmundt/go-cask/compare/v1.5.0...HEAD
+[v1.6.0]: https://github.com/dmundt/go-cask/compare/v1.5.0...v1.6.0
 [v1.5.0]: https://github.com/dmundt/go-cask/compare/v1.4.6...v1.5.0
 [v1.4.6]: https://github.com/dmundt/go-cask/compare/v1.4.5...v1.4.6
 [v1.4.5]: https://github.com/dmundt/go-cask/compare/v1.4.4...v1.4.5
