@@ -523,7 +523,13 @@ func (s *Backend) Verify(ctx context.Context, d cas.Digest, hasher cas.Hasher) e
 	return cas.Verify(ctx, s, d, hasher)
 }
 
-// GC performs mark-and-sweep garbage collection.
+// GC performs mark-and-sweep garbage collection: every addressable digest not
+// present in reachable is deleted. reachable MUST already be the complete,
+// transitively-closed set of live digests (every object still needed, not
+// just entry-point roots) — GC never follows References() itself. Passing
+// only roots silently deletes anything they reference; use cas.Reachable (or
+// an equivalent typed walk over Object[T].References()) to expand roots into
+// the reachable set first.
 func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
 	digests, err := s.List(ctx)
 	if err != nil {
@@ -545,12 +551,14 @@ func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
 	return nil
 }
 
-// Prune deletes objects not reachable from roots AND older than minAge.
-func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Duration, dryRun bool) ([]cas.Digest, error) {
-	reachable := make(map[string]bool, len(roots))
-	for _, r := range roots {
-		reachable[r.String()] = true
-	}
+// Prune deletes objects absent from reachable AND older than minAge (age
+// gives a concurrent writer's fresh, not-yet-referenced objects a grace
+// period). Like GC, reachable MUST already be the complete,
+// transitively-closed set of live digests — Prune never follows
+// References() itself. Passing only entry-point roots silently deletes
+// everything they reference; use cas.Reachable (or an equivalent typed walk)
+// to expand roots into the reachable set first.
+func (s *Backend) Prune(ctx context.Context, reachable map[string]bool, minAge time.Duration, dryRun bool) ([]cas.Digest, error) {
 	digests, err := s.List(ctx)
 	if err != nil {
 		return nil, err

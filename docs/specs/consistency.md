@@ -50,10 +50,10 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 Removes **unreachable** objects older than a threshold (restic-retention/S3-lifecycle style).
 
 - **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration.
-- **Operation:** `Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool)`: mark reachable from roots (§4); delete objects that are **unreachable AND older than `minAge`**; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
+- **Operation:** `Prune(ctx, reachable map[string]bool, minAge time.Duration, dryRun bool)`: `reachable` MUST already be the complete, transitively-closed set of live digests, computed by the caller (e.g. `cas.Reachable`, an app-side `Walker[T]`/`WalkGraph`) — Prune never expands references itself, exactly like `GC` (§4); delete objects absent from `reachable` AND older than `minAge`; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
 - **Grace period is the point:** unreachable-young objects are kept, giving a recovery window after a bad unpin/delete (restic "keep recent even if unreachable"; S3 noncurrent-version expiration).
 - **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL objects older than T regardless of reachability — removes history and can break references. Exists for legal/temp-data eviction; the one op that can destroy reachable data.
-- **Surface:** `cask` CLI `prune --min-age <dur> <roots...> [--dry-run]` (cli §2). The viewer exposes verify/GC admin actions (viewer-design §6); prune stays CLI-only — dry-run semantics and root-based interface don't fit the hypermedia surface. No HTTP surface (backend-architecture §1).
+- **Surface:** `cask` CLI `prune --min-age <dur> <roots...> [--dry-run]` (cli §2) — the CLI has no typed object model, so `<roots...>` is treated as the complete reachable set already (the CLI cannot expand a root into what it references; cli §2). The viewer exposes verify/GC admin actions (viewer-design §6); prune stays CLI-only — dry-run semantics and root-based interface don't fit the hypermedia surface. No HTTP surface (backend-architecture §1).
 
 ## 6. Detection algorithms — options and chosen defaults
 
@@ -81,7 +81,7 @@ Deliberately **not** adopted (yet): persisted refcounts, bloom filters as a GC o
 
 ## 8. Anti-over-engineering
 
-The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, hasher)` / `(*cas.Verifier).Verify(ctx, d)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything not reachable from roots), `Prune(roots, minAge)` (delete unreachable objects older than minAge, dry-run first), `Stats()` (what is stored: object count and total size — the core cannot group by algorithm, since a digest carries none).
+The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, hasher)` / `(*cas.Verifier).Verify(ctx, d)` (is this object intact?), `ScanRefs()` (which references dangle?), `GC(reachable)` (delete everything absent from a caller-supplied, already-expanded reachable set), `Prune(reachable, minAge)` (delete objects absent from that same reachable set AND older than minAge, dry-run first), `Stats()` (what is stored: object count and total size — the core cannot group by algorithm, since a digest carries none).
 
 - No persisted refcounts, no incremental GC index, no automatic background GC, no GC-vs-write transactions, no distributed coordination.
 - Content addressing + atomic writes remove most consistency problems by construction; the rest is detection + explicit reclamation.
@@ -99,7 +99,7 @@ The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, 
 - [x] Broken objects quarantined + audit-logged, never auto-"fixed"
 - [x] Dangling scan O(refs) lock-free; reported as diagnostics
 - [x] GC mark-and-sweep from app roots; explicit only
-- [x] `Prune(roots, minAge, dryRun)` keeps unreachable-young objects as grace; dry-run default
+- [x] `Prune(reachable, minAge, dryRun)` keeps unreachable-young objects as grace; dry-run default
 - [x] Sweeps racing live writers grace-gated (`--min-age`); forced `--min-age 0` is the dangerous variant (cas-core §6)
 - [x] Dangerous all-objects prune is admin + dry-run + confirm
 - [x] No refcounts, no automatic GC, no GC transactions (§8)
