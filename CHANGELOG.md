@@ -1,1475 +1,175 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+Notable user-facing changes only. Routine maintenance, test-only changes,
+internal refactors, and release preparation are omitted.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.5.0`. The stable
-`cas` surface is frozen; the `v1.x` line carries the three ratified
-first-cycle exceptions recorded in `versioning.md` §1.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+No unreleased changes.
+
+## [v1.6.0] - 2026-09-22
+
+### Added
+
+- `cask web` accepts `-hash-algo sha256|sha512|sha512_256`; the selected
+  algorithm is shown in object metadata.
+
+### Changed
+
+- Viewer digest parsing and verification use the configured `cas.Hasher`
+  instead of assuming SHA-256.
+- Viewer object routes use `/dump` for the HTML byte dump and `/verify` for
+  bulk verification.
+- Added a subtle gray separator between the object table and inspector,
+  matching the viewer's existing border system.
 
 ## [v1.5.0] - 2026-09-21
 
 ### Added
 
-- Every viewer response now carries `X-Content-Type-Options: nosniff`,
-  `X-Frame-Options: DENY`, and a deny-by-default Content Security Policy that
-  admits only the viewer's own origin. The viewer serves its stylesheet and its
-  single script itself, so nothing third-party has to be allowed; the policy
-  also refuses to be framed and stops a browser sniffing a hexdump into a
-  script. Recorded in viewer-security §10.
-
-- Viewer top-bar Verify control that verifies every stored object in one
-  request, records each result, and refreshes the object table under the
-  filters in effect. The sweep is audited as a single event with counts.
-- Viewer verification results now record when they ran, and the inspector's
-  Actions tab reports the last result with its timestamp and age.
-- Viewer object selection now auto-fills: the first visible row backs the
-  inspector on load and after a filter drops the previous selection, clicking
-  the selected row again clears the inspector, and following a reference link
-  selects the target row and pages the table to it.
-- Viewer inspector `‹`/`›` controls that step through the references followed
-  in the current session, replacing the inert Back link. An exhausted
-  direction renders disabled, stepping never extends the trail, and picking a
-  row in the object table starts a new trail at it.
-- Viewer top bar now shows the build's module version beside the wordmark, so
-  a screenshot identifies the binary that produced it. It is the string
-  `cask version` prints: a real version for released binaries and `dev` for a
-  build without a module version.
+- Secure viewer response headers and a restrictive content security policy.
+- Viewer-wide object verification with per-object results and audit records.
+- Automatic object selection, reference navigation, and inspector history.
+- Build version in the viewer top bar.
 
 ### Changed
 
-- The coverage gate now covers the viewer and the CLI. `internal/web` and
-  `cmd/cask` were measured but ungated; they are now held to 85% and 80%
-  respectively, thresholds they already clear. An untested viewer branch is a
-  security branch, so the viewer sits above the supporting tier.
-- `cask web` now logs the prominent startup warning viewer-security §4 requires
-  when `-allow-insecure-bind` exposes a non-loopback address, and says what the
-  override actually costs: session cookies are always `Secure`, so the address
-  has to be reached through a TLS-terminating proxy or the login will never
-  hold a session.
-- The viewer reads each object's type, size, and write time once instead of on
-  every request. All three are properties of the addressed bytes and can never
-  change for a digest, so they are memoized; previously every keystroke in the
-  search box re-read and re-stat the entire store.
-- The viewer's audit log now names the acting session on every audited line —
-  login, single-object verify, verify-all, and a rejected CSRF. The session id
-  is the cookie value, so the log carries a one-way digest prefix of it
-  instead: it correlates one session's actions without being replayable as a
-  credential.
-- Gave the status pills a faint 1px outline drawn from their own text colour,
-  so each keeps its hue and gains an edge without a second competing colour.
-- Settled every viewer control on one 28px height — the top-bar sweep, the
-  filter row, the inspector actions, and the pager — so nothing in a row
-  stands taller than its neighbours. The inspector's `‹`/`›` history arrows
-  stay 22px: they are icon controls, not buttons.
-- Moved the inspector's `Inbound` count out of `Storage` and into `State`,
-  after the reachability verdict. The count describes the reference axis, not
-  how the object is stored, so it now sits beside the verdict it qualifies.
-- Changed the inspector's active-tab underline from the green accent to the
-  dark gray the active tab label already uses. Green is the integrity tags'
-  colour, so an accent-coloured underline read as a status signal rather than
-  a position marker.
-- Made every viewer data column sortable: the `Inbound` count and the
-  `References` verdict now carry the same sort control as the other columns.
-- Split the viewer's `Status` column into `Integrity` and `References`. One
-  column carrying `Verified`/`Unverified`/`Corrupt` *and* `Orphaned` implied a
-  single verdict where there are two orthogonal axes, so `Orphaned` read as an
-  integrity result. Each axis now owns a column and an inspector row under its
-  own name, and the inbound-reference count is renamed `Inbound` so it does not
-  collide with the reachability column beside it.
-- The viewer inspector now restates a recorded verification every time the
-  object is selected, instead of showing the finding only in the response to
-  the click that produced it. The `Checked` metadata row is gone: the replayed
-  report already carries the check time and the reason, and the row's
-  "Never in this session" state said only that nobody had clicked yet.
-- Left-aligned the inspector's `Verify` and `Delete` buttons with the section
-  headings and metadata labels above them.
-- A reference in the inspector's References tab now highlights as a tinted
-  block on hover, matching the `Reset` control, rather than underlining.
-
-- Removed the viewer's own JavaScript: htmx is now the only script it serves.
-  The inspector resizes through the CSS `resize` property bounded by
-  `min-width`/`max-width`, and the full digest is a readonly field that acts as
-  a single selection target instead of a clipboard button. Keyboard resizing of
-  the inspector is lost; resize by dragging the inspector's left edge.
-- Reduced the inspector's full-digest font so the whole 64-character address
-  fits the inspector without truncation.
-- Merged the viewer inspector's Actions tab into Metadata: verify and delete
-  now sit beside the integrity state and its last check time, so acting on an
-  object no longer requires leaving the state that justifies the action. A
-  `tab=actions` URL normalises to `tab=metadata`.
-- Split the viewer's object-state filter along its two axes: `status` now
-  selects an integrity state (Verified, Unverified, Corrupt) and a separate
-  `reach` filter selects reachability, the two combining by AND. One control
-  carrying both axes offered combinations that describe nothing. The orphan
-  filter therefore moves from `status=orphaned` to `reach=orphaned`.
-- Restyled the top-bar Verify control as a neutral button matching the other
-  viewer controls instead of an accent-filled one.
-- Removed the viewer GC page; maintenance remains a deliberate CLI operation.
-- Made row selection persist while using inspector tabs, tightened object-table
-  geometry, and aligned viewer controls and inspector header with the mockup.
-- Added an Orphaned object-state filter when the viewer host supplies
-  root-based reachability; ordinary stores do not infer orphanhood.
-- Seeded preview graph roots now produce a deterministic mix of reachable and
-  orphaned objects.
-- `seed-preview` now writes every eighth object with tampered bytes inside a
-  root-reachable segment, so the viewer shows genuinely corrupt objects that
-  are not orphaned instead of faked status values.
-- The viewer inspector reports `Reachability` alongside `Status` whenever a
-  reachability source is configured; verification stays available for orphaned
-  objects, which are the likeliest to rot before reclamation.
-- Render viewer `Written` metadata with minute precision below one hour.
-- Format viewer byte quantities with IEC units while retaining the selected
-  object's exact byte count in Metadata → Storage → Size.
-- Added an optional host-provided reference source to the viewer. It renders
-  inbound counts in the object table and deterministic By/Out reference rows
-  without extending the `cas` core API.
-- Seeded preview objects now form a deterministic reference graph, so the
-  object table and References tab exercise zero through three reference
-  counts locally.
-- Added a bounded, keyboard-accessible draggable divider to the object browser;
-  its inspector width resets on reload and is never persisted.
-- Removed the obsolete viewer dashboard so the object browser is the only
-  operational workspace.
-- Rendered filesystem write metadata as `Written` elapsed time and aligned
-  truncated object digests and pager controls with the viewer mockup; added
-  its exact UTC RFC 3339 timestamp to object metadata.
-- Limited viewer hex inspection to the first 256 object bytes and made
-  truncation explicit.
-- Matched the viewer object-browser workspace to its visual reference with
-  pane-local scrolling, a pinned pager, dense table geometry, search styling,
-  and truthful integrity pills.
-- Added `cask seed-preview` to generate deterministic valid objects for local
-  object-browser previews.
-- Made the object browser the authenticated viewer landing.
-- Consolidated the viewer into one global document shell with composable page,
-  workspace, and fragment components; documented the concrete template tree.
-- Added URL-addressable filtering, sorting, pagination, selection, integrity
-  status, and htmx fragment updates to the embedded viewer object browser.
-- Defined the embedded viewer's visual master-detail object-browser contract:
-  one central scoped stylesheet, composable Go templates, and URL-driven
-  server-side filtering, sorting, selection, and pagination.
-- Moved the Impressum link from the documentation sidebar to a global footer
-  with copyright, privacy, and GitHub links.
-- Centered the website footer text and aligned desktop search with the header's
-  right edge at every viewport width.
-- Vendored Mermaid 10.9.5 for documentation diagrams instead of loading it
-  from a third-party CDN.
-- Added a concise privacy notice and disabled remote Google Fonts in favor of
-  system fonts.
-- Renamed the privacy notice URL from `/datenschutz/` to `/privacy/`, translated
-  the notice into English, and updated the footer label.
-- Expanded the privacy notice with data categories, processing purposes,
-  recipients, controller roles, technical necessity, and automated
-  decision-making disclosures.
-- Removed automatic GitHub repository metadata requests and non-essential
-  browser storage, restored OS-based light and dark themes without persistence,
-  set the canonical website URL, and made documentation builds reject an empty
-  Impressum secret.
-- Reduced CI usage by cancelling superseded runs, avoiding duplicate post-merge
-  and vulnerability scans, scoping CodeQL and platform checks to relevant
-  changes, and removing the redundant Linux amd64 matrix leg.
-- Hardened verification with fail-closed coverage parsing, non-mutating module
-  drift checks, an explicit build gate, shared security scanning, and tested CI
-  documentation-scope classification.
-- Standardized content-addressable terminology: use “store” for CASK and
-  concrete implementations, and “storage” for the general technique.
-- Marked shell automation as executable so verification and release commands
-  work when invoked directly on POSIX systems.
-- Pinned GitHub Actions and `govulncheck` revisions, limited Pages deployments
-  to documentation inputs, scan direct `main` changes with CodeQL, and use the
-  pinned Checkout v7 revision consistently.
-- Added CLI `verify --all` and viewer object-list/raw-route coverage.
-- Protected `main` with required reviews, resolved conversations, and CI/CodeQL
-  status checks; locked documentation dependencies; granted CI only read access;
-  and added Dependabot maintenance for Actions, Go, and Python dependencies.
-- Added a private vulnerability-reporting policy and pull-request validation
-  template matching the protected `main` workflow.
-- Documented required GitHub branch, merge, security, and workflow settings in
-  [`.github/AGENT.md`](.github/AGENT.md).
-- Documented the local signed-commit workflow required for protected pull
-  requests.
-- Required a full verification and coverage preflight before creating or
-  updating pull requests and before merging them.
-- Fixed persistent Bloom filter mmap lifecycle coverage and CodeQL Go builds.
-- Removed raw HTML from Markdown documentation and templates.
-- Added deterministic binary `mem.Backend.Snapshot` and `Restore` methods for
-  test fixtures, replay, and state preservation.
-- Added portable `cas/backend/snapshot` export and import helpers for moving
-  raw objects between compatible backends without expanding the backend
-  interface.
-- Audited exported Go APIs and completed identifier-led GoDoc for public
-  types, fields, constants, functions, and methods across the repository.
-- Regenerated `requirements-docs.lock` with Python 3.12 to pick up
-  `pymdown-extensions` 12.0.1, matching the website workflow's interpreter and
-  the `>=12.0,<13` constraint in `requirements-docs.txt`.
-- Applied tiered coverage gates: 90% for core storage packages and 80% for
-  supporting caches, codecs, hash clients, `gitlike`, and `internal/index`.
+- Viewer object browsing, filtering, sorting, reachability, references, and
+  inspection were consolidated into one object-browser workspace.
+- Viewer metadata reads are cached for immutable objects.
+- Viewer controls and inspector layout were tightened for consistent sizing
+  and keyboard-accessible navigation.
 
 ### Removed
 
-- Removed the viewer's separate cold-load object detail page. Nothing linked to
-  it, it described an object in a different shape than the inspector, and its
-  Verify button targeted a panel that its own markup did not contain.
-  `/viewer/objects/{hash}` stays a valid bookmark: it now redirects into the
-  browser with that object selected, so a shared link opens the one object view
-  the viewer has. An object that is not in the store still answers 404.
-- Removed the viewer's object delete action, its `POST
-  /viewer/objects/{hash}/delete` route, and the handler behind it. The viewer
-  inspects; it does not destroy. Deleting an object is a store-lifecycle
-  operation that belongs to the CLI, where it can be scripted, audited, and
-  paired with the roots a sweep needs. The route now returns 404, like the
-  dashboard and GC pages it joins.
-
-### Fixed
-
-- The documentation-integrity gate no longer reads Go code as Markdown. Its
-  link and raw-HTML rules ran over whole files including code, where a Go
-  generic call is shaped exactly like a link:
-  `binary.New[Blob](encodeBlob, decodeBlob)` was reported as a link to a
-  missing file named `encodeBlob,`. Fenced blocks and inline code spans are
-  now excluded before the prose rules apply.
-- The object table now says when an object's bytes cannot be read instead of
-  rendering an empty type cell, which was indistinguishable from an object that
-  carries no type. Such a row still matches no type filter, because its type is
-  unknown rather than blank.
-- Sorting the object table by integrity now reads verified, unverified, corrupt
-  ascending, sound state first, like every other column. The keys were compared
-  as text, so ascending led with the corrupt objects — the opposite of what the
-  arrow promised.
-- The object table, digest field, metadata values, pager and hexdump render
-  digits as tabular figures again. A shared rule asked for them, but each of
-  those elements later sets a `font` shorthand, which resets
-  `font-variant-numeric`, so digits in a column never lined up.
-- The inspector's panel switchers no longer claim the ARIA tab pattern. They
-  are navigation links, and `role="tablist"`/`role="tab"` promise arrow-key
-  roving and a linked `tabpanel` that the viewer cannot provide without the
-  JavaScript it forbids. `aria-current="page"` alone describes them correctly.
-- The login throttle now reclaims stale per-IP state on every attempt. The
-  sweep ran only when an address exhausted its budget, so a caller rotating
-  source addresses — the case the sweep exists for — never triggered it and
-  the state map grew by one entry per address. Active blocks still survive the
-  sweep.
-- The viewer now reclaims abandoned sessions. An expired session was deleted
-  only when something asked for it, so a session a browser simply walked away
-  from lived until the process exited, holding one verification record per
-  object it had checked. Login now sweeps every expired session first.
-- Updated the viewer inspector when a filter drops the selected object. The
-  server already fell back to the first surviving row, but a filter change
-  swapped the table alone, so the inspector kept describing an object no
-  longer listed. The list swap now carries the inspector out of band, and the
-  refresh URL embedded in it names the fallback instead of the dropped digest.
-- Kept the selected inspector tab when another object is picked in the table.
-  Switching tabs swapped only the inspector, so the table's row links still
-  carried the tab they were rendered with and threw the operator back to
-  Metadata on the next pick. A tab switch now re-renders the object list too,
-  under a `nav=stay` marker that leaves the visit trail alone.
-- Aligned the hexdump's "preview truncated" note with the inspector's other
-  secondary note, which it had been inheriting the body font size for.
-- Refreshed the open inspector when the top-bar Verify sweep runs. The sweep
-  changes the selected object's integrity too, but only the object table
-  subscribed to the status event, so the inspector kept showing the state from
-  before the sweep.
-- Restored the top inset between a corrupt report's explanation and its
-  expected/actual digest pair, which the later `.viewer-meta` margin shorthand
-  had been cancelling.
-- Unified the viewer's control font sizes on an explicit three-step type
-  scale. The inspector's `Verify`/`Delete` buttons and the top-bar `Verify`
-  sweep rendered at the 15.4px body size, which is set for prose: the control
-  font reset carried more specificity than the component rules, so a control
-  declaring its own size silently lost it. The reset is now specificity-free
-  and every control names a scale step.
-- Kept the viewer object table under the active filters when the top-bar
-  Verify sweep refreshes it: the refresh trigger now travels inside the
-  swapped list fragment, so its URL can no longer go stale.
-- Refreshed the viewer inspector's `Status` and `Checked` rows after an
-  on-demand verification, which previously updated only the result panel and
-  the object table.
-- Dropped the verified/corrupt counts from the top-bar Verify label; the
-  per-object status cells already report the outcome.
-- Replaced the viewer inspector's inert Back link, which only cleared the
-  selection, with working session-scoped history steps.
-- Removed the permanent horizontal scrollbar from the viewer object table: the
-  full-row click link overhung its cell by the difference between its own
-  inset and the cell padding.
-- Stopped the viewer's root-reachability overlay from hiding integrity results:
-  the object status cell now renders one pill per axis — an integrity pill plus
-  an additional `Orphaned` pill for orphans — instead of collapsing both axes
-  into a single state. A corrupt or verified orphan therefore reports both
-  facts at once rather than only the one that won a precedence contest. Both
-  remain matchable by the `corrupt` and `orphaned` status filters, and the
-  inspector renders both axes as pills.
-- Replaced the viewer's raw `corrupt: cas: digest mismatch: <hash>` action
-  result with a structured report: a state pill, a plain-language explanation,
-  and both the expected address and the digest the stored bytes actually hash
-  to, so a mismatch no longer shows one unlabeled hash.
-- Stopped the viewer object table from rendering a horizontal scrollbar when
-  the columns already fit.
-- Kept the selected object row highlighted when a verification or deletion
-  refreshes the viewer object table, by swapping the whole list element so its
-  refresh URL carries the current selection.
-- Restored the mockup's green Verified status pill in the viewer object table.
-- Refreshed the viewer object-table status cell immediately after an on-demand
-  integrity verification.
-- Made viewer session and deletion cookies unconditionally `Secure`, removing
-  the caller-controlled insecure path and covering the attributes over TLS in
-  integration tests.
-- Preserved line breaks in the injected Impressum address instead of collapsing
-  it into one line.
-- Fixed the Impressum page rendering the literal `{{ IMPRESSUM }}` placeholder
-  instead of the injected legal notice, by registering `mkdocs-macros-plugin`
-  and a `website/macros.py` hook that exposes the `IMPRESSUM` build-time
-  environment variable to the page.
-- Fixed unreadable website text in dark theme by applying scheme-aware colors to
-  headers, navigation, search, headings, and tables.
-- Made `scripts/release.sh --publish` resolve the Windows `gh.exe` command when
-  invoked through a POSIX shell.
-- Removed the stale custom-domain CNAME configuration so GitHub Pages uses its
-  documented default URL.
-- Made persistent Bloom filters flush and unmap registered Unix mmap views on
-  `Sync` and `Close`.
-- Made release publishing reject dirty worktrees and tags that do not identify
-  the current `main` commit.
-- Corrected the dependency policy to document the approved `golang.org/x/sys`
-  mmap support dependency instead of claiming a standard-library-only module.
+- Viewer dashboard, garbage-collection page, delete action, and custom
+  JavaScript. Destructive maintenance remains a CLI operation.
 
 ## [v1.4.6] - 2026-09-18
 
-### Added
-
-- Added a public documentation site under [website/](website/) with a developer-focused landing page, architecture overview, concepts pages, and MkDocs Material navigation.
-- Added [website/AGENT.md](website/AGENT.md) to keep published documentation consistent: accurate public API examples, Markdown-only page content, and a restrained developer-docs visual system. It is excluded from published MkDocs output.
-- Added the GitHub Pages workflow as [\.github/workflows/website.yml](.github/workflows/website.yml) and kept the generated `site/` output excluded from version control via [.gitignore](.gitignore).
-
 ### Changed
 
-- Kept the repo’s normative implementation guidance in [AGENTS.md](AGENTS.md) and narrowed the public docs to user-facing explanation, while clarifying that the source-of-truth docs remain in [docs/specs/](docs/specs/) and the public website is a companion layer.
-- Rebuilt the public site as task-oriented technical documentation: concise project fit, verified generic-core examples, clear boundaries between `cas` and `gitlike`, and focused concepts, recipes, FAQ, and specification pages.
-- Replaced visual landing-page components with a neutral, document-first design using strong typography, whitespace, thin dividers, and restrained accent colors.
-- Corrected the MkDocs edit links to target the real [website/](website/) documentation source directory.
-- Reorganized documentation navigation around adoption: start, concepts, guides,
-  reference, and project information.
-- Restored the persistent top bar, retaining its narrow-screen hamburger menu
-  while the desktop sidebar remains available.
-- Kept the GitHub repository link at the right side of the narrow top bar and
-  placed the compact search control beside it.
-- Restore Material's standard hamburger navigation below desktop width instead
-  of forcing a persistent narrow sidebar into the reading layout.
-- Match the narrow-screen navigation drawer to the neutral desktop sidebar
-  instead of showing Material's colored branding panel.
-- Removed overflow-prone top-level navigation tabs; the responsive sidebar and search remain available on every page.
-- Hide table-of-contents scrollbar controls while preserving normal wheel and trackpad navigation.
-- Removed the empty Material header bar so documentation opens directly into its navigation and content.
-- Removed Material footer controls and metadata from the bottom of published
-  documentation.
-- Matched the documentation search field background to the page surface.
-- Wrap long code lines in documentation blocks instead of displaying horizontal
-  scrollbars.
-- Restored natural browser table sizing after fixed column widths caused
-  comparison tables to overflow on narrower content panes.
-- Reformatted the object-envelope wire layout as readable fields instead of an
-  overflowing single-line code sample.
-
-### Fixed
-
-- Prevented the Go CI workflow from running for documentation-site-only changes;
-  the dedicated GitHub Pages workflow continues to build and deploy the site.
-- Removed the unsupported macOS arm64 runner from the CI platform matrix so the cross-platform validation set matches the repo's supported targets and avoids unnecessary OS churn in GitHub Actions.
-- Confirmed the MkDocs build passes with the Mermaid configuration enabled so the public docs site renders cleanly in CI.
-- Replaced repetitive Mermaid diagrams with one canonical, flat architecture data-flow diagram and removed HTML-based page layout from published Markdown.
-- Removed unsupported codec/hash claims, invalid sample API calls, placeholder benchmark content, and deployment-unsafe raw HTML documentation links.
+- Refined the published documentation site navigation, search, and responsive
+  layout.
 
 ## [v1.4.5] - 2026-09-17
 
-### Changed
-
-- Added a public integrity-verification layer in [cas/verifier.go](cas/verifier.go): `cas.Verify` and `cas.NewVerifier` keep object identity and storage semantics separate from corruption checks while preserving the backend contract as a raw `Digest -> bytes` layer.
-- Made the architecture boundary intentionally boring and stable: the generic core stays in [cas/](cas/), storage backends remain in [cas/backend/](cas/backend/), helper/manifest logic remains in [cas/pack/](cas/pack/), and higher-level object models stay layered on top instead of blurring into the core. This is now called out explicitly in [AGENTS.md](AGENTS.md) and [docs/index.md](docs/index.md) so future edits do not silently reintroduce boundary drift.
-- Centralized the repo guardrails in [scripts/verify.sh](scripts/verify.sh) and kept the local preflight path aligned with CI behavior.
-- Added release generation and publish support in [scripts/release.sh](scripts/release.sh) and [scripts/release-notes.sh](scripts/release-notes.sh) with a required compare URL in the release body.
-- Normalized the generated v1.4.5 release notes to the same `## Changed` / `## Fixed` layout used by prior GitHub releases, keeping the release body stable and consistent with the repo’s existing publishing pattern.
-- Added dated benchmark retention and comparison helpers in [scripts/bench-baseline.sh](scripts/bench-baseline.sh) and [scripts/bench-compare.sh](scripts/bench-compare.sh), with the latest benchmark baseline kept at [benchmarks/data/baseline.txt](benchmarks/data/baseline.txt).
-- Consolidated the shared payload helper surface into [cas/pack/README.md](cas/pack/README.md): fixed-size chunking and sidecar manifest logic live in one canonical package, with no compatibility-only duplicate package layer.
-- Added the canonical pack-layer benchmark family in [benchmarks/pack_bench_test.go](benchmarks/pack_bench_test.go) to cover chunking, manifest round-trips, and file-based save/load behavior directly under the public helper package.
-- Made the package-scoped fuzz corpus rules explicit in [docs/specs/testing-strategy.md](docs/specs/testing-strategy.md) and [scripts/README.md](scripts/README.md): commit reviewed corpora under `testdata/fuzz` whenever a fuzz target changes.
-- Removed the dedicated nightly GitHub Actions workflow; CI now runs only on push and pull request validation, while the long-running fuzz and benchmark jobs stay local/manual instead of scheduling recurring automation.
-- Added the example-level AGENT guidance in [examples/AGENT.md](examples/AGENT.md) and expanded the pack example to teach the typed `Chunk`/`Manifest` model directly in [examples/pack/main.go](examples/pack/main.go).
-- Clarified the layering boundary between the helper package in [cas/pack/README.md](cas/pack/README.md) and the optional backend in [cas/backend/packfs/README.md](cas/backend/packfs/README.md): the helper layer splits payloads and serializes manifest metadata, while the backend persists append-only packfile data under the CAS digest model.
-- Normalized the backend naming to the package-scoped file convention in [cas/backend/packfs/packfs.go](cas/backend/packfs/packfs.go) and [cas/backend/packfs/packfs_test.go](cas/backend/packfs/packfs_test.go), while keeping the runtime on-disk pack artifacts generic (`index.json`, `current.pack`, `pack-*.pack`) so the storage format remains stable and the package boundary stays explicit.
-- Expanded the canonical pack coverage and example coverage to full statements-based validation in [cas/pack/pack_test.go](cas/pack/pack_test.go) and [examples/pack/main_test.go](examples/pack/main_test.go), keeping the helper-level and example-level behavior fully exercised.
-- Added package doc comments to the public Go packages that lacked explicit godoc declarations, including the cache helpers, CBOR codec package, digest helper package, and the pack example entry point, keeping the package-level documentation consistent with the repo's Go API conventions.
-- Refined the `cas/codec` package docs and README messaging to read like the Go stdlib for compression codecs while keeping the repo's architecture boundary explicit: the compression wrappers remain in `cas/codec` as representation-layer codecs, not as a new storage or object-address layer.
-- Expanded the CLI, embedded viewer, and Bloom example coverage with direct execution and branch-path tests covering parsing, maintenance flows, auth/CSRF helpers, and the example demo path without broadening the project surface.
-
 ### Fixed
 
-- Restored the missing `objectPath` helper in [examples/files/main.go](examples/files/main.go) so the CRC32 sidecar path matches the fs backend fan-out layout and the example binary remains buildable under the repo's verification pipeline.
-- Restricted the doc-integrity gate to actual Markdown links so prose mentions of `.md` files no longer trigger false broken-reference failures.
-- Fixed the GitHub Actions CI verification step by ensuring the repository shell script is runnable on Linux runners and the workflow invokes it through bash reliably.
-- Gated the platform matrix on the verify and security gates to avoid wasting OS-target builds when the main CI checks already fail.
-- Hardened the `govulncheck` installation path to resolve correctly across Go/GOPATH/GOBIN combinations and bash environments.
-- Fixed release automation to detect previous tags and generate a valid changelog section without relying on manual maintenance.
-- Normalized release-note generation to keep the GitHub release body in the same format as earlier releases, so the formatted changelog output remains consistent across tags.
-- Kept benchmark comparison usable even when `benchstat` is unavailable by emitting the explicit manual diff path.
+- Hardened verification and release automation.
+- Improved pack storage recovery and documentation.
 
 ## [v1.4.4] - 2026-09-16
 
-### Changed
+### Added
 
-- Normalized the built-in envelope helpers around the project’s `Encode`/`Decode` vocabulary: the TLV frame is encoded/decoded by package-level helpers, while `Envelope` remains a minimal decoded value type and the public surface stays lean.
-- Unified the `cas/codec` package family around a single `Encode`/`Decode` API and consistent constructor patterns: direct codecs use `NewRaw`/`NewValue`/`NewMap`, wrapper codecs accept `next` first, and the byte-transform layer stays separate from the format layer.
-- Standardized the codec stack semantics across the package set and refreshed the package-local AGENT guidance so the direct-vs-wrapper split and nil-check behavior are explicit.
-- Added the compact CBOR codec package to the codec family with explicit conversion functions, deterministic map ordering, and next-codec support for wrapper-style composition.
-- Normalized the benchmark suite into subsystem-specific files and tightened the benchmark names to distinguish setup cost, steady-state cost, hot/cold access patterns, and mixed workloads.
-- Added a realistic graph-traversal benchmark alongside the store workflow cases, and kept the benchmark matrix focused around a small canonical size ladder and anchor baselines.
-- Refreshed the benchmark README guidance to explain how to compare same-machine runs, when a baseline is valid, and how to interpret noisy outliers without over-reading a single `ns/op` figure.
-- Reduced hot-path overhead across the Bloom, cache, codec, and root CAS layers by trimming redundant lookups, pre-sizing buffers, and collapsing repeated field access churn without changing semantics or the public API.
-- Refreshed the benchmark ladder and canonical JSON snapshot to a denser log-spaced matrix, then updated the evaluation doc and README tables to summarize the current winner-by-payload pattern clearly.
-
-### Fixed
-
-- Optimized the CBOR hot path in [cas/codec/cbor/cbor.go](cas/codec/cbor/cbor.go) by removing repeated generic re-encoding churn, reducing unnecessary per-element allocation work, and cutting redundant byte copying in the decode path.
-- Refreshed the canonical benchmark JSON and the benchmark README so the current CBOR performance gain and the winner-by-payload summary match the patched implementation.
-- Replaced the redundant `[]byte(fmt.Sprintf(...))` bloom digest helper with `fmt.Appendf`, and removed the unused helper that was flagged by the Go analysis diagnostics.
-- Tightened root CAS hot-path checks in [cas/digest.go](cas/digest.go), [cas/envelope.go](cas/envelope.go), [cas/store.go](cas/store.go), and [cas/walker.go](cas/walker.go) to lower allocation churn and repeated conversions while preserving identical behavior.
-- Hardened the persistent Bloom mmap layer on Unix and Windows by isolating the platform-specific memory-mapped logic behind a small abstraction, adding deterministic mock hooks, and fixing the Darwin `msync` compatibility issue without changing behavior.
-- Fixed the Windows mmap pointer bookkeeping so the Go analyzer no longer reports a possible `unsafe.Pointer` misuse while preserving the correct mapped-view lifecycle and flush/unmap semantics.
-- Removed the Unix-side `unsafe.Pointer` conversion in the mapped-address helpers so `go vet` passes cleanly under the standard analyzer checks while preserving the package’s retry and fallback behavior.
-- Added the required `golang.org/x/sys` dependency for the cross-platform mmap and Win32/Unix syscall support used by the persistent Bloom layer.
-- Expanded the CI platform matrix to cover representative Linux, Windows, and macOS targets, including the new ARM Windows coverage needed for portable validation.
-- Ran repository gofmt on the Go source tree without touching the external module cache.
+- Optional packfile storage for large object stores.
+- Persistent Bloom-filter improvements and cross-platform mapped-file support.
 
 ## [v1.4.3] - 2026-09-15
 
 ### Changed
 
-- Unified the codec wrapper model around a single stack pattern: outer codecs wrap an inner codec and transform only serialized bytes, with `binary.New(inner, wrap, unwrap)` and `binary.NewRaw(marshal, unmarshal)` as the canonical constructors.
-- Kept every codec wrapper cascadeable by design and refreshed the docs to state the stack pattern explicitly across the package docs, specs, and agent guidance.
-- Synced the benchmark and documentation set to the final wrapper API so the examples, root docs, and specs describe the same stack contract.
+- Consolidated codec APIs and refreshed performance-sensitive paths.
 
 ## [v1.4.2] - 2026-09-15
 
-### Changed
+### Added
 
-- Documented the project default policy as `SHA-256` with `flate` compression for durable, compact object payloads while leaving JSON and binary as explicit alternatives for workloads that value portability or raw speed.
-- Refreshed the benchmark docs to distinguish the default policy from the measured winner-by-payload results, and kept the canonical benchmark data in JSON.
-- Synced the repository docs so the default behavior and benchmark guidance stay consistent with the actual benchmark matrix and the codec/hash extension set.
+- Gzip codec and expanded codec documentation.
 
 ## [v1.4.1] - 2026-09-15
 
 ### Added
 
-- Added the opt-in gzip codec wrapper in [cas/codec/gzip/](cas/codec/gzip/) as a codec-layer compression implementation that leaves the CAS object model and content-address semantics unchanged.
-- Added dedicated fuzz coverage for the root digest logic and the pack backend, keeping each fuzz target in its own file for package-local discovery and isolation.
-- Added example-focused fuzz tests for the API demo, artifact gzip round-trips, and the file example's digest-printing helper.
-- Expanded the example test surface to cover the demo and helper invariants without introducing new library dependencies.
-
-### Changed
-
-- Hardened the API demo by validating JSON field types and removing brittle direct type assertions from the public example code.
-- Kept the changelog and release notes aligned with the `v1.4.1` patch release as the current project baseline.
-
-### Fixed
-
-- Fixed the pack backend's close semantics so a second `Close()` call is idempotent and no longer fails after the active pack handle is already closed.
-- Expanded example and backend tests around pack rotation, invalid digest rejection, and end-to-end example behavior to keep the feature set stable.
+- Packfile backend and additional fuzz coverage.
 
 ## [v1.4.0] - 2026-09-15
 
 ### Added
 
-- Added an optional, advisory Bloom layer under [cas/bloom/](cas/bloom/) with standard, counting, and persistent variants, plus a backend guard (`bloom.Guard`) that short-circuits absent lookups without changing the CAS identity model.
-- Added focused benchmark families in [benchmarks/](benchmarks/):
-  `BenchmarkCodecEncodeDecode` isolates pure serialization cost and
-  `BenchmarkHasherDigest` isolates raw hash throughput.
-- Added benchmark tables and recommendation text to [benchmarks/README.md](benchmarks/README.md),
-  including isolated codec/hash summaries and the median-of-5 interpretation for the
-  supported codec and hasher combinations.
-- Documented the benchmark policy split between the regular perf suite and the
-  scale probes, and froze the benchmark rules in [benchmarks/AGENT.md](benchmarks/AGENT.md).
-- Audited the documentation tree under [docs/](docs/) for the OKF frontmatter layout and
-  confirmed the three index files are the intentional exception to the standard
-  `type`/`title`/`description`/`version` pattern.
-
-### Changed
-
-- Switched the default Bloom index implementation to a fast `hash/maphash`-based
-  stream so the advisory pre-check stays cheap in memory, while keeping the
-  contract that callers may override it with a deterministic custom `IndexHash`
-  for restart-stable or cross-process use.
-- Refreshed the Bloom benchmark results and operator notes so the measured cost
-  profile matches the current code: `standard` remains the fastest default,
-  `persistent` stays close behind, and `counting` remains the slower
-  update-heavy variant.
-- Expanded the regular performance matrix to cover a broader size range and
-  normalized the benchmark naming and summary reporting around the supported
-  `json`/`gob`/`binary` and `sha256`/`sha512_256` combinations.
-- Synced the benchmark docs and [docs/specs/performance.md](docs/specs/performance.md)
-  so the README reflects the current benchmark coverage and measured winner-by-size
-  guidance.
-- Trimmed redundant specification references in [README.md](README.md) and kept the
-  landing page limited to the core entry points and the docs index.
-
-## [v1.3.1] - 2026-09-11
-
-### Added
-
-- Added the generic `cas/codec/binary` package for compact, caller-defined
-  binary payloads. It remains object-agnostic and expects the client to provide
-  a stable per-type binary layout and versioning strategy.
-- Added the `cas/hash/sha512_256` package and updated the benchmark scale probes
-  to compare `sha256` and `sha512_256` in the same benchmark family.
-- Reworked the `cas` subtree READMEs to a consistent package style: short
-  package summaries, direct implementation links, and explicit policy notes.
-- Added the package-local [cas/AGENT.md](cas/AGENT.md) guide with documentation
-  rules, default policy wording, and README-link conventions for the `cas`
-  subtree.
-- Added direct README links down to the concrete subpackages (`fs`, `mem`,
-  `lru`, `prefetch`, `json`, `gob`, `sha256`, `sha512_256`) and back to the
-  parent package docs.
-- Renamed the shared backend config shim to [cas/backend/options.go](cas/backend/options.go)
-  to match the actual option-based API and clarified in the backend docs that
-  each backend defines its own `With...` functions over the shared
-  `backend.Option` contract.
-- Tightened the `cas/codec/binary` README to document the intended `Blob` and
-  `Tree`-style binary layouts as app-defined schemas, with compact marshal/
-  unmarshal sketches that stay generic at the `cas` layer.
-
-### Documentation
-
-- Kept the root and layer docs aligned on the same policy: the `cas` core stays
-  generic and algorithm-agnostic, while the project recommends `SHA-256` + JSON
-  for durable storage and `SHA-512/256` as a fast secure alternative.
-- Clarified the compatibility role of `cas/codec/gob`, documenting it as Go-only
-  and opt-in rather than the default or canonical long-term CAS format.
-- Documented MD5 and SHA-1 as legacy or migration-only choices, not new CAS
-  defaults.
-
-### Fixed
-
-- Fixed the `cas/codec/binary` test warning from unnecessary type arguments in
-  the generic constructor call.
-- Synced the docs/specs set to the binary codec addition and the documented
-  default policy for JSON, Gob, and compact custom binary payloads.
+- Advisory Bloom layer for faster object-set membership checks.
+- Focused codec and hasher benchmarks.
 
 ## [v1.3.0] - 2026-09-10
 
-This release is a MINOR that carries the library's recorded first-cycle breaking
-changes (versioning §1). The breaks below were ratified
-individually — dropping the runtime algorithm registry, the digest change on the
-first-cycle grounds (`cas.Hash` → the hash-agnostic `cas.Digest` +
-client-injected `cas.Hasher`, which the registry removal belongs to), and the
-gitlike change because it is confined to the `gitlike` reference layer, which is
-NOT part of the stable `cas` surface (`library-design` §1). They are the last:
-any further breaking change takes the ordinary MAJOR route with the `/v2` module
-mechanics.
-
-**BREAKING: the core is now hash-agnostic — `cas.Hash` is gone, replaced by
-`cas.Digest` (raw digest bytes), and the client owns the algorithm.** The core
-names no algorithm, implements none, and cannot tell one digest width from
-another: it stores whatever digest the injected `cas.Hasher` returns. This is
-the OCI/Docker split (the storage layer keys blobs by an opaque digest; the
-algorithm lives with the client), combined with Git's model for a repository
-(one object format per store). Go-cask's own clients wire the shipped
-`cas/hash/sha256` hasher.
-
-**Stored reference payloads changed and are not migrated**: a reference field is
-now one lowercase-hex string (`"ab12…"`) instead of `"sha256:ab12…"`, and the
-layout lost its algorithm directory (`<base>/aa/<hex>`, not
-`<base>/sha256/aa/<hex>`). Object type names stay `@1` (no new major), so an
-reference-bearing object stored before this change (every tree, commit and
-tag) cannot be read by this build: `Get`/`Verify` return `ErrNotFound` for
-the old addresses (the path moved) while `List`/`Stats` still report them,
-and one copied to its canonical path fails to decode with `ErrCorrupt`, because
-`Digest.UnmarshalText` is strict and rejects the legacy `sha256:` prefix. An
-object with no reference fields — a blob — still decodes (cas-core §4.12). There is no migration tool: a store written by `v1.2.0`
-must be re-written by the old build if its objects are still needed.
-**The store directory is exclusively its own**: `List`/`Stats` report any
-digest-named file beneath the base at any depth and `Clean` reclaims any `*.tmp`
-beneath it, so a base must not contain another store (an old
-`<base>/<algo>/…` tree included) or an app's scratch temp files. Several stores
-under one root are `fs.New(filepath.Join(root, name))` — there is deliberately no
-`fs.WithNamespace` option (cas-core §4.4, extensions §3).
-
-**Also breaking: `gitlike` names no codec, and object invariants moved into the
-core.** `gitlike.NewRepository` now takes the caller's codec set
-(`gitlike.Codecs{...}`), so the package imports no codec package at all and a
-repository works over any format — JSON, gob, gzip-wrapped, or a
-caller-supplied codec. Object invariants are no longer expressed as codec
-methods: a type declares `Validate() error` (`cas.Validator`) and the store
-calls it before encoding on `Put` and after decoding on `Get`, so the invariant
-holds under every codec. This fixes a latent bug: `gitlike.Commit`'s
-required-tree rule lived in `MarshalJSON`/`UnmarshalJSON`, which silently
-stopped applying the moment a client picked a non-JSON codec. Stored JSON
-payloads are unchanged, so addresses are stable *within* this model.
-
 ### Added
 
-- **`cas.Digest`** — the content address as raw digest bytes (zero value = the
-  absent reference), with `NewDigest`, `ParseDigest`, `CheckDigest`, `IsZero`,
-  `Equal`, `Bytes`, `String`, `Prefix` and `MarshalText`/`UnmarshalText`.
-- **`cas.Digest.Prefix(n)`** — the short display form: the first `n` hex
-  characters (the viewer uses `Prefix(8)`). It is total — absent and `n <= 0`
-  give `""`, a digest whose hex form is shorter than `n` is returned whole, and
-  nothing panics or errors — so the core owns the one short-form helper the
-  clients used to duplicate.
-- **`cas.Hasher`** — the client-supplied algorithm seam
-  (`Digest(io.Reader) (Digest, error)` + `Validate(Digest) error`), injected into
-  `cas.New`; the core names no algorithm.
-- **`cas.Validator`** — the optional object-invariant contract
-  (`Validate() error`), enforced by `Store.Put`/`PutDedup` (before encoding) and
-  `Store.Get` (after decoding).
-- **`cas/hash/sha256`** — the shipped client hasher (`New`, `NewHasher`, `Of`,
-  `Parse`, `Format`, `Name`, `Size`), in its own package so `cas` never imports
-  an algorithm.
-- **`gitlike.Codecs`** — the injected per-type codec set
-  (`NewRepository(raw, hasher, codecs)`), so the reference model names no wire
-  format and `package gitlike` imports no codec package (CI-enforced).
-- **`Commit.Validate`/`Tree.Validate`/`TreeEntry.Validate`/`Tag.Validate`** — the
-  per-type invariants, now enforced by the core instead of by JSON methods.
-- **Ten runnable `Example` functions** (executable documentation with pinned
-  output), including `ExampleWalkGraph` and `ExampleCodec`.
+- Binary codec and digest-prefix support.
+- Consumer-facing examples covering the core and Git-like APIs.
 
 ### Changed
 
-- **`cas.Digest` replaces `cas.Hash`.** A `Digest` is `[]byte` holding the raw
-  digest; the zero value is the absent reference. `NewDigest`, `ParseDigest`
-  (non-empty lowercase hex), `CheckDigest`, `IsZero`, `Equal`, `Bytes`,
-  `String` (hex, no algorithm prefix), and `MarshalText`/`UnmarshalText`
-  (so `encoding/json` — and any codec that honors `encoding.TextMarshaler` —
-  stores a reference as one hex string with no per-type JSON code).
-- **The client's `Hasher` is injected**: `cas.Hasher` is
-  `Digest(io.Reader) (Digest, error)` plus `Validate(Digest) error`, and
-  `cas.New(raw, codec, hasher)` takes it (no error return). Every key argument
-  is guarded by `CheckDigest` + `hasher.Validate`, so a wrong-width key is still
-  rejected at the store boundary.
-- **`cas/hash/sha256` is the shipped client hasher**: `New()`, `NewHasher()`,
-  `Of`, `Parse` (accepts `"sha256:hex"` or bare hex), `Format` (renders
-  `"sha256:hex"`), `Name`, `Size`. The `cas` package imports nothing from it.
-- **The byte layer is keyed by digest only**: `Backend.List(ctx)` lost its
-  algorithm filter, `cas.Stats` keeps only `ObjectCount`/`TotalSize` (a
-  per-algorithm breakdown is impossible — the core cannot know which algorithm
-  produced a key), and `fs.Backend.Verify(ctx, d, hasher)` recomputes through
-  the injected hasher.
-- **The filesystem layout lost the algorithm directory**:
-  `<base>/<fan-out dirs>/<full hex digest>` instead of `<base>/<algo>/…`.
-- **`gitlike.NewRepository(raw, hasher)`** became
-  **`gitlike.NewRepository(raw, hasher, codecs)`**, and its reference fields are
-  `cas.Digest`. The injected `gitlike.Codecs{Blob, Tree, Commit, Tag}` set means
-  `package gitlike` imports no codec package and the object model is
-  format-agnostic; call sites wire the JSON codecs explicitly
-  (`gitlike.Codecs{Blob: jsoncodec.New[*gitlike.Blob](), …}`), since no
-  convenience package hides the choice.
-- **`cas.Validator` is the invariant contract**: a type with `Validate() error`
-  is checked by `Store.Put`/`Store.PutDedup` before encoding (failing as
-  `cas: put: <err>`) and by `Store.Get` after decoding (failing as
-  `ErrCorrupt`). `GetRaw` never validates. A nil object is rejected on `Put`,
-  and a payload that decodes to a nil object is `ErrCorrupt`.
-- `gitlike.Commit` implements `Validate()` (a commit must name a tree) instead
-  of relying on JSON methods, so the rule holds under any codec.
-- Sentinels: `ErrInvalidDigest` and `ErrDigestMismatch` replace `ErrInvalidHash`
-  and `ErrHashMismatch`; `ErrUnknownAlgorithm` is gone.
-- The viewer reports the addressing model instead of a per-algorithm table, and
-  its objects page lost the algorithm filter; the CLI drops `put -algo` and
-  `list --algo`, prints `sha256:hexdigest` (via `sha256.Format`), and reports
-  `"algorithm": "sha256"` as the client's constant. `examples/api` lost its
-  `algo` parameter and its `algorithm_counts` stats field.
-
-### Removed
-
-- **`cas.Hash`, `cas.ParseHash`, `cas.NewHash`, `cas.HashBytes`,
-  `cas.NewHasher`, `cas.CheckHash`, `cas.SHA256`** — the algorithm-agnostic core
-  has no address type that carries an algorithm.
-- **The JSON codec's hash field type `jsoncodec.Hash`** (`NewHash`, `Hash()`,
-  `MarshalJSON`, `UnmarshalJSON`): a `cas.Digest` field renders itself, so the
-  codec needs no hash type and `gitlike` imports no codec package.
-- **`cas.RegisterHash`, `cas.LookupHash`, `cas.LookupStreamHash` and the
-  `cas.HashFunc` type** — there is no algorithm registry, no mutexed map, no
-  init-order coupling, and no one-shot/streaming duality. (These were removed
-  earlier in the v1.3.0 cycle; they are listed here because the whole change
-  ships together.) **Migration:** a `RegisterHash`/`HashFunc` call site, the
-  CLI's `put -algo`/`list --algo` and the API's `POST ?algo=` are gone because
-  the algorithm is no longer a runtime choice at all — it is the injected
-  `cas.Hasher`, so those call sites move to `cas.New(raw, codec, sha256.New())`
-  (see the digest change above; the fixed-algorithm API that briefly replaced
-  the registry in this cycle was itself removed by it).
-- **`gitlike.Commit.MarshalJSON`/`gitlike.Commit.UnmarshalJSON`** — the
-  required-tree rule is now `Commit.Validate()`, enforced by the core, so it
-  survives a codec change instead of disappearing with the JSON codec.
-- **`sha256.Short`** — replaced by `cas.Digest.Prefix(n)`, so the short form is
-  defined once, in the core. The whole `cas/hash/sha256` package is new in this
-  cycle and had not been released yet, so nothing that ever shipped loses an
-  API; `gitlike`'s unexported `shortDigest` and the viewer's wrapper are gone
-  the same way, and `examples/files`'s `short()` (which actually rendered the
-  full `sha256:hexdigest` form) is renamed `printable()`.
-- **`examples/artifacts/hasher.go`** — the `sha256double` custom-algorithm seam.
-  The example keeps its custom `Codec[T]` (gzip) seam and now stores under
-  `sha256`.
-- The `go 1.24` floor stays: object fields still use `omitzero`, and an older
-  standard library would emit `""` instead of omitting an absent reference.
-
-### Internal
-
-- **`gitlike`'s codec-agnosticism is now enforced, not assumed.** A CI gate
-  fails the build if `go list -deps ./gitlike` contains a codec package (the
-  codec is injected through `gitlike.Codecs`), because grepping the directory is
-  misleading: the package's *production* graph contains no codec at all (`cas`,
-  `cas/cache/lru` and stdlib only — `TestRepositoryWithAnotherCodec` runs the
-  whole model over gob), while `_test.go` files must inject one, and the shipped
-  JSON codec is the right one there because the documented wire bytes are JSON
-  and that is what the address pins assert. `cas-core` §4.12 and
-  `gitlike/README.md` state the rule and what the `json:"…"` tags really are:
-  hints for codecs that honor them, carrying the wire field names *and* which
-  references are optional (`omitzero` on `TreeEntry.Hash`/`Commit.Parent`).
-  Those tags stay — optionality is a model fact with no codec-neutral spelling
-  in Go, and inferring it would change `Tag.Target`'s absent shape (new bytes,
-  new addresses, i.e. a MAJOR).
-
-- **Identifiers that hold a digest are now named `…Digest`/`…digest`** where the
-  old name was a leftover from the removed `cas.Hash`: `hashPath` → `digestPath`
-  (fs), `shortHash` → `shortDigest` and `hashWithType` → `digestWithType`
-  (viewer + `gitlike`), `parseHash`/`parseHashLines` → `parseDigest`/
-  `parseDigestLines` (viewer), `objectRow.Hash` → `Digest`,
-  `hashWithType` → `digestWithType`, `test.HashData` → `test.DigestData`,
-  `parseHashParam` → `parseDigestParam` (example API), `auditRow.hash` →
-  `digest`, plus the prose/comments that called a digest a hash. No exported
-  identifier changed, no stored byte changed, and no behavior changed.
-- Deliberately **not** renamed: `cas.Hasher` (the algorithm seam),
-  `cas/hash/sha256`, `NewHasher` (stdlib `hash.Hash`), "hash-on-write", the
-  `{hash}` route/CLI params and `"hash"` JSON keys/UI labels (the user-facing
-  word), and `gitlike.TreeEntry.Hash` — its `json:"hash,omitzero"` tag is a
-  **stored payload key**, so renaming the tag would re-address every tree while
-  commits still point at the old digests; the Go field rename (tag unchanged,
-  so no data change) is scheduled with the v2 module move.
-- **`internal/web` has two dead helpers**: the `shortDigest` FuncMap entry is
-  registered but no template calls it (templates use the precomputed
-  `objectRow.Short` field), and `digestWithType` has no caller at all — the
-  `docs/specs/viewer-design.md` §4 helper list (`humanSize`, `byteSize`, …)
-  still describes a FuncMap the viewer does not build. Left as-is (renamed only)
-  rather than wired up or deleted, pending a decision.
-- `docs/specs/AGENT.md` §6 now carries the **`hash` vs `digest`** glossary row
-  that makes the surviving `hash` names intentional rather than debt, plus the
-  **`examples/` vs `Example` functions** row (runnable programs vs executable
-  godoc docs) so the ten Example functions are not mistaken for duplicates of
-  the examples tree.
-- **The `gitlike` Examples are consumer-facing now**: the file moved to
-  `package gitlike_test` (external) and each Example spells out its own
-  `gitlike.Codecs{...}` set instead of calling the test-only `jsonCodecs()`
-  helper — a rendered Example that names a private helper is not copy-pasteable,
-  which defeats its purpose. Two Examples were added for the most-copied doc
-  flows: `ExampleWalkGraph` (blob → tree → commit → tag → `ResolveTag`/
-  `ResolveCommit`/`ResolveTree`/`ResolveBlob` → `WalkGraph`) and `ExampleCodec`
-  (a gzip `Codec[T]` wrapper over both the memory and fs backends, pinning that
-  the address is backend-independent).
-- **Writing `ExampleWalkGraph` found a runtime bug in the documented usage
-  snippet**: `AGENTS.md` resolved a *tag* digest with `Resolver.ResolveCommit`,
-  which fails (`tag@1` != `commit@1`) and then dereferenced the nil result. The
-  compile-only check used in the previous cycle could not catch it, because the
-  snippet ignores errors with `_`. AGENTS.md now walks `ResolveTag(tagHash)` →
-  `Target` → `Tree` → entry `Hash`, and states why.
-
-### Fixed
-
-Pre-tag audit of the cycle above; every item was reproduced with a test before
-being fixed and now has one.
-
-- **`fs.Backend` panicked on a key shorter than the layout.** `digestPath` sliced
-  the digest's hex form with no bound, so a key with fewer than
-  `FanOut × FanLevels` hex chars — legal for a *client* hasher, since the core
-  names no algorithm — crashed `Put`/`Get`/`Exists`/`Delete`/`Size` with
-  `slice bounds out of range`. v1.2.0 clamped it; the clamp was dropped on the
-  (now false) assumption of a fixed 32-byte digest. Every key-taking method now
-  runs `checkKey` (present + long enough for the layout) and reports
-  `ErrInvalidDigest`, and `GC`/`Prune` skip names the layout cannot address, so a
-  stray short digest-named file can no longer crash `cask gc`/`prune`.
-- **`Store.Put(nil)` panicked when `T` was an interface type.** `isNilValue`
-  inspected only non-invalid reflections, so a nil interface value fell through
-  to "not nil" and the core dereferenced it; it now treats `reflect.Invalid` as
-  absent.
-- **`Store.Put` accepted an unversioned `Type()`.** The envelope reader appends
-  `@1` to a legacy unversioned name, so the write succeeded and every read then
-  failed the type check (`"legacy@1" != "legacy"`) — a write-only object. `Put`
-  now rejects a name without `@`, alongside the empty-name case.
-- **`gitlike.WalkGraph` revisited shared subgraphs exponentially and could not
-  terminate on a crafted store.** It now carries a visited set and an explicit
-  stack like `cas.Walker[T]`: a 12-level diamond costs 13 visits instead of
-  8191, and two hand-written trees that reference each other terminate.
-- **Short digests panicked the display helpers.** `sha256.Short` and `gitlike`'s
-  `shortDigest` sliced `[:8]`; that logic now lives in the core's total
-  `cas.Digest.Prefix` (below), which those two helpers were replaced by.
-- **`mem.Backend.Put` ignored cancellation during the read** — a canceled `Put`
-  still buffered and stored the whole object. It now reads through a
-  context-checking reader, matching `fs`.
-- **`memory.CachedStore` error handling.** `PreloadRecursive` aborted on the
-  first reference it could not decode (a commit's tree is another store's type),
-  so a `Preloader` never reached a parent commit; foreign-type and dangling
-  references are now skipped. `Warmup` swallowed every error including
-  `context.Canceled`; it still tolerates missing objects and now reports the
-  rest.
-- **`cas.Walker[T].Walk` failed on an absent reference.** A zero `Digest` in
-  `References()` (documented as "no reference") was looked up and returned
-  `ErrInvalidDigest`, failing the whole walk; it is now skipped.
-- **`cask list` failed on a stray digest-named file.** `List` reports such a file
-  but `Size` on it returns `ErrNotFound`, which aborted the command; the entry is
-  now skipped with a stderr warning (`ErrInvalidDigest` likewise).
-- **`internal/web` did not audit-log `verify`** while `delete`/`gc` did,
-  contradicting `viewer-security` ("all admin actions audit-logged"); every admin
-  fragment now logs its outcome. The two unreferenced viewer helpers
-  (`digestWithType`, `parseDigestOrNil`) were deleted, and `cask web`'s usage
-  line now lists the `-no-open` flag it defines.
-- **Documentation corrections** (details in the Docs paragraph below): the
-  release notes overstated the break (blobs still decode), the `cas-core` claim
-  that the wrong resolver is a *compile-time* error was wrong (it is a runtime
-  `ErrUnknownType`), the `viewer-design`/`frontend-architecture` helper, template
-  and htmx lists described a viewer that does not exist, `object-versioning`
-  described a `RegisterType` registry that does not exist, `consistency` claimed
-  the viewer exposes prune, `docs/index.md` pointed at three non-existent files,
-  `AGENT.md` named the removed `cas.NewHash` and the wrong frontmatter contract,
-  and the coverage gate omitted `cas/hash/sha256`.
-
-### Docs
-
-`cas-core.md` v40→v50 (the `Digest`/`Hasher` model throughout: invariants,
-diagrams, §4.1–4.12, data flows, concurrency, §7.1 surface, §7.2 recipes,
-§8 decisions; then the `Validator` contract, the codec-injected
-`gitlike.Repository` and its migration note; then the one-base exclusivity rule
-and the "several stores under one root" recipe in §4.4; then the diagram pass,
-which adds `Validator`/`Codecs` and corrects stale classes and member
-signatures; then `digestPath`/`shortDigest`; then the Resolver type-safety
-correction in §4.12 — the wrong resolver for a digest is a runtime
-`ErrUnknownType`, not a compile-time error — and the pre-tag hardening in
-§4.4/§4.5/§4.8/§4.9/§4.10/§4.12), `library-design.md` v19→v25 (`cas.Validator`
-in the exported surface; the third ratified exception in §5; the released-cycle
-wording), `coding-guidelines.md` v13→v16, `defaults.md` v16→v20 (the byte-layer
-allocation target and its measured numbers; the short-hash row names `Prefix`), `examples.md` v15→v17,
-`extensions.md` v6→v9 (the rejected `WithNamespace` decision in §3),
-`operations.md` v6→v10 (the legacy store's actual failure symptoms in §5),
-`testing-strategy.md` v12→v18 (the invariant law; `digestPath` in the
-round-trip law; the fuzz-corpus and coverage claims; the `Prefix` cases), `versioning.md` v13→v18
-(the third exception, the `v1.3.0` release, the released-state intro, the
-registry exception's migration note, and the benchstat-gate correction),
-`viewer-design.md` v10→v14 (§4/§5 rewritten against the real templates, ids and
-htmx attributes; the short form is `Digest.Prefix(8)`), `frontend-architecture.md` v4→v5 (same corrections; it carried
-the same fictional htmx map), `docs/index.md` v7→v10 (three path rows pointed at
-files that do not exist), `AGENTS.md` v15→v21, `docs/AGENT.md` v8→v9
-(`cas.NewHash` → `cas.NewDigest`), `docs/design/AGENT.md` v2→v3 (the frontmatter
-contract), `AGENT.md` v14→v21 (the `hash` vs `digest` row, the `examples/` vs
-`Example` row, the real four-key frontmatter contract),
-`object-versioning.md` v4→v6 (no runtime registry — the envelope carries the
-type), `consistency.md` v9→v11 (the viewer exposes verify/delete/GC, not prune),
-`api-design.md` v5→v6, `backend-architecture.md` v15→v16, `cli.md` v13→v16
-(`-no-open`; `list` tolerance), `performance.md` v13→v15,
-`benchmarks/README.md` v7→v8, `docs/design/viewer-brief.md` v4→v5,
-`README.md` (an Upgrading section and the seven-concept class diagram),
-`CONTRIBUTING.md`, and the example/`gitlike` READMEs.
-
-Every Mermaid diagram in the repo (13 blocks across 8 files) was re-checked
-against the code: `Validator` added to the layer/overview/typed-layer figures,
-`Codecs` added to the `gitlike` figures (and `Repository`'s stale `+hasher`
-field removed — the hasher is held by the stores, not the repository),
-`Commit`/`Tree`/`Tag`/`TreeEntry` show `+Validate() error`,
-`json.Codec`/`gob.Codec` replace the informal `JsonCodec`/`GobCodec` names, and
-the cached/envelope/store member signatures now match the code (`Load` returns
-`(T, error)`, `Envelope` has fields `Type`/`Data`, `Backend` lists `Stats`).
-Orientation (`flowchart TB`, `direction LR`/`TB`) is unchanged, and all 13
-blocks were verified to parse with the Mermaid parser.
+- Core storage is hash-algorithm agnostic through client-injected hashers.
+- Git-like repositories receive codecs explicitly and enforce object
+  invariants independently of serialization.
 
 ## [v1.2.0] - 2026-09-10
 
-Code audit of the `v1.1.0` tree: a full read of `cas`, the backends, caches,
-codecs, CLI, viewer, the `gitlike` reference model and the examples, with fixes
-for the defects it found, plus a hash-type consolidation described below. The
-on-disk format is unchanged — existing stores stay readable and writable, and
-every stored object keeps its address.
-
 ### Added
 
-- **`jsoncodec.Hash`** — the JSON codec's hash *field type*
-  (`cas/codec/json`), the only place that renders and validates a hash as text:
-  `NewHash(cas.Hash) Hash`, `Hash() cas.Hash`, `IsZero()`, `MarshalJSON`
-  (present → `"algo:hexdigest"`, absent → `""`), `UnmarshalJSON` (`""`/`null` →
-  absent, else `ParseHash`). Object types declare this type for reference
-  fields; the byte layer stays format-free.
-- **`cas.CheckHash`** — the guard the store and every backend apply to a hash
-  argument: an absent (zero) address returns `ErrInvalidHash` instead of being
-  used as a store key.
-- **`Validate() error` on the `gitlike` object types** (`TreeEntry`, `Tree`,
-  `Commit`, `Tag`) for objects built in code: a tree entry and a tag need a
-  name, a commit needs a tree, an absent reference is valid where absence is
-  legal. Advisory — `Store.Put` marshals, it does not validate — except the
-  tree-less commit, which `Commit.MarshalJSON` still rejects at write time.
-
-### Changed
-
-- **BREAKING: `cas.Hash` is a concrete value type, not an interface, and it
-  carries no JSON code.** `Hash` was an interface over an unexported
-  implementation, which meant object fields could never be decoded by
-  `encoding/json` (it cannot allocate into an interface field) and "no hash" had
-  two spellings: a nil `Hash` in the byte layer and an absent wrapper in object
-  fields. `Hash` is now a struct with unexported fields and one meaning for
-  absence:
-
-  ```go
-  type Hash struct{ /* algorithm + digest */ }   // zero value = absent
-
-  func (h Hash) IsZero() bool                    // the one "no hash"
-  ```
-
-  Serialization moved out of the core into the codec that owns a wire format.
-  `cas/codec/json` defines the field type object types use:
-
-  ```go
-  type Hash struct{ /* wraps cas.Hash */ }        // jsoncodec.Hash
-  func NewHash(h cas.Hash) Hash                   // wrap for a field or literal
-  func (x Hash) Hash() cas.Hash                   // unwrap for the byte layer
-  func (x Hash) MarshalJSON() ([]byte, error)     // present → "algo:hexdigest", absent → ""
-  func (x *Hash) UnmarshalJSON([]byte) error      // ""/null → absent, else ParseHash
-  ```
-
-  `cas` no longer imports `encoding/json` at all: the byte layer knows nothing
-  about any wire format, and only the codec that defines one renders and
-  validates hashes as text. Object types declare `jsoncodec.Hash` fields
-  (`omitzero` where absence is optional), so they still contain no JSON code
-  themselves.
-  **Migration from v1.1.x:**
-  - `var h cas.Hash` / `cas.Hash{}` now means *absent* instead of nil — replace
-    `h == nil` / `h != nil` with `h.IsZero()` / `!h.IsZero()`, and `x.Equal(nil)`
-    with `!x.IsZero()` (an absent address compares equal to nothing).
-  - `cas.ParseHash`, `NewHash` and `HashBytes` return the zero `Hash` on error
-    (unchanged in shape: still `(Hash, error)`); check the error as before.
-  - Reference *fields* change type to the codec's field type:
-    `Ref cas.Hash` → `Ref jsoncodec.Hash`, literals `Ref: h` →
-    `Ref: jsoncodec.NewHash(h)`, slices → `jsoncodec.NewHash` per element. Reads
-    that need the byte-layer type (`ResolveTree(ctx, c.Tree)`,
-    `x.Equal(y)`) unwrap with `.Hash()`; `IsZero()`, `omitzero`/`omitempty`
-    tags and `References()` skipping behave as before.
-  - Hand-written `Hash` implementations are no longer possible — build addresses
-    with `NewHash`/`ParseHash`/`HashBytes` in a registered `HashFunc`. This
-    closes the hole that let an unvalidated address (e.g. a hostile algorithm
-    name) reach a backend, so `fs`'s `safeAlgo` path sanitizer is gone.
-  - The absent wrapper type `cas.HashRef` — added in this same cycle and never
-    released — is deleted; `cas.Hash` covers both
-    roles.
-  - `Validate()`-style checks now read `Tree.IsZero()` on the field type.
-- **Stored bytes are unchanged.** `json` output for a present reference is the
-  same `"algo:hexdigest"` string, an absent optional reference is still omitted
-  (`omitzero`), and an absent always-present field still encodes as `""` — so no
-  object is re-addressed and no migration is required. Pinned by
-  `TestStoredAddressesPinned`, `TestNoteJSONPayloadPinned` and
-  `TestManifestJSONPayloadPinned`.
-- **All hash JSON code is in one place: the JSON codec.** Repository-wide, hash
-  serialization went from nine methods in five packages to the one field type
-  above — `jsoncodec.Hash`'s marshaler/unmarshaler in `cas/codec/json` — plus
-  `gitlike.Commit`'s two guards for its one mandatory-field rule (write refuses a
-  tree-less commit; decode rejects a missing, empty, or null tree). `gitlike`'s
-  `TreeEntry` and `Tag` carry no JSON methods at all, and the hand-written
-  marshallers *and* unmarshallers are gone from `internal/test/types.go`
-  (`Node`), `examples/notes/types.go` (`Note`), `examples/artifacts/main.go`
-  (`Manifest`), `cas/cache/prefetch/prefetch_test.go` and
-  `cas/cache/mem/cached_test.go` (`testObject`), along with the now-unused
-  `hashStrings`/`parseHashes`/`HashRefs` helpers.
-- **Library baseline raised to Go 1.24** (`go.mod`, `library-design.md`,
-  `defaults.md`, `coding-guidelines.md`, `versioning.md`, `AGENTS.md`,
-  `README.md`). Optional hash fields rely on the `omitzero` JSON tag option,
-  which an older standard library silently ignores — that would change the
-  stored bytes, so the floor is now enforced by `go.mod` (a consumer on Go
-  1.22/1.23 gets a clear build error instead of a different wire format).
-- Docs and agent instructions updated for the unified type: `cas-core.md`
-  (v35→v39: §4.2 the concrete `Hash` and the single meaning of absence, §4.6 the
-  JSON codec's `jsoncodec.Hash` field type, §4.12 gitlike serialization and
-  advisory `Validate()`, §7.1 surface adds `CheckHash`, §7.2 object-type recipe),
-  `library-design.md` v18, `coding-guidelines.md` v13, `defaults.md` v16,
-  `versioning.md` v12 (records this as a one-off ratified breaking change inside
-  v1 — later breaking changes still need a MAJOR with the `/v2` mirror),
-  `AGENTS.md` v15 (object-type recipe step and a type-checked usage example),
-  `gitlike/README.md`, `examples/notes/README.md`,
-  `examples/artifacts/README.md`. A godoc `ExampleHash` in `cas/codec/json`
-  shows the field pattern from `go doc`.
-
-### Fixed
-
-- **Viewer: the maintenance GC form was unusable.** `templates/gc.html` shipped
-  no CSRF field, so every submit was rejected with 403 even though the handler
-  passed a token; the form now carries it.
-- **Viewer: a template error left a half-written 200.** `render` executes into a
-  buffer and answers 500 on failure instead of streaming a partial page.
-- **Viewer: an empty token could authenticate.** `resolveToken` rejects an empty
-  submission and compares tokens in constant time; `cask web -tokens` skips
-  empty token pairs (`-tokens "admin="` no longer creates a `""` key).
-- **Viewer: login-throttle TOCTOU and missing backoff.** The budget check and
-  the attempt record now share one critical section, an exhausted budget blocks
-  for an exponentially growing backoff (capped at 30 min), and stale per-IP
-  state is swept so a rotating caller cannot grow the map without bound.
-- **Viewer/CLI: type sniffing failed for large objects.** The TLV header is
-  parsed without requiring the payload, so objects larger than the 256 KiB
-  preview limit report their type; the object page shows the real size from the
-  backend, and the raw view marks a truncated preview.
-- **CLI:** the global `-store` is honored by `cask web` (it was dropped, so the
-  viewer served `./objects`); `cask meta` reports the real object size instead
-  of the bounded read length; `cask list -limit`/`-offset` reject out-of-range
-  values (exit 2) instead of silently clamping; `put` implements the documented
-  `-json` output.
-- **`lru.Cache`:** `Clear`/`Evict`/`EvictKey` drop the recency bookkeeping, so
-  cleared entries no longer retain objects or cause phantom evictions.
-- **`CacheMetrics.Loads`** was exported but never incremented; `CachedObject.Load`
-  now counts its store fetch.
-- **`cas`:** `Put` rejects an object whose `Type()` is empty (it previously wrote
-  an envelope that `Get` could never read); payload-decode errors keep their
-  cause (`%w`); `Walker.Walk` uses an explicit stack plus a visited set, so a
-  cyclic or deeply nested graph terminates instead of exhausting the goroutine
-  stack; `RegisterHash` validates the algorithm name (`^[a-z0-9]+$`) and drops a
-  stale streaming hasher, keeping `HashBytes`/`Store`/`Verify` in agreement.
-- **fs backend:** `Clean` reclaims the `<hex>.tmp.<n>` collision fallbacks it
-  missed, returns walk/removal errors, and tolerates a missing base; `Put`
-  observes cancellation while streaming and treats an existing regular file as
-  idempotent success (Windows rename-over-open); `Get` retries briefly while a
-  concurrent rename makes the file unopenable; `hashPath` maps a non-conforming
-  algorithm name to a safe in-root element.
-- **mem backend:** `WithMaxSize` bounds buffering, so an oversized `Put` is
-  rejected without allocating past the cap.
-- **gitlike:** `Commit.MarshalJSON` returns an error for a nil tree instead of
-  panicking on the nil `cas.Hash` interface.
-- **examples:** `examples/artifacts` no longer panics on `-store <dir>` with no
-  command; `examples/api/server` guards its size map with a mutex and verifies
-  objects by streaming the hash (it previously hashed only the first 1 MiB, so
-  every intact object above that was reported invalid).
-- **benchmarks:** the FS `Put` benchmark varies 8 bytes of content per
-  iteration instead of 2, so its hashes no longer repeat every 65536 iterations.
-
-### Changed
-
-- Docs re-aligned with the code: `cas-core.md` (v34→v35: `RegisterHash`
-  validation, walker visited set, `CacheMetrics.Loads` semantics, fs
-  rename/`Clean`/listing scope, mem buffering), `cli.md` (v12→v13: `gc`/`prune`
-  grace default is 1h — the text said 24h while the code and `defaults.md` said
-  1h — plus the exact `-json` shapes), `backend-architecture.md` (v14→v15) and
-  `versioning.md` (v9→v10: grace default), `cas/store.go`'s stale pre-TLV
-  on-disk-format comment, and `cas/backend.go`'s integrity note (bytes are not
-  re-hashed on read unless `Verify` runs).
-- `internal/index.Paginate` computes its window without overflow; callers
-  validate the bounds first.
-- Tests added: backend cancellation and size bounds, fs concurrency (`-race`),
-  walker cycle/shared subgraph, hash `Equal` across algorithms, legacy envelope
-  round-trip, cache `Loads` and LRU bookkeeping, and viewer CSRF/throttle/
-  large-object coverage.
+- Typed object stores, codecs, caching, graph traversal, and filesystem
+  storage capabilities.
 
 ## [v1.1.0] - 2026-09-09
 
-Minor release: an **additive viewer feature** plus docs/tests/CI work. No change
-to the public `cas` core API, its semantics, or the on-disk format.
-
 ### Added
 
-- **Viewer direct-token login.** `GET /viewer/?token=<startup-or-role-token>`
-  establishes the same session cookie as `POST /viewer/login` (the `cask web`
-  "open viewer" deep link). It is throttled and audit-logged like a form login,
-  is never logged/echoed, and its response sends `Referrer-Policy:
-  no-referrer` so the token cannot leak via `Referer`. When unauthenticated,
-  `/viewer/` now redirects (303) to `/viewer/login`; data endpoints still
-  return 401/403 empty. Specs (`viewer-security.md` v5→v7, `viewer-design.md`
-  v9→v10) updated to authorize and document this behavior.
-- **Scale economics probe** `BenchmarkScaleStoreEconomics`
-  (`benchmarks/scale_bench_test.go`): reports the FS on-disk layout cost at N
-  (object files, dirs, leaf-dir spread, bytes) at `(2,1)` vs `(4,1)`.
-
-### Changed
-
-- `docs/specs/performance.md` (v12→v13): the on-demand and `CASK_SCALE_OBJECTS`
-  run commands now point at `./benchmarks/` (the suite moved there), fixing
-  commands that previously targeted `./cas/`.
-
-## [v1.0.2] - 2026-09-09
-
-Patch release: documentation and CI additions on top of the frozen `v1.0.0`
-surface. No change to the public `cas` API, semantics, or the on-disk format.
-
-### Docs and tests
-
-- Added runnable, `// Output`-verified godoc `Example` functions for the `cas`
-  core and `gitlike` (package-level and per-symbol: `ExampleHashBytes`,
-  `ExampleRepository`), so `go test` keeps the documented examples correct.
-- Improved the `MarshalJSON`/`UnmarshalJSON` doc comments on the gitlike
-  object types (they note they implement `json.Marshaler`/`json.Unmarshaler`
-  and document nil behavior).
-- Reverted `docs/specs/index.md` and `docs/design/index.md` to their
-  pre-condensation originals.
-
-### CI
-
-- Added a nightly workflow (`.github/workflows/nightly.yml`) that runs each
-  fuzz target for 60 s and the regular benchmark suite — the long-running
-  checks the testing-strategy spec expects beyond the CI smoke.
-
-## [v1.0.1] - 2026-09-09
-
-Patch release: documentation and test-only additions on top of the frozen
-`v1.0.0` surface. No change to the public `cas` API, semantics, or the on-disk
-format.
-
-### Docs and tests
-
-- Expanded the package doc comments for `cas/cache/{mem,lru,prefetch}` and
-  `cas/codec/{json,gob}` (godoc), and added a runnable, `// Output`-verified
-  `Example` per package so `go test` keeps the documented examples correct.
-- Fixed two remaining references to the old `docs/instructions` spec path
-  (`cas/errors.go`, `docs/specs/AGENT.md`).
+- Initial Git-like object model and repository APIs on top of the generic CAS
+  core.
 
 ## [v1.0.0] - 2026-09-09
 
-**First stable release.** The `cas` stable surface (cas-core §7.1) is frozen:
-semver is now `v1.x.y`, and within a major version only additive, non-breaking
-changes are allowed (library-design §5). This release reaches the versioning.md
-§6 Definition-of-Done: every spec's acceptance checklist is fully ticked, the
-CI gates (race, ≥90% coverage, fuzz smoke, doc-integrity) hold, and the four
-runnable examples plus the `gitlike/` shared reference library and the embedded
-viewer are in place.
-
 ### Added
 
-- Fuzz targets `FuzzPathRoundTrip` and `FuzzVerify` (fs backend) and
-  `FuzzCodecRoundTrip` (JSON codec, restricted to valid UTF-8). The CI fuzz
-  smoke now runs each target against its real package — previously three of
-  the four runs targeted `./cas/` where the targets did not exist, so they
-  were vacuous.
+- First stable release of the generic, content-addressable storage core,
+  filesystem backend, typed object layer, and Git-like reference model.
 
 ## [v0.3.0] - 2026-09-09
 
-Layout, documentation, and stale-code release. No change to the generic `cas`
-core API or the on-disk format.
-
-### Changed
-
-- `gitlike` moved out of `examples/` to the module root: imported as
-  `github.com/dmundt/go-cask/gitlike`, and declared a **reference / copy-source**
-  shared library — importable for convenience but NOT part of the stable `cas`
-  surface (cas-core §7.1); apps with their own object model copy the pattern and
-  never extend gitlike. Its "example" framing was removed across the docs and
-  comments.
-- `benchmark/` renamed to `benchmarks/` (test package path
-  `github.com/dmundt/go-cask/benchmarks`); referring docs/comments aligned.
-- Docs/code stale claims fixed: `sha1` no longer described as a built-in hash
-  (only `sha256` ships; others via `RegisterHash`); removed nonexistent
-  `repo.go`/`manifest.go` and old JSON-envelope references from the examples.
-
-### Fixed
-
-- Type sniffing from stored bytes now reads the **TLV** envelope instead of
-  the pre-TLV JSON envelope: `internal/index.EnvelopeType` (used by the viewer
-  and `cask meta`) and the `examples/api` server's `envelopeType` now call
-  `cas.EnvelopeFromBytes`. A legacy unversioned type name reads back as `@1`.
-  Removed an obsolete local JSON envelope struct and orphaned `Deserialize`
-  comments in `gitlike/types.go`.
+- Stabilized the core object, codec, backend, and repository APIs ahead of
+  the 1.0 release.
 
 ## [v0.2.0] - 2026-09-09
 
-Documentation and editorial release. **No public API or on-disk-format change.**
-
-### Changed
-
-- Condensed every file under `docs/` (27 specs/design docs + the three folder
-  `AGENT.md` meta-guides) and all repo READMEs (`README.md`, the `benchmark`
-  guide, and the `examples/*` READMEs) while preserving 100% of requirements,
-  contracts, invariants, and compatibility notes; mermaid/fence blocks kept
-  balanced. Instruction-doc frontmatter versions bumped by one per file
-  (`benchmark/README.md` v4→v5); `cas-core` now v31.
-- Swept stale pre-refactor identifiers from the example READMEs and a few
-  source doc-comments: `FSRawStore`→`fs.Backend`, `RawStore`→`cas.Backend`,
-  `JSONCodec[T]`/`GobCodec[T]`→`json.New[T]()`/`gob.New[T]()`,
-  `StoreStats`→`cas.Stats`, `Encode`/`Decode`→`Encode`/`Decode`. Comment-
-  only; no behavior change (4 `.go` files, `gofmt`/`go vet` clean).
+- Added the typed object and codec layers above the byte backend.
 
 ## [v0.1.1] - 2026-09-09
 
-The `cas.Backend` contract gained a `Stats` method returning the shared
-`cas.Stats` summary (renamed from the fs-local `StoreStats`); the memory
-backend implements it, and both backends carry a compile-time interface
-assertion. Public API and on-disk format are otherwise unchanged.
-
-### Performance
-
-- Core hot-path allocation reduction (on-disk format and public API
-  unchanged): `marshalEnvelope` now writes the TLV envelope into a single
-  pre-sized allocation (no growing `bytes.Buffer`, no final copy), and the
-  internal envelope parser returns the payload as a zero-copy slice of the
-  read buffer instead of allocating `type`/`payload` copies
-  (`cas/envelope.go`). `Store.Get` uses the zero-copy parser; the public
-  `EnvelopeFromBytes` still returns an independent payload copy. The memory
-  backend `Put` stores its `io.ReadAll` buffer directly instead of making a
-  second copy. Measured (64 B object): `Store.Put` 13→11 allocs, `Store.Get`
-  13→10 allocs, B/op and ns/op down (e.g. `Store.Get` 1 KiB 3.7 µs→2.4 µs).
-
-### Added
-
-- `Backend.Stats` is now part of the `cas.Backend` interface, returning the
-  shared `cas.Stats` type (`cas/stats.go`) so the fs and memory backends report
-  the same summary interchangeably. The memory backend (`cas/backend/mem`)
-  gained `Stats(ctx)`, recomputing per-algorithm counts, total bytes, and
-  object count from its object map (no desynchronized counter). Both backends
-  carry a compile-time `var _ cas.Backend` assertion so a dropped method breaks
-  their own package's build. Spec/docs updated to the six-method backend
-  contract.
-
-### Changed
-
-- `cas.StoreStats` renamed to `cas.Stats` (`cas/storestats.go` →
-  `cas/stats.go`); it stays in `package cas` (it is the `Backend.Stats`
-  return type, so it cannot live in `cas/backend` without an import cycle).
-- Both backends carry a compile-time `var _ cas.Backend = (*Backend)(nil)`
-  assertion so a dropped method breaks the backend's own package build.
-- Added unit coverage for `cas.Stats.String()`.
+- Improved initial storage performance and examples.
 
 ## [v0.1.0] - 2026-09-08
 
-This release restructures the public API and the on-disk format ahead of
-`v1.0.0`. **It is a breaking release**: the byte-layer storage contract was
-renamed (its former name in the `cas` root package no longer exists) and
-re-homed under a pluggable `cas/backend` package, codecs moved to `cas/codec/*`
-subpackages with their serialization methods renamed to the standard
-`Encode`/`Decode` idiom, the caching layer was split into `cas/cache/*`
-subpackages, and stored objects switched to a versioned TLV envelope. No
-migration path is provided — data written by earlier alphas is incompatible.
-
-### Added
-
-- `cas/backend` (`cas/backend/config.go`): the generic `type Option func(any)`
-  so each backend owns its own config and `With*` helpers; backend config and
-  option plumbing moved out of the `cas` root package.
-- `cas/backend/fs` (package `fs`): type `Backend`, `fs.New(base, opts...)`,
-  the `WithFanOut`/`WithFanLevels`/`WithDirSync` options, and `StoreStats` —
-  the filesystem backend.
-- `cas/backend/mem` (package `memory`): type `Backend`, `mem.New(opts...)`,
-  and `mem.WithMaxSize(n)` to cap total stored bytes (`0` = unbounded) — the
-  in-memory backend.
-- `cas/codec/json` (package `json`) and `cas/codec/gob` (package `gob`):
-  `json.New[T]()` and `gob.New[T]()`, each exposing `Encode`/`Decode`; a
-  stdlib `encoding/gob` binary codec joins the relocated JSON one.
-- The versioned **TLV envelope** as the stored-object format
-  (`[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`, in
-  `cas/envelope.go`, cas-core §8 decision 1) with the public accessor
-  `cas.EnvelopeFromBytes`; a missing `@major` reads as `@1` and the leading
-  version byte future-proofs the format.
-- `cas/cache/mem` (package `memory`: `CachedStore`, `CachedObject`,
-  `New(store)`), `cas/cache/lru` (package `lru`: `New(store, maxSize)` LRU
-  eviction over a `memory.CachedStore`), and `cas/cache/prefetch` (package
-  `prefetch`: `NewSmartCache`) — the caching layer split into three packages,
-  with `SmartCache` factored out of the mem cache.
-- A top-level `benchmark/` directory (`bench_test.go` + `scale_bench_test.go`)
-  hosting the suite moved out of `cas/`; the on-demand scale probes honor
-  `CASK_SCALE_OBJECTS`.
-- `internal/test/` shared test types/fixtures reused across packages.
-- `docs/index.md` (the path→spec rule index, read-first per AGENTS.md) plus
-  per-directory `index.md` and `AGENT.md` governance files under `docs/`,
-  `docs/design/`, and `docs/perf/`.
-- All docs frontmatter converted to OKF format; a constructor-naming rule
-  (`New()` vs `NewType()`) documented in `docs/AGENT.md`.
-- CI now gates each `cas/backend/*`, `cas/cache/*`, and `cas/codec/*` package
-  individually at ≥ 90% coverage and runs the doc-integrity gate against the
-  new `docs/specs/` home.
-
-### Changed
-
-- **The byte-layer storage contract is now the `Backend` interface** (package
-  `cas`, `cas/backend.go`), with concrete implementations living in the
-  `cas/backend/*` subpackages — a breaking rename of the core interface.
-- **`Codec[T]` serialization methods renamed to the standard
-  `Encode`/`Decode` names** used across the `encoding/*` packages — a
-  breaking API change.
-- **Stored-object serialization switched to the versioned TLV envelope** — a
-  breaking change to on-disk bytes and therefore to the content hashes.
-- Backend constructors/options and codecs moved out of the `cas` root package;
-  callers now use `fs.New`/`mem.New`/`json.New[T]`/`gob.New[T]` with the
-  `cas/backend` `Option` type (see Added).
-- `Store[T]`'s marshal/read paths rebuilt around the codec as the single
-  serialization authority plus the TLV envelope; reads verify the stored type
-  name against the decoded value's type.
-- The caching layer moved from the `cas` root package into `cas/cache/*`
-  (memory/LRU/prefetch split) with `SmartCache` promoted from `examples/notes`
-  to `cas/cache/prefetch`.
-- Examples (`files`, `notes`, `artifacts`, `gitlike`), `cmd/cask`, and the
-  viewer updated to the new API; codec wrappers now compose `json.New[T]`
-  with `Encode`/`Decode`.
-- Tests reorganized per package (cached/LRU/smartcache split; `cas` corner and
-  external tests distributed to their owning packages) and coverage lifted
-  across the tree (mem backend ~97%, fs backend ~90%, `cas` ~95%, `cas/codec`
-  ~92%); shared test types centralized in `internal/test/`.
-- `examples/files`'s `main` refactored for testability with error-path and
-  command-execution tests added.
-
-### Removed
-
-- The pre-TLV `type\npayload` serialization and the earlier JSON envelope,
-  both superseded by the versioned TLV envelope.
-- The in-`cas` byte-layer backend and codec files/constructors that the
-  `cas/backend/*` and `cas/codec/*` packages replace.
-- Stray generated coverage artifacts (`cachecover`, `cas/cache/mem/cover.out`).
-
-### Fixed
-
-- Full benchmark suites that were dropped when benchmarks moved to
-  `benchmark/` were restored.
-- `examples/files`'s `cat` now resolves blobs to raw bytes and other types to
-  a description.
-- Doc-integrity path updated to the `docs/specs/` home and all docs swept to
-  the current API after the refactors; README Mermaid diagram parse error
-  fixed; `envelope.go` consistency fixes and TLV doc alignment.
+- Initial filesystem-backed content-addressable store and typed API.
 
 ## [v0.1.0-alpha.2] - 2026-09-03
 
-### Added
-
-- Core-overview diagram of the `cas` interfaces (byte / typed / caching
-  layers and their dependencies) — canonical copy in `cas-core` §3.3, with
-  the same diagram embedded in the README; `design/core-overview.md` points
-  to the spec (cas-core v13, v14).
-
-### Changed
-
-- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
-- `cas` `FSRawStore.Put`: temp files now use **unique per-writer names**
-  (created with `O_CREATE|O_EXCL`; a numeric suffix is appended only when
-  another process holds `<path>.tmp`) instead of a deterministic
-  `<path>.tmp` — concurrent writers of the same hash never share a temp
-  inode, so cross-process same-hash writes cannot corrupt each other; on
-  POSIX the atomic rename gives last-wins, on Windows a racing Put may
-  transiently error but never corrupts (cas-core v18, operations v4).
-- `cask`: **grace-based maintenance sweeps, writers lock-free**. Writers
-  (`put`) and the viewer (`web`) never lock — object writes are safe across
-  processes by construction (unique temps + atomic rename). Maintenance
-  sweeps (`gc`, `prune`, `clean`) take the store's exclusive cross-process
-  lock (`.cask.lock`, holding the PID) so two sweeps never overlap, and
-  reclaim only objects older than `--min-age` (default 24h), so a concurrent
-  writer's fresh objects survive. A forced `--min-age 0` sweep is the
-  documented dangerous variant (prints a warning; only safe with no other
-  writer). `gc` gained the `--min-age` flag (was immediate)
-  (cli spec v9, cas-core v19, backend-architecture v10, consistency v6).
-- Concurrency model documented: cas is **multi-client safe within one
-  process** (lock-free reads, per-process mutexes, atomic writes — cas-core
-  §6); across processes, reads and same-hash `Put`s are safe by construction
-  while maintenance sweeps must be grace-gated against live writers
-  (cas-core v19, backend-architecture v10, consistency v6).
-- Naming: the acronym expansion is **Content-Addressable Store (Kit)** and is
-  written ALL-CAPS (`CAS`, `CASK`) everywhere — lowercase `cas` only as the
-  Go package — replacing the former "Content Addressed Storage (Kit)" wording
-  in README, specs, package comments, and example READMEs; the
-  "Cas core parts used" README headings are now "`cas` core parts used"
-  (AGENT.md v6).
-- `examples/files`: new `audit` command — a derived per-object state report
-  (verified / orphaned / corrupt / unverified) built from `List` +
-  reachability-from-HEAD marking + per-object `Verify`, with a
-  `-no-verify` fast-orphan mode; states are scan results, never stored
-  (examples spec v8).
-- `cas-core` §3.1 layer diagram converted from a fragile ASCII box to a
-  Mermaid flowchart (subgraphs per layer + dependency edges) (cas-core
-  v15).
-- `cas` typed layer: reads renamed for symmetry — `Store.GetTyped` is now
-  `Store.Get` (concrete `T`), and the cached layer's loaded read is
-  `CachedStore.Get`/`LRUCache.Get` with the lazy proxy accessor renamed
-  `Get` → `Proxy`. `Put`/`Get`/`Delete` now read as a natural trio across
-  layers (cas-core v14, library-design v7, testing-strategy v8,
-  performance v7).
+- Added the first Git-like object and repository examples.
 
 ## [v0.1.0-alpha.1] - 2026-09-03
 
-### Added
+- Initial public design and prototype APIs.
 
-- **`cas` core library** — the generic core of a content-addressable store:
-  - byte layer: `Hash`/`ParseHash`/`NewHash`/`RegisterHash`/`NewHasher`/
-    `HashBytes` (sha1 + sha256), `RawStore` contract, `FSRawStore`
-    (fan-out layouts, atomic temp→`Sync()`→rename writes, lock-free reads,
-    `Stats`/`Verify`/`GC`/`Prune`), `MemoryRawStore`, sentinel errors;
-  - typed layer: `Object[T]`, `Codec[T]`/`JSONCodec[T]`, `Store[T]`
-    (one-pass hashing, `PutDedup`, self-describing envelope with
-    type-verifying reads), `Walker[T]`;
-  - caching: `CachedObject[T]`, `CachedStore[T]`, in-tree `LRUCache[T]`;
-  - **`examples/gitlike`** — the reference object model (`Blob`/`Tree`/
-  `Commit`/`Tag`, `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`,
-  `CachedRepository`, `Preloader`).
-- **`cmd/cask`** — the single entry point: CLI store operations (`put`,
-  `get`, `cat`, `list`, `meta`, `stats`, `verify`, `gc`, `prune`) over the
-  library in-process, the `web` subcommand (the embedded viewer), and
-  `version`.
-- **`internal/`** — the viewer implementation: `web` (sessions, CSRF,
-  roles, htmx templates), `storage` (filesystem store service), `index`
-  (pagination/envelope-type helpers).
-- **The viewer** — dashboard, object list/detail with lazy hexdump,
-  references (best-effort via gitlike), graph, stats, GC — secure by
-  default (`cask web`), startup-token login, empty-body 401/403.
-- **Examples** — `files` (gitlike miniature), `artifacts` (gzip codec +
-  custom hash + cache + GC), `notes` (own types + lazy loading +
-  prefetch), `api` (HTTP-exposure pattern: store server + plain-HTTP demo), each with a
-  rule-8 README.
-- CI: gofmt/tidy/vet, `-race` + per-package coverage gate (cas, gitlike
-  ≥ 90%), fuzz smoke (4 targets), doc integrity, import boundaries, benchmark
-  allocs gate.
-
-- cas: `FSRawStore.Size` (per-object size) and `Clean` (orphan `*.tmp`
-  sweep).
-
-### Changed
-
-- Audit decisions (core lib, 2026-09): prune now defaults to --min-age 24h (was 1h) with the forced --min-age 0 warning and a required root argument, matching gc/cli/consistency; FSRawStore.Size takes context.Context first (every I/O method does); new optional WithDirSync FSOption fsyncs the parent directory after the publish rename (best-effort, no-op on Windows, operations §1); lean-core budget re-baselined to ≤ ~1600 LOC / ≤ ~40 exports with the full stable surface enumerated (library-design v10); library baseline declared Go 1.27 (defaults v10, versioning v5, AGENTS v10, README). Checklist ticks: cli/prune grace item, operations fsync item, library-design budget item (cli v10, operations v5 unchanged).
-- Layout: `internal/` for all implementation detail (Go-enforced privacy);
-  the viewer lives in `internal/web/`; `cas/` stays at the repo root.
-- The server became `cask web` — the embedded viewer only, no JSON API
-  surface; `cmd/caskd` removed.
-- OpenAPI documents MUST live in separate embedded `.yaml` files
-  (api-design §13) — JSON example surfaces only (`examples/api`); the
-  viewer needs none.
-- Every example ships a `README.md` covering the cas core used, what it
-  extends, a code walkthrough, and a Mermaid diagram (examples §2 rule 8).
-- Examples renamed to short single-word names (`files`, `artifacts`,
-  `notes`, `api`; proposed `viewer`).
-- GitHub Actions bumped to Node-24 majors (`checkout@v5`, `setup-go@v6`);
-  module caching disabled (std-lib-only module has no `go.sum`).
-
-- `internal/storage` removed: `cmd/cask` and the viewer use `cas.FSRawStore`
-  directly (the service layer had become a passthrough).
-- CLI: the `cat` alias is gone — `get` without `-o` prints to stdout
-  (cli spec v7).
-
-- `cas` typed layer: `Store[T Object[T]]` — the constraint makes every
-  handled value an object at compile time (no type assertions remain); `Put`
-  takes the concrete `T`; new sentinel `ErrCorrupt` for payloads the codec
-  cannot decode (cas-core v11).
-
-- `cas` typed layer: `Store[T].Get` retired — reads return the concrete `T`
-  via `GetTyped` (type-verified) or the bytes via `GetRaw`; `Walker` visits
-  now take `func(T) error`; the cached layer returns concrete `T` from
-  `Load`/`GetTyped` (cas-core v12, coding-guidelines v6).
-- `cas` typed layer: the `Codec[T]` is now the single serialization
-  authority — `Store.Put` builds the envelope from `codec.Encode` + the
-  object's `Type()`; `Object[T]` shrank to `{Type, References}`
-  (`Serialize`/`Deserialize` removed from the contract; example serializers
-  become vestigial and are removed in a follow-up). cas-core v10.
-
-### Fixed
-
-- CI steps that assumed a `go.sum` and a single-package `./cas/...`
-  (dependency-free module + `cas/extra`); coverage gating per package;
-  doc-integrity false positive for pattern literals.
-- `sha256-double` (examples spec) renamed to `sha256double` — the name must
-  obey the hash-string validation pattern (defaults §2).
-- Fuzz-discovered `encoding/json` lossy invalid-UTF-8 round-trip — the
-  codec fuzz target constrains input; regression corpus committed.
-- Stale `examples/cas-api/client` reference in backend-architecture §5.
-
-### Removed
-
-- `cas/extra` — `SmartCache`/`CacheMonitor` inlined into `examples/notes` and
-  `examples/artifacts` (example recipes, not core; cas-core v9).
-- `client/` — the public CAS API client SDK; CLI remote mode (`-api`/
-  `-token`) goes with it.
-- `internal/api` + `internal/auth` — the CAS JSON API handlers, bearer-token
-  auth, and the IP rate limiter.
-- The CAS HTTP API surface: the `cas-api` / `viewer-api` specs, `/api/cas/v1`
-  routes, the viewer OpenAPI doc + `/swagger/` (never implemented), and the
-  `-viewer`/`-rate`/`-burst` flags (`cask web` now IS the viewer).
-- Viewer references/graph + `internal/storage.Raw()`: the viewer is a
-  byte-layer tool and no longer imports `examples/gitlike` (dependency rule,
-  coding-guidelines §9).
-- `cas.NewStoreWithHasher` — undocumented, unconsumed constructor; custom
-  hash algorithms use the documented `RegisterHash` + `NewStore` recipe
-  (cas-core §4.2).
-- `cmd/caskd` (absorbed into `cmd/cask web`).
-- The top-level `viewer/` directory (viewer code moved to `internal/web/`).
+[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.5.0...HEAD
+[v1.6.0]: https://github.com/dmundt/go-cask/compare/v1.5.0...v1.6.0
+[v1.5.0]: https://github.com/dmundt/go-cask/compare/v1.4.6...v1.5.0
+[v1.4.6]: https://github.com/dmundt/go-cask/compare/v1.4.5...v1.4.6
+[v1.4.5]: https://github.com/dmundt/go-cask/compare/v1.4.4...v1.4.5
+[v1.4.4]: https://github.com/dmundt/go-cask/compare/v1.4.3...v1.4.4
+[v1.4.3]: https://github.com/dmundt/go-cask/compare/v1.4.2...v1.4.3
+[v1.4.2]: https://github.com/dmundt/go-cask/compare/v1.4.1...v1.4.2
+[v1.4.1]: https://github.com/dmundt/go-cask/compare/v1.4.0...v1.4.1
+[v1.4.0]: https://github.com/dmundt/go-cask/compare/v1.3.1...v1.4.0
+[v1.3.0]: https://github.com/dmundt/go-cask/compare/v1.2.0...v1.3.0
+[v1.2.0]: https://github.com/dmundt/go-cask/compare/v1.1.0...v1.2.0
+[v1.1.0]: https://github.com/dmundt/go-cask/compare/v1.0.2...v1.1.0
+[v1.0.0]: https://github.com/dmundt/go-cask/compare/v0.3.0...v1.0.0
+[v0.3.0]: https://github.com/dmundt/go-cask/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://github.com/dmundt/go-cask/compare/v0.1.1...v0.2.0
+[v0.1.1]: https://github.com/dmundt/go-cask/compare/v0.1.0...v0.1.1
+[v0.1.0]: https://github.com/dmundt/go-cask/releases/tag/v0.1.0
+[v0.1.0-alpha.2]: https://github.com/dmundt/go-cask/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
+[v0.1.0-alpha.1]: https://github.com/dmundt/go-cask/releases/tag/v0.1.0-alpha.1

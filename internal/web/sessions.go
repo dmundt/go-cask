@@ -1,8 +1,6 @@
-// Package web implements the embedded technical viewer (internal/web): the
-// browser-facing hypermedia surface at /viewer/* — login with the startup
-// token, session cookies, role authorization, CSRF-protected mutations,
-// htmx fragments and object pages — per
-// viewer-design and viewer-security (which MUST NOT be weakened).
+// Session lifetimes, the session store, and the per-session verification
+// results and reference trail the inspector replays.
+
 package web
 
 import (

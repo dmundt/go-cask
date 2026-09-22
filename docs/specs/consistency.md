@@ -91,7 +91,7 @@ The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, 
 
 - **Core (cas-core §4.11):** fs backend `Verify`/`GC`/`Stats`/`Prune`; retention policy in §5.
 - **CLI (cli §2):** `verify`, `gc`, `prune`, `clean` in-process over the library; `prune` defaults to `--dry-run`; `clean` sweeps orphan `*.tmp` older than a threshold (operations §2).
-- **Viewer (viewer-design.md):** integrity diagnostics (`Verify`) and admin actions for verify/delete/GC (`POST /viewer/objects/{hash}/verify`, `POST /viewer/objects/{hash}/delete`, `POST /viewer/gc`). There is **no** prune route in `internal/web/web.go` — prune stays CLI-only (`cask prune`) because its dry-run semantics and root-list interface don't fit the hypermedia surface. Byte-layer tool; does not surface typed references (viewer-design §7).
+- **Viewer (viewer-design.md):** integrity diagnostics only — `POST /viewer/objects/{hash}/verify` and `POST /viewer/objects/verify`. There is **no** delete, GC, or prune route in `internal/web/web.go`: the viewer inspects and does not destroy, so every operation that removes an object stays CLI-only (`cask gc`, `cask prune`), where it can be scripted, audited, and paired with the root list a sweep needs, and where a dry run means something. Byte-layer tool; does not surface typed references (viewer-design §7).
 
 ## 10. Checklist
 

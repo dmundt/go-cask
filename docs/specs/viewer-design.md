@@ -71,10 +71,20 @@ and silently discards the declared size.
 
 | Route | View | Role |
 |---|---|---|
-| `/viewer/` | master-detail object browser landing | viewer |
-| `/viewer/objects` | object-browser compatibility route | viewer |
+| `/viewer/` | entry point: completes the `?token=` deep link, redirects to login without a session, otherwise the object browser | viewer |
+| `/viewer/objects` | the object browser itself — the target every filter, sort, page, and selection control addresses | viewer |
 | `/viewer/objects/{hash}` | cold-load object link: redirects (303) to the browser with that object selected | viewer |
-| `/viewer/objects/{hash}/raw` | lazy hexdump fragment | viewer |
+| `/viewer/objects/{hash}/dump` | lazy hexdump fragment (HTML, not the stored bytes) | viewer |
+| `POST /viewer/objects/{hash}/verify` | verifies one object, answers with the result fragment | operator |
+| `POST /viewer/objects/verify` | verifies every stored object, answers with the summary fragment | operator |
+| `/viewer/login` | login page and token submission | public |
+| `/viewer/static/{viewer.css,htmx.min.js}` | the viewer's only two assets, served from its own origin | public |
+
+That table is the whole surface. Every other path under `/viewer/` is
+answered by a single catch-all that names no method, so a path the viewer
+never served — including the object-delete and GC routes it deliberately does
+not offer — replies on the caller's session rather than on the path: 401
+without one, 404 with. Nothing about the surface can be mapped by probing it.
 
 The browser has a top bar, filter bar, table/pager master column, and inspector
 detail column. The object table contains digest, type, IEC-formatted size,
@@ -87,6 +97,12 @@ on-demand verification result exists in the current server session. A
 successful or failed verification MUST refresh the visible object table through
 an htmx response event so its status cell immediately reflects the
 session-scoped result.
+
+Digest URLs are algorithm-agnostic at the viewer layer. `Server` receives a
+`cas.Hasher`; routes parse canonical hex with `cas.ParseDigest` and validate
+the resulting width through that hasher. The CLI supplies SHA-256 by default,
+while another client can inject a compatible hasher without changing viewer
+routes.
 
 Each recorded verification MUST carry the time it ran, and the Metadata tab
 MUST restate the recorded finding — its state, its explanation, the digests of

@@ -17,7 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
+	sha512256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
@@ -34,6 +38,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	}
 	store := fs.String("store", storeDefault, "filesystem store directory")
 	bind := fs.String("bind", "127.0.0.1:8080", "listen address")
+	hashAlgorithm := fs.String("hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
 	tokens := fs.String("tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	noOpen := fs.Bool("no-open", false, "do not open the default browser")
@@ -62,6 +67,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
 	}
+	hasher, err := viewerHasher(*hashAlgorithm)
+	if err != nil {
+		slog.Error("invalid viewer hash algorithm", "algorithm", *hashAlgorithm, "err", err)
+		os.Exit(2)
+	}
 	references, err := previewReferences(ctx, raw)
 	if err != nil {
 		slog.Error("build preview references", "err", err)
@@ -85,10 +95,12 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	token := randomToken()
 	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
 	webSrv, err := web.New(raw, web.Config{
-		StartupToken: token,
-		RoleTokens:   roleTokens,
-		References:   references,
-		Reachability: references,
+		Hasher:        hasher,
+		HashAlgorithm: *hashAlgorithm,
+		StartupToken:  token,
+		RoleTokens:    roleTokens,
+		References:    references,
+		Reachability:  references,
 	})
 	if err != nil {
 		slog.Error("viewer setup", "err", err)
@@ -123,6 +135,19 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown", "err", err)
+	}
+}
+
+func viewerHasher(name string) (cas.Hasher, error) {
+	switch name {
+	case sha256.Name:
+		return sha256.New(), nil
+	case sha512.Name:
+		return sha512.New(), nil
+	case sha512256.Name:
+		return sha512256.New(), nil
+	default:
+		return nil, fmt.Errorf("supported values are %q, %q, and %q", sha256.Name, sha512.Name, sha512256.Name)
 	}
 }
 

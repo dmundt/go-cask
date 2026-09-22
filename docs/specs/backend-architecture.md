@@ -34,9 +34,9 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 
 - Every viewer route is `text/html` (pages + htmx fragments). Its only
   presentation asset is the embedded, locally served
-  `/viewer/static/viewer.css`; vendored htmx is the only script. The raw view
-  buffers at most **256 KiB** for in-page hexdump (a bounded preview, not a
-  streaming download — api-design §11 streaming applies to the API surface,
+  `/viewer/static/viewer.css`; vendored htmx is the only script. The hexdump
+  view buffers at most **256 KiB** for in-page display (a bounded preview, not
+  a streaming download — api-design §11 streaming applies to the API surface,
   not the hexdump UI).
 - Errors are minimal HTML; 401/403 are empty bodies never disclosing existence.
 - The product serves no OpenAPI; an HTTP surface needing a documented contract (`examples/api`) keeps it in a separate embedded `openapi.yaml` (api-design §13).

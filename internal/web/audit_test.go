@@ -62,7 +62,7 @@ func TestAuditLogNamesTheSession(t *testing.T) {
 	csrf := csrfFromPage(getBody(t, admin, ts.URL+"/viewer/objects"))
 	for _, target := range []string{
 		ts.URL + "/viewer/objects/" + h.String() + "/verify",
-		ts.URL + "/viewer/objects/verify-all",
+		ts.URL + "/viewer/objects/verify",
 	} {
 		resp, err := admin.PostForm(target, url.Values{"csrf": {csrf}})
 		if err != nil {
