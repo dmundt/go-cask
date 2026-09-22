@@ -111,8 +111,8 @@ func TestListRejectsOutOfRangeFlags(t *testing.T) {
 
 func TestSeedPreview(t *testing.T) {
 	mf := localMF(t)
-	out, code := run(t, mf, "seed-preview", "-count", "6")
-	if code != 0 || out != "preview objects: added 6, deduplicated 0\n" {
+	out, code := run(t, mf, "seed-preview", "-count", "16")
+	if code != 0 || out != "preview objects: added 16, deduplicated 0\n" {
 		t.Fatalf("first seed-preview = (%q, %d)", out, code)
 	}
 	raw, err := fs.New(mf.store)
@@ -123,8 +123,8 @@ func TestSeedPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(digests) != 6 {
-		t.Fatalf("seeded objects = %d, want 6", len(digests))
+	if len(digests) != 16 {
+		t.Fatalf("seeded objects = %d, want 16", len(digests))
 	}
 	references, err := previewReferences(context.Background(), raw)
 	if err != nil {
@@ -133,34 +133,58 @@ func TestSeedPreview(t *testing.T) {
 	if references == nil {
 		t.Fatal("preview references = nil")
 	}
-	objects := make([]cas.Digest, 0, 6)
-	for ordinal := range 6 {
+	objects := make([]cas.Digest, 0, 16)
+	for ordinal := range 16 {
 		object := previewObjectFor(ordinal, objects)
 		objects = append(objects, object.digest)
 	}
 	if got := references.Outbound(objects[3]); len(got) != 3 || !got[0].Equal(objects[2]) || !got[1].Equal(objects[1]) || !got[2].Equal(objects[0]) {
 		t.Fatalf("preview outbound = %v, want [%s %s %s]", got, objects[2], objects[1], objects[0])
 	}
+	// A full eight-object block settles into a fixed inbound pattern: 0/1/2
+	// accumulate inbound edges from later in-block members, 3 is the root
+	// (Head: reachable, zero inbound), 4/5/6 are orphaned with inbound edges
+	// from later members, and 7 ends the block with no later sibling
+	// referencing it back (Detached). The second block (8-15) repeats the
+	// same pattern, since references never cross a block boundary.
 	for _, test := range []struct {
 		digest cas.Digest
 		want   int
 	}{
 		{objects[0], 3},
-		{objects[4], 1},
-		{objects[5], 0},
+		{objects[3], 0},
+		{objects[4], 3},
+		{objects[5], 2},
+		{objects[6], 1},
+		{objects[7], 0},
+		{objects[11], 0},
+		{objects[15], 0},
 	} {
 		if got := len(references.Inbound(test.digest)); got != test.want {
 			t.Fatalf("preview inbound %s = %d, want %d", test.digest, got, test.want)
 		}
 	}
 	for ordinal, want := range map[int]bool{
-		4: false,
-		5: true,
-		6: true,
-		7: true,
+		4:  false,
+		5:  false,
+		6:  false,
+		7:  true,
+		11: false,
+		15: true,
 	} {
 		if got := previewDetachedOrdinal(ordinal); got != want {
 			t.Fatalf("previewDetachedOrdinal(%d) = %v, want %v", ordinal, got, want)
+		}
+	}
+	for ordinal, want := range map[int]bool{
+		3:  true,
+		4:  false,
+		7:  false,
+		11: true,
+		15: false,
+	} {
+		if got := previewHeadOrdinal(ordinal); got != want {
+			t.Fatalf("previewHeadOrdinal(%d) = %v, want %v", ordinal, got, want)
 		}
 	}
 	for _, test := range []struct {
@@ -171,6 +195,7 @@ func TestSeedPreview(t *testing.T) {
 		{objects[3], true},
 		{objects[4], false},
 		{objects[5], false},
+		{objects[7], false},
 	} {
 		if got := references.IsReachable(test.digest); got != test.want {
 			t.Fatalf("preview reachability %s = %t, want %t", test.digest, got, test.want)
@@ -206,8 +231,8 @@ func TestSeedPreview(t *testing.T) {
 		t.Fatalf("intact preview object %s must verify: %v", objects[0], err)
 	}
 
-	out, code = run(t, mf, "seed-preview", "-count", "6")
-	if code != 0 || out != "preview objects: added 0, deduplicated 6\n" {
+	out, code = run(t, mf, "seed-preview", "-count", "16")
+	if code != 0 || out != "preview objects: added 0, deduplicated 16\n" {
 		t.Fatalf("second seed-preview = (%q, %d)", out, code)
 	}
 	for _, args := range [][]string{{"-count", "0"}, {"-count", "10001"}, {"unexpected"}} {

@@ -449,10 +449,10 @@ a {
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  /* The outline derives from the pill's own text colour, so each variant
-     keeps its hue and none of them gains a second, competing colour. Kept
-     faint: it should define the pill's edge, not announce itself. */
-  border: 1px solid transparent;
+  /* A translucent light border rings every pill regardless of its own
+     background hue, so a pill never blends into a same-colored surface
+     behind it (a hovered/selected row, for instance). */
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: 2px;
   min-height: 19px;
   background: #ececec;
@@ -480,6 +480,11 @@ a {
 .viewer-status-detached {
   background: #e9e5f6;
   color: #442f70;
+}
+
+.viewer-status-head {
+  background: #dce6f7;
+  color: #1d4f8a;
 }
 
 .viewer-status-corrupt {

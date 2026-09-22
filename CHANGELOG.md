@@ -8,6 +8,27 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.6.5] - 2026-09-22
+
+### Added
+
+- Viewer reference state now identifies **Head** objects: reachable objects
+  with no inbound references (the entry point of a reachable subtree), shown
+  with a distinct blue pill and `reach=head` filter.
+
+### Changed
+
+- Viewer status pills now carry a translucent light border, so a pill never
+  blends into a same-colored row background (hover or selection).
+
+### Fixed
+
+- The deterministic preview graph's Detached classification now matches its
+  actual structure: only the last object in each eight-object block is truly
+  detached (no later sibling references it back); the two ordinals previously
+  misclassified as Detached are orphaned-with-inbound instead. The block's
+  root ordinal is now also a Head candidate.
+
 ## [v1.6.4] - 2026-09-22
 
 ### Added
