@@ -159,6 +159,17 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 	if total != declaredTotal {
 		return errors.New("mem: snapshot total size mismatch")
 	}
+	var extra [1]byte
+	n, err := backend.ContextReader{Ctx: ctx, R: r}.Read(extra[:])
+	if n != 0 {
+		return errors.New("mem: snapshot trailing data")
+	}
+	if err != io.EOF {
+		if err == nil {
+			return errors.New("mem: snapshot trailing data")
+		}
+		return fmt.Errorf("mem: check snapshot trailing data: %w", err)
+	}
 
 	m.mu.Lock()
 	m.objects = objects

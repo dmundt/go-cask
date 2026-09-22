@@ -57,6 +57,53 @@ func TestPackBackendRoundTripAndList(t *testing.T) {
 	}
 }
 
+func TestPackBackendSupportsLargeDigests(t *testing.T) {
+	ctx := context.Background()
+	b, err := New(filepath.Join(t.TempDir(), "large-digest"), WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	digest := cas.NewDigest(bytes.Repeat([]byte{0xab}, 64))
+	if err := b.Put(ctx, digest, bytesReader([]byte("payload"))); err != nil {
+		t.Fatalf("Put() = %v, want nil", err)
+	}
+	reader, err := b.Get(ctx, digest)
+	if err != nil {
+		t.Fatalf("Get() = %v, want nil", err)
+	}
+	defer reader.Close()
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != "payload" {
+		t.Fatalf("Get() = %q, want %q", payload, "payload")
+	}
+}
+
+func TestPackBackendRejectsTruncatedPackPayload(t *testing.T) {
+	ctx := context.Background()
+	b, err := New(filepath.Join(t.TempDir(), "truncated"), WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	digest := cas.NewDigest([]byte("truncated-payload"))
+	if err := b.Put(ctx, digest, bytesReader([]byte("payload"))); err != nil {
+		t.Fatal(err)
+	}
+	rec := b.index[string(digest)]
+	if err := os.Truncate(rec.Pack, rec.Offset+rec.Size-1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Get(ctx, digest); err == nil {
+		t.Fatal("Get() = nil, want error for truncated pack payload")
+	}
+}
+
 func TestPackBackendDisabledMatchesLoose(t *testing.T) {
 	ctx := context.Background()
 	base := filepath.Join(t.TempDir(), "plain")

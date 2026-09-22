@@ -461,6 +461,24 @@ func TestMemoryBackendRestoreValidatesLimitsAndDuplicates(t *testing.T) {
 	}
 }
 
+func TestMemoryBackendRestoreRejectsTrailingData(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	digest := sha256.Of([]byte("value"))
+	if err := source.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	data := append(snapshot.Bytes(), 0xff)
+	if err := New().Restore(ctx, bytes.NewReader(data)); err == nil {
+		t.Fatal("Restore with trailing data must fail")
+	}
+}
+
 // countingReader yields n bytes and records how many were actually served.
 type countingReader struct {
 	n    int

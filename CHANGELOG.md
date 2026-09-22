@@ -12,6 +12,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Opening the viewer on an empty store no longer fails while preview graph
   metadata is unavailable.
+- Pack storage now supports digest widths beyond SHA-256 and rejects truncated
+  payload records instead of returning zero-padded data.
+- In-memory snapshot restore now rejects trailing data.
 
 ## [v1.6.3] - 2026-09-22
 

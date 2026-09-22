@@ -262,11 +262,11 @@ func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("cas: seek pack file: %w", err)
 	}
-	var header [4 + 32 + 8]byte
+	header := make([]byte, 4+len(d)+8)
 	binary.BigEndian.PutUint32(header[0:4], uint32(len(d)))
 	copy(header[4:4+len(d)], d)
 	binary.BigEndian.PutUint64(header[4+len(d):4+len(d)+8], uint64(payloadSize))
-	if _, err := b.packFile.Write(header[:4+len(d)+8]); err != nil {
+	if _, err := b.packFile.Write(header); err != nil {
 		return fmt.Errorf("cas: write pack header: %w", err)
 	}
 	if _, err := b.packFile.Write(data); err != nil {
@@ -329,7 +329,7 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 				return nil, fmt.Errorf("cas: open pack file: %w", err)
 			}
 			data := make([]byte, rec.Size)
-			if _, err := io.NewSectionReader(f, rec.Offset, rec.Size).Read(data); err != nil && err != io.EOF {
+			if _, err := io.ReadFull(io.NewSectionReader(f, rec.Offset, rec.Size), data); err != nil {
 				_ = f.Close()
 				return nil, fmt.Errorf("cas: read pack entry: %w", err)
 			}
