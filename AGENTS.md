@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v25
+version: v26
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -11,6 +11,32 @@ version: v25
 Raw HTML is strictly forbidden in every Markdown file in this repository.
 Documentation MUST use valid Markdown syntax only; do not add HTML tags,
 comments, layout wrappers, or embedded HTML blocks.
+
+## Changelog and release-note policy
+
+`CHANGELOG.md` is a lean, user-facing record, not a development diary.
+Maintain one `Unreleased` section and one section per tagged release. Record
+only notable changes that affect library consumers, CLI users, operators, or
+the viewer's behavior and security.
+
+- Combine related changes into one clear bullet when they form one user-facing
+  capability.
+- Omit test-only work, coverage changes, routine CI or dependency maintenance,
+  internal refactors with no observable behavior change, formatting, release
+  preparation, and temporary fixes.
+- Keep entries concise: describe outcome and user impact, not implementation
+  history, review discussion, or individual commits.
+- Use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`
+  headings only when they contain a notable entry. Do not create empty
+  headings.
+- Update `CHANGELOG.md` for every notable user-visible change before commit.
+  Do not add entries for changes that are purely internal or temporary.
+- Before a release, move its finalized entries from `Unreleased` into the
+  versioned section and preserve the existing compare-link format.
+- GitHub release notes MUST mirror the corresponding user-facing changelog
+  section, use the same concise scope, and end with a `Full Changelog:` link
+  to the tag comparison. Correct older published notes when they contain
+  temporary or trivial material.
 
 ## Content-addressable terminology
 
