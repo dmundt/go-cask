@@ -33,6 +33,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [codec](./codec/README.md) — object encoders and decoders: [json](./codec/json/README.md), [gzip](./codec/gzip/README.md), [zlib](./codec/zlib/README.md), [flate](./codec/flate/README.md), [binary](./codec/binary/README.md), [cbor](./codec/cbor/README.md), [gob](./codec/gob/README.md)
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
 - [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
+- [refs](./refs/README.md) — mutable named pointers ("refs") to a `cas.Digest`, with atomic writes and an append-only reflog
 - [verify](./verify/README.md) — optional integrity/checksum helpers layered above the store: [crc32](./verify/crc32/README.md)
 - [backend/packfs](./backend/packfs/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 

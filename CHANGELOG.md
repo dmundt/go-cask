@@ -10,6 +10,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas/refs` adds named, mutable pointers to a `cas.Digest` ("refs"): atomic
+  `Set`/`Delete`, `Get`/`List`/`Resolve` (with ambiguous-prefix detection),
+  an append-only reflog per name (`Log`/`Previous`), and `Roots` — the ready
+  root set for `cas.Reachable` and `Backend.GC`/`Backend.Prune`. `ValidateName`
+  rejects any name that is unsafe as a cross-platform path component (Win32
+  reserved characters/device names, a trailing space or `.`, backslash, and
+  control characters), verified by a fuzz test exercising real `Set`/`Get`
+  round-trips.
 - `cas.Reachable` computes the transitively-closed reachable set from a list
   of root digests, using a caller-supplied `cas.RefLister` to expand
   each object's references. This is the documented, correct way to build the
