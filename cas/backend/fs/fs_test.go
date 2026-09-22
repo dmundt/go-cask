@@ -304,7 +304,7 @@ func TestContextCancellationFS(t *testing.T) {
 		{"Stats", func() error { _, err := s.Stats(ctx); return err }},
 		{"Verify", func() error { return s.Verify(ctx, h, sha256.New()) }},
 		{"GC", func() error { return s.GC(ctx, map[string]bool{}) }},
-		{"Prune", func() error { _, err := s.Prune(ctx, []cas.Digest{h}, 0, true); return err }},
+		{"Prune", func() error { _, err := s.Prune(ctx, map[string]bool{h.String(): true}, 0, true); return err }},
 		{"Clean", func() error { _, err := s.Clean(ctx, 0); return err }},
 	}
 	for _, tc := range ops {
@@ -353,11 +353,11 @@ func TestFSBackendErrorPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	doomed, err := s.Prune(ctx, []cas.Digest{a}, 0, true)
+	doomed, err := s.Prune(ctx, map[string]bool{a.String(): true}, 0, true)
 	if err != nil || len(doomed) != 1 || !doomed[0].Equal(b) {
 		t.Fatalf("prune dry-run = %v, %v; want [b]", doomed, err)
 	}
-	if _, err := s.Prune(ctx, []cas.Digest{a}, 0, false); err != nil {
+	if _, err := s.Prune(ctx, map[string]bool{a.String(): true}, 0, false); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := s.Exists(ctx, b); ok {
@@ -961,6 +961,66 @@ func TestPruneAgeRetention(t *testing.T) {
 	}
 	if ok, _ := s.Exists(ctx, h); ok {
 		t.Fatal("unreachable object survived prune at minAge 0")
+	}
+}
+
+// stubReferenceLister is a cas.ReferenceLister backed by a fixed adjacency
+// map, standing in for a typed object model's References() in tests that
+// exercise cas.Reachable without depending on any concrete object type.
+type stubReferenceLister map[string][]cas.Digest
+
+func (s stubReferenceLister) References(_ context.Context, d cas.Digest) ([]cas.Digest, error) {
+	return s[d.String()], nil
+}
+
+// TestPruneWithExpandedReachableSetKeepsReferencedLeaf is the regression test
+// for the Prune/GC contract: passing only an entry-point root — without first
+// expanding it into the full reachable set — silently deletes anything that
+// root references. cas.Reachable is the documented way to do that expansion;
+// this test proves the leaf a root references survives when the caller uses
+// it, closing the gap a caller hits by passing bare roots (go-cask#134).
+func TestPruneWithExpandedReachableSetKeepsReferencedLeaf(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+
+	leaf := digestOf([]byte("leaf"))
+	root := digestOf([]byte("root"))
+	for _, x := range []struct {
+		h cas.Digest
+		d string
+	}{{leaf, "leaf"}, {root, "root"}} {
+		if err := s.Put(ctx, x.h, strings.NewReader(x.d)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// root references leaf; leaf references nothing.
+	refs := stubReferenceLister{root.String(): {leaf}}
+
+	// Passing only the bare root as "reachable" — the misuse the doc used to
+	// invite — deletes the leaf: prove the failure mode still exists so the
+	// safe path below is not a no-op fix.
+	bareRoot := map[string]bool{root.String(): true}
+	if doomed, err := s.Prune(ctx, bareRoot, 0, true); err != nil || len(doomed) != 1 || !doomed[0].Equal(leaf) {
+		t.Fatalf("Prune(bare root) doomed = %v, %v; want [leaf] (the unexpanded-root footgun)", doomed, err)
+	}
+
+	// The documented, safe path: expand the root with cas.Reachable first.
+	reachable, err := cas.Reachable(ctx, refs, []cas.Digest{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reachable[root.String()] || !reachable[leaf.String()] {
+		t.Fatalf("Reachable(root) = %v, want both root and leaf", reachable)
+	}
+	if _, err := s.Prune(ctx, reachable, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.Exists(ctx, leaf); !ok {
+		t.Fatal("leaf referenced by root was pruned despite being in the expanded reachable set")
+	}
+	if ok, _ := s.Exists(ctx, root); !ok {
+		t.Fatal("root was pruned despite being reachable")
 	}
 }
 

@@ -10,6 +10,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas.Reachable` computes the transitively-closed reachable set from a list
+  of root digests, using a caller-supplied `cas.ReferenceLister` to expand
+  each object's references. This is the documented, correct way to build the
+  set `Backend.GC`/`Backend.Prune` require before calling them.
 - `cas.EnvelopeType` returns an object's versioned type name from its envelope
   header alone, so callers that only need to know what an object is (the viewer
   index, `gitlike` resolution) read a bounded prefix instead of buffering the
@@ -26,6 +30,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `fs.Backend.Prune` now takes an already-expanded `reachable map[string]bool`,
+  matching `fs.Backend.GC`, instead of a bare `roots []cas.Digest` slice.
+  Previously `Prune` treated the given roots as the complete reachable set and
+  never followed their references, so an object referenced only by a root
+  (and not passed explicitly) was silently deleted — the opposite of what its
+  documentation claimed. Callers that have a typed object graph to expand
+  should build the set with `cas.Reachable` (or an equivalent typed walk)
+  before calling `Prune`; the `cask` CLI's `prune`/`gc` subcommands do this
+  internally, but still require every digest that must survive to be listed
+  in `<roots...>` since the CLI has no typed model to expand it with.
 - Backend options are typed per backend (`fs.Option`, `mem.Option`,
   `packfs.Option`). The shared `backend.Option` accepted any configuration
   struct, so an option built for one backend compiled against another and

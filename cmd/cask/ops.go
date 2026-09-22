@@ -45,11 +45,19 @@ func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
 
-// pruneCount runs raw.Prune (delete unreachable-from-roots objects older
-// than minAge; dryRun reports without deleting) and returns how many objects
-// it deleted / would delete.
+// pruneCount runs raw.Prune (delete objects absent from roots AND older than
+// minAge; dryRun reports without deleting) and returns how many objects it
+// deleted / would delete. roots is treated as the complete reachable set at
+// the byte layer: the store cannot interpret references, so cask cannot
+// expand a root into what it points to — graph-aware reachability is the
+// app's job (cas-core §4.11, cas.Reachable). Pass every digest that must
+// survive, not just entry points, or Prune/GC will delete what they reference.
 func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Digest, minAge time.Duration, dryRun bool) (int, error) {
-	doomed, err := raw.Prune(ctx, roots, minAge, dryRun)
+	reachable := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		reachable[r.String()] = true
+	}
+	doomed, err := raw.Prune(ctx, reachable, minAge, dryRun)
 	if err != nil {
 		return 0, err
 	}
@@ -519,7 +527,15 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	if a.minAge == 0 {
 		fmt.Fprintln(os.Stderr, "warning: prune --min-age 0 deletes every unreachable object immediately; only safe when no other process is writing (cas-core §6)")
 	}
-	doomed, err := t.raw.Prune(ctx, roots, a.minAge, a.dryRun)
+	// roots is the complete reachable set at the byte layer (the store
+	// cannot interpret references; graph-aware reachability is the app's
+	// job, cas-core §4.11) — pass every digest that must survive, not just
+	// entry points.
+	reachable := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		reachable[r.String()] = true
+	}
+	doomed, err := t.raw.Prune(ctx, reachable, a.minAge, a.dryRun)
 	if err != nil {
 		return err
 	}
