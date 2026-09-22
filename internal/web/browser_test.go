@@ -30,7 +30,7 @@ func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
 	if err := raw.Put(ctx, digest, bytes.NewReader(payload)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken, Hasher: sha512.New()})
+	srv, err := New(raw, Config{StartupToken: testStartupToken, Hasher: sha512.New(), HashAlgorithm: sha512.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +46,10 @@ func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), digest.String()) {
 		t.Fatalf("SHA-512 permalink = %d, want 200 containing %s", resp.StatusCode, digest)
+	}
+	metadata := getBody(t, admin, ts.URL+"/viewer/objects?selected="+digest.String()+"&tab=metadata")
+	if !strings.Contains(metadata, "sha512") {
+		t.Fatalf("SHA-512 metadata is missing selected algorithm (contains Algorithm=%v): %.500s", strings.Contains(metadata, "Algorithm"), metadata)
 	}
 	csrf := csrfFromPage(string(body))
 	resp, err = admin.PostForm(ts.URL+"/viewer/objects/"+digest.String()+"/verify", url.Values{"csrf": {csrf}})

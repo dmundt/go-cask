@@ -15,8 +15,22 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
+	sha512256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 	"github.com/dmundt/go-cask/internal/index"
 )
+
+func TestViewerHasher(t *testing.T) {
+	for _, name := range []string{sha256.Name, sha512.Name, sha512256.Name} {
+		hasher, err := viewerHasher(name)
+		if err != nil || hasher == nil {
+			t.Fatalf("viewerHasher(%q) = (%T, %v), want hasher", name, hasher, err)
+		}
+	}
+	if _, err := viewerHasher("unknown"); err == nil {
+		t.Fatal("viewerHasher(unknown) accepted unsupported algorithm")
+	}
+}
 
 // run executes a cask operation in-process, returning its stdout and exit
 // code (0/1/2 per cli §3).

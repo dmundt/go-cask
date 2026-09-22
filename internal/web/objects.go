@@ -99,6 +99,7 @@ type filterOption struct {
 
 type browserInspector struct {
 	Digest         string
+	HashAlgorithm  string
 	Type           string
 	Size           int64
 	Integrity      string
@@ -369,6 +370,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 	prevDigest, nextDigest := s.sessions.trailNeighbors(id)
 	inspector := &browserInspector{
 		Digest:              row.Digest,
+		HashAlgorithm:       s.cfg.HashAlgorithm,
 		Type:                row.Type,
 		Size:                row.Size,
 		Integrity:           row.Integrity,

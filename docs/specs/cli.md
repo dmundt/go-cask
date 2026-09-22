@@ -35,7 +35,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default) |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
 | `seed-preview [-count <n>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
-| `web [-store <dir>] [-bind <addr>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).
@@ -75,7 +75,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
 - No secrets in output: tokens are never echoed; errors never include the token.
 - Std-lib only (`flag` package); documented per coding-guidelines §7.

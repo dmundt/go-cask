@@ -47,6 +47,9 @@ type Config struct {
 	// historical SHA-256 default; callers using another digest algorithm must
 	// provide its Hasher.
 	Hasher cas.Hasher
+	// HashAlgorithm is the display name for Hasher in the object inspector.
+	// It defaults to "sha256" when Hasher is omitted.
+	HashAlgorithm string
 	// StartupToken is generated at startup and printed once for admin login.
 	StartupToken string
 	// RoleTokens maps role names to bearer tokens.
@@ -89,6 +92,9 @@ type Server struct {
 func New(store *fs.Backend, cfg Config) (*Server, error) {
 	if cfg.Hasher == nil {
 		cfg.Hasher = sha256.New()
+	}
+	if cfg.HashAlgorithm == "" {
+		cfg.HashAlgorithm = "sha256"
 	}
 	tmpl, err := template.New("viewer").Funcs(template.FuncMap{
 		// The viewer's short form is the first 8 hex characters of a digest
