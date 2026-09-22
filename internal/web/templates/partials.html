@@ -18,7 +18,7 @@
 {{if .CSRF}}<div id="verify-all">{{template "verify-all-button" (verifyAll .CSRF)}}</div>{{end}}
 </header>{{end}}
 
-{{define "verify-all-button"}}<form hx-post="/viewer/objects/verify-all" hx-target="#verify-all" hx-swap="innerHTML" hx-disabled-elt="find button">
+{{define "verify-all-button"}}<form hx-post="/viewer/objects/verify" hx-target="#verify-all" hx-swap="innerHTML" hx-disabled-elt="find button">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button class="viewer-verify-all" type="submit" title="Verify every stored object">{{.Label}}</button>
 </form>{{end}}

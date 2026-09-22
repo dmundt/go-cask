@@ -170,7 +170,7 @@ func TestVerifyAllUpdatesEveryObject(t *testing.T) {
 	}
 	csrf := csrfFromPage(page)
 
-	resp, err := admin.PostForm(ts.URL+"/viewer/objects/verify-all", url.Values{"csrf": {csrf}})
+	resp, err := admin.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {csrf}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestSweepRefreshesTheOpenInspector(t *testing.T) {
 		t.Fatalf("inspector does not subscribe to store-wide status changes: %.900q", page)
 	}
 
-	resp, err := admin.PostForm(ts.URL+"/viewer/objects/verify-all", url.Values{"csrf": {csrf}})
+	resp, err := admin.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {csrf}})
 	if err != nil {
 		t.Fatal(err)
 	}

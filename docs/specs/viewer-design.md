@@ -76,7 +76,7 @@ and silently discards the declared size.
 | `/viewer/objects/{hash}` | cold-load object link: redirects (303) to the browser with that object selected | viewer |
 | `/viewer/objects/{hash}/hexdump` | lazy hexdump fragment (HTML, not the stored bytes) | viewer |
 | `POST /viewer/objects/{hash}/verify` | verifies one object, answers with the result fragment | operator |
-| `POST /viewer/objects/verify-all` | verifies every stored object, answers with the summary fragment | operator |
+| `POST /viewer/objects/verify` | verifies every stored object, answers with the summary fragment | operator |
 | `/viewer/login` | login page and token submission | public |
 | `/viewer/static/{viewer.css,htmx.min.js}` | the viewer's only two assets, served from its own origin | public |
 

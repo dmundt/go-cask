@@ -127,7 +127,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
 	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectPermalink))
 	mux.HandleFunc("GET /viewer/objects/{hash}/hexdump", s.require(RoleViewer, s.objectHexdump))
-	mux.HandleFunc("POST /viewer/objects/verify-all", s.require(RoleOperator, s.verifyAllFragment))
+	mux.HandleFunc("POST /viewer/objects/verify", s.require(RoleOperator, s.verifyAllFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/verify", s.require(RoleOperator, s.verifyFragment))
 	// Everything else under the prefix is not a viewer route. The catch-all
 	// names no method, so a path the viewer never served answers the same way

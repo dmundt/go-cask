@@ -65,7 +65,7 @@ func TestRoleTokensLogin(t *testing.T) {
 	if got := statusCode(t, viewer, ts.URL+"/viewer/objects"); got != http.StatusOK {
 		t.Fatalf("viewer token browsing objects = %d, want 200", got)
 	}
-	resp, err := viewer.PostForm(ts.URL+"/viewer/objects/verify-all", url.Values{
+	resp, err := viewer.PostForm(ts.URL+"/viewer/objects/verify", url.Values{
 		"csrf": {csrfFromPage(getBody(t, viewer, ts.URL+"/viewer/objects"))},
 	})
 	if err != nil {
@@ -237,7 +237,7 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 
 	t.Run("csrf and session cookie helpers", func(t *testing.T) {
 		sess := &Session{ID: "abc", CSRF: "csrf-token"}
-		req := httptest.NewRequest(http.MethodPost, "/viewer/objects/verify-all", strings.NewReader(url.Values{"csrf": {"csrf-token"}}.Encode()))
+		req := httptest.NewRequest(http.MethodPost, "/viewer/objects/verify", strings.NewReader(url.Values{"csrf": {"csrf-token"}}.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if !csrfOK(req, sess) {
 			t.Fatal("csrfOK accepted matching token")
