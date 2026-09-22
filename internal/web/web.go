@@ -475,6 +475,24 @@ func defaultObjectBrowserState() objectBrowserState {
 	}
 }
 
+// The object browser's closed value sets. Each axis names its own so the parser
+// checks every one the same way, and so the filter controls and the parser can
+// never offer and accept different things.
+var (
+	// objectSizeBands lists the size filter's buckets, which matchesObjectRow
+	// turns into byte ranges.
+	objectSizeBands = []string{"small", "medium", "large"}
+	// objectReachStates lists the reachability filter's choices. Reachability
+	// is a separate axis from integrity and has its own filter.
+	objectReachStates = []string{"reachable", "orphaned"}
+	// objectDirections lists the sort orders.
+	objectDirections = []string{"asc", "desc"}
+	// objectNavModes lists the navigation markers a selection may carry.
+	objectNavModes = []string{navReference, navTrail, navStay}
+	// objectTabs lists the inspector's panels.
+	objectTabs = []string{"metadata", "references", "bytes"}
+)
+
 func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	state := defaultObjectBrowserState()
 	var err error
@@ -485,41 +503,20 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	if state.Type, err = queryValue(values, "type"); err != nil {
 		return state, err
 	}
-	if state.Size, err = queryValue(values, "size"); err != nil {
+	if state.Size, err = enumValue(values, "size", "", objectSizeBands); err != nil {
 		return state, err
 	}
-	if state.Size != "" && state.Size != "small" && state.Size != "medium" && state.Size != "large" {
-		return state, fmt.Errorf("invalid size filter")
-	}
-	if state.Status, err = queryValue(values, "status"); err != nil {
+	if state.Status, err = enumValue(values, "status", "", objectStates); err != nil {
 		return state, err
 	}
-	if state.Status != "" && !slices.Contains(objectStates, state.Status) {
-		return state, fmt.Errorf("invalid status filter")
-	}
-	if state.Reach, err = queryValue(values, "reach"); err != nil {
+	if state.Reach, err = enumValue(values, "reach", "", objectReachStates); err != nil {
 		return state, err
 	}
-	if state.Reach != "" && state.Reach != "reachable" && state.Reach != "orphaned" {
-		return state, fmt.Errorf("invalid reachability filter")
-	}
-	if state.Sort, err = queryValue(values, "sort"); err != nil {
+	if state.Sort, err = enumValue(values, "sort", "hash", objectSortKeys); err != nil {
 		return state, err
 	}
-	if state.Sort == "" {
-		state.Sort = "hash"
-	}
-	if !slices.Contains(objectSortKeys, state.Sort) {
-		return state, fmt.Errorf("invalid sort")
-	}
-	if state.Direction, err = queryValue(values, "dir"); err != nil {
+	if state.Direction, err = enumValue(values, "dir", "asc", objectDirections); err != nil {
 		return state, err
-	}
-	if state.Direction == "" {
-		state.Direction = "asc"
-	}
-	if state.Direction != "asc" && state.Direction != "desc" {
-		return state, fmt.Errorf("invalid sort direction")
 	}
 	if state.Limit, err = queryInt(values, "limit", defaultObjectLimit); err != nil {
 		return state, err
@@ -545,23 +542,20 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	} else if _, present := values["selected"]; present {
 		state.Deselected = true
 	}
-	if state.Nav, err = queryValue(values, "nav"); err != nil {
+	if state.Nav, err = enumValue(values, "nav", "", objectNavModes); err != nil {
 		return state, err
-	}
-	if state.Nav != "" && state.Nav != navReference && state.Nav != navTrail && state.Nav != navStay {
-		return state, fmt.Errorf("invalid navigation marker")
 	}
 	if state.Tab, err = queryValue(values, "tab"); err != nil {
 		return state, err
 	}
-	if state.Tab == "" {
-		state.Tab = "metadata"
-	}
+	// "actions" was a tab of its own before the metadata panel absorbed it. A
+	// bookmark naming it is honoured rather than rejected, so it is rewritten
+	// before the tab is checked.
 	if state.Tab == "actions" {
 		state.Tab = "metadata"
 	}
-	if state.Tab != "metadata" && state.Tab != "references" && state.Tab != "bytes" {
-		return state, fmt.Errorf("invalid inspector tab")
+	if state.Tab, err = checkEnum("tab", state.Tab, "metadata", objectTabs); err != nil {
+		return state, err
 	}
 	return state, nil
 }
@@ -684,6 +678,30 @@ func queryInt(values url.Values, key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("invalid %s: %w", key, err)
 	}
 	return parsed, nil
+}
+
+// enumValue reads a query parameter whose values form a closed set.
+func enumValue(values url.Values, key, fallback string, allowed []string) (string, error) {
+	value, err := queryValue(values, key)
+	if err != nil {
+		return "", err
+	}
+	return checkEnum(key, value, fallback, allowed)
+}
+
+// checkEnum resolves one closed-set value. An absent value reads as the
+// fallback, and so does an empty one: a filter control reset to "All" submits
+// an empty string. Anything else outside the set is a malformed query rather
+// than a filter that happens to match nothing — the viewer says so instead of
+// rendering a plausible but wrong empty page.
+func checkEnum(key, value, fallback string, allowed []string) (string, error) {
+	if value == "" {
+		return fallback, nil
+	}
+	if !slices.Contains(allowed, value) {
+		return "", fmt.Errorf("invalid %s", key)
+	}
+	return value, nil
 }
 
 type objectBrowserData struct {
