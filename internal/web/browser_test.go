@@ -247,6 +247,155 @@ func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 	}
 }
 
+func TestHeadStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := sha256.Of([]byte("head"))
+	interior := sha256.Of([]byte("interior"))
+	orphaned := sha256.Of([]byte("orphaned"))
+	for _, digest := range []cas.Digest{head, interior, orphaned} {
+		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	references := newTestReferenceIndex()
+	// head has no inbound edges recorded, so it can only be reachable as an
+	// entry point; interior gets an inbound edge from head, so it is
+	// reachable but not a Head.
+	references.Record(head, []cas.Digest{interior})
+	srv, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		References:   references,
+		Reachability: testReachabilityIndex{head.String(): true, interior.String(): true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	viewer := login(t, ts, testStartupToken)
+
+	page := getBody(t, viewer, ts.URL+"/viewer/objects?reach=head")
+	if !strings.Contains(page, shortDigest(head)) ||
+		strings.Contains(page, shortDigest(interior)) ||
+		strings.Contains(page, shortDigest(orphaned)) ||
+		!strings.Contains(page, `viewer-status-head">Head`) {
+		t.Fatalf("head filter = %.900q", page)
+	}
+
+	page = getBody(t, viewer, ts.URL+"/viewer/objects?selected="+url.QueryEscape(head.String()))
+	if !strings.Contains(page, `viewer-status-head">Head`) {
+		t.Fatalf("head inspector state = %.900q", page)
+	}
+
+	withoutReferences, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		Reachability: testReachabilityIndex{head.String(): true, interior.String(): true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutReferencesServer := httptest.NewTLSServer(withoutReferences.Handler())
+	t.Cleanup(withoutReferencesServer.Close)
+	withoutReferencesViewer := login(t, withoutReferencesServer, testStartupToken)
+	if code := statusCode(t, withoutReferencesViewer, withoutReferencesServer.URL+"/viewer/objects?reach=head"); code != http.StatusBadRequest {
+		t.Fatalf("head filter without references = %d, want 400", code)
+	}
+}
+
+// TestAllFourReferenceStatesAreMutuallyExclusive seeds one object for each of
+// the four reachable/inbound combinations in a single store and asserts that
+// every reach= filter selects exactly its own object, no filter leaks another
+// state's object, and the table pill, dropdown option, and inspector state
+// agree for every state.
+func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := sha256.Of([]byte("all-states-head"))                      // reachable, inbound 0
+	resolved := sha256.Of([]byte("all-states-resolved"))              // reachable, inbound > 0
+	orphaned := sha256.Of([]byte("all-states-orphaned-with-inbound")) // unreachable, inbound > 0
+	detached := sha256.Of([]byte("all-states-detached"))              // unreachable, inbound 0
+	for _, digest := range []cas.Digest{head, resolved, orphaned, detached} {
+		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	references := newTestReferenceIndex()
+	references.Record(head, []cas.Digest{resolved})
+	references.Record(resolved, []cas.Digest{orphaned})
+	srv, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		References:   references,
+		Reachability: testReachabilityIndex{head.String(): true, resolved.String(): true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	viewer := login(t, ts, testStartupToken)
+
+	for _, test := range []struct {
+		name   string
+		digest cas.Digest
+		pill   string
+	}{
+		{"reachable", head, `viewer-status-head">Head`},
+		{"reachable", resolved, `viewer-status-reachable">Resolved`},
+		{"orphaned", orphaned, `viewer-status-orphaned">Orphaned`},
+		{"detached", detached, `viewer-status-detached">Detached`},
+	} {
+		page := getBody(t, viewer, ts.URL+"/viewer/objects?selected="+url.QueryEscape(test.digest.String()))
+		if !strings.Contains(page, test.pill) {
+			t.Fatalf("inspector state for %s = %.900q, want pill %q", test.digest, page, test.pill)
+		}
+	}
+
+	// reach= expected membership per digest. "orphaned" matches every
+	// unreachable row, including the Detached one (Detached is a stricter
+	// subset of Orphaned: it just wins pill priority); "reachable" matches
+	// every reachable row, including Head.
+	membership := map[string]map[string]bool{
+		"reachable": {head.String(): true, resolved.String(): true},
+		"head":      {head.String(): true},
+		"orphaned":  {orphaned.String(): true, detached.String(): true},
+		"detached":  {detached.String(): true},
+	}
+	for reach, want := range membership {
+		page := getBody(t, viewer, ts.URL+"/viewer/objects?reach="+reach)
+		for _, other := range []cas.Digest{head, resolved, orphaned, detached} {
+			shouldMatch := want[other.String()]
+			contains := strings.Contains(page, shortDigest(other))
+			if shouldMatch && !contains {
+				t.Fatalf("reach=%s missing %s: %.900q", reach, other, page)
+			}
+			if !shouldMatch && contains {
+				t.Fatalf("reach=%s unexpectedly matched %s: %.900q", reach, other, page)
+			}
+		}
+	}
+
+	// The dropdown offers every state exactly once, in Resolved/Orphaned/
+	// Head/Detached order, and marks the active selection.
+	dropdown := getBody(t, viewer, ts.URL+"/viewer/objects?reach=detached")
+	for _, option := range []string{
+		`value="reachable"`,
+		`value="orphaned"`,
+		`value="head"`,
+		`value="detached" selected`,
+	} {
+		if !strings.Contains(dropdown, option) {
+			t.Fatalf("reach dropdown missing %q: %.900q", option, dropdown)
+		}
+	}
+}
+
 func TestEmptyObjectListKeepsInspectorEmpty(t *testing.T) {
 	raw, err := fs.New(t.TempDir())
 	if err != nil {

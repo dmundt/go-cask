@@ -49,6 +49,12 @@ type objectRow struct {
 	Orphaned bool
 	// Detached reports that an orphaned object has no inbound references.
 	Detached bool
+	// Head reports that a reachable object has no inbound references — the
+	// entry point of a reachable subtree, structurally consistent with being
+	// a configured root (the viewer has no direct view of the root list, so
+	// this is an inferred structural fact, not an assertion about host
+	// configuration).
+	Head bool
 	// ReachabilityKnown reports whether Orphaned was computed at all. The
 	// reference column is a row-level decision because the row template only
 	// ever sees the row.
@@ -77,6 +83,8 @@ type objectBrowserData struct {
 	HasReachability bool
 	// HasDetached reports whether detached-object filtering is available.
 	HasDetached bool
+	// HasHead reports whether head-object filtering is available.
+	HasHead bool
 	// StatusOptions contains integrity filter choices.
 	StatusOptions []filterOption
 	// LimitOptions contains page-size choices.
@@ -155,6 +163,8 @@ type browserInspector struct {
 	Orphaned bool
 	// Detached reports whether the object is orphaned with no inbound references.
 	Detached bool
+	// Head reports whether the object is reachable with no inbound references.
+	Head bool
 	// WrittenLabel is the formatted backend modification time.
 	WrittenLabel string
 	// InboundReferences counts inbound graph edges.
@@ -210,6 +220,10 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "detached filter unavailable", http.StatusBadRequest)
 		return
 	}
+	if state.Reach == "head" && s.cfg.References == nil {
+		http.Error(w, "head filter unavailable", http.StatusBadRequest)
+		return
+	}
 	id := sessionID(r)
 	rows, types, typeFound, total, matchedSize, page, resolvedState, fast, err := s.defaultObjectPage(r.Context(), id, state)
 	if !fast {
@@ -249,6 +263,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		RefreshURL:      refreshURL,
 		HasReachability: s.cfg.Reachability != nil,
 		HasDetached:     s.cfg.Reachability != nil && s.cfg.References != nil,
+		HasHead:         s.cfg.Reachability != nil && s.cfg.References != nil,
 		StatusOptions:   statusOptions(state.Status),
 		LimitOptions:    limitOptions(state.Limit),
 		Types:           typeOptions(types, state.Type),
@@ -383,6 +398,7 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 		row.ReferencesAvailable = true
 	}
 	row.Detached = row.Orphaned && row.ReferencesAvailable && row.References == 0
+	row.Head = row.ReachabilityKnown && !row.Orphaned && row.ReferencesAvailable && row.References == 0
 	return row
 }
 
@@ -541,6 +557,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		Report:              storedReport(s.sessions, id, row.Digest),
 		Orphaned:            row.Orphaned,
 		Detached:            row.Detached,
+		Head:                row.Head,
 		WrittenLabel:        row.WrittenLabel,
 		ReferencesAvailable: s.cfg.References != nil,
 		Timestamp:           formatTimestamp(row.Written),

@@ -156,9 +156,13 @@ The integrity filter orders its states as Verified, Unverified, and Corrupt.
 These are exclusive alternatives on one axis, so the filter is a single-choice
 `status` control with an empty value meaning every state. Reachability is the
 other axis and MUST be a separate single-choice `reach` filter
-(`reachable`/`orphaned`/`detached`, empty meaning either). `detached` means
-an orphaned object with zero host-supplied inbound references; it is a
-disconnected component entry, not a retention root. The two combine with AND —
+(`reachable`/`orphaned`/`detached`/`head`, empty meaning any). `detached`
+means an orphaned object with zero host-supplied inbound references; it is a
+disconnected component entry, not a retention root. `head` means a reachable
+object with zero host-supplied inbound references — the entry point of a
+reachable subtree, structurally consistent with being a root but not an
+assertion that the viewer has seen the host's actual root list (it only ever
+sees the two independent indexes below). The two axes combine with AND —
 `status=corrupt&reach=orphaned` returns corrupt orphans only. Mixing the axes
 in one control is forbidden: it makes
 combinations that describe nothing selectable. An unknown value on either
@@ -168,8 +172,9 @@ reachability. Only then does the viewer offer the reachability filter and label
 objects that
 are unreachable from those roots as orphaned. It MUST NOT infer orphanhood from
 zero inbound references. It MAY label an orphan with zero references
-`Detached`, but only when the host also supplies a `ReferenceIndex`; without
-that source, a `reach=detached` query returns 400. Without a reachability
+`Detached`, and a reachable object with zero references `Head`, but only when
+the host also supplies a `ReferenceIndex`; without that source, a
+`reach=detached` or `reach=head` query returns 400. Without a reachability
 source, every `reach` query returns 400.
 
 Byte integrity and root reachability are orthogonal axes, and the viewer MUST
@@ -177,15 +182,18 @@ keep them independent facts in both storage and display, including in their
 names: `Status` is not a label either axis may use, because a single "status"
 implies one verdict where there are two. The table therefore gives each axis a
 column of its own — `Integrity` (Unverified, Verified, or Corrupt) and
-`References` (Resolved, Orphaned, or Detached) — and the inspector names the
-same states. `Detached` has a distinct muted-violet pill; Resolved remains
-green and Orphaned amber. `Resolved` rather than `Reachable`, because a root has no inbound
+`References` (Resolved, Orphaned, Detached, or Head) — and the inspector names
+the same states. `Detached` has a distinct muted-violet pill and `Head` a
+distinct blue pill; Resolved remains green and Orphaned amber. `Resolved`
+rather than `Reachable`, because a root has no inbound
 references yet is reachable by definition, and the latter name invited reading
-the column as a refcount. Neither axis may be collapsed into or suppressed by
+the column as a refcount; `Head` is the more specific label reserved for the
+zero-inbound case of that same reachable state, so the two pills never
+overlap on one object. Neither axis may be collapsed into or suppressed by
 the other, because
 doing so hides a corrupt orphan's integrity behind its reachability (or the
 reverse) exactly when both matter. The `References` column and its filter appear only when a `ReachabilityIndex`
-is configured; the `Detached` filter choice additionally requires a
+is configured; the `Detached` and `Head` filter choices additionally require a
 `ReferenceIndex`. The inbound-reference count is named `Inbound` so it never
 collides with them. Each filter matches its own axis, so a corrupt orphan is
 returned by `status=corrupt` and by `reach=orphaned` alike.

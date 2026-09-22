@@ -23,6 +23,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - [Repository layout](#repository-layout)
 - [Core interfaces at a glance](#core-interfaces-at-a-glance)
 - [Recommended defaults](#recommended-defaults)
+- [Viewer reference states](#viewer-reference-states)
 - [Security note](#security-note)
 - [Getting started](#getting-started)
 - [Documentation map](#documentation-map)
@@ -116,6 +117,27 @@ classDiagram
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 
 Legacy or compatibility-only hashes should not be used for new content-addressed data: MD5 and SHA-1 are migration-only or compatibility choices, not the default for a CAS.
+
+## Viewer reference states
+
+The embedded viewer (`cask web`) renders two independent axes per object when
+a host supplies both a `ReachabilityIndex` and a `ReferenceIndex`: root
+reachability (is it reachable from a configured root?) and inbound reference
+count (how many other objects point to it?). Crossing those two axes gives
+four reference states, shown as the `References` column and matched by the
+`reach` filter:
+
+| State | Reachable? | Inbound refs | Pill color | Meaning |
+|---|---|---|---|---|
+| `Resolved` | yes | > 0 | green | Interior node of a reachable subtree |
+| `Head` | yes | 0 | blue | Entry point of a reachable subtree — structurally consistent with being a root, but the viewer never sees the host's actual root list, only these two indexes |
+| `Orphaned` | no | > 0 | amber | Unreachable but still pointed to by something else |
+| `Detached` | no | 0 | violet | Fully isolated — the true garbage-collection candidate |
+
+`Head` and `Detached` require both indexes (`reach=head`/`reach=detached`
+return 400 without a `ReferenceIndex`); `Resolved`/`Orphaned` only require a
+`ReachabilityIndex`. See [docs/specs/viewer-design.md](docs/specs/viewer-design.md)
+for the full normative contract.
 
 ## Security note
 

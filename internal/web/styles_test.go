@@ -254,12 +254,15 @@ func TestWorkbenchInteractionStates(t *testing.T) {
 		".viewer-status-detached",
 		"background: #e9e5f6;",
 		"color: #442f70;",
+		".viewer-status-head",
+		"background: #dce6f7;",
+		"color: #1d4f8a;",
 		"filter: brightness(0.97);",
 		"pointer-events: none;",
 		"scrollbar-color: var(--viewer-control-border) transparent;",
 		"background: var(--viewer-muted);",
 		"scrollbar-width: none;",
-		"border: 1px solid transparent;",
+		"border: 1px solid rgba(255, 255, 255, 0.65);",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("interaction-state rule missing: %s", want)

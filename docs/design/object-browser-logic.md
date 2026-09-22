@@ -2,7 +2,7 @@
 type: Design Document
 title: Object Browser Logic — go-cask
 description: Formal server-side state, transition, rendering, and invariants contract for the viewer object browser.
-version: v9
+version: v10
 ---
 
 # Object Browser Logic — go-cask
@@ -29,7 +29,7 @@ The server creates a normalized record for each listed digest:
 | Size | `Backend.Size` | Exact byte count |
 | Integrity | session-scoped verification result | `not verified` until verified |
 | Written | filesystem object modification time | Physical metadata rendered as whole `m ago`/`h ago`/`d ago`; not object creation time |
-| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied |
+| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied; also the source for the `Head`/`Detached` refinement of Reachability below |
 | Reachability | optional viewer `ReachabilityIndex` | Host-supplied root reachability; only source for Orphaned |
 | Timestamp | filesystem object modification time | Same physical metadata in UTC RFC 3339; not object creation time |
 
@@ -42,11 +42,13 @@ rows are sorted by digest, link to the selected object, and show its stored
 envelope type when readable.
 
 Integrity and reachability are separate facts rendered as separate pills in one
-status cell: an integrity pill (`not-verified` / `verified` / `corrupt`) and,
-for orphans only, an additional `Orphaned` pill. Reachable objects show a
-single pill. The inspector renders both axes as pills. Verify stays enabled for
-orphaned objects, because they are both the likeliest to rot and the next
-candidates for reclamation.
+status cell: an integrity pill (`not-verified` / `verified` / `corrupt`) and a
+reference-state pill for reachable objects with no inbound reference (`Head`)
+or unreachable objects (`Orphaned`, or `Detached` when they also have no
+inbound reference). Interior reachable objects (reachable, inbound > 0) show
+only the integrity pill. The inspector renders both axes as pills. Verify stays
+enabled for orphaned and detached objects, because they are both the likeliest
+to rot and the next candidates for reclamation.
 
 Every recorded verification stores its check time. The Metadata tab's Integrity
 section reports the

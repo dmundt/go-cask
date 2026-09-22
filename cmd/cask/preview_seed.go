@@ -119,8 +119,9 @@ func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 }
 
 // previewObjectReferences makes an eight-object preview block contain a
-// reachable root at ordinal 3, an orphan with inbound references at ordinal 4,
-// and detached orphan entries at ordinals 5 through 7.
+// reachable root at ordinal 3 (which doubles as a Head object: reachable with
+// no inbound edge of its own), an orphan with inbound references at ordinals
+// 4 through 6, and a detached orphan (no inbound edge at all) at ordinal 7.
 func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
 	count := min(len(digests), ordinal%4)
 	if count == 0 {
@@ -135,8 +136,17 @@ func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
 
 // previewDetachedOrdinal reports whether ordinal seeds a detached preview
 // object: it is not a root-reachable graph member and has no inbound edge.
+// Within an eight-object preview block, only the last member (offset 7) ends
+// its block with no later sibling still referencing it back.
 func previewDetachedOrdinal(ordinal int) bool {
-	return ordinal%8 >= 5
+	return ordinal%8 == 7
+}
+
+// previewHeadOrdinal reports whether ordinal seeds a Head preview object: it
+// is the reachable root of its eight-object block (offset 3) and, because
+// nothing in the block references a root, it also carries no inbound edge.
+func previewHeadOrdinal(ordinal int) bool {
+	return ordinal%8 == 3
 }
 
 func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) []byte {

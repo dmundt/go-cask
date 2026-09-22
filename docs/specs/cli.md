@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v20
+version: v21
 ---
 
 # CLI — go-cask
@@ -45,14 +45,15 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges, and
   alternating root-reachable graph segments. Each eight-object graph block
-  includes an orphan with inbound edges and Detached orphan entries with no
-  inbound edges, so the viewer can demonstrate all reference states.
-  Consecutive objects cycle through zero, one, two, and three outgoing
-  references, producing varied inbound counts too. It is idempotent for a
-  given `-count`: rerunning reports deduplicated objects instead of writing
-  copies. `web` recognizes only this known deterministic preview graph and
-  supplies it to the viewer; ordinary stores remain reference-free unless
-  their host provides a viewer source.
+  includes a Head root (reachable, no inbound edges), orphans with inbound
+  edges, and a Detached orphan entry (unreachable, no inbound edges), so the
+  viewer can demonstrate all four reference states. Consecutive objects cycle
+  through zero, one, two, and three outgoing references, producing varied
+  inbound counts too. It is idempotent for a given `-count`: rerunning
+  reports deduplicated objects instead of writing copies. `web` recognizes
+  only this known deterministic preview graph and supplies it to the viewer;
+  ordinary stores remain reference-free unless their host provides a viewer
+  source.
 - Every eighth preview object is written with deliberately tampered bytes that
   do not hash to their own address, so `verify` genuinely fails for them. Those
   ordinals sit inside root-reachable segments, giving the viewer corrupt
