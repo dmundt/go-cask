@@ -74,17 +74,17 @@
       "numeric": "mono with font-variant-numeric tabular-nums"
     },
     "typeScale": {
-      "body": "15.4px/1.45",
-      "brand": "17.6px body, 700, -0.02em",
+      "body": "12px/1.4",
+      "brand": "15px body, 700, -0.02em",
       "mark": "9.9px mono, 700",
       "verifyButton": "12.1px body, 650",
-      "table": "13.2px mono",
-      "searchInput": "13.2px mono",
+      "table": "12px mono",
+      "searchInput": "12px mono",
       "searchIcon": "19.8px/1 body glyph",
       "clearIcon": "17.6px/1 body glyph",
       "control": "13.2px body",
       "controlSelect": "13.2px body",
-      "tableHeader": "12.65px/1.2 mono, 0.07em, uppercase",
+      "tableHeader": "11px/1.2 mono, 600, 0.05em, uppercase",
       "sortButton": "9.9px/1 mono",
       "tab": "13.2px/1.25 body, 510 (active 650)",
       "reset": "12.1px body",
@@ -98,8 +98,8 @@
       "hash": "13.2px/1.45 mono",
       "copyIcon": "15.4px/1 mono glyph",
       "section": "12.1px/1.2 mono, 700, 0.08em, uppercase",
-      "propertyLabel": "12.1px/1.45 body, 450",
-      "propertyValue": "13.2px/1.45 mono",
+      "propertyLabel": "11px/1.45 body, 450",
+      "propertyValue": "12px/1.35 mono",
       "paneEmpty": "13.2px body",
       "reference": "13.2px/1.4 mono",
       "referenceKind": "9.9px mono, 700, 0.06em, uppercase",
@@ -112,7 +112,7 @@
       "controlHeight": "30px",
       "pageInset": "14px",
       "filterGap": "8px",
-      "rowPadding": "5px horizontal, 8px vertical; header row 5px horizontal and 7px vertical",
+      "rowPadding": "8px horizontal, 4px vertical; header row 8px horizontal and 5px vertical",
       "tableMinWidth": "700px",
       "hashColumnWidth": "30%",
       "otherColumnWidth": "14%",
@@ -143,7 +143,7 @@
       "inspectorWidthKeyboardStep": "20px",
       "splitterVisibleWidth": "4px",
       "splitterHitExtend": "5px on both sides",
-      "radius": "5px inputs and brand mark, 4px buttons, 3px pills and quiet rows, 4px on the two top corners of tabs (4px 4px 0 0; the bottom border is the active indicator)"
+      "radius": "0px panels and digest, 2px controls, status labels, buttons, and quiet rows; tabs are square with the bottom border as the active indicator"
     }
   },
   "layout": {

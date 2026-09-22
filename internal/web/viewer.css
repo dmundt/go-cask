@@ -1,9 +1,10 @@
 :root {
-  --viewer-bg: oklch(98% 0.005 250);
-  --viewer-surface: oklch(100% 0 0);
-  --viewer-fg: oklch(22% 0.02 240);
-  --viewer-muted: oklch(50% 0.018 240);
-  --viewer-border: oklch(90% 0.008 240);
+  --viewer-bg: #f8f8f8;
+  --viewer-surface: #ffffff;
+  --viewer-header: #f3f3f3;
+  --viewer-fg: #202020;
+  --viewer-muted: #666666;
+  --viewer-border: #e5e5e5;
   --viewer-accent: oklch(48% 0.14 145);
   --viewer-blue: oklch(50% 0.13 250);
   --viewer-blue-soft: oklch(96% 0.035 250);
@@ -36,7 +37,7 @@ body.viewer-shell {
   margin: 0;
   background: var(--viewer-bg);
   color: var(--viewer-fg);
-  font: 15.4px/1.45 var(--viewer-font);
+  font: 12px/1.4 var(--viewer-font);
   overflow: hidden;
 }
 
@@ -69,7 +70,7 @@ body.viewer-shell {
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--viewer-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--viewer-bg);
   color: var(--viewer-fg);
   font-size: var(--viewer-control-sm);
@@ -100,7 +101,7 @@ body.viewer-shell {
   align-items: center;
   gap: 8px;
   color: var(--viewer-fg);
-  font-size: 17.6px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-decoration: none;
@@ -121,7 +122,7 @@ body.viewer-shell {
   width: 20px;
   height: 20px;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--viewer-fg);
   color: var(--viewer-surface);
   font: 700 9.9px var(--viewer-mono);
@@ -148,7 +149,7 @@ body.viewer-shell {
 .viewer-pager a {
   height: 28px;
   border: 1px solid var(--viewer-border);
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--viewer-bg);
   color: var(--viewer-fg);
   padding: 4px 9px;
@@ -160,7 +161,7 @@ body.viewer-shell {
   align-items: center;
   height: 28px;
   padding: 0 8px;
-  border-radius: 4px;
+  border-radius: 2px;
   color: var(--viewer-muted);
   font-size: var(--viewer-control-sm);
   text-decoration: none;
@@ -240,7 +241,7 @@ body.viewer-shell {
   table-layout: auto;
   border-collapse: collapse;
   background: var(--viewer-surface);
-  font: 13.2px/1.35 var(--viewer-mono);
+  font: 12px/1.3 var(--viewer-mono);
   /* After the font shorthand, which resets it. Digests, sizes and counts line
      up column-wise only with tabular figures. */
   font-variant-numeric: tabular-nums;
@@ -248,7 +249,7 @@ body.viewer-shell {
 
 .viewer-table th,
 .viewer-table td {
-  padding: 8px 5px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--viewer-border);
   text-align: left;
   white-space: nowrap;
@@ -258,21 +259,22 @@ body.viewer-shell {
 /* The outer columns keep the content off the table edges. Every rule that
    mirrors the cell padding — the row link below — has to follow suit. */
 .viewer-table tr > :first-child {
-  padding-left: 20px;
+  padding-left: 14px;
 }
 
 .viewer-table tr > :last-child {
-  padding-right: 20px;
+  padding-right: 14px;
 }
 
 .viewer-table th {
   position: sticky;
   top: 0;
-  background: var(--viewer-bg);
+  background: var(--viewer-header);
   color: var(--viewer-muted);
-  padding-block: 7px;
-  font-size: 12.65px;
-  letter-spacing: 0.07em;
+  padding-block: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -335,21 +337,21 @@ body.viewer-shell {
    table a horizontal scrollbar it does not need. */
 .viewer-row-link {
   display: block;
-  margin: -8px -5px;
-  padding: 8px 5px;
+  margin: -4px -8px;
+  padding: 4px 8px;
   color: inherit;
   text-decoration: none;
 }
 
 .viewer-table td:first-child .viewer-row-link {
-  margin-left: -20px;
-  padding-left: 20px;
+  margin-left: -14px;
+  padding-left: 14px;
   color: inherit;
 }
 
 .viewer-table td:last-child .viewer-row-link {
-  margin-right: -20px;
-  padding-right: 20px;
+  margin-right: -14px;
+  padding-right: 14px;
 }
 
 .viewer-empty {
@@ -365,7 +367,7 @@ body.viewer-shell {
      keeps its hue and none of them gains a second, competing colour. Kept
      faint: it should define the pill's edge, not announce itself. */
   border: 1px solid color-mix(in oklch, currentColor 14%, transparent);
-  border-radius: 3px;
+  border-radius: 2px;
   min-height: 19px;
   background: oklch(96% 0.006 240);
   color: oklch(45% 0.012 240);
@@ -394,7 +396,7 @@ body.viewer-shell {
   margin: 10px 0 0;
   padding: 9px 10px;
   border: 1px solid var(--viewer-border);
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--viewer-surface);
 }
 
@@ -466,7 +468,7 @@ body.viewer-shell {
   height: 28px;
   box-sizing: border-box;
   border: 1px solid var(--viewer-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--viewer-surface);
   color: var(--viewer-fg);
   font: var(--viewer-control-sm) var(--viewer-mono);
@@ -542,7 +544,7 @@ body.viewer-shell {
 .viewer-inspector-tabs a {
   padding: 8px 10px 7px;
   border-bottom: 2px solid transparent;
-  border-radius: 4px 4px 0 0;
+  border-radius: 0;
   color: var(--viewer-muted);
   font-weight: 510;
   text-decoration: none;
@@ -596,7 +598,7 @@ body.viewer-shell {
   width: 22px;
   height: 22px;
   border: 1px solid var(--viewer-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--viewer-surface);
   color: var(--viewer-fg);
   font: var(--viewer-control-sm) / 1 var(--viewer-mono);
@@ -630,7 +632,7 @@ span.viewer-history-step {
   margin: 0;
   padding: 4px 6px;
   border: 1px solid var(--viewer-border);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--viewer-bg);
   color: var(--viewer-fg);
   font: 11px/1.45 var(--viewer-mono);
@@ -652,7 +654,7 @@ span.viewer-history-step {
 
 .viewer-meta dt {
   color: var(--viewer-muted);
-  font-size: 12.1px;
+  font-size: 11px;
   font-weight: 450;
   line-height: 1.45;
 }
@@ -660,7 +662,7 @@ span.viewer-history-step {
 .viewer-meta dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font: 13.2px/1.45 var(--viewer-mono);
+  font: 12px/1.35 var(--viewer-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -675,7 +677,7 @@ span.viewer-history-step {
 .viewer-inspector-section h2 {
   margin: 0 0 8px;
   color: var(--viewer-muted);
-  font: 700 12.1px/1.2 var(--viewer-mono);
+  font: 600 11px/1.2 var(--viewer-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -712,7 +714,7 @@ span.viewer-history-step {
 
 .viewer-reference-type {
   padding: 2px 5px;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--viewer-blue-soft);
   color: var(--viewer-blue);
   font: 700 9.9px/1.2 var(--viewer-font);
@@ -730,7 +732,7 @@ span.viewer-history-step {
      widening the grid column, so the row keeps its rhythm while idle. */
   margin: -3px -6px;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   color: var(--viewer-fg);
   text-decoration: none;
   text-overflow: ellipsis;

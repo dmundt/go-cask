@@ -8,7 +8,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No unreleased changes.
+### Changed
+
+- Refined viewer geometry, typography, panel dividers, table density, and
+  inspector styling for a compact IDE-style workbench appearance.
 
 ## [v1.6.1] - 2026-09-22
 

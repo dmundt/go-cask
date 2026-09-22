@@ -60,11 +60,11 @@ func TestRowLinkInsetMatchesCellPadding(t *testing.T) {
 		}
 		return m[1]
 	}
-	inline := read(`\.viewer-table th,\n\.viewer-table td \{\n  padding: 8px (\d+px);`)
+	inline := read(`\.viewer-table th,\n\.viewer-table td \{\n  padding: 4px (\d+px);`)
 	left := read(`tr > :first-child \{\n  padding-left: (\d+px);`)
 	right := read(`tr > :last-child \{\n  padding-right: (\d+px);`)
 	mirrors := []string{
-		"  margin: -8px -" + inline + ";\n  padding: 8px " + inline + ";",
+		"  margin: -4px -" + inline + ";\n  padding: 4px " + inline + ";",
 		"  margin-left: -" + left + ";\n  padding-left: " + left + ";",
 		"  margin-right: -" + right + ";\n  padding-right: " + right + ";",
 	}
@@ -140,6 +140,7 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 		if !strings.Contains(css, token) {
 			t.Errorf("control type scale is missing %s", token)
 		}
+
 	}
 	// Each rule below styles an interactive control, so each must name a step.
 	controls := []string{
@@ -152,6 +153,7 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 		".viewer-inspector-tabs",
 		".viewer-history-step",
 	}
+
 	scale := regexp.MustCompile(`font(?:-size)?: [^;]*var\(--viewer-control(?:-sm|-xs)?\)`)
 	for _, selector := range controls {
 		start := strings.Index(css, selector+" {")
@@ -164,6 +166,7 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 			t.Errorf("control %q does not size itself from the type scale", selector)
 		}
 	}
+
 	// One height across the viewer: a control that stands taller than the row
 	// it sits in reads as a different kind of control than it is.
 	heights := []string{
@@ -182,5 +185,39 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 		if end < 0 || !strings.Contains(css[start:start+end], "height: 28px;") {
 			t.Errorf("control %q does not use the shared 28px height", selector)
 		}
+	}
+}
+
+func TestWorkbenchVisualTokens(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	for _, token := range []string{
+		"--viewer-bg: #f8f8f8;",
+		"--viewer-surface: #ffffff;",
+		"--viewer-header: #f3f3f3;",
+		"--viewer-border: #e5e5e5;",
+		"--viewer-fg: #202020;",
+		"--viewer-muted: #666666;",
+	} {
+		if !strings.Contains(css, token) {
+			t.Errorf("workbench token missing: %s", token)
+		}
+	}
+	if !strings.Contains(css, "font: 12px/1.4 var(--viewer-font);") {
+		t.Error("viewer shell does not use compact workbench typography")
+	}
+	if !strings.Contains(css, "padding: 4px 8px;") {
+		t.Error("object rows are not using compact density")
+	}
+}
+
+func TestWorkbenchControlsAvoidPillGeometry(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	for _, radius := range []string{"border-radius: 3px;", "border-radius: 4px;", "border-radius: 5px;"} {
+		if strings.Contains(css, radius) {
+			t.Errorf("workbench stylesheet still contains oversized radius %q", radius)
+		}
+	}
+	if !strings.Contains(css, "border-radius: 0;") || !strings.Contains(css, "border-radius: 2px;") {
+		t.Error("workbench stylesheet must use square panels and compact control radii")
 	}
 }
