@@ -964,12 +964,12 @@ func TestPruneAgeRetention(t *testing.T) {
 	}
 }
 
-// stubReferenceLister is a cas.ReferenceLister backed by a fixed adjacency
+// stubRefLister is a cas.RefLister backed by a fixed adjacency
 // map, standing in for a typed object model's References() in tests that
 // exercise cas.Reachable without depending on any concrete object type.
-type stubReferenceLister map[string][]cas.Digest
+type stubRefLister map[string][]cas.Digest
 
-func (s stubReferenceLister) References(_ context.Context, d cas.Digest) ([]cas.Digest, error) {
+func (s stubRefLister) References(_ context.Context, d cas.Digest) ([]cas.Digest, error) {
 	return s[d.String()], nil
 }
 
@@ -995,7 +995,7 @@ func TestPruneWithExpandedReachableSetKeepsReferencedLeaf(t *testing.T) {
 	}
 
 	// root references leaf; leaf references nothing.
-	refs := stubReferenceLister{root.String(): {leaf}}
+	refs := stubRefLister{root.String(): {leaf}}
 
 	// Passing only the bare root as "reachable" — the misuse the doc used to
 	// invite — deletes the leaf: prove the failure mode still exists so the

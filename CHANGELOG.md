@@ -11,7 +11,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `cas.Reachable` computes the transitively-closed reachable set from a list
-  of root digests, using a caller-supplied `cas.ReferenceLister` to expand
+  of root digests, using a caller-supplied `cas.RefLister` to expand
   each object's references. This is the documented, correct way to build the
   set `Backend.GC`/`Backend.Prune` require before calling them.
 - `cas.EnvelopeType` returns an object's versioned type name from its envelope
