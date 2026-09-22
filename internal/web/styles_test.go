@@ -60,11 +60,11 @@ func TestRowLinkInsetMatchesCellPadding(t *testing.T) {
 		}
 		return m[1]
 	}
-	inline := read(`\.viewer-table th,\n\.viewer-table td \{\n  padding: 4px (\d+px);`)
+	inline := read(`\.viewer-table th,\n\.viewer-table td \{\n  height: 26px;\n  padding: 2px (\d+px);`)
 	left := read(`tr > :first-child \{\n  padding-left: (\d+px);`)
 	right := read(`tr > :last-child \{\n  padding-right: (\d+px);`)
 	mirrors := []string{
-		"  margin: -4px -" + inline + ";\n  padding: 4px " + inline + ";",
+		"  margin: -2px -" + inline + ";\n  padding: 2px " + inline + ";",
 		"  margin-left: -" + left + ";\n  padding-left: " + left + ";",
 		"  margin-right: -" + right + ";\n  padding-right: " + right + ";",
 	}
@@ -82,8 +82,8 @@ func TestInspectorDigestFontFitsFullAddress(t *testing.T) {
 	if !strings.Contains(css, ".viewer-digest {\n  flex: 1;") {
 		t.Error("digest rule is missing")
 	}
-	if !strings.Contains(css, "font: 11px/1.45 var(--viewer-mono);") {
-		t.Error("digest field no longer uses the reduced 11px mono font")
+	if !strings.Contains(css, "font: var(--viewer-label)/1.45 var(--viewer-mono);") {
+		t.Error("digest field no longer uses the compact mono label font")
 	}
 }
 
@@ -108,7 +108,7 @@ func TestControlFontResetCannotBeatComponentRules(t *testing.T) {
 	// The control font reset normalises the UA font onto the shell font, but it
 	// must not decide the size: a plain `.viewer-shell button` selector outranks
 	// every single-class component rule, so a control declaring its own size
-	// silently kept the 15.4px body font. :where() drops the reset to zero
+	// silently kept the shell body font. :where() drops the reset to zero
 	// specificity, which is what lets the type scale below apply at all.
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
 	if strings.Contains(css, ".viewer-shell button,\n.viewer-shell input,") {
@@ -133,7 +133,7 @@ func TestControlFontResetCannotBeatComponentRules(t *testing.T) {
 
 func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 	// Every control is sized from one of the three scale steps. A control that
-	// declares no font inherits the 15.4px body size, which is set for prose and
+	// declares no font inherits the shell body size, which is set for prose and
 	// dwarfs a 28px control — that is the bug this guards.
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
 	for _, token := range []string{"--viewer-control:", "--viewer-control-sm:", "--viewer-control-xs:"} {
@@ -171,7 +171,6 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 	// it sits in reads as a different kind of control than it is.
 	heights := []string{
 		".viewer-filter-bar input,\n.viewer-filter-bar select,\n.viewer-filter-bar button,\n.viewer-action,\n.viewer-pager a",
-		".viewer-verify-all",
 		".viewer-reset",
 		".viewer-pager a,\n.viewer-pager select,\n.viewer-page-button",
 	}
@@ -185,6 +184,14 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 		if end < 0 || !strings.Contains(css[start:start+end], "height: 28px;") {
 			t.Errorf("control %q does not use the shared 28px height", selector)
 		}
+	}
+	start := strings.Index(css, ".viewer-verify-all {")
+	if start < 0 {
+		t.Fatal("verify control rule not found")
+	}
+	end := strings.Index(css[start:], "}")
+	if end < 0 || !strings.Contains(css[start:start+end], "height: 26px;") {
+		t.Error("verify control does not use the compact 26px button height")
 	}
 }
 
@@ -202,11 +209,19 @@ func TestWorkbenchVisualTokens(t *testing.T) {
 			t.Errorf("workbench token missing: %s", token)
 		}
 	}
-	if !strings.Contains(css, "font: 12px/1.4 var(--viewer-font);") {
+	if !strings.Contains(css, "font: var(--viewer-ui)/1.4 var(--viewer-font);") {
 		t.Error("viewer shell does not use compact workbench typography")
 	}
-	if !strings.Contains(css, "padding: 4px 8px;") {
-		t.Error("object rows are not using compact density")
+	for _, legacy := range []string{"9.9px", "12.1px", "12.65px", "13.2px", "19.8px"} {
+		if strings.Contains(css, legacy) {
+			t.Errorf("viewer stylesheet retains fragmented font size %s", legacy)
+		}
+	}
+	if !strings.Contains(css, "height: 26px;\n  padding: 2px 8px;") {
+		t.Error("object rows are not using the 26px workbench density")
+	}
+	if !strings.Contains(css, "--viewer-accent: #007acc;") {
+		t.Error("workbench accent must be VS Code blue")
 	}
 }
 
@@ -217,7 +232,34 @@ func TestWorkbenchControlsAvoidPillGeometry(t *testing.T) {
 			t.Errorf("workbench stylesheet still contains oversized radius %q", radius)
 		}
 	}
+
 	if !strings.Contains(css, "border-radius: 0;") || !strings.Contains(css, "border-radius: 2px;") {
 		t.Error("workbench stylesheet must use square panels and compact control radii")
+	}
+	for _, forbidden := range []string{"box-shadow:", "linear-gradient(", "drop-shadow("} {
+		if strings.Contains(css, forbidden) {
+			t.Errorf("flat workbench stylesheet contains forbidden depth effect %q", forbidden)
+		}
+	}
+}
+
+func TestWorkbenchInteractionStates(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	for _, want := range []string{
+		"transition:\n    background-color 120ms ease-out,\n    border-color 120ms ease-out,\n    color 120ms ease-out,\n    filter 120ms ease-out;",
+		".viewer-verify-all:active:not(:disabled)",
+		".viewer-table tbody tr:focus-within td",
+		"background: #cfe1ff;",
+		".viewer-status:hover",
+		"filter: brightness(0.97);",
+		"pointer-events: none;",
+		"scrollbar-color: var(--viewer-control-border) transparent;",
+		"background: var(--viewer-muted);",
+		"scrollbar-width: none;",
+		"border: 1px solid transparent;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("interaction-state rule missing: %s", want)
+		}
 	}
 }
