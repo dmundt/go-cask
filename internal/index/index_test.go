@@ -2,8 +2,16 @@ package index
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
+	"io"
 	"testing"
+	"time"
+
+	"github.com/dmundt/go-cask/cas"
+	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 func TestPaginate(t *testing.T) {
@@ -74,5 +82,100 @@ func TestEnvelopeType(t *testing.T) {
 				t.Fatalf("EnvelopeType(%s) = %q, want %q", tc.name, got, tc.want)
 			}
 		})
+	}
+}
+
+type snapshotSource struct {
+	*memory.Backend
+	getErr  error
+	sizeErr error
+	modErr  error
+	modTime time.Time
+}
+
+func (s *snapshotSource) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return s.Backend.Get(ctx, d)
+}
+
+func (s *snapshotSource) Size(context.Context, cas.Digest) (int64, error) {
+	if s.sizeErr != nil {
+		return 0, s.sizeErr
+	}
+	return 1, nil
+}
+
+func (s *snapshotSource) ModTime(context.Context, cas.Digest) (time.Time, error) {
+	if s.modErr != nil {
+		return time.Time{}, s.modErr
+	}
+	return s.modTime, nil
+}
+
+func TestBuildSnapshot(t *testing.T) {
+	ctx := context.Background()
+	raw := &snapshotSource{Backend: memory.New(), modTime: time.Unix(42, 0)}
+	typed := tlvEnvelope("blob@1", []byte("payload"))
+	untyped := []byte("raw")
+	for _, object := range []struct {
+		data []byte
+	}{
+		{typed},
+		{untyped},
+	} {
+		if err := raw.Put(ctx, sha256.Of(object.data), bytes.NewReader(object.data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	snapshot, err := BuildSnapshot(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Total != 2 || snapshot.Bytes != 2 {
+		t.Fatalf("snapshot totals = (%d, %d), want (2, 2)", snapshot.Total, snapshot.Bytes)
+	}
+	if len(snapshot.Entries) != 2 || len(snapshot.Types) != 1 || snapshot.Types[0] != "blob@1" {
+		t.Fatalf("snapshot = %#v, want two entries and one type", snapshot)
+	}
+	for _, entry := range snapshot.Entries {
+		if entry.Unreadable || !entry.Written.Equal(raw.modTime) {
+			t.Fatalf("entry = %#v, want readable entry at %v", entry, raw.modTime)
+		}
+	}
+}
+
+func TestBuildSnapshotRecordsMetadataErrors(t *testing.T) {
+	ctx := context.Background()
+	digest := sha256.Of([]byte("object"))
+	cases := []struct {
+		name   string
+		source *snapshotSource
+	}{
+		{"get", &snapshotSource{Backend: memory.New(), getErr: errors.New("read failed")}},
+		{"size", &snapshotSource{Backend: memory.New(), sizeErr: errors.New("stat failed")}},
+		{"modtime", &snapshotSource{Backend: memory.New(), modErr: errors.New("time failed")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.source.Backend.Put(ctx, digest, bytes.NewReader([]byte("object"))); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := BuildSnapshot(ctx, tc.source)
+			if err != nil || len(snapshot.Entries) != 1 || !snapshot.Entries[0].Unreadable {
+				t.Fatalf("BuildSnapshot() = (%#v, %v), want one unreadable entry", snapshot, err)
+			}
+		})
+	}
+}
+
+func TestBuildSnapshotHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := BuildSnapshot(ctx, &snapshotSource{Backend: memory.New()})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildSnapshot(canceled) = %v, want context.Canceled", err)
 	}
 }
