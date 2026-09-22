@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -382,6 +383,9 @@ func (s *Server) resolveToken(token string) (string, bool) {
 }
 
 type objectRow struct {
+	// hash is the row's address as the store listed it. Keeping it spares the
+	// inspector from parsing the rendered Digest back into a digest.
+	hash cas.Digest
 	// Digest is the full object digest.
 	Digest string
 	// Short is the abbreviated digest.
@@ -810,6 +814,9 @@ func (state objectBrowserState) navURL(mode string) string {
 	return raw + separator + "nav=" + mode
 }
 
+// objects renders the object browser. It is a pipeline: read the request into
+// a state, turn the store into the rows that state matches, page and select
+// among them, then render whichever part of the page the request asked for.
 func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	state, err := parseObjectBrowserState(r.URL.Query())
 	if err != nil {
@@ -820,213 +827,290 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "reachability filter unavailable", http.StatusBadRequest)
 		return
 	}
-	digests, err := s.store.List(r.Context())
+	id := sessionID(r)
+	rows, types, typeFound, total, err := s.objectRows(r.Context(), id, state)
 	if err != nil {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
-	}
-	var rows []objectRow
-	types := make(map[string]bool)
-	typeFound := state.Type == ""
-	for _, h := range digests {
-		meta := s.objectMetaFor(r.Context(), h)
-		typ := meta.Type
-		if typ != "" {
-			types[typ] = true
-		}
-		if state.Type == typ {
-			typeFound = true
-		}
-		row := objectRow{
-			Digest: h.String(),
-			Short:  shortDigest(h),
-			// An unreadable object keeps an empty Type so a type filter can
-			// never match it — the type is unknown, not blank — while the cell
-			// still says what happened.
-			Type:       typ,
-			TypeLabel:  typ,
-			Unreadable: meta.Unreadable,
-			Size:       meta.Size,
-			Integrity:  s.sessions.verification(sessionID(r), h.String()),
-		}
-		if meta.Unreadable {
-			row.TypeLabel = "unreadable"
-		}
-		row.ReachabilityKnown = s.cfg.Reachability != nil
-		row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)
-		row.IntegrityLabel = integrityLabel(row.Integrity)
-		row.Written = meta.Written
-		row.WrittenLabel = formatWritten(row.Written)
-		if s.cfg.References != nil {
-			row.References = len(s.cfg.References.Inbound(h))
-			row.ReferencesAvailable = true
-		}
-		if !matchesObjectRow(row, state) {
-			continue
-		}
-		rows = append(rows, row)
 	}
 	if !typeFound {
 		http.Error(w, "invalid object type", http.StatusBadRequest)
 		return
 	}
 	sortObjectRows(rows, state)
+	// The refresher reloads from the URL the request named, so that URL is
+	// captured before paging: a page the browser chose on the operator's behalf
+	// must not become one they are pinned to.
+	refreshURL := state.url()
+	page, state := pageObjects(rows, state)
+	if page.Defaulted {
+		// A defaulted selection is the exception — it has to be named, because
+		// the original URL would resurrect the row the filter dropped.
+		refreshURL = state.url()
+	}
+	linkRows(page.Rows, state)
+	s.recordTrail(id, state)
+
 	data := objectBrowserData{
 		State:           state,
-		RefreshURL:      state.url(),
+		RefreshURL:      refreshURL,
 		HasReachability: s.cfg.Reachability != nil,
 		StatusOptions:   statusOptions(state.Status),
 		LimitOptions:    limitOptions(state.Limit),
-		Total:           len(digests),
+		Types:           typeOptions(types, state.Type),
+		Objects:         page.Rows,
+		HasAny:          len(page.Rows) > 0,
+		Total:           total,
 		Matched:         len(rows),
+		TotalSize:       totalSize(rows),
+		RangeStart:      page.RangeStart,
+		RangeEnd:        page.RangeEnd,
+		CurrentPage:     state.Offset/state.Limit + 1,
+		PageCount:       max((len(rows)+state.Limit-1)/state.Limit, 1),
+		FirstURL:        paginationURL(state, 0),
+		PreviousURL:     paginationURL(state, max(state.Offset-state.Limit, 0)),
+		NextURL:         paginationURL(state, min(state.Offset+state.Limit, max(len(rows)-1, 0))),
+		LastURL:         paginationURL(state, max(len(rows)-1, 0)/state.Limit*state.Limit),
+		SortColumns:     sortColumns(state, s.cfg.Reachability != nil),
+		HasPrevious:     state.Offset > 0 && len(rows) > 0,
+		HasNext:         state.Offset+state.Limit < len(rows),
 		CSRF:            s.csrfFor(r),
 		Role:            s.roleFor(r),
 	}
-	for typ := range types {
-		data.Types = append(data.Types, filterOption{
-			Value:    typ,
-			Label:    typ,
-			Selected: state.Type == typ,
-		})
+	if page.Selected >= 0 {
+		data.Inspector = s.inspectorFor(r.Context(), id, state, rows[page.Selected])
 	}
-	slices.SortFunc(data.Types, func(left, right filterOption) int {
-		return strings.Compare(left.Value, right.Value)
-	})
-	for _, row := range rows {
-		data.TotalSize += row.Size
+	s.renderObjects(w, r, data)
+}
+
+// objectRows builds one row per stored object and keeps the ones state matches.
+// It also reports every type present in the store, which the type filter
+// offers, and whether the requested type was among them: a filter naming a type
+// no object carries is a malformed request, not an empty page.
+func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, err error) {
+	digests, err := s.store.List(ctx)
+	if err != nil {
+		return nil, nil, false, 0, err
 	}
+	present := make(map[string]bool)
+	typeFound = state.Type == ""
+	for _, h := range digests {
+		row := s.objectRowFor(ctx, id, h)
+		if row.Type != "" {
+			present[row.Type] = true
+		}
+		if state.Type == row.Type {
+			typeFound = true
+		}
+		if matchesObjectRow(row, state) {
+			rows = append(rows, row)
+		}
+	}
+	return rows, slices.Sorted(maps.Keys(present)), typeFound, len(digests), nil
+}
+
+// objectRowFor renders one stored object as a table row.
+func (s *Server) objectRowFor(ctx context.Context, id string, h cas.Digest) objectRow {
+	meta := s.objectMetaFor(ctx, h)
+	row := objectRow{
+		hash:   h,
+		Digest: h.String(),
+		Short:  shortDigest(h),
+		// An unreadable object keeps an empty Type so a type filter can never
+		// match it — the type is unknown, not blank — while the cell still says
+		// what happened.
+		Type:              meta.Type,
+		TypeLabel:         meta.Type,
+		Unreadable:        meta.Unreadable,
+		Size:              meta.Size,
+		Integrity:         s.sessions.verification(id, h.String()),
+		Written:           meta.Written,
+		WrittenLabel:      formatWritten(meta.Written),
+		ReachabilityKnown: s.cfg.Reachability != nil,
+	}
+	if meta.Unreadable {
+		row.TypeLabel = "unreadable"
+	}
+	row.IntegrityLabel = integrityLabel(row.Integrity)
+	row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)
+	if s.cfg.References != nil {
+		row.References = len(s.cfg.References.Inbound(h))
+		row.ReferencesAvailable = true
+	}
+	return row
+}
+
+// objectPage is the slice of rows one page shows, and where that slice sits in
+// the full result.
+type objectPage struct {
+	Rows       []objectRow
+	RangeStart int
+	RangeEnd   int
+	// Selected indexes the inspected row within the full result, -1 when the
+	// inspector stays empty.
+	Selected int
+	// Defaulted reports that the browser picked the selection rather than the
+	// request naming it, which the refresh URL has to account for.
+	Defaulted bool
+}
+
+// pageObjects cuts the page out of rows and resolves which row the inspector
+// shows, returning the state that describes the result. Paging and selection
+// decide each other, so they are resolved together rather than in sequence.
+func pageObjects(rows []objectRow, state objectBrowserState) (objectPage, objectBrowserState) {
 	if !state.OffsetSet && state.Selected != "" {
 		// Following a reference selects a row the current page may not hold, so
 		// the browser pages to it. An explicit pager click stays put.
-		if idx := slices.IndexFunc(rows, func(row objectRow) bool { return row.Digest == state.Selected }); idx >= 0 {
-			state.Offset = idx / state.Limit * state.Limit
-			data.State = state
+		if i := indexOfDigest(rows, state.Selected); i >= 0 {
+			state.Offset = i / state.Limit * state.Limit
 		}
 	}
+	page := objectPage{Selected: -1}
 	if state.Offset < len(rows) {
 		end := min(state.Offset+state.Limit, len(rows))
-		data.RangeStart = state.Offset + 1
-		data.RangeEnd = end
-		data.Objects = rows[state.Offset:end]
+		page.RangeStart = state.Offset + 1
+		page.RangeEnd = end
+		page.Rows = rows[state.Offset:end]
 	}
-	data.CurrentPage = state.Offset/state.Limit + 1
-	data.PageCount = max((len(rows)+state.Limit-1)/state.Limit, 1)
-	data.HasAny = len(data.Objects) > 0
+	page.Selected = indexOfDigest(rows, state.Selected)
 	// An empty inspector beside a populated list is wasted space, so the first
 	// visible row stands in — both before the operator picks one and after a
 	// filter drops the one they had picked. A selection that merely sits on
 	// another page still stands, so paging never steals it, and an explicit
 	// deselect is honoured rather than undone. The URL is left alone: the
 	// default is a rendering choice, not navigation.
-	if data.HasAny && !state.Deselected && !slices.ContainsFunc(rows, func(row objectRow) bool { return row.Digest == state.Selected }) {
-		state.Selected = data.Objects[0].Digest
-		data.State = state
-		// The refresher reloads from this URL, so it has to name the fallback
-		// too: the original URL would resurrect the row the filter dropped.
-		data.RefreshURL = state.url()
+	if page.Selected < 0 && len(page.Rows) > 0 && !state.Deselected {
+		state.Selected = page.Rows[0].Digest
+		page.Selected = state.Offset
+		page.Defaulted = true
 	}
-	for i := range data.Objects {
+	return page, state
+}
+
+// indexOfDigest locates a row by its rendered digest, or -1. An empty digest
+// never matches, so a deselected browser finds nothing.
+func indexOfDigest(rows []objectRow, digest string) int {
+	if digest == "" {
+		return -1
+	}
+	return slices.IndexFunc(rows, func(row objectRow) bool { return row.Digest == digest })
+}
+
+// linkRows marks the selected row and points every row at the state its own
+// click produces.
+func linkRows(rows []objectRow, state objectBrowserState) {
+	for i := range rows {
 		rowState := state
 		rowState.Nav = ""
-		data.Objects[i].Selected = data.Objects[i].Digest == state.Selected
+		rows[i].Selected = rows[i].Digest == state.Selected
 		// Clicking the selected row again clears the inspector, so its link
 		// points at the deselected state instead of at itself.
-		if data.Objects[i].Selected {
+		if rows[i].Selected {
 			rowState.Selected = ""
 			rowState.Deselected = true
 		} else {
-			rowState.Selected = data.Objects[i].Digest
+			rowState.Selected = rows[i].Digest
 			rowState.Deselected = false
 		}
-		data.Objects[i].SelectURL = rowState.url()
+		rows[i].SelectURL = rowState.url()
 	}
-	// The trail records how the operator browsed references. Following a
-	// reference extends it, the Prev/Next controls only move its cursor, and
-	// picking a row in the table starts over: a table pick is a new point of
-	// departure, not a step in the chain that led here.
-	if state.Selected != "" {
-		switch state.Nav {
-		case navStay:
-			// A tab switch re-renders the same object: nothing to record.
-		case navTrail:
-			s.sessions.seek(sessionID(r), state.Selected)
-		case navReference:
-			s.sessions.visit(sessionID(r), state.Selected)
-		default:
-			s.sessions.restart(sessionID(r), state.Selected)
-		}
-	}
-	prevDigest, nextDigest := s.sessions.trailNeighbors(sessionID(r))
-	for _, row := range rows {
-		if row.Digest == state.Selected {
-			metadataState := state
-			metadataState.Tab = "metadata"
-			bytesState := state
-			bytesState.Tab = "bytes"
-			referencesState := state
-			referencesState.Tab = "references"
-			inboundReferences := 0
-			referencesAvailable := s.cfg.References != nil
-			if referencesAvailable {
-				digest, err := sha256.Parse(row.Digest)
-				if err != nil {
-					http.Error(w, "malformed stored hash", http.StatusInternalServerError)
-					return
-				}
-				inboundReferences = len(s.cfg.References.Inbound(digest))
-			}
-			data.Inspector = &browserInspector{
-				Digest:              row.Digest,
-				Type:                row.Type,
-				Size:                row.Size,
-				Integrity:           row.Integrity,
-				IntegrityLabel:      row.IntegrityLabel,
-				Report:              storedReport(s.sessions, sessionID(r), row.Digest),
-				Orphaned:            row.Orphaned,
-				WrittenLabel:        row.WrittenLabel,
-				InboundReferences:   inboundReferences,
-				ReferencesAvailable: referencesAvailable,
-				Timestamp:           formatTimestamp(row.Written),
-				RawURL:              "/viewer/objects/" + row.Digest + "/raw",
-				MetadataURL:         metadataState.navURL(navStay),
-				BytesURL:            bytesState.navURL(navStay),
-				ReferencesURL:       referencesState.navURL(navStay),
-				PrevURL:             trailURL(state, prevDigest),
-				NextURL:             trailURL(state, nextDigest),
-			}
-			if referencesAvailable {
-				digest, err := sha256.Parse(row.Digest)
-				if err != nil {
-					http.Error(w, "malformed stored hash", http.StatusInternalServerError)
-					return
-				}
-				data.Inspector.Inbound = s.referenceRows(r.Context(), state, s.cfg.References.Inbound(digest))
-				data.Inspector.Outbound = s.referenceRows(r.Context(), state, s.cfg.References.Outbound(digest))
-			}
+}
 
-			break
-		}
-	}
-	data.FirstURL = paginationURL(state, 0)
-	data.PreviousURL = paginationURL(state, max(state.Offset-state.Limit, 0))
-	data.NextURL = paginationURL(state, min(state.Offset+state.Limit, max(len(rows)-1, 0)))
-	data.LastURL = paginationURL(state, ((max(len(rows)-1, 0))/state.Limit)*state.Limit)
-	data.SortColumns = sortColumns(state, data.HasReachability)
-	data.HasPrevious = state.Offset > 0 && len(rows) > 0
-	data.HasNext = state.Offset+state.Limit < len(rows)
-	if r.Header.Get("HX-Request") == "true" {
-		if r.Header.Get("HX-Target") == "object-inspector" {
-			if r.Header.Get("X-Viewer-Selection") == "true" {
-				s.render(w, "object-selection", data)
-				return
-			}
-			s.render(w, "object-inspector", data)
-			return
-		}
-		s.render(w, "object-list-swap", data) // htmx search/refresh swap
+// recordTrail updates the session trail for the selection state describes. The
+// trail records how the operator browsed references: following a reference
+// extends it, the Prev/Next controls only move its cursor, and picking a row in
+// the table starts over — a table pick is a new point of departure, not a step
+// in the chain that led here.
+func (s *Server) recordTrail(id string, state objectBrowserState) {
+	if state.Selected == "" {
 		return
 	}
-	s.renderPage(w, "objects", data)
+	switch state.Nav {
+	case navStay:
+		// A tab switch re-renders the same object: nothing to record.
+	case navTrail:
+		s.sessions.seek(id, state.Selected)
+	case navReference:
+		s.sessions.visit(id, state.Selected)
+	default:
+		s.sessions.restart(id, state.Selected)
+	}
+}
+
+// inspectorFor renders the selected row in the inspector. The row carries the
+// digest the store listed, so the reference lookups reuse it rather than
+// parsing the rendered form back — a digest that round-trips through the page
+// is the same digest, and treating the trip as fallible only produced an error
+// path nothing could reach.
+func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowserState, row objectRow) *browserInspector {
+	tabURL := func(tab string) string {
+		tabbed := state
+		tabbed.Tab = tab
+		return tabbed.navURL(navStay)
+	}
+	prevDigest, nextDigest := s.sessions.trailNeighbors(id)
+	inspector := &browserInspector{
+		Digest:              row.Digest,
+		Type:                row.Type,
+		Size:                row.Size,
+		Integrity:           row.Integrity,
+		IntegrityLabel:      row.IntegrityLabel,
+		Report:              storedReport(s.sessions, id, row.Digest),
+		Orphaned:            row.Orphaned,
+		WrittenLabel:        row.WrittenLabel,
+		ReferencesAvailable: s.cfg.References != nil,
+		Timestamp:           formatTimestamp(row.Written),
+		RawURL:              "/viewer/objects/" + row.Digest + "/raw",
+		MetadataURL:         tabURL("metadata"),
+		BytesURL:            tabURL("bytes"),
+		ReferencesURL:       tabURL("references"),
+		PrevURL:             trailURL(state, prevDigest),
+		NextURL:             trailURL(state, nextDigest),
+	}
+	if inspector.ReferencesAvailable {
+		inbound := s.cfg.References.Inbound(row.hash)
+		inspector.InboundReferences = len(inbound)
+		inspector.Inbound = s.referenceRows(ctx, state, inbound)
+		inspector.Outbound = s.referenceRows(ctx, state, s.cfg.References.Outbound(row.hash))
+	}
+	return inspector
+}
+
+// renderObjects emits the part of the browser the request asked for: a cold
+// load renders the whole page, while htmx asks for the inspector alone, the
+// inspector plus the list refresh a selection triggers, or the list.
+func (s *Server) renderObjects(w http.ResponseWriter, r *http.Request, data objectBrowserData) {
+	if r.Header.Get("HX-Request") != "true" {
+		s.renderPage(w, "objects", data)
+		return
+	}
+	if r.Header.Get("HX-Target") == "object-inspector" {
+		if r.Header.Get("X-Viewer-Selection") == "true" {
+			s.render(w, "object-selection", data)
+			return
+		}
+		s.render(w, "object-inspector", data)
+		return
+	}
+	s.render(w, "object-list-swap", data) // htmx search/refresh swap
+}
+
+// typeOptions renders the type filter's choices.
+func typeOptions(types []string, selected string) []filterOption {
+	options := make([]filterOption, 0, len(types))
+	for _, typ := range types {
+		options = append(options, filterOption{Value: typ, Label: typ, Selected: typ == selected})
+	}
+	return options
+}
+
+// totalSize sums the matched rows, which the pager reports beside their count.
+func totalSize(rows []objectRow) int64 {
+	var total int64
+	for _, row := range rows {
+		total += row.Size
+	}
+	return total
 }
 
 func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, digests []cas.Digest) []referenceRow {
