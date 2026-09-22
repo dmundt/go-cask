@@ -87,6 +87,23 @@ func TestInspectorDigestFontFitsFullAddress(t *testing.T) {
 	}
 }
 
+func TestInspectorHasListSeparator(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	want := ".viewer-inspector {\n  overflow: auto;"
+	start := strings.Index(css, want)
+	if start < 0 {
+		t.Fatal("inspector rule not found")
+	}
+	end := strings.Index(css[start:], "}")
+	if end < 0 {
+		t.Fatal("inspector rule is not closed")
+	}
+	rule := css[start : start+end]
+	if !strings.Contains(rule, "border-left: 1px solid var(--viewer-border);") {
+		t.Error("inspector is missing the table separator border")
+	}
+}
+
 func TestControlFontResetCannotBeatComponentRules(t *testing.T) {
 	// The control font reset normalises the UA font onto the shell font, but it
 	// must not decide the size: a plain `.viewer-shell button` selector outranks

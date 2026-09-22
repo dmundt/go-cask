@@ -518,6 +518,7 @@ body.viewer-shell {
   max-width: 560px;
   resize: horizontal;
   direction: rtl;
+  border-left: 1px solid var(--viewer-border);
   background: var(--viewer-surface);
 }
 
