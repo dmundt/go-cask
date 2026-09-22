@@ -37,7 +37,7 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 - Two routes were renamed to say what they do. The hexdump fragment answered
   at `.../raw` while serving an HTML table rather than the stored bytes; it is
-  now `.../hexdump`, matching the inspector tab it fills. The handler behind
+  now `.../dump`, matching the concise dump endpoint and the inspector tab it fills. The handler behind
   `/viewer/objects/{hash}` is named for the permalink it is, not for a detail
   page the viewer does not have.
 

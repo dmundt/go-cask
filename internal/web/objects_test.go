@@ -25,7 +25,7 @@ func TestObjectRawIsLimitedTo256Bytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	viewer := login(t, ts, "viewer-tok")
-	resp, err := viewer.Get(ts.URL + "/viewer/objects/" + h.String() + "/hexdump")
+	resp, err := viewer.Get(ts.URL + "/viewer/objects/" + h.String() + "/dump")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestObjectsListAndRaw(t *testing.T) {
 	}{
 		{path: "/viewer/objects", want: h.String()},
 		{path: "/viewer/objects?q=blob@1", hx: true, want: h.String()},
-		{path: "/viewer/objects/" + h.String() + "/hexdump", want: "00000000"},
+		{path: "/viewer/objects/" + h.String() + "/dump", want: "00000000"},
 	} {
 		req, err := http.NewRequest(http.MethodGet, ts.URL+request.path, nil)
 		if err != nil {
@@ -404,7 +404,7 @@ func TestLargeObjectDetailAndRaw(t *testing.T) {
 		t.Fatalf("detail page does not report the formatted size %q: %.200q", want, page)
 	}
 
-	resp, err = admin.Get(ts.URL + "/viewer/objects/" + h.String() + "/hexdump")
+	resp, err = admin.Get(ts.URL + "/viewer/objects/" + h.String() + "/dump")
 	if err != nil {
 		t.Fatal(err)
 	}

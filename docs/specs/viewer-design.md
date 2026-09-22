@@ -74,7 +74,7 @@ and silently discards the declared size.
 | `/viewer/` | entry point: completes the `?token=` deep link, redirects to login without a session, otherwise the object browser | viewer |
 | `/viewer/objects` | the object browser itself — the target every filter, sort, page, and selection control addresses | viewer |
 | `/viewer/objects/{hash}` | cold-load object link: redirects (303) to the browser with that object selected | viewer |
-| `/viewer/objects/{hash}/hexdump` | lazy hexdump fragment (HTML, not the stored bytes) | viewer |
+| `/viewer/objects/{hash}/dump` | lazy hexdump fragment (HTML, not the stored bytes) | viewer |
 | `POST /viewer/objects/{hash}/verify` | verifies one object, answers with the result fragment | operator |
 | `POST /viewer/objects/verify` | verifies every stored object, answers with the summary fragment | operator |
 | `/viewer/login` | login page and token submission | public |

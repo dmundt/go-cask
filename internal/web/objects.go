@@ -115,7 +115,7 @@ type browserInspector struct {
 	Inbound             []referenceRow
 	Outbound            []referenceRow
 	Timestamp           string
-	HexdumpURL          string
+	DumpURL             string
 	MetadataURL         string
 	BytesURL            string
 	ReferencesURL       string
@@ -378,7 +378,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		WrittenLabel:        row.WrittenLabel,
 		ReferencesAvailable: s.cfg.References != nil,
 		Timestamp:           formatTimestamp(row.Written),
-		HexdumpURL:          "/viewer/objects/" + row.Digest + "/hexdump",
+		DumpURL:             "/viewer/objects/" + row.Digest + "/dump",
 		MetadataURL:         tabURL("metadata"),
 		BytesURL:            tabURL("bytes"),
 		ReferencesURL:       tabURL("references"),
@@ -529,10 +529,10 @@ func (s *Server) objectPermalink(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, state.url(), http.StatusSeeOther)
 }
 
-// objectHexdump renders the inspector's Bytes tab: a hexdump table of the
+// objectDump renders the inspector's Bytes tab: a hexdump table of the
 // object's leading bytes, lazily fetched once the tab is revealed. It serves
 // HTML, not the stored bytes — the CLI is where raw content is read.
-func (s *Server) objectHexdump(w http.ResponseWriter, r *http.Request) {
+func (s *Server) objectDump(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseDigest(w, r)
 	if !ok {
 		return
