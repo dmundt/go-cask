@@ -19,9 +19,18 @@ with `m` the bit-array length. The filter persists only the bitset; the CAS obje
 ## Policy
 
 - stores the filter on disk so it survives restarts
-- uses mmap when the platform supports it; otherwise it falls back to file-backed memory
+- uses mmap when the platform supports it; otherwise it falls back to an in-memory buffer that is written back on `Sync`/`Close`
+- reports which backing strategy is in use through `Filter.IsMapped()`; Windows always reports `false` because this package has no Windows memory mapping yet
 - still remains advisory; correctness comes from the real backend and object graph
 - `persistent.Config.Hash` enables a custom Bloom index hash without altering the CAS object identity model
+- sizing is bounded by `bloom.MaxBits`, so an implausible `ExpectedItems` is an error instead of an enormous allocation
+
+## Lifetime
+
+`Close` flushes and releases the backing store. It is idempotent, and a `*Filter`
+must not be used afterwards: `Add` and `Reset` become no-ops and `Contains`
+reports `false`. Calling `Close` more than once (including on a `nil` `*Filter`)
+returns `nil`.
 
 ## Typical use
 
@@ -42,5 +51,5 @@ filter.Add(d)
 if filter.Contains(d) {
     fmt.Println("possibly present")
 }
-filter.Close()
+defer filter.Close()
 ```

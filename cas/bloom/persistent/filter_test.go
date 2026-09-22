@@ -5,11 +5,41 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
 )
+
+// recordingDriver is a fake mmap driver. It is injected through newFilter, the
+// same constructor production code uses, so no package-level state is mutated
+// and one test's stub cannot leak into another test.
+type recordingDriver struct {
+	mapped   bool
+	mapErr   error
+	flushErr error
+
+	flushes int
+	closes  int
+}
+
+func (r *recordingDriver) driver() mmapDriver {
+	return mmapDriver{
+		mmapBytes: func(_ *os.File, size int) (bool, []byte, error) {
+			if r.mapErr != nil {
+				return false, nil, r.mapErr
+			}
+			return r.mapped, make([]byte, size), nil
+		},
+		closeMapped: func([]byte) error {
+			r.closes++
+			return nil
+		},
+		flushMapped: func([]byte) error {
+			r.flushes++
+			return r.flushErr
+		},
+	}
+}
 
 func TestFilterPersistent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bloom.bin")
@@ -72,6 +102,26 @@ func TestFilterPersistentValidationAndLifecycle(t *testing.T) {
 	if err := nilFilter.Sync(); err != nil {
 		t.Fatal("nil filter Sync should be a no-op")
 	}
+	nilFilter.Add(cas.NewDigest([]byte("nil")))
+	nilFilter.Reset()
+	if nilFilter.Contains(cas.NewDigest([]byte("nil"))) {
+		t.Fatal("nil filter should report no membership")
+	}
+	if nilFilter.IsMapped() {
+		t.Fatal("nil filter should not report a mapped view")
+	}
+}
+
+func TestFilterPersistentRejectsUnboundedParameters(t *testing.T) {
+	// The bit-count formula would ask for ~3.8e16 bits here, far above
+	// bloom.MaxBits, so the constructor must report an error instead of trying
+	// a multi-petabyte allocation.
+	if _, err := New(filepath.Join(t.TempDir(), "huge.bin"), 4e15, 0.01); err == nil {
+		t.Fatal("expected error for an expected-item count above bloom.MaxBits")
+	}
+	if _, err := NewFilter(Config{ExpectedItems: 1 << 40, FalsePositiveRate: 1e-9}, filepath.Join(t.TempDir(), "huge2.bin")); err == nil {
+		t.Fatal("expected error for an expected-item count above bloom.MaxBits")
+	}
 }
 
 func TestFilterPersistentSyncWriteError(t *testing.T) {
@@ -130,6 +180,124 @@ func TestFilterPersistentMappedAndSyncBranches(t *testing.T) {
 	}
 }
 
+func TestFilterPersistentReportsAndFlushesMappedMode(t *testing.T) {
+	rec := &recordingDriver{mapped: true}
+	path := filepath.Join(t.TempDir(), "mapped-report.bin")
+	f, err := newFilter(Config{ExpectedItems: 64, FalsePositiveRate: 0.01}, path, rec.driver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.IsMapped() {
+		t.Fatal("expected IsMapped() to report true for a mapped filter")
+	}
+	d := cas.NewDigest([]byte("mapped value"))
+	f.Add(d)
+	if !f.Contains(d) {
+		t.Fatal("mapped filter should contain the stored digest")
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if rec.flushes != 1 {
+		t.Fatalf("flush calls = %d, want 1", rec.flushes)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if rec.closes != 1 {
+		t.Fatalf("unmap calls = %d, want 1", rec.closes)
+	}
+	if f.IsMapped() {
+		t.Fatal("IsMapped() should report false after Close")
+	}
+}
+
+func TestFilterPersistentHeapModeWritesThroughToDisk(t *testing.T) {
+	rec := &recordingDriver{mapped: false}
+	path := filepath.Join(t.TempDir(), "heap.bin")
+	f, err := newFilter(Config{ExpectedItems: 64, FalsePositiveRate: 0.01}, path, rec.driver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.IsMapped() {
+		t.Fatal("expected IsMapped() to report false for a heap-backed filter")
+	}
+	d := cas.NewDigest([]byte("heap value"))
+	f.Add(d)
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if rec.flushes != 0 {
+		t.Fatalf("flush calls = %d, want 0 for a heap-backed filter", rec.flushes)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path, 64, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if !reopened.Contains(d) {
+		t.Fatal("bits written by a heap-backed Sync should survive a reopen")
+	}
+}
+
+func TestFilterPersistentUseAfterCloseIsSafe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "closed.bin")
+	f, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cas.NewDigest([]byte("closed value"))
+	f.Add(d)
+	if !f.Contains(d) {
+		t.Fatal("filter should contain the stored digest before Close")
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if f.IsMapped() {
+		t.Fatal("IsMapped() should report false after Close")
+	}
+
+	// None of these may touch released memory: on unix the mapping is gone, so
+	// a stale f.data would fault here.
+	f.Add(cas.NewDigest([]byte("after close")))
+	f.Reset()
+	if f.Contains(d) {
+		t.Fatal("Contains on a closed filter should report false")
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatalf("Sync after Close = %v, want nil no-op", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("second Close = %v, want nil", err)
+	}
+}
+
+func TestFilterPersistentClosePropagatesDriverErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "close-error.bin")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &Filter{
+		file:   file,
+		data:   []byte("abc"),
+		mapped: true,
+		path:   path,
+		driver: mmapDriver{closeMapped: func([]byte) error { return errors.New("unmap failure") }},
+	}
+	if err := f.Close(); err == nil {
+		t.Fatal("expected Close to report the unmapping failure")
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("second Close = %v, want nil", err)
+	}
+}
+
 func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "helpers.bin")
 	file, err := os.Create(path)
@@ -156,26 +324,8 @@ func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 	if len(data) != 8 {
 		t.Fatalf("mmapBytes(8) len(data) = %d, want 8", len(data))
 	}
-	if err := closeMapped(data); err != nil {
-		t.Fatal(err)
-	}
-
-	file2, err := os.Create(filepath.Join(t.TempDir(), "mapped.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file2.Close()
-	if err := file2.Truncate(16); err != nil {
-		t.Fatal(err)
-	}
-	f, err := New(file2.Name(), 64, 0.01)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.mapped = true
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
+	// data is a heap fallback buffer, not a mapping: it must not be handed to
+	// closeMapped, because unmapping heap memory is not valid.
 
 	var nilFilter *Filter
 	if err := nilFilter.Sync(); err != nil {
@@ -199,20 +349,18 @@ func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 	}
 }
 
-func TestFilterPersistentWrapperErrorBranches(t *testing.T) {
-	oldOps := mmapOps
-	defer func() { mmapOps = oldOps }()
-
-	mmapOps = mmapDriver{
-		mmapBytes:         func(*os.File, int) (bool, []byte, error) { return false, nil, os.ErrNotExist },
-		closeMapped:       func([]byte) error { return nil },
-		flushMapped:       func([]byte) error { return nil },
-		closeMappedByAddr: func(uintptr, int) error { return nil },
-		flushMappedByAddr: func(uintptr, int) error { return nil },
+func TestNewFilterWithoutDriverReportsError(t *testing.T) {
+	// A Filter built without a mapping driver must report an error rather than
+	// panicking on a nil driver function.
+	if _, err := newFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, filepath.Join(t.TempDir(), "no-driver.bin"), mmapDriver{}); err == nil {
+		t.Fatal("expected a zero-value mmap driver to report an error")
 	}
-	_, err := NewFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, filepath.Join(t.TempDir(), "wrapper.bin"))
-	if err == nil {
-		t.Fatal("expected mmap wrapper failure")
+}
+
+func TestFilterPersistentWrapperErrorBranches(t *testing.T) {
+	rec := &recordingDriver{mapErr: os.ErrNotExist}
+	if _, err := newFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, filepath.Join(t.TempDir(), "wrapper.bin"), rec.driver()); err == nil {
+		t.Fatal("expected mmap driver failure to surface")
 	}
 
 	path := filepath.Join(t.TempDir(), "wrapper-close.bin")
@@ -222,21 +370,23 @@ func TestFilterPersistentWrapperErrorBranches(t *testing.T) {
 	}
 	defer file.Close()
 	f := &Filter{file: file, data: []byte("abc"), mapped: false, path: filepath.Join(t.TempDir(), "missing", "close.bin")}
-	mmapOps.closeMappedByAddr = func(uintptr, int) error { return nil }
 	if err := f.Close(); err == nil {
-		t.Fatal("expected Close to error when non-mapped Sync cannot write to invalid path")
+		t.Fatal("expected Close to error when a heap-backed Sync cannot write to an invalid path")
 	}
 
-	f = &Filter{file: file, data: []byte("abc"), mappedAddr: slicePtr(f.data), path: path}
-	mmapOps.flushMappedByAddr = func(uintptr, int) error { return os.ErrInvalid }
+	rec = &recordingDriver{mapped: true, flushErr: os.ErrInvalid}
+	f, err = newFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, filepath.Join(t.TempDir(), "flush.bin"), rec.driver())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := f.Sync(); err == nil {
 		t.Fatal("expected Sync to fail when mapped flush returns an error")
 	}
-
-	mmapOps.closeMappedByAddr = func(uintptr, int) error { return errors.New("close failure") }
-	f = &Filter{file: file, data: []byte("abc"), mappedAddr: slicePtr(f.data), path: path}
 	if err := f.Close(); err == nil {
-		t.Fatal("expected Close to fail when mapped close returns an error")
+		t.Fatal("expected Close to report the mapped flush failure")
+	}
+	if rec.closes != 1 {
+		t.Fatalf("unmap calls = %d, want 1: Close must release the view even after a flush failure", rec.closes)
 	}
 }
 
@@ -256,17 +406,10 @@ func TestFilterPersistentCustomHash(t *testing.T) {
 
 func TestFilterPersistentMmapEdgeCases(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mmap-edge.bin")
-	file, err := os.Create(path)
-	if err != nil {
+	if err := os.WriteFile(path, []byte{0x01, 0x02}, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.Write([]byte{0x01, 0x02}); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	file, err = os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,8 +442,10 @@ func TestFilterPersistentMmapEdgeCases(t *testing.T) {
 	if len(data) != len(want) {
 		t.Fatalf("mmapBytes(file,%d) len = %d, want %d", len(want), len(data), len(want))
 	}
-	if err := closeMapped(data); err != nil {
-		t.Fatal(err)
+	if mapped {
+		if err := closeMapped(data); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
@@ -321,56 +466,8 @@ func TestFilterPersistentMmapEdgeCases(t *testing.T) {
 		if err := closeMapped(data); err != nil {
 			t.Fatal(err)
 		}
-	} else if err := closeMapped(data); err != nil {
-		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestFilterPersistentExtendedCoverageBranches(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "extended.bin")
-	oldOps := mmapOps
-	defer func() { mmapOps = oldOps }()
-
-	mmapOps = mmapDriver{
-		mmapBytes:         func(*os.File, int) (bool, []byte, error) { return true, []byte("abcdef"), nil },
-		closeMapped:       func([]byte) error { return nil },
-		flushMapped:       func([]byte) error { return nil },
-		closeMappedByAddr: func(uintptr, int) error { return nil },
-		flushMappedByAddr: func(uintptr, int) error { return nil },
-	}
-	f, err := NewFilter(Config{ExpectedItems: 32, FalsePositiveRate: 0.01}, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !f.mapped || f.mappedAddr == 0 {
-		t.Fatal("expected mapped filter to retain mapped address")
-	}
-	f.data = make([]byte, 1024)
-	f.m = 8192
-	if f.Contains(cas.NewDigest([]byte("missing"))) {
-		t.Fatal("missing digest should not be found")
-	}
-	f.mappedAddr = slicePtr(f.data)
-	mmapOps.closeMappedByAddr = func(uintptr, int) error { return syscall.EINVAL }
-	if err := f.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	mmapOps.closeMappedByAddr = func(uintptr, int) error { return nil }
-
-	data := []byte("xyz")
-	if err := mmapOps.closeMappedByAddr(0, len(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := mmapOps.flushMappedByAddr(0, len(data)); err != nil {
-		t.Fatal(err)
-	}
-	addr := slicePtr(data)
-	_ = mmapOps.closeMappedByAddr(addr, len(data))
-	_ = mmapOps.flushMappedByAddr(addr, len(data))
 }

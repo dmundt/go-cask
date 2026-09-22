@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas"
 )
 
 func TestPersistentMmapWindowsBranches(t *testing.T) {
@@ -38,6 +40,9 @@ func TestPersistentMmapWindowsBranches(t *testing.T) {
 	if err := closeMapped(data); err != nil {
 		t.Fatal(err)
 	}
+	if err := flushMapped(data); err != nil {
+		t.Fatal(err)
+	}
 	if mapped2, data2, err := mmapBytes(file, 0); err != nil || mapped2 || data2 != nil {
 		t.Fatalf("mmapBytes(0) = (%v, %v, %v), want (false, nil, nil)", mapped2, data2, err)
 	}
@@ -46,101 +51,35 @@ func TestPersistentMmapWindowsBranches(t *testing.T) {
 	}
 }
 
-func TestPersistentWindowsMappedHelpers(t *testing.T) {
-	if err := flushMapped(nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := closeMappedByAddr(0, 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := flushMappedByAddr(0, 0); err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(t.TempDir(), "mapped-helpers.bin")
-	if err := os.WriteFile(path, []byte("abcdef"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := os.Open(path)
+func TestFilterPersistentWindowsUsesHeapMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "windows-heap.bin")
+	f, err := New(path, 256, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-
-	mapped, data, err := mmapBytes(file, 6)
-	if err != nil {
-		t.Fatal(err)
+	if f.IsMapped() {
+		t.Fatal("windows filters are heap-backed until real memory mapping is implemented")
 	}
-	if !mapped && len(data) == 0 {
-		t.Fatal("expected a mapped view or fallback bytes")
+	d := cas.NewDigest([]byte("windows heap value"))
+	f.Add(d)
+	if !f.Contains(d) {
+		t.Fatal("heap-backed windows filter should contain the stored digest")
 	}
-	ptr := slicePtr(data)
-	mappedViews.Store(ptr, true)
-	if err := flushMapped(data); err != nil {
-		_ = err
-	}
-	if err := flushMappedByAddr(ptr, len(data)); err != nil {
-		_ = err
-	}
-	if err := closeMapped(data); err != nil {
-		_ = err
-	}
-	if err := closeMappedByAddr(ptr, len(data)); err != nil {
-		_ = err
-	}
-	if err := closeMappedByAddr(0, 8); err != nil {
-		t.Fatal(err)
-	}
-	if err := flushMappedByAddr(0, 8); err != nil {
-		t.Fatal(err)
-	}
-	if !mapped && len(data) > 0 {
-		_ = data
-	}
-
-	badPtr := uintptr(0xDEADBEEF)
-	mappedViews.Store(badPtr, true)
-	if err := flushMappedByAddr(badPtr, 8); err == nil {
-		t.Fatal("expected invalid mapped pointer to fail flush")
-	}
-	if err := closeMappedByAddr(badPtr, 8); err == nil {
-		t.Fatal("expected invalid mapped pointer to fail close")
-	}
-
-	badFile, err := os.CreateTemp(t.TempDir(), "bad-filter-*.bin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer badFile.Close()
-	f := &Filter{file: badFile, data: []byte("abcd"), mapped: true, mappedAddr: badPtr, path: badFile.Name()}
 	if err := f.Sync(); err != nil {
-		_ = err
+		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {
-		_ = err
+		t.Fatal(err)
 	}
-}
 
-func TestPersistentWindowsMappedAddrHelpers(t *testing.T) {
-	_ = flushMapped(nil)
-	_ = closeMapped(nil)
-	_ = flushMappedByAddr(0, 64)
-	_ = closeMappedByAddr(0, 64)
-
-	buf := make([]byte, 32)
-	addr := slicePtr(buf)
-	mappedViews.Store(addr, true)
-	_ = flushMapped(buf)
-	_ = flushMappedByAddr(addr, len(buf))
-	_ = closeMapped(buf)
-	_ = closeMappedByAddr(addr, len(buf))
-	mappedViews.Delete(addr)
-
-	invalidAddr := uintptr(0xFEEDFACE)
-	mappedViews.Store(invalidAddr, true)
-	_ = flushMappedByAddr(invalidAddr, 8)
-	_ = closeMappedByAddr(invalidAddr, 8)
-	mappedViews.Delete(invalidAddr)
+	reopened, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if !reopened.Contains(d) {
+		t.Fatal("windows filter should survive reopen")
+	}
 }
 
 func TestPersistentWindowsMmapFallbackErrors(t *testing.T) {

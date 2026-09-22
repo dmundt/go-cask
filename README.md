@@ -130,11 +130,11 @@ four reference states, shown as the `References` column and matched by the
 | State | Reachable? | Inbound refs | Pill color | Meaning |
 |---|---|---|---|---|
 | `Resolved` | yes | > 0 | green | Interior node of a reachable subtree |
-| `Head` | yes | 0 | blue | Entry point of a reachable subtree — structurally consistent with being a root, but the viewer never sees the host's actual root list, only these two indexes |
+| `Root` | yes | 0 | blue | Entry point of a reachable subtree — structurally consistent with being a configured root, but the viewer never sees the host's actual root list, only these two indexes |
 | `Orphaned` | no | > 0 | amber | Unreachable but still pointed to by something else |
 | `Detached` | no | 0 | violet | Fully isolated — the true garbage-collection candidate |
 
-`Head` and `Detached` require both indexes (`reach=head`/`reach=detached`
+`Root` and `Detached` require both indexes (`reach=root`/`reach=detached`
 return 400 without a `ReferenceIndex`); `Resolved`/`Orphaned` only require a
 `ReachabilityIndex`. See [docs/specs/viewer-design.md](docs/specs/viewer-design.md)
 for the full normative contract.

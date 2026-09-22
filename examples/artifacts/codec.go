@@ -8,20 +8,22 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
-// gzipCodec[T] wraps a Codec[T] (the default JSON codec, json.New[T]() from
-// cas/codec/json) with gzip compression — the codec-composition pattern from
-// cas-core §7.2. It is used
-// for both artifacts and manifests, so their stored payloads are compressed.
+// gzipCodec[T] wraps a Codec[T] with gzip compression — the codec-composition
+// pattern from cas-core §7.2. The inner codec is injected rather than assumed,
+// so the stack is explicit at the call site and the same wrapper works over any
+// Codec[T] (coding-guidelines §2: a wrapper always takes its inner codec as
+// next). It is used for both artifacts and manifests, so their stored payloads
+// are compressed.
 //
 // Output is deterministic: the gzip header's mtime is pinned, so identical
 // values encode to identical bytes and therefore identical digests (dedup).
 type gzipCodec[T any] struct{ inner cas.Codec[T] }
 
-// newGzipCodec wraps the default JSON codec (json.New[T]()).
-func newGzipCodec[T any]() gzipCodec[T] { return gzipCodec[T]{inner: jsoncodec.New[T]()} }
+// newGzipCodec wraps next with gzip compression: next serializes the value
+// first, the outer gzip transform compresses those bytes second.
+func newGzipCodec[T any](next cas.Codec[T]) gzipCodec[T] { return gzipCodec[T]{inner: next} }
 
 // Encode gzip-compresses the inner codec's output.
 func (c gzipCodec[T]) Encode(v T) ([]byte, error) {

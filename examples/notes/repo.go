@@ -62,19 +62,32 @@ func (r *Resolver) ResolveAttachment(ctx context.Context, d cas.Digest) (*Attach
 	return r.repo.Attachments.Get(ctx, d)
 }
 
+// envelopeHeaderLimit bounds the prefix read to learn an object's type. The
+// envelope header is [version u8][uvarint typeLen][type] — a few dozen bytes for
+// any realistic type name — so this is generous while keeping the read cost of
+// resolution independent of the object's size (gitlike/repo.go uses the same
+// limit).
+const envelopeHeaderLimit = 1 << 10
+
 // ResolveAny discovers the type from the self-describing envelope and
 // dispatches to the matching typed resolver.
+//
+// Only the envelope header is read to learn the type — never the payload — so
+// resolving a large Attachment costs one bounded read, not a copy of the object.
 func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
 	rc, err := r.repo.raw.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	data, err := io.ReadAll(rc)
-	rc.Close()
+	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
 	if err != nil {
-		return nil, fmt.Errorf("read object for resolution: %w", err)
+		_ = rc.Close() // the read error is the one worth reporting
+		return nil, fmt.Errorf("notes: read object header for resolution: %w", err)
 	}
-	typ, err := parseType(data)
+	if err := rc.Close(); err != nil {
+		return nil, fmt.Errorf("notes: close object header reader: %w", err)
+	}
+	typ, err := parseType(prefix)
 	if err != nil {
 		return nil, err
 	}

@@ -39,7 +39,10 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		return err
+	}
 
 	stored := cas.NewDigest([]byte("hello world"))
 	if err := guard.Put(ctx, stored, bytes.NewReader([]byte("hello world"))); err != nil {

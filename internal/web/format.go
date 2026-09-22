@@ -4,9 +4,7 @@
 package web
 
 import (
-	"encoding/hex"
 	"fmt"
-	"html/template"
 	"math"
 	"runtime/debug"
 	"strings"
@@ -90,15 +88,18 @@ func formatBytes(size int64) string {
 	return fmt.Sprintf("%.1f %s", value, units[unit])
 }
 
+// shortDigest renders a digest in the viewer's abbreviated form: the first 8
+// hex characters plus an ellipsis, or the whole digest when it is no longer
+// than that. The 8-character short form is cas.Digest.Prefix(8) — the helper
+// the package documents as this viewer's short form — so the marker is only
+// added when Prefix actually dropped something.
 func shortDigest(d cas.Digest) string {
-	const prefixChars = 8
-	if len(d)*2 <= prefixChars {
-		return d.String()
+	const shortChars = 8
+	full := d.String()
+	if len(full) <= shortChars {
+		return full
 	}
-	var short [prefixChars + len("…")]byte
-	hex.Encode(short[:prefixChars], d[:prefixChars/2])
-	copy(short[prefixChars:], "…")
-	return string(short[:])
+	return d.Prefix(shortChars) + "…"
 }
 
 // Version reports the build's module version, rendered as the viewer and the
@@ -111,20 +112,6 @@ func Version() string {
 		}
 	}
 	return "dev"
-}
-
-// selectionLinkAttrs renders the attributes every link that selects an object
-// carries: the href for a cold click, the htmx request that swaps the inspector
-// in place, and the header that marks the request as a selection. Row cells,
-// inspector tabs, history arrows, and reference links all navigate the same
-// way, so they all emit these from here — a copy that quietly lost the
-// selection header would still look right. The URL is escaped because the
-// result is injected as raw attribute text.
-func selectionLinkAttrs(selectURL string) template.HTMLAttr {
-	escaped := template.HTMLEscapeString(selectURL)
-	return template.HTMLAttr(fmt.Sprintf(
-		`href="%s" hx-get="%s" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true"`,
-		escaped, escaped))
 }
 
 // hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).

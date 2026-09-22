@@ -2,86 +2,32 @@
 
 package persistent
 
-import (
-	"fmt"
-	"os"
-	"sync"
-	"syscall"
-)
+import "os"
 
-var mappedViews sync.Map
-
+// mmapBytes reports a heap fallback buffer rather than a mapping: this package
+// has no Windows memory-mapping implementation (CreateFileMapping/MapViewOfFile)
+// yet, so a Windows filter reads the whole file into memory, works on that
+// buffer, and writes it back from Sync or Close. The contract is otherwise
+// identical, which is why the fallback is silent at the call site but visible
+// through Filter.IsMapped.
 func mmapBytes(file *os.File, size int) (bool, []byte, error) {
 	if size <= 0 {
 		return false, nil, nil
 	}
-	if fi, err := file.Stat(); err == nil && fi.Size() < int64(size) {
-		buf, readErr := os.ReadFile(file.Name())
-		if readErr != nil {
-			return false, nil, fmt.Errorf("bloom: read persistent file: %w", readErr)
-		}
-		if len(buf) < size {
-			buf = append(buf, make([]byte, size-len(buf))...)
-		}
-		return false, buf[:size], nil
+	buf, err := readPadded(file, size)
+	if err != nil {
+		return false, nil, err
 	}
-
-	buf, readErr := os.ReadFile(file.Name())
-	if readErr != nil {
-		return false, nil, fmt.Errorf("bloom: read persistent file: %w", readErr)
-	}
-	if len(buf) < size {
-		buf = append(buf, make([]byte, size-len(buf))...)
-	}
-	return false, buf[:size], nil
+	return false, buf, nil
 }
 
+// closeMapped is a no-op on Windows because mmapBytes never returns a mapping.
 func closeMapped(data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	ptr := slicePtr(data)
-	if _, ok := mappedViews.Load(ptr); !ok {
-		return nil
-	}
-	mappedViews.Delete(ptr)
 	return nil
 }
 
+// flushMapped is a no-op on Windows because mmapBytes never returns a mapping;
+// the heap buffer is written back by Filter.Sync and Filter.Close instead.
 func flushMapped(data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	ptr := slicePtr(data)
-	if _, ok := mappedViews.Load(ptr); !ok {
-		return nil
-	}
-	return nil
-}
-
-func closeMappedByAddr(addr uintptr, size int) error {
-	if size <= 0 || addr == 0 {
-		return nil
-	}
-	if _, ok := mappedViews.Load(addr); !ok {
-		return nil
-	}
-	mappedViews.Delete(addr)
-	if addr == 0xDEADBEEF || addr == 0xFEEDFACE {
-		return syscall.EINVAL
-	}
-	return nil
-}
-
-func flushMappedByAddr(addr uintptr, size int) error {
-	if size <= 0 || addr == 0 {
-		return nil
-	}
-	if _, ok := mappedViews.Load(addr); !ok {
-		return nil
-	}
-	if addr == 0xDEADBEEF || addr == 0xFEEDFACE {
-		return syscall.EINVAL
-	}
 	return nil
 }

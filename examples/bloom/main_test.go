@@ -29,7 +29,10 @@ func TestBloomExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	d := cas.NewDigest([]byte("hello world"))
 	if err := guard.Put(ctx, d, bytes.NewReader([]byte("hello world"))); err != nil {

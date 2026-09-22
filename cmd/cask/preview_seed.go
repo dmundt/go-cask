@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -15,25 +16,82 @@ import (
 
 const defaultPreviewObjectCount = 500
 
-var previewObjectTypes = []string{"blob@1", "text@1", "json@1", "note@1", "manifest@1"}
-var previewObjectSizes = []int{128, 986, 2200, 48 << 10, 384 << 10, 1200 << 10}
+// maxPreviewCount bounds `seed-preview -count` (cli.md §2) and the number of
+// ordinals the preview walk probes, so handing out the preview data and reading
+// it back agree on one limit.
+const maxPreviewCount = 10000
+
+// previewBlockSize is the number of objects in one preview graph block. Each
+// block carries one Root, orphan members with inbound edges, and one
+// detached entry (cli.md §2).
+const previewBlockSize = 8
+
+// previewRootOffset is the in-block offset of the reachable Root: the
+// member no other member of its block references (previewRootOrdinal).
+const previewRootOffset = 3
+
+// previewDetachedOffset is the in-block offset of the detached orphan: the last
+// member, which no later sibling references back (previewDetachedOrdinal).
+const previewDetachedOffset = 7
+
+// previewCorruptOffset is the in-block offset seeded with tampered bytes: it
+// sits inside a reachable segment, so the corrupt and orphaned states stay
+// independent (cli.md §2).
+const previewCorruptOffset = 1
+
+// errNoPreviewGraph reports that the store holds no known preview graph, so the
+// viewer has no reference source for it (cli.md §2). It is not a failure: an
+// ordinary store simply has no preview data, and its references stay
+// unavailable.
+var errNoPreviewGraph = errors.New("store holds no preview graph")
+
+// previewObjectType returns the versioned type name of the preview object with
+// this ordinal, cycling the representative types. The table is a value returned
+// to the caller, so there is no mutable package-level state to append to or
+// share.
+func previewObjectType(ordinal int) string {
+	types := [...]string{"blob@1", "text@1", "json@1", "note@1", "manifest@1"}
+	return types[ordinal%len(types)]
+}
+
+// previewObjectSize returns the payload size of the preview object with this
+// ordinal, cycling representative sizes (48 KiB up to 1.2 MiB) so the browser
+// has varied sizes to sort and paginate.
+func previewObjectSize(ordinal int) int {
+	sizes := [...]int{128, 986, 2200, 48 << 10, 384 << 10, 1200 << 10}
+	return sizes[ordinal%len(sizes)]
+}
+
+// seedPreviewArgs holds seed-preview's flag values.
+type seedPreviewArgs struct {
+	count int
+}
+
+// seedPreviewFlags registers seed-preview's flags over a; opSeedPreview and the
+// command table both use it, so the accepted and the documented flags are one
+// set (cli.md §2, §4).
+func seedPreviewFlags(a *seedPreviewArgs) *flag.FlagSet {
+	flags := newFlagSet("seed-preview")
+	flags.IntVar(&a.count, "count", defaultPreviewObjectCount, "number of preview objects (1-10000)")
+	return flags
+}
 
 // opSeedPreview writes deterministic, valid envelope objects suitable for
 // exercising the object browser's filtering, sorting, and pagination.
 func opSeedPreview(ctx context.Context, t *target, args []string) error {
-	flags := flag.NewFlagSet("seed-preview", flag.ContinueOnError)
-	count := flags.Int("count", defaultPreviewObjectCount, "number of preview objects (1-10000)")
-	if err := flags.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a seedPreviewArgs
+	flags := seedPreviewFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
 	if flags.NArg() != 0 {
 		return usagef("seed-preview accepts flags only")
 	}
-	if *count < 1 || *count > 10000 {
-		return usagef("count must be between 1 and 10000, got %d", *count)
+	if a.count < 1 || a.count > maxPreviewCount {
+		return usagef("count must be between 1 and %d, got %d", maxPreviewCount, a.count)
 	}
 
-	added, deduplicated, err := seedPreview(ctx, t.raw, *count)
+	added, deduplicated, err := seedPreview(ctx, t.raw, a.count)
 	if err != nil {
 		return err
 	}
@@ -84,7 +142,7 @@ func seedPreview(ctx context.Context, raw *fs.Backend, count int) (int, int, err
 // walks from its roots, so the browser shows corrupt objects that are not
 // orphaned and the two status axes stay visibly independent.
 func previewCorruptOrdinal(ordinal int) bool {
-	return ordinal%8 == 1
+	return ordinal%previewBlockSize == previewCorruptOffset
 }
 
 // previewTamper flips a payload byte, leaving the envelope header intact so the
@@ -105,9 +163,9 @@ type previewObject struct {
 func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 	references := previewObjectReferences(ordinal, digests)
 	data := previewEnvelope(
-		previewObjectTypes[ordinal%len(previewObjectTypes)],
+		previewObjectType(ordinal),
 		ordinal,
-		previewObjectSizes[ordinal%len(previewObjectSizes)],
+		previewObjectSize(ordinal),
 		references,
 	)
 	return previewObject{
@@ -118,10 +176,10 @@ func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 	}
 }
 
-// previewObjectReferences makes an eight-object preview block contain a
-// reachable root at ordinal 3 (which doubles as a Head object: reachable with
-// no inbound edge of its own), an orphan with inbound references at ordinals
-// 4 through 6, and a detached orphan (no inbound edge at all) at ordinal 7.
+// previewObjectReferences makes a preview block contain a reachable root at
+// previewRootOffset (which doubles as a Root object: reachable with no inbound
+// edge of its own), orphans with inbound references after it, and a detached
+// orphan (no inbound edge at all) at previewDetachedOffset.
 func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
 	count := min(len(digests), ordinal%4)
 	if count == 0 {
@@ -136,17 +194,18 @@ func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
 
 // previewDetachedOrdinal reports whether ordinal seeds a detached preview
 // object: it is not a root-reachable graph member and has no inbound edge.
-// Within an eight-object preview block, only the last member (offset 7) ends
-// its block with no later sibling still referencing it back.
+// Within a preview block, only the last member (offset previewDetachedOffset)
+// ends its block with no later sibling still referencing it back.
 func previewDetachedOrdinal(ordinal int) bool {
-	return ordinal%8 == 7
+	return ordinal%previewBlockSize == previewDetachedOffset
 }
 
-// previewHeadOrdinal reports whether ordinal seeds a Head preview object: it
-// is the reachable root of its eight-object block (offset 3) and, because
-// nothing in the block references a root, it also carries no inbound edge.
-func previewHeadOrdinal(ordinal int) bool {
-	return ordinal%8 == 3
+// previewRootOrdinal reports whether ordinal seeds a Root preview object: it
+// is the reachable root of its preview block (offset previewRootOffset) and,
+// because nothing in the block references a root, it also carries no inbound
+// edge.
+func previewRootOrdinal(ordinal int) bool {
+	return ordinal%previewBlockSize == previewRootOffset
 }
 
 func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) []byte {
@@ -192,14 +251,18 @@ func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 	return i.reachable[digest.String()]
 }
 
+// previewReferences rebuilds the known deterministic preview graph over the
+// objects the store holds. It returns errNoPreviewGraph when the store holds
+// none of them, so a caller reads "an ordinary store" from the error instead of
+// having to treat a nil index as a non-error signal.
 func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceIndex, error) {
 	index := &previewReferenceIndex{
 		inbound:   make(map[string][]cas.Digest),
 		outbound:  make(map[string][]cas.Digest),
 		reachable: make(map[string]bool),
 	}
-	digests := make([]cas.Digest, 0, 10000)
-	for ordinal := range 10000 {
+	digests := make([]cas.Digest, 0, maxPreviewCount)
+	for ordinal := range maxPreviewCount {
 		object := previewObjectFor(ordinal, digests)
 		exists, err := raw.Exists(ctx, object.digest)
 		if err != nil {
@@ -215,7 +278,7 @@ func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceI
 		digests = append(digests, object.digest)
 	}
 	if len(index.outbound) == 0 {
-		return nil, nil
+		return nil, errNoPreviewGraph
 	}
 	var visit func(cas.Digest)
 	visit = func(digest cas.Digest) {
@@ -227,7 +290,7 @@ func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceI
 			visit(reference)
 		}
 	}
-	for root := 3; root < len(digests); root += 8 {
+	for root := previewRootOffset; root < len(digests); root += previewBlockSize {
 		visit(digests[root])
 	}
 	return index, nil

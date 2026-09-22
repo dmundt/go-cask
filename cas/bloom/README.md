@@ -29,6 +29,8 @@ where `m` is the bit-array length and `k` is the number of probes. The object ha
 - Positive results are advisory; the real store still validates existence and content.
 - Negative results are definitive for a well-formed filter and can short-circuit expensive lookups.
 - The filter's internal index hash is pluggable; callers may replace the default `sha256`-based mixer with their own stable function.
+- Filter dimensions are bounded by `bloom.MaxBits`; `bloom.Parameters` reports an error instead of sizing an allocation the process cannot serve.
+- `bloom.Guard` is a `cas.Backend`, so it keeps the backend contract for bad keys: an absent digest is `cas.ErrInvalidDigest`, not a bare "not present".
 
 ## Example
 
@@ -42,9 +44,12 @@ filter, err := stdfilter.New(100_000, 0.01)
 if err != nil {
     panic(err)
 }
-backend := bloom.NewGuard(raw, filter)
+guard, err := bloom.NewGuard(raw, filter)
+if err != nil {
+    panic(err)
+}
 
-exists, err := backend.Exists(ctx, digest)
+exists, err := guard.Exists(ctx, digest)
 if err != nil {
     panic(err)
 }

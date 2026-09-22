@@ -1,32 +1,57 @@
 package fs
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestValidateBase(t *testing.T) {
-	if err := ValidateBase(""); err == nil {
-		t.Fatal("ValidateBase(empty) = nil error, want error")
+	invalid := []string{
+		"",
+		"   ",
+		".",
+		string(filepath.Separator),
+		"..",
+		"../x",
+		".." + string(filepath.Separator) + "x",
+		filepath.Join("a", "..", ".."), // cleans to ".."
 	}
-	if err := ValidateBase("."); err == nil {
-		t.Fatal("ValidateBase('.') = nil error, want error")
+	if vol := filepath.VolumeName(filepath.Clean(os.TempDir())); vol != "" {
+		// "C:" and "C:\" are volume roots, not store directories.
+		invalid = append(invalid, vol, vol+string(filepath.Separator))
 	}
-	if err := ValidateBase(filepath.Join("tmp", "store")); err != nil {
-		t.Fatalf("ValidateBase(tmp/store) = %v, want nil", err)
+	for _, base := range invalid {
+		if err := ValidateBase(base); err == nil {
+			t.Errorf("ValidateBase(%q) = nil error, want error", base)
+		}
+	}
+
+	valid := []string{
+		filepath.Join("tmp", "store"),
+		filepath.Join("a", "b", "c"),
+	}
+	if abs := filepath.Join(t.TempDir(), "store"); abs != "" {
+		valid = append(valid, abs)
+	}
+	for _, base := range valid {
+		if err := ValidateBase(base); err != nil {
+			t.Errorf("ValidateBase(%q) = %v, want nil", base, err)
+		}
 	}
 }
 
 func TestEnsureBaseAndCleanupTemp(t *testing.T) {
+	ctx := context.Background()
 	base := filepath.Join(t.TempDir(), "store")
-	if err := EnsureBase(base); err != nil {
+	if err := EnsureBase(ctx, base); err != nil {
 		t.Fatalf("EnsureBase: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(base, "tmp-001.tmp"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("Write temp file: %v", err)
 	}
-	if err := CleanupTemp(base); err != nil {
+	if err := CleanupTemp(ctx, base); err != nil {
 		t.Fatalf("CleanupTemp: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(base, "tmp-001.tmp")); !os.IsNotExist(err) {
@@ -34,19 +59,55 @@ func TestEnsureBaseAndCleanupTemp(t *testing.T) {
 	}
 }
 
-// TestCleanupTempEdges covers the two branches CleanupTemp has beyond the
-// happy path: an unusable base is rejected before any walk, and a base that
-// does not exist is not an error — the helper is advisory, and there is
-// nothing to clean up in a store that was never created.
+// TestCleanupTempEdges covers the branches CleanupTemp has beyond the happy
+// path: an unusable base is rejected before any walk, a base that does not
+// exist is not an error — the helper is advisory, and there is nothing to clean
+// up in a store that was never created — and a canceled context stops the
+// sweep before it touches anything.
 func TestCleanupTempEdges(t *testing.T) {
-	if err := CleanupTemp(""); err == nil {
+	ctx := context.Background()
+	if err := CleanupTemp(ctx, ""); err == nil {
 		t.Fatal("CleanupTemp(empty) = nil error, want error")
 	}
 	missing := filepath.Join(t.TempDir(), "never-created")
-	if err := CleanupTemp(missing); err != nil {
+	if err := CleanupTemp(ctx, missing); err != nil {
 		t.Fatalf("CleanupTemp(missing base) = %v, want nil", err)
 	}
-	if err := EnsureBase(""); err == nil {
+	if err := EnsureBase(ctx, ""); err == nil {
 		t.Fatal("EnsureBase(empty) = nil error, want error")
+	}
+
+	base := t.TempDir()
+	tempPath := filepath.Join(base, "stale.tmp")
+	if err := os.WriteFile(tempPath, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := CleanupTemp(canceled, base); err == nil {
+		t.Fatal("CleanupTemp(canceled ctx) = nil error, want context.Canceled")
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("a canceled sweep must not remove files: %v", err)
+	}
+	if err := EnsureBase(canceled, filepath.Join(base, "sub")); err == nil {
+		t.Fatal("EnsureBase(canceled ctx) = nil error, want context.Canceled")
+	}
+}
+
+// TestValidateBaseRejectsTraversal pins the guard the doc comment promises:
+// ".." and any "..<sep>" prefix would make CleanupTemp walk the parent
+// directory and delete foreign *.tmp files, so they must be rejected.
+func TestValidateBaseRejectsTraversal(t *testing.T) {
+	for _, base := range []string{"..", ".." + string(filepath.Separator), filepath.Join("..", "sibling")} {
+		if err := ValidateBase(base); err == nil {
+			t.Fatalf("ValidateBase(%q) = nil, want rejection", base)
+		}
+		if err := EnsureBase(context.Background(), base); err == nil {
+			t.Fatalf("EnsureBase(%q) = nil, want rejection", base)
+		}
+		if err := CleanupTemp(context.Background(), base); err == nil {
+			t.Fatalf("CleanupTemp(%q) = nil, want rejection", base)
+		}
 	}
 }

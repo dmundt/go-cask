@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/backend"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -19,7 +18,7 @@ import (
 
 // mustFS builds a filesystem backend rooted in a temp dir with the given
 // options.
-func mustFS(t *testing.T, opts ...backend.Option) *fs.Backend {
+func mustFS(t *testing.T, opts ...fs.Option) *fs.Backend {
 	s, err := fs.New(t.TempDir(), opts...)
 	if err != nil {
 		t.Fatal(err)

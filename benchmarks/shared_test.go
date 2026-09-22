@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"testing"
@@ -72,24 +73,21 @@ func benchTitleUint(prefix string, n uint64) string {
 	return prefix + strconv.FormatUint(n, 10)
 }
 
+// marshalBinaryNote frames a note as
+// [version u8][titleLen u32][title][bodyLen u32][body], big-endian lengths. The
+// error result exists to satisfy binarycodec.NewRaw's marshal shape: appending
+// to a byte slice cannot fail.
 func marshalBinaryNote(v testNote) ([]byte, error) {
-	var buf bytes.Buffer
-	if err := buf.WriteByte(1); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buf, binary.BigEndian, uint32(len(v.Title))); err != nil {
-		return nil, err
-	}
-	if _, err := buf.WriteString(v.Title); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buf, binary.BigEndian, uint32(len(v.Body))); err != nil {
-		return nil, err
-	}
-	if _, err := buf.WriteString(v.Body); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	var length [4]byte
+	out := make([]byte, 0, 1+4+len(v.Title)+4+len(v.Body))
+	out = append(out, 1)
+	binary.BigEndian.PutUint32(length[:], uint32(len(v.Title)))
+	out = append(out, length[:]...)
+	out = append(out, v.Title...)
+	binary.BigEndian.PutUint32(length[:], uint32(len(v.Body)))
+	out = append(out, length[:]...)
+	out = append(out, v.Body...)
+	return out, nil
 }
 
 func unmarshalBinaryNote(data []byte) (testNote, error) {
@@ -105,18 +103,41 @@ func unmarshalBinaryNote(data []byte) (testNote, error) {
 		return testNote{}, err
 	}
 	title := make([]byte, titleLen)
-	if _, err := buf.Read(title); err != nil {
-		return testNote{}, err
+	// io.ReadFull, not buf.Read: a short read is a truncated frame and must
+	// fail rather than silently zero-pad the missing bytes.
+	if _, err := io.ReadFull(buf, title); err != nil {
+		return testNote{}, fmt.Errorf("binary note: read title: %w", err)
 	}
 	var bodyLen uint32
 	if err := binary.Read(buf, binary.BigEndian, &bodyLen); err != nil {
 		return testNote{}, err
 	}
 	body := make([]byte, bodyLen)
-	if _, err := buf.Read(body); err != nil {
-		return testNote{}, err
+	if _, err := io.ReadFull(buf, body); err != nil {
+		return testNote{}, fmt.Errorf("binary note: read body: %w", err)
 	}
 	return testNote{Title: string(title), Body: string(body)}, nil
+}
+
+// TestUnmarshalBinaryNoteRejectsTruncatedPayload pins the framing check: a
+// truncated title or body must fail instead of decoding as zero-padded text.
+func TestUnmarshalBinaryNoteRejectsTruncatedPayload(t *testing.T) {
+	full, err := marshalBinaryNote(testNote{Title: "title", Body: "body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := unmarshalBinaryNote(full)
+	if err != nil {
+		t.Fatalf("unmarshalBinaryNote(full) = %v", err)
+	}
+	if got.Title != "title" || got.Body != "body" {
+		t.Fatalf("round-trip = %+v, want title/body", got)
+	}
+	for _, cut := range []int{0, 1, 5, len(full) - 1} {
+		if _, err := unmarshalBinaryNote(full[:cut]); err == nil {
+			t.Fatalf("unmarshalBinaryNote(%d of %d bytes) = nil error, want a truncation failure", cut, len(full))
+		}
+	}
 }
 
 func marshalCBORNote(v testNote) ([]byte, error) {
@@ -193,7 +214,7 @@ var benchCodecs = []struct {
 	{name: "gzip", new: func() cas.Codec[testNote] { return gzipcodec.New(jsoncodec.New[testNote]()) }},
 	{name: "zlib", new: func() cas.Codec[testNote] { return zlibcodec.New(jsoncodec.New[testNote]()) }},
 	{name: "flate", new: func() cas.Codec[testNote] { return flatecodec.New(jsoncodec.New[testNote]()) }},
-	{name: "gob", new: func() cas.Codec[testNote] { return gobcodec.New[testNote]() }},
+	{name: "gob", new: func() cas.Codec[testNote] { return gobcodec.NewRaw[testNote]() }},
 	{name: "binary", new: func() cas.Codec[testNote] {
 		return binarycodec.NewRaw(marshalBinaryNote, unmarshalBinaryNote)
 	}},

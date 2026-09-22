@@ -30,15 +30,6 @@ func TestValueCodecCoverage(t *testing.T) {
 	if _, err := codec.Encode(struct{}{}); err == nil {
 		t.Fatal("unsupported struct should fail")
 	}
-	if _, err := encodeFloat64(math.NaN()); err == nil {
-		t.Fatal("NaN should fail")
-	}
-	if _, err := encodeFloat64(math.Inf(1)); err == nil {
-		t.Fatal("Inf should fail")
-	}
-	if _, err := estimateAnySize(struct{}{}); err == nil {
-		t.Fatal("estimateAnySize(struct{}) should fail")
-	}
 
 	values := []any{
 		nil,
@@ -68,9 +59,6 @@ func TestValueCodecCoverage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("appendEncodedValue(%T) = %v", val, err)
 		}
-		if _, err := estimateAnySize(val); err != nil {
-			t.Fatalf("estimateAnySize(%T) = %v", val, err)
-		}
 		if _, _, err := decodeOne(encoded); err != nil {
 			t.Fatalf("decodeOne(%T) = %v", val, err)
 		}
@@ -78,22 +66,6 @@ func TestValueCodecCoverage(t *testing.T) {
 }
 
 func TestCBORInternalHelpers(t *testing.T) {
-	if got := lenMajorHeader(0, 0); got != 1 {
-		t.Fatalf("lenMajorHeader(0,0)=%d, want 1", got)
-	}
-	if got := lenMajorHeader(3, 24); got != 2 {
-		t.Fatalf("lenMajorHeader(3,24)=%d, want 2", got)
-	}
-	if got := lenMajorHeader(3, 300); got != 3 {
-		t.Fatalf("lenMajorHeader(3,300)=%d, want 3", got)
-	}
-	if got := lenMajorHeader(3, 70000); got != 5 {
-		t.Fatalf("lenMajorHeader(3,70000)=%d, want 5", got)
-	}
-	if got := lenMajorHeader(3, 1<<40); got != 9 {
-		t.Fatalf("lenMajorHeader(3,1<<40)=%d, want 9", got)
-	}
-
 	buf := appendMajor(nil, 5, 2)
 	if len(buf) != 1 || buf[0] != 0xa2 {
 		t.Fatalf("appendMajor map header = %#v, want %#v", buf, []byte{0xa2})
@@ -231,18 +203,6 @@ func TestCBORFallbackandHelpers(t *testing.T) {
 	if _, err := encodeFloat64Into(nil, math.NaN()); err == nil {
 		t.Fatal("NaN should not encode")
 	}
-	if _, err := encodeInt64(-7); err != nil {
-		t.Fatal("encodeInt64(-7) should work")
-	}
-	if _, err := encodeUint64(255); err != nil {
-		t.Fatal("encodeUint64 should work")
-	}
-	if _, err := encodeStringBytes([]byte("abc")); err != nil {
-		t.Fatal("encodeStringBytes should work")
-	}
-	if _, err := encodeBytes([]byte("abc")); err != nil {
-		t.Fatal("encodeBytes should work")
-	}
 	if out, err := appendMapValue(nil, nil); err != nil || len(out) != 1 || out[0] != 0xa0 {
 		t.Fatalf("appendMapValue(nil) = %x, %v, want single empty map", out, err)
 	}
@@ -266,32 +226,11 @@ func TestCBORRawHelperExhaustion(t *testing.T) {
 	if out, err := encodeUint64Into(nil, 255); err != nil || len(out) != 2 || out[0] != 0x18 || out[1] != 0xff {
 		t.Fatalf("encodeUint64Into(255) = %x, %v", out, err)
 	}
-	if out, err := encodeFloat64(2.5); err != nil || len(out) != 9 {
-		t.Fatalf("encodeFloat64(2.5) = %x, %v", out, err)
-	}
-	if _, err := encodeFloat64(math.Inf(1)); err == nil {
-		t.Fatal("encodeFloat64(inf) should fail")
-	}
 	if _, err := appendArrayValue(nil, []any{1, 2, 3}); err != nil {
 		t.Fatal("appendArrayValue should succeed")
 	}
 	if _, err := appendMapValue(nil, map[string]any{"key": "value"}); err != nil {
 		t.Fatal("appendMapValue should succeed")
-	}
-	if _, err := estimateAnySize(map[string]string{"a": "b"}); err != nil {
-		t.Fatal("estimateAnySize(map[string]string) should succeed")
-	}
-	if _, err := estimateAnySize([]string{"x", "y"}); err != nil {
-		t.Fatal("estimateAnySize([]string) should succeed")
-	}
-	if out, err := encodeArray([]any{1, 2, 3}); err != nil || len(out) == 0 {
-		t.Fatalf("encodeArray = %x, %v", out, err)
-	}
-	if out, err := encodeInt64(5); err != nil || out[0] != 0x05 {
-		t.Fatalf("encodeInt64(5) = %x, %v", out, err)
-	}
-	if out, err := encodeInt64(-5); err != nil || len(out) == 0 {
-		t.Fatalf("encodeInt64(-5) = %x, %v", out, err)
 	}
 	if got, err := decodeAny([]byte{0xa1, 0x61, 'a', 0x01}); err != nil || got.(map[string]any)["a"] != int64(1) {
 		t.Fatalf("decodeAny valid = %#v, %v", got, err)
@@ -299,13 +238,9 @@ func TestCBORRawHelperExhaustion(t *testing.T) {
 	if _, err := decodeAny([]byte{0x01, 0x02}); err == nil {
 		t.Fatal("decodeAny trailing data should error")
 	}
-	if _, err := NewWithNext[[]string](jsoncodec.New[[]string](), func(v []string) ([]byte, error) {
-		arr, err := encodeArray([]any{"a", "b"})
-		if err != nil {
-			return nil, err
-		}
-		return arr, nil
+	if _, err := New[[]string](jsoncodec.New[[]string](), func(v []string) ([]byte, error) {
+		return appendArrayValue(nil, []any{"a", "b"})
 	}, func(data []byte) ([]string, error) { return []string{"a", "b"}, nil }).Encode([]string{"a", "b"}); err != nil {
-		t.Fatal("NewWithNext should allow wrapped encode path")
+		t.Fatal("New should allow wrapped encode path")
 	}
 }

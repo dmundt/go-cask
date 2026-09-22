@@ -155,7 +155,10 @@ func BenchmarkBloomGuardExists(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	guard := bloom.NewGuard(backend, filter)
+	guard, err := bloom.NewGuard(backend, filter)
+	if err != nil {
+		b.Fatal(err)
+	}
 	for _, d := range items {
 		if err := guard.Put(ctx, d, bytes.NewReader([]byte("payload"))); err != nil {
 			b.Fatal(err)

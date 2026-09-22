@@ -30,7 +30,7 @@ func FuzzCodecRoundTrip(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, title string, count int, enabled bool) {
 		want := fuzzPayload{Title: title, Body: "gob payload", Count: count, Enabled: enabled}
-		codec := gob.New[fuzzPayload]()
+		codec := gob.NewRaw[fuzzPayload]()
 		data, err := codec.Encode(want)
 		if err != nil {
 			t.Fatalf("Encode: %v", err)

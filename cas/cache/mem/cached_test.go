@@ -436,6 +436,96 @@ func TestCachedStoreIncrEvictsAndEvictKey(t *testing.T) {
 	}
 }
 
+// TestCachedStoreOnNewAfterUse pins that the callback is synchronized state
+// rather than construction-only wiring: installing it after the cache is
+// already serving reads applies to the next new key, and a nil callback removes
+// it again.
+func TestCachedStoreOnNewAfterUse(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	c := cachemem.New(s)
+
+	// A Proxy before any callback is installed must neither panic nor fire.
+	if _, err := c.Proxy(ctx, put(t, s, "before")); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var called []string
+	c.OnNew(func(key string) {
+		mu.Lock()
+		called = append(called, key)
+		mu.Unlock()
+	})
+
+	h := put(t, s, "after")
+	key := h.String()
+	if _, err := c.Proxy(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	if len(called) != 1 || called[0] != key {
+		t.Fatalf("OnNew after use = %v, want [%s]", called, key)
+	}
+	mu.Unlock()
+
+	// Removing the callback stops it firing for the next key.
+	c.OnNew(nil)
+	if _, err := c.Proxy(ctx, put(t, s, "last")); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(called) != 1 {
+		t.Fatalf("OnNew after removal = %v, want the single earlier call", called)
+	}
+}
+
+// TestCachedStorePreloadJoinsFailures pins the aggregating error contract:
+// Preload reports every digest that failed (errors.Join), not only the first.
+func TestCachedStorePreloadJoinsFailures(t *testing.T) {
+	ctx := context.Background()
+	c := cachemem.New(newStore(t))
+	missing := []cas.Digest{
+		sha256.Of([]byte("missing one")),
+		sha256.Of([]byte("missing two")),
+		sha256.Of([]byte("missing three")),
+	}
+	err := c.Preload(ctx, missing)
+	if !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Preload of missing digests = %v, want ErrNotFound", err)
+	}
+	var joined interface{ Unwrap() []error }
+	if !errors.As(err, &joined) {
+		t.Fatalf("Preload error %v does not join the failures", err)
+	}
+	if got := len(joined.Unwrap()); got != len(missing) {
+		t.Fatalf("Preload reported %d failures, want %d", got, len(missing))
+	}
+}
+
+// TestCachedStorePreloadCanceledReportsOnce pins that a canceled context is
+// reported as context.Canceled exactly once, whatever the individual loads
+// observed.
+func TestCachedStorePreloadCanceledReportsOnce(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := newStore(t)
+	c := cachemem.New(s)
+	var hs []cas.Digest
+	for i := 0; i < 4; i++ {
+		hs = append(hs, put(t, s, string(rune('a'+i))))
+	}
+	cancel()
+	err := c.Preload(ctx, hs)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Preload with a canceled context = %v, want context.Canceled", err)
+	}
+	var joined interface{ Unwrap() []error }
+	if errors.As(err, &joined) && len(joined.Unwrap()) != 1 {
+		t.Fatalf("canceled Preload reported %d failures, want 1", len(joined.Unwrap()))
+	}
+}
+
 func TestCachedObjectLoadErrorMemoized(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)

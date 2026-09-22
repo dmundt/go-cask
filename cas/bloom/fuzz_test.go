@@ -46,7 +46,10 @@ func FuzzGuardRoundTrip(f *testing.F) {
 		ctx := context.Background()
 		raw := mem.New()
 		filter := &fuzzFilter{items: map[string]bool{}}
-		guard := NewGuard(raw, filter)
+		guard, err := NewGuard(raw, filter)
+		if err != nil {
+			t.Fatalf("NewGuard() error = %v", err)
+		}
 		d := cas.NewDigest(in)
 		payload := append([]byte(nil), in...)
 

@@ -6,8 +6,8 @@
 // locking, fetches from the store exactly once, and memoizes the value and any
 // error; IsLoaded reports state without loading. CachedStore[T] wraps a
 // Store[T] with a sync.Map of CachedObject values plus atomic metrics (exposed
-// by CacheStats); build one with New(store). Preload and PreloadRecursive warm
-// the cache ahead of use.
+// by CacheStats); build one with New(store). Preload, Warmup and
+// PreloadRecursive warm the cache ahead of use.
 //
 // The size-bounded lru.Cache (cas/cache/lru) builds on this package, and the
 // prefetch recipe (cas/cache/prefetch) demonstrates warming it from references.
@@ -107,7 +107,7 @@ type CachedStore[T cas.Object[T]] struct {
 	store   *cas.Store[T]
 	cache   sync.Map
 	metrics CacheMetrics
-	onNew   func(key string)
+	onNew   atomic.Pointer[func(key string)]
 }
 
 // New wraps store in a lazy-loading cache.
@@ -115,9 +115,20 @@ func New[T cas.Object[T]](store *cas.Store[T]) *CachedStore[T] {
 	return &CachedStore[T]{store: store}
 }
 
-// OnNew sets the callback called when a new key is added to the cache. Set it
-// during construction, before the cache is used concurrently.
-func (c *CachedStore[T]) OnNew(fn func(key string)) { c.onNew = fn }
+// OnNew installs fn as the callback invoked when a new key is added to the
+// cache, replacing any previous callback; a nil fn removes it. OnNew is safe to
+// call at any time, including concurrently with Proxy: the callback is stored
+// atomically, so a concurrent Proxy either observes the previous callback or fn
+// and never a torn value. The callback runs synchronously on the goroutine that
+// calls Proxy, after the entry is in the map and before Proxy returns, so it
+// must be fast and must not call back into Proxy.
+func (c *CachedStore[T]) OnNew(fn func(key string)) {
+	if fn == nil {
+		c.onNew.Store(nil)
+		return
+	}
+	c.onNew.Store(&fn)
+}
 
 // Lookup returns the cached object for key, or nil if absent.
 func (c *CachedStore[T]) Lookup(key string) *CachedObject[T] {
@@ -155,8 +166,10 @@ func (c *CachedStore[T]) Proxy(ctx context.Context, d cas.Digest) (*CachedObject
 	}
 	co := &CachedObject[T]{store: c.store, metrics: &c.metrics, digest: d}
 	actual, loaded := c.cache.LoadOrStore(key, co)
-	if !loaded && c.onNew != nil {
-		c.onNew(key)
+	if !loaded {
+		if fn := c.onNew.Load(); fn != nil {
+			(*fn)(key)
+		}
 	}
 	return actual.(*CachedObject[T]), nil
 }
@@ -171,32 +184,75 @@ func (c *CachedStore[T]) Get(ctx context.Context, d cas.Digest) (T, error) {
 	return co.Load(ctx)
 }
 
-// Preload loads every digest in parallel.
-func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) error {
-	const workers = 8
-	sem := make(chan struct{}, workers)
-	errCh := make(chan error, len(digests))
-	var wg sync.WaitGroup
-	for _, d := range digests {
-		d := d
-		wg.Add(1)
+// loadWorkers bounds how many digests Preload and Warmup load at once.
+const loadWorkers = 8
+
+// loadAll loads every digest through Get on a pool of at most loadWorkers
+// goroutines and returns errors.Join of every failure, or nil when all of them
+// loaded. A digest missing from the store is dropped from the result when
+// tolerateMissing is set. A canceled context stops further digests from being
+// scheduled and is reported once, after every worker has stopped, as the
+// context error rather than once per digest.
+func (c *CachedStore[T]) loadAll(ctx context.Context, digests []cas.Digest, tolerateMissing bool) error {
+	if len(digests) == 0 {
+		return nil
+	}
+	jobs := make(chan cas.Digest)
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	record := func(err error) {
+		switch {
+		case err == nil:
+			return
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return // summarized from ctx.Err() once the workers stop
+		case tolerateMissing && errors.Is(err, cas.ErrNotFound):
+			return // a missing object is tolerated by contract
+		}
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
+	workers := min(len(digests), loadWorkers)
+	wg.Add(workers)
+	for range workers {
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if _, err := c.Get(ctx, d); err != nil {
-				errCh <- err
+			for d := range jobs {
+				_, err := c.Get(ctx, d)
+				record(err)
 			}
 		}()
 	}
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
+feed:
+	for _, d := range digests {
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case jobs <- d:
+		case <-ctx.Done():
+			break feed
 		}
 	}
-	return nil
+	close(jobs)
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
+	return errors.Join(errs...)
+}
+
+// Preload loads every digest in the slice, at most loadWorkers at a time, and
+// returns errors.Join of every digest that failed to load — a missing object
+// included — or nil when all of them loaded. Warmup is the tolerant variant.
+func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) error {
+	return c.loadAll(ctx, digests, false)
 }
 
 // PreloadRecursive loads the object at d and, to the given depth, every
@@ -222,44 +278,11 @@ func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, dep
 	return nil
 }
 
-// Warmup preloads digests into the cache; missing objects are tolerated, other
-// failures (including a canceled context) are reported after every worker has
-// finished.
+// Warmup preloads digests into the cache; a missing object is tolerated, every
+// other failure is returned joined (errors.Join) after every worker has
+// finished. Like Preload it loads at most loadWorkers digests at a time.
 func (c *CachedStore[T]) Warmup(ctx context.Context, digests []cas.Digest) error {
-	const workers = 8
-	sem := make(chan struct{}, workers)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-	record := func(err error) {
-		if err == nil || errors.Is(err, cas.ErrNotFound) {
-			return // a missing object is tolerated by contract
-		}
-		mu.Lock()
-		if firstErr == nil {
-			firstErr = err
-		}
-		mu.Unlock()
-	}
-	for _, d := range digests {
-		d := d
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			co, err := c.Proxy(ctx, d)
-			if err != nil {
-				record(err)
-				return
-			}
-			if _, err := co.Load(ctx); err != nil {
-				record(err)
-			}
-		}()
-	}
-	wg.Wait()
-	return firstErr
+	return c.loadAll(ctx, digests, true)
 }
 
 // CacheStats returns a snapshot of the cache metrics and current size.

@@ -178,14 +178,15 @@ func (g *Tag) References() []cas.Digest {
 }
 
 // parseType extracts the unversioned type name ("blob", "tree", ...) from a
-// stored object's TLV envelope bytes (see cas.EnvelopeFromBytes). It returns
-// ErrUnknownType for a malformed object.
+// stored object's TLV envelope header (see cas.EnvelopeType). Only the header is
+// inspected, so a bounded object prefix is enough and the payload is never
+// materialized. It returns ErrUnknownType for a malformed object.
 func parseType(data []byte) (string, error) {
-	env, err := cas.EnvelopeFromBytes(data)
+	versioned, err := cas.EnvelopeType(data)
 	if err != nil {
 		return "", fmt.Errorf("gitlike: %w", err)
 	}
-	base, _, _ := strings.Cut(env.Type, "@")
+	base, _, _ := strings.Cut(versioned, "@")
 	if base == "" {
 		return "", fmt.Errorf("gitlike: %w: object missing type", cas.ErrUnknownType)
 	}

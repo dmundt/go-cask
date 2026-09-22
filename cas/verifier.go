@@ -19,11 +19,10 @@ func NewVerifier(raw Backend, hasher Hasher) *Verifier {
 }
 
 // Verify re-reads the object at d and recomputes its digest with the verifier's
-// hasher.
+// hasher. A Verifier is used through NewVerifier, which always returns a usable
+// value, so a nil receiver is a programming error rather than a runtime state
+// this method needs to report.
 func (v *Verifier) Verify(ctx context.Context, d Digest) error {
-	if v == nil {
-		return fmt.Errorf("cas: verify: nil verifier")
-	}
 	return Verify(ctx, v.raw, d, v.hasher)
 }
 

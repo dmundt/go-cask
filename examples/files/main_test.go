@@ -417,6 +417,78 @@ func TestRunUsageErrors(t *testing.T) {
 	}
 }
 
+// TestRunStoreFlagForms pins the standard flag parsing: the store directory may
+// be spelled -store dir, -store=dir, or --store dir, and -h/--help and an
+// unknown flag are usage errors that print the usage text (exit 2).
+func TestRunStoreFlagForms(t *testing.T) {
+	ctx := context.Background()
+	store := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	for _, args := range [][]string{
+		{"-store", store, "stats"},
+		{"-store=" + store, "stats"},
+		{"--store", store, "stats"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(ctx, args, &stdout, &stderr); code != 0 {
+			t.Fatalf("args %v: code=%d stderr=%s", args, code, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "objects") {
+			t.Fatalf("args %v: stats output = %q", args, stdout.String())
+		}
+	}
+
+	for _, args := range [][]string{
+		{"-h"},
+		{"--help"},
+		{"-store=" + store, "-nope", "stats"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(ctx, args, &stdout, &stderr); code != 2 {
+			t.Fatalf("args %v: code=%d, want 2", args, code)
+		}
+		if !strings.Contains(stderr.String(), "usage: files") {
+			t.Fatalf("args %v: stderr = %q, want the usage text", args, stderr.String())
+		}
+	}
+}
+
+// TestHeadReadErrorIsNotAbsence pins the distinction between "no HEAD yet" and
+// "HEAD exists but cannot be read": a corrupt HEAD is corruption, so commit and
+// audit must report it instead of silently starting a new root commit or
+// calling every object orphaned.
+func TestHeadReadErrorIsNotAbsence(t *testing.T) {
+	ctx := context.Background()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := writeTempFile(t, a.dir, "seed.txt", "head corruption")
+	if _, err := a.add(ctx, []string{f}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.head, []byte("not a digest\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.commit(ctx, "c"); err == nil {
+		t.Fatal("commit with a corrupt HEAD must error, not create a parentless commit")
+	}
+	if _, err := a.audit(ctx, true); err == nil {
+		t.Fatal("audit with a corrupt HEAD must error, not report every object orphaned")
+	}
+	// A missing HEAD is still the first-commit case: absent, not an error.
+	empty, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, present, err := empty.headCommitOrAbsent(); err != nil || present {
+		t.Fatalf("headCommitOrAbsent() with no HEAD = present %v, err %v; want absent and no error", present, err)
+	}
+}
+
 func TestRunGraph(t *testing.T) {
 	ctx := context.Background()
 	store := t.TempDir()

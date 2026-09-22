@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// csrfToken is the form field/header name carrying the per-session CSRF
+// csrfField is the form field/header name carrying the per-session CSRF
 // token on every mutation (POST).
 const csrfField = "csrf"
 

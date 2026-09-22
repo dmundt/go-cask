@@ -12,7 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"math"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
@@ -46,13 +47,16 @@ func Export(ctx context.Context, src cas.Backend, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("snapshot: list source objects: %w", err)
 	}
-	sort.Slice(digests, func(i, j int) bool { return digests[i].String() < digests[j].String() })
+	// Hex order equals byte order, so comparing raw digest bytes sorts exactly
+	// like comparing the rendered hex strings — without allocating two strings
+	// per comparison.
+	slices.SortFunc(digests, func(a, b cas.Digest) int { return bytes.Compare(a, b) })
 
 	var header [headerSize]byte
 	copy(header[:8], magic[:])
 	binary.BigEndian.PutUint16(header[8:10], version)
 	binary.BigEndian.PutUint64(header[10:], uint64(len(digests)))
-	if err := writeAll(ctx, w, header[:]); err != nil {
+	if err := backend.WriteAll(ctx, w, header[:]); err != nil {
 		return fmt.Errorf("snapshot: write header: %w", err)
 	}
 
@@ -79,13 +83,13 @@ func Export(ctx context.Context, src cas.Backend, w io.Writer) error {
 
 		binary.BigEndian.PutUint64(lengths[:8], uint64(len(digest)))
 		binary.BigEndian.PutUint64(lengths[8:], uint64(len(payload)))
-		if err := writeAll(ctx, w, lengths[:]); err != nil {
+		if err := backend.WriteAll(ctx, w, lengths[:]); err != nil {
 			return fmt.Errorf("snapshot: write record lengths: %w", err)
 		}
-		if err := writeAll(ctx, w, digest); err != nil {
+		if err := backend.WriteAll(ctx, w, digest); err != nil {
 			return fmt.Errorf("snapshot: write digest %s: %w", digest, err)
 		}
-		if err := writeAll(ctx, w, payload); err != nil {
+		if err := backend.WriteAll(ctx, w, payload); err != nil {
 			return fmt.Errorf("snapshot: write payload %s: %w", digest, err)
 		}
 	}
@@ -108,17 +112,17 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 	}
 
 	var header [headerSize]byte
-	if err := readAll(ctx, r, header[:]); err != nil {
+	if err := backend.ReadAll(ctx, r, header[:]); err != nil {
 		return fmt.Errorf("snapshot: read header: %w", err)
 	}
-	if string(header[:8]) != string(magic[:]) {
+	if !bytes.Equal(header[:8], magic[:]) {
 		return errors.New("snapshot: invalid magic")
 	}
 	if binary.BigEndian.Uint16(header[8:10]) != version {
 		return errors.New("snapshot: unsupported version")
 	}
 	count := binary.BigEndian.Uint64(header[10:])
-	if count > uint64(maxInt()) {
+	if count > uint64(math.MaxInt) {
 		return errors.New("snapshot: object count is too large")
 	}
 
@@ -128,19 +132,21 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := readAll(ctx, r, lengths[:]); err != nil {
+		if err := backend.ReadAll(ctx, r, lengths[:]); err != nil {
 			return fmt.Errorf("snapshot: read record lengths: %w", err)
 		}
 		digestSize := binary.BigEndian.Uint64(lengths[:8])
 		payloadSize := binary.BigEndian.Uint64(lengths[8:])
-		if digestSize > maxDigestSize || digestSize > uint64(maxInt()) {
+		if digestSize > maxDigestSize || digestSize > uint64(math.MaxInt) {
 			return errors.New("snapshot: invalid digest size")
 		}
-		if payloadSize > uint64(maxInt()) {
+		// math.MaxInt is the largest int, so on every platform it also caps
+		// what the payload reader can address.
+		if payloadSize > uint64(math.MaxInt) {
 			return errors.New("snapshot: payload is too large")
 		}
 		digest := make([]byte, int(digestSize))
-		if err := readAll(ctx, r, digest); err != nil {
+		if err := backend.ReadAll(ctx, r, digest); err != nil {
 			return fmt.Errorf("snapshot: read digest: %w", err)
 		}
 		d := cas.NewDigest(digest)
@@ -153,8 +159,8 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 		}
 		seen[key] = struct{}{}
 
-		payload := make([]byte, int(payloadSize))
-		if err := readAll(ctx, r, payload); err != nil {
+		payload, err := backend.ReadPayload(ctx, r, payloadSize)
+		if err != nil {
 			return fmt.Errorf("snapshot: read payload for %s: %w", d, err)
 		}
 		if err := dst.Put(ctx, d, bytes.NewReader(payload)); err != nil {
@@ -174,32 +180,4 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 		return fmt.Errorf("snapshot: check trailing data: %w", err)
 	}
 	return nil
-}
-
-func writeAll(ctx context.Context, w io.Writer, data []byte) error {
-	for len(data) > 0 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		n, err := w.Write(data)
-		if n > 0 {
-			data = data[n:]
-		}
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-	}
-	return nil
-}
-
-func readAll(ctx context.Context, r io.Reader, data []byte) error {
-	_, err := io.ReadFull(backend.ContextReader{Ctx: ctx, R: r}, data)
-	return err
-}
-
-func maxInt() int {
-	return int(^uint(0) >> 1)
 }
