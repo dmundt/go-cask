@@ -8,6 +8,36 @@ Released: `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.5.0`. The stable
 `cas` surface is frozen; the `v1.x` line carries the three ratified
 first-cycle exceptions recorded in `versioning.md` §1.
 
+## [Unreleased]
+
+### Fixed
+
+- The object table's Hash column announced the wrong sort direction. It read
+  the current direction without first checking that Hash owned the sort, so
+  with any other column active it announced that column's flip instead of its
+  own: sorted by Size ascending it told a screen reader "Sort hash descending"
+  while clicking it sorted ascending. The arrow glyph kept the check, so only
+  assistive technology was misled. Every column's label is now pinned by test.
+
+### Changed
+
+- The object browser handler is split into named stages — building rows,
+  paging and selecting, recording the reference trail, building the inspector,
+  and choosing the fragment — in place of one 224-line function. The inspector
+  no longer re-parses the selected row's digest out of its own rendered form,
+  and the selected row is located once rather than on three passes.
+
+- The object table's header is described once instead of seven times. The
+  columns, the sort keys the URL accepts, and the rendered markup now come
+  from a single list, so a column cannot drift from its own sort key again.
+  Inspector tabs, history arrows, and reference links share the same link
+  helper the table rows already used.
+
+- Every closed-set query parameter is validated the same way, and the viewer
+  package is split by concern (`auth`, `browser`, `objects`, `verify`,
+  `format`, and the server itself) with the tests following the same seams.
+  Rendered output is unchanged.
+
 ## [v1.5.0] - 2026-09-21
 
 ### Added
