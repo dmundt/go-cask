@@ -27,11 +27,16 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 	verified, corrupt := 0, 0
 	for _, h := range digests {
 		if err := r.Context().Err(); err != nil {
+			// The sweep stopped part-way, so its result is incomplete and the
+			// entries already recorded no longer describe the store. Answering
+			// before returning keeps a canceled request from reading as an
+			// empty 200 with a control that never reported anything.
+			http.Error(w, "request canceled", http.StatusServiceUnavailable)
 			return
 		}
-		err, actual := s.verifyObject(r.Context(), h)
+		actual, err := s.verifyObject(r.Context(), h)
 		if err != nil {
-			outcome := s.describeVerifyFailure(r.Context(), h, err)
+			outcome := s.describeVerifyFailure(h, err)
 			outcome.Actual = actual
 			outcome.Integrity = "corrupt"
 			outcome.IntegrityLabel = integrityLabel("corrupt")
@@ -94,11 +99,11 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	// Every operator action is audit-logged with the acting session, the
 	// affected object, and the result (viewer-security §9).
 	id := sessionID(r)
-	err, actual := s.verifyObject(r.Context(), h)
+	actual, err := s.verifyObject(r.Context(), h)
 	if err != nil {
 		slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", false)
 		w.Header().Set("HX-Trigger", "object-status-updated")
-		outcome := s.describeVerifyFailure(r.Context(), h, err)
+		outcome := s.describeVerifyFailure(h, err)
 		outcome.Actual = actual
 		outcome.Integrity = "corrupt"
 		outcome.IntegrityLabel = integrityLabel("corrupt")
@@ -133,8 +138,7 @@ func verifiedOutcome(h cas.Digest) actionOutcome {
 }
 
 // describeVerifyFailure turns a verification error into operator-facing prose.
-func (s *Server) describeVerifyFailure(ctx context.Context, h cas.Digest, err error) actionOutcome {
-	_ = ctx
+func (s *Server) describeVerifyFailure(h cas.Digest, err error) actionOutcome {
 	switch {
 	case errors.Is(err, cas.ErrDigestMismatch):
 		return actionOutcome{
@@ -160,22 +164,23 @@ func (s *Server) describeVerifyFailure(ctx context.Context, h cas.Digest, err er
 
 // verifyObject hashes one open stream and returns its actual digest. Keeping
 // the digest from the verification pass avoids a second full read when a
-// mismatch must be explained to an operator.
-func (s *Server) verifyObject(ctx context.Context, h cas.Digest) (error, string) {
+// mismatch must be explained to an operator. With no readable digest to report
+// it returns the empty string, and the error says why.
+func (s *Server) verifyObject(ctx context.Context, h cas.Digest) (string, error) {
 	if err := s.cfg.Hasher.Validate(h); err != nil {
-		return err, ""
+		return "", err
 	}
 	rc, err := s.store.Get(ctx, h)
 	if err != nil {
-		return err, ""
+		return "", err
 	}
 	defer rc.Close()
 	actual, err := s.cfg.Hasher.Digest(rc)
 	if err != nil {
-		return fmt.Errorf("cas: verify read: %w", err), ""
+		return "", fmt.Errorf("cas: verify read: %w", err)
 	}
 	if !actual.Equal(h) {
-		return fmt.Errorf("%w: %s", cas.ErrDigestMismatch, h), actual.String()
+		return actual.String(), fmt.Errorf("%w: %s", cas.ErrDigestMismatch, h)
 	}
-	return nil, actual.String()
+	return actual.String(), nil
 }

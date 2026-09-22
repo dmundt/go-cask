@@ -86,15 +86,18 @@ func (a *Attachment) Type() string { return typeAttachment }
 func (a *Attachment) References() []cas.Digest { return nil }
 
 // parseType extracts the unversioned type name ("note", "tag", ...) from the
-// stored TLV envelope bytes (see cas.EnvelopeFromBytes).
+// stored TLV envelope header (see cas.EnvelopeType). Only the header is
+// inspected, so a bounded prefix of the object is enough and the payload is
+// never materialized. It returns an error wrapping cas.ErrUnknownType for a
+// malformed header.
 func parseType(data []byte) (string, error) {
-	env, err := cas.EnvelopeFromBytes(data)
+	versioned, err := cas.EnvelopeType(data)
 	if err != nil {
-		return "", fmt.Errorf("%w", err)
+		return "", fmt.Errorf("notes: %w", err)
 	}
-	base, _, _ := strings.Cut(env.Type, "@")
+	base, _, _ := strings.Cut(versioned, "@")
 	if base == "" {
-		return "", fmt.Errorf("%w: object missing type", cas.ErrUnknownType)
+		return "", fmt.Errorf("notes: %w: object missing type", cas.ErrUnknownType)
 	}
 	return base, nil
 }

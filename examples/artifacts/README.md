@@ -17,13 +17,13 @@
 
 ## What it extends
 
-- **`gzipCodec[T]`** — wraps the JSON codec (`json.New[T]()`) with gzip. Deterministic output: the gzip header mtime is pinned, so identical values → identical bytes → identical digests (dedup preserved). This is the example's one custom seam; the hash algorithm is the client's (`sha256.New()` at `cas.New`), injected rather than registered — the core names no algorithm and has no registry (cas-core §4.2).
+- **`gzipCodec[T]`** — wraps an injected inner codec (here the JSON codec, `json.New[T]()` at the `newGzipCodec` call site) with gzip: the example's codec-composition seam (cas-core §7.2). Deterministic output: the gzip header mtime is pinned, so identical values → identical bytes → identical digests (dedup preserved). This is the example's one custom seam; the hash algorithm is the client's (`sha256.New()` at `cas.New`), injected rather than registered — the core names no algorithm and has no registry (cas-core §4.2).
 - **`Artifact` / `Manifest`** — the example's own `Object[T]` types (`Manifest.Artifacts` is a `[]cas.Digest`), serialized via the gzip codec into the core's self-describing TLV envelope.
 - **`cas` and `gitlike` are untouched.**
 
 ## Code walkthrough
 
-- `codec.go` — `gzipCodec[T]`: `Encode` = gzip of the inner JSON codec's output; `Decode` = gunzip then inner decode (pinned gzip mtime).
+- `codec.go` — `gzipCodec[T]`: `newGzipCodec(next)` takes the inner codec, `Encode` = gzip of the inner codec's output, `Decode` = gunzip then inner decode (pinned gzip mtime).
 - `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact digests as `[]cas.Digest`, which render as one lowercase-hex string each and validate on decode, with no JSON code here), serialized via the gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
   - `put <name> <file>` — `PutDedup` the artifact, then **replace the name's manifest** (delete the previous), so the replaced artifact becomes garbage;
   - `get <hash>` — through the `lru.Cache`, `CacheMonitor` printing snapshots;

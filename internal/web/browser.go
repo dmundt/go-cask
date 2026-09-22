@@ -85,7 +85,7 @@ var (
 	objectSizeBands = []string{"small", "medium", "large"}
 	// objectReachStates lists the reachability filter's choices. Reachability
 	// is a separate axis from integrity and has its own filter.
-	objectReachStates = []string{"reachable", "orphaned", "detached", "head"}
+	objectReachStates = []string{"reachable", "orphaned", "detached", "root"}
 	// objectDirections lists the sort orders.
 	objectDirections = []string{"asc", "desc"}
 	// objectNavModes lists the navigation markers a selection may carry.
@@ -404,8 +404,8 @@ func matchesObjectRow(row *objectRow, state objectBrowserState) bool {
 		if !row.Detached {
 			return false
 		}
-	case "head":
-		if !row.Head {
+	case "root":
+		if !row.Root {
 			return false
 		}
 	case "reachable":

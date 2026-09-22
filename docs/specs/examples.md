@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v18
+version: v19
 ---
 
 # Examples — go-cask
@@ -34,7 +34,7 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 **Goal:** a small CLI storing file trees as content-addressable objects and committing them over the `gitlike` layer end-to-end (a miniature Git). Also demonstrates the derived object-state report: every object classified verified/orphaned/corrupt/unverified from existing ops (`Verify` + reachability from `HEAD`) — proving those states are scan results, never stored metadata.
 
-**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `Verify`, `Stats`, derived-state audit (`List` + reachability mark + per-object `Verify`), CLI (manual `-store` parsing).
+**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `Verify`, `Stats`, derived-state audit (`List` + reachability mark + per-object `Verify`), CLI (`flag`-based `-store` parsing).
 **Structure:** `main.go` (CLI: add, commit, log, cat, graph, audit, verify, stats), `audit.go` (derived-state report), `main_test.go`, `README.md`.
 **Behaviors:** `add` stores blobs + builds a tree (identical content dedups); `commit -m` creates a `Commit` pointing at the tree + parent head (head = a `cas.Digest` in a small ref file); `log` walks parents via `WalkGraph`/`References()`; `cat` resolves+prints blob bytes; `graph` prints reachable graph with types; `audit [-no-verify]` lists all objects, marks reachable from `HEAD`, `Verify`s each, prints per-object state — `verified` (intact+reachable), `orphaned` (intact, unreachable — GC candidate), `corrupt` (Verify failed), `unverified` (reachable, skipped under `-no-verify`); states derived at scan time, never persisted (consistency §8); `verify` recomputes every digest; `stats` prints `N objects, M bytes`.
 **Acceptance:** add→commit→log→cat round-trips; identical content across commits doesn't duplicate blobs; `verify` passes after a clean commit and reports a mismatch after on-disk corruption; `audit` reports clean=all `verified`, an uncommitted add's objects=`orphaned`, corrupted=`corrupt`, and under `-no-verify` reachable=`unverified`.

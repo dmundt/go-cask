@@ -10,10 +10,8 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +20,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	lru "github.com/dmundt/go-cask/cas/cache/lru"
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -78,43 +77,6 @@ func (m *Manifest) References() []cas.Digest {
 	return refs
 }
 
-// gzipJSON compresses the JSON encoding of v (deterministic output: fixed
-// mtime, so identical values produce identical bytes → identical digests).
-func gzipJSON(v any) []byte {
-	inner, err := json.Marshal(v)
-	if err != nil {
-		panic(err) // plain structs; cannot fail
-	}
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	zw.Header.ModTime = time.Unix(0, 0)
-	if _, err := zw.Write(inner); err != nil {
-		panic(err)
-	}
-	if err := zw.Close(); err != nil {
-		panic(err)
-	}
-	return buf.Bytes()
-}
-
-// gunzipJSON decompresses and decodes v.
-func gunzipJSON[T any](data []byte) (*T, error) {
-	zr, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer zr.Close()
-	inner, err := io.ReadAll(zr)
-	if err != nil {
-		return nil, fmt.Errorf("gunzip: %w", err)
-	}
-	var v T
-	if err := json.Unmarshal(inner, &v); err != nil {
-		return nil, err
-	}
-	return &v, nil
-}
-
 // app bundles the store, typed stores, and the LRU cache.
 type app struct {
 	raw       *fs.Backend
@@ -129,14 +91,16 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts := cas.New(raw, newGzipCodec[*Artifact](), sha256.New())
-	manifests := cas.New(raw, newGzipCodec[*Manifest](), sha256.New())
+	// The composition is explicit at the call site: the JSON codec serializes,
+	// the gzip codec wraps it (cas-core §7.2).
+	artifacts := cas.New(raw, newGzipCodec[*Artifact](jsoncodec.New[*Artifact]()), sha256.New())
+	manifests := cas.New(raw, newGzipCodec[*Manifest](jsoncodec.New[*Manifest]()), sha256.New())
 	cache, err := lru.New(artifacts, 100)
 	if err != nil {
 		return nil, err
 	}
 	a := &app{raw: raw, artifacts: artifacts, manifests: manifests, cache: cache}
-	a.monitor = NewCacheMonitor(cache.CachedStore, 2*time.Second, func(s CacheSnapshot) {
+	a.monitor = NewCacheMonitor(cache.CachedStore(), 2*time.Second, func(s CacheSnapshot) {
 		fmt.Printf("cache: hits=%d misses=%d hit-rate=%.2f size=%d\n", s.Hits, s.Misses, s.HitRate, s.Size)
 	})
 	return a, nil
@@ -221,32 +185,39 @@ func (a *app) gc(ctx context.Context) (int, error) {
 	return before - len(reachable), nil
 }
 
+// run executes the CLI and returns the process exit code: 0 on success, 1 on a
+// runtime error, 2 on a usage error (cli.md §3).
+//
+// The optional -store flag is parsed by the standard flag package, so
+// -store=dir, --store dir, -h and an unknown flag all behave as they do in any
+// Go CLI. Parsing stops at the subcommand, which owns the remaining arguments.
 func run(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
-	if len(args) == 0 {
+	flags := flag.NewFlagSet("artifacts", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("store", "./objects", "filesystem store directory")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, usage)
+		flags.PrintDefaults()
+	}
+	if err := flags.Parse(args); err != nil {
+		// flag has already reported the problem — or printed the usage for
+		// -h/-help — to stderr, so only the exit code is left to set.
+		return 2
+	}
+	rest := flags.Args()
+	if len(rest) < 1 {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	dir := "./objects"
-	if args[0] == "-store" {
-		if len(args) < 2 {
-			fmt.Fprintln(stderr, usage)
-			return 2
-		}
-		dir, args = args[1], args[2:]
-	}
-	if len(args) < 1 {
-		fmt.Fprintln(stderr, usage)
-		return 2
-	}
-	a, err := newApp(dir)
+	a, err := newApp(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
 	defer a.close()
 
-	cmd, rest := args[0], args[1:]
+	cmd, rest := rest[0], rest[1:]
 	switch cmd {
 	case "put":
 		if len(rest) != 2 {

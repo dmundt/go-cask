@@ -270,6 +270,75 @@ func TestCacheClearResetsBookkeeping(t *testing.T) {
 	}
 }
 
+// TestCacheEvictKeyResetsBookkeeping pins that EvictKey drops the recency entry
+// along with the cached object, so the freed slot is reusable without a phantom
+// eviction (and, unlike Evict, without counting one).
+func TestCacheEvictKeyResetsBookkeeping(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	c, err := lru.New(s, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := putItem(t, s, "a")
+	if _, err := c.Get(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+
+	c.EvictKey(h.String())
+	if st := c.CacheStats(); st.Size != 0 || st.Evicts != 0 {
+		t.Fatalf("after EvictKey = %+v, want size 0 and no eviction", st)
+	}
+	if c.Lookup(h.String()) != nil {
+		t.Fatal("EvictKey must drop the cached object")
+	}
+
+	if _, err := c.Get(ctx, putItem(t, s, "b")); err != nil {
+		t.Fatal(err)
+	}
+	st := c.CacheStats()
+	if st.Size != 1 {
+		t.Fatalf("Size after refill = %d, want 1", st.Size)
+	}
+	if st.Evicts != 0 {
+		t.Fatalf("Evicts after refill = %d, want 0: EvictKey left a stale recency entry", st.Evicts)
+	}
+}
+
+// TestCacheLookupDoesNotPromote pins the documented difference between Lookup
+// and Proxy: only the access path records a use, so a Lookup cannot change what
+// the next eviction picks.
+func TestCacheLookupDoesNotPromote(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	c, err := lru.New(s, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hA := putItem(t, s, "a")
+	hB := putItem(t, s, "b")
+	if _, err := c.Get(ctx, hA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Get(ctx, hB); err != nil {
+		t.Fatal(err)
+	}
+
+	// a is the LRU entry; looking it up must not promote it above b.
+	if c.Lookup(hA.String()) == nil {
+		t.Fatal("a must be cached")
+	}
+	if _, err := c.Get(ctx, putItem(t, s, "c")); err != nil {
+		t.Fatal(err)
+	}
+	if c.Lookup(hA.String()) != nil {
+		t.Fatal("Lookup promoted a, but it was the least-recently-used entry")
+	}
+	if c.Lookup(hB.String()) == nil {
+		t.Fatal("b must survive: it was more recently used than a")
+	}
+}
+
 func TestCacheEvictResetsBookkeeping(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)

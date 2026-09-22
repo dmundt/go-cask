@@ -7,7 +7,6 @@ package web
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"maps"
 	"net/http"
 	"slices"
@@ -49,12 +48,12 @@ type objectRow struct {
 	Orphaned bool
 	// Detached reports that an orphaned object has no inbound references.
 	Detached bool
-	// Head reports that a reachable object has no inbound references — the
+	// Root reports that a reachable object has no inbound references — the
 	// entry point of a reachable subtree, structurally consistent with being
 	// a configured root (the viewer has no direct view of the root list, so
 	// this is an inferred structural fact, not an assertion about host
 	// configuration).
-	Head bool
+	Root bool
 	// ReachabilityKnown reports whether Orphaned was computed at all. The
 	// reference column is a row-level decision because the row template only
 	// ever sees the row.
@@ -65,11 +64,9 @@ type objectRow struct {
 	WrittenLabel string
 	// Selected reports whether this row backs the visible inspector.
 	Selected bool
-	// SelectURL opens this row in the browser inspector.
+	// SelectURL opens this row in the browser inspector. The row templates
+	// render it through the shared selection-link attributes.
 	SelectURL string
-	// SelectAttrs is the shared selection link attributes for every visible
-	// cell in this row. It is rendered seven times, so precompute it once.
-	SelectAttrs template.HTMLAttr
 }
 
 // --- objects list ---
@@ -83,8 +80,8 @@ type objectBrowserData struct {
 	HasReachability bool
 	// HasDetached reports whether detached-object filtering is available.
 	HasDetached bool
-	// HasHead reports whether head-object filtering is available.
-	HasHead bool
+	// HasRoot reports whether root-object filtering is available.
+	HasRoot bool
 	// StatusOptions contains integrity filter choices.
 	StatusOptions []filterOption
 	// LimitOptions contains page-size choices.
@@ -163,8 +160,8 @@ type browserInspector struct {
 	Orphaned bool
 	// Detached reports whether the object is orphaned with no inbound references.
 	Detached bool
-	// Head reports whether the object is reachable with no inbound references.
-	Head bool
+	// Root reports whether the object is reachable with no inbound references.
+	Root bool
 	// WrittenLabel is the formatted backend modification time.
 	WrittenLabel string
 	// InboundReferences counts inbound graph edges.
@@ -220,13 +217,26 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "detached filter unavailable", http.StatusBadRequest)
 		return
 	}
-	if state.Reach == "head" && s.cfg.References == nil {
-		http.Error(w, "head filter unavailable", http.StatusBadRequest)
+	if state.Reach == "root" && s.cfg.References == nil {
+		http.Error(w, "root filter unavailable", http.StatusBadRequest)
 		return
 	}
 	id := sessionID(r)
-	rows, types, typeFound, total, matchedSize, page, resolvedState, fast, err := s.defaultObjectPage(r.Context(), id, state)
-	if !fast {
+	result, err := s.defaultObjectPage(r.Context(), id, state)
+	if err != nil {
+		// The default path's rows and page are only meaningful when its
+		// snapshot walk succeeded, so the error is checked before either is
+		// read. A page whose rows were never produced must never reach the
+		// selection lookup below.
+		http.Error(w, "list failed", http.StatusInternalServerError)
+		return
+	}
+	rows, types, typeFound := result.Rows, result.Types, result.TypeFound
+	total, matchedSize := result.Total, result.TotalSize
+	page := result.Page
+	if result.Fast {
+		state = result.State
+	} else {
 		rows, types, typeFound, total, matchedSize, err = s.objectRows(r.Context(), id, state)
 		if err != nil {
 			http.Error(w, "list failed", http.StatusInternalServerError)
@@ -238,23 +248,18 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		}
 		sortObjectRows(rows, state)
 		page, state = pageObjects(rows, state)
-	} else {
-		state = resolvedState
 	}
-	// The refresher reloads from the URL the request named, so that URL is
-	// captured before paging: a page the browser chose on the operator's behalf
-	// must not become one they are pinned to.
+	// The refresher reloads the result the operator is looking at, so its URL
+	// is built from the resolved state rather than from the request: paging
+	// and selection decide each other, and once they have, the state names
+	// the selection in effect — including one the browser defaulted to — so
+	// the refresh reloads exactly this result.
 	refreshURL := state.url()
-	if page.Defaulted {
-		// A defaulted selection is the exception — it has to be named, because
-		// the original URL would resurrect the row the filter dropped.
-		refreshURL = state.url()
-	}
 	linkRows(page.Rows, state)
 	prepareObjectRows(page.Rows)
 	s.recordTrail(id, state)
 	matched := len(rows)
-	if fast {
+	if result.Fast {
 		matched = total
 	}
 
@@ -263,7 +268,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		RefreshURL:      refreshURL,
 		HasReachability: s.cfg.Reachability != nil,
 		HasDetached:     s.cfg.Reachability != nil && s.cfg.References != nil,
-		HasHead:         s.cfg.Reachability != nil && s.cfg.References != nil,
+		HasRoot:         s.cfg.Reachability != nil && s.cfg.References != nil,
 		StatusOptions:   statusOptions(state.Status),
 		LimitOptions:    limitOptions(state.Limit),
 		Types:           typeOptions(types, state.Type),
@@ -286,43 +291,74 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		CSRF:            s.csrfFor(r),
 		Role:            s.roleFor(r),
 	}
-	if page.Selected >= 0 {
-		selected := rows[page.Selected]
-		if fast {
-			selected = page.Rows[page.Selected]
-		}
+	if selected, ok := page.selectedRow(rows); ok {
 		data.Inspector = s.inspectorFor(r.Context(), id, state, selected)
 	}
 	s.renderObjects(w, r, data)
+}
+
+// objectPageResult is what the default hash-ascending browser path resolved:
+// the page it cut, the store-wide totals behind it, and the state the rows
+// were selected against. Fast reports that the default path could answer the
+// request at all; when it is false the caller resolves the general path from
+// the same state.
+type objectPageResult struct {
+	// Rows contains the current page's object rows.
+	Rows []objectRow
+	// Types lists every object type in the store.
+	Types []string
+	// TypeFound reports whether the requested type filter matched an object.
+	TypeFound bool
+	// Total is the number of stored objects.
+	Total int
+	// TotalSize is the aggregate stored size.
+	TotalSize int64
+	// Page is the resolved page and its selection.
+	Page objectPage
+	// State is the state the rows were selected against, with a defaulted
+	// selection named.
+	State objectBrowserState
+	// Fast reports whether the default path answered the request.
+	Fast bool
 }
 
 // defaultObjectPage keeps the common unfiltered hash-ascending browser path
 // proportional to its visible page. BuildSnapshot preserves Backend.List's
 // digest order, so constructing and sorting one row per stored object adds no
 // information before pagination.
-func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, totalSize int64, page objectPage, resolvedState objectBrowserState, fast bool, err error) {
+//
+// Every result it returns carries Selected: -1 unless it also carries the rows
+// that selection indexes, including the error results: the caller reads the
+// page only after checking the error, and a page that names no selection is
+// what makes that safe.
+func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectBrowserState) (objectPageResult, error) {
+	// The rows and the page they belong to are resolved together. An empty
+	// page is the starting point of every return, so an error or a request
+	// this path cannot answer yields no selection to index.
+	result := objectPageResult{Page: objectPage{Selected: -1}, State: state}
 	if state.Query != "" || state.Type != "" || state.Size != "" || state.Status != "" ||
 		state.Reach != "" || state.Sort != "hash" || state.Direction != "asc" ||
 		state.Selected != "" || state.Deselected {
-		return nil, nil, false, 0, 0, objectPage{}, state, false, nil
+		return result, nil
 	}
 	snapshot, err := s.metadataSnapshot(ctx)
 	if err != nil {
-		return nil, nil, false, 0, 0, objectPage{}, state, true, err
+		return objectPageResult{Page: objectPage{Selected: -1}}, err
 	}
-	total, totalSize = snapshot.Total, snapshot.Bytes
-	types = snapshot.Types
-	typeFound, fast = true, true
+	result.Total, result.TotalSize = snapshot.Total, snapshot.Bytes
+	result.Types = snapshot.Types
+	result.TypeFound, result.Fast = true, true
 	if state.Offset >= len(snapshot.Entries) {
-		return nil, types, true, total, totalSize, objectPage{Selected: -1}, state, true, nil
+		return result, nil
 	}
 	end := min(state.Offset+state.Limit, len(snapshot.Entries))
-	rows = make([]objectRow, 0, end-state.Offset)
+	rows := make([]objectRow, 0, end-state.Offset)
 	hasVerifications := s.sessions.hasVerifications(id)
 	for _, entry := range snapshot.Entries[state.Offset:end] {
 		rows = append(rows, s.objectRowFromMeta(id, entry, hasVerifications))
 	}
-	page = objectPage{
+	result.Rows = rows
+	result.Page = objectPage{
 		Rows:       rows,
 		RangeStart: state.Offset + 1,
 		RangeEnd:   end,
@@ -330,10 +366,10 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 	}
 	if len(rows) > 0 {
 		state.Selected = rows[0].digestString()
-		page.Selected = 0
-		page.Defaulted = true
+		result.Page.Selected = 0
 	}
-	return rows, types, true, total, totalSize, page, state, true, nil
+	result.State = state
+	return result, nil
 }
 
 // objectRows builds one row per stored object and keeps the ones state matches.
@@ -364,17 +400,8 @@ func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserS
 	return rows, slices.Sorted(maps.Keys(present)), typeFound, snapshot.Total, matchedSize, nil
 }
 
-// objectRowFor renders one stored object as a table row.
-func (s *Server) objectRowFor(ctx context.Context, id string, h cas.Digest) objectRow {
-	meta := s.objectMetaFor(ctx, h)
-	row := s.objectRowFromMeta(id, index.Entry{
-		Digest: h, Type: meta.Type, Size: meta.Size, Written: meta.Written,
-		Unreadable: meta.Unreadable,
-	}, s.sessions.hasVerifications(id))
-	prepareObjectRow(&row)
-	return row
-}
-
+// objectRowFromMeta fills one row from the snapshot's metadata, keeping the
+// per-session integrity and the host-supplied reachability verdicts beside it.
 func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerifications bool) objectRow {
 	h := entry.Digest
 	row := objectRow{
@@ -398,7 +425,7 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 		row.ReferencesAvailable = true
 	}
 	row.Detached = row.Orphaned && row.ReferencesAvailable && row.References == 0
-	row.Head = row.ReachabilityKnown && !row.Orphaned && row.ReferencesAvailable && row.References == 0
+	row.Root = row.ReachabilityKnown && !row.Orphaned && row.ReferencesAvailable && row.References == 0
 	return row
 }
 
@@ -440,14 +467,25 @@ type objectPage struct {
 	// Selected indexes the inspected row within the full result, -1 when the
 	// inspector stays empty.
 	Selected int
-	// Defaulted reports that the browser picked the selection rather than the
-	// request naming it, which the refresh URL has to account for.
-	Defaulted bool
+}
+
+// selectedRow returns the row the inspector shows, and whether the page names
+// one that exists. Selected indexes the full result, so a page whose rows were
+// never produced — a failed snapshot walk, say — reads as no selection instead
+// of indexing a nil slice: reading the selection through here is what makes
+// the caller's lookup total.
+func (page objectPage) selectedRow(rows []objectRow) (objectRow, bool) {
+	if page.Selected < 0 || page.Selected >= len(rows) {
+		return objectRow{}, false
+	}
+	return rows[page.Selected], true
 }
 
 // pageObjects cuts the page out of rows and resolves which row the inspector
 // shows, returning the state that describes the result. Paging and selection
 // decide each other, so they are resolved together rather than in sequence.
+// The returned state names the resolved selection, so a URL built from it
+// reloads the result the operator sees.
 func pageObjects(rows []objectRow, state objectBrowserState) (objectPage, objectBrowserState) {
 	if !state.OffsetSet && state.Selected != "" {
 		// Following a reference selects a row the current page may not hold, so
@@ -469,11 +507,11 @@ func pageObjects(rows []objectRow, state objectBrowserState) (objectPage, object
 	// filter drops the one they had picked. A selection that merely sits on
 	// another page still stands, so paging never steals it, and an explicit
 	// deselect is honoured rather than undone. The URL is left alone: the
-	// default is a rendering choice, not navigation.
+	// default is a rendering choice, not navigation — but the state names the
+	// stand-in, so a URL built from it reloads the row actually shown.
 	if page.Selected < 0 && len(page.Rows) > 0 && !state.Deselected {
 		state.Selected = page.Rows[0].digestString()
 		page.Selected = state.Offset
-		page.Defaulted = true
 	}
 	return page, state
 }
@@ -510,7 +548,6 @@ func linkRows(rows []objectRow, state objectBrowserState) {
 			rowState.Deselected = false
 		}
 		rows[i].SelectURL = rowState.url()
-		rows[i].SelectAttrs = selectionLinkAttrs(rows[i].SelectURL)
 	}
 }
 
@@ -557,7 +594,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		Report:              storedReport(s.sessions, id, row.Digest),
 		Orphaned:            row.Orphaned,
 		Detached:            row.Detached,
-		Head:                row.Head,
+		Root:                row.Root,
 		WrittenLabel:        row.WrittenLabel,
 		ReferencesAvailable: s.cfg.References != nil,
 		Timestamp:           formatTimestamp(row.Written),

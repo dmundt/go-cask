@@ -172,9 +172,9 @@ reachability. Only then does the viewer offer the reachability filter and label
 objects that
 are unreachable from those roots as orphaned. It MUST NOT infer orphanhood from
 zero inbound references. It MAY label an orphan with zero references
-`Detached`, and a reachable object with zero references `Head`, but only when
+`Detached`, and a reachable object with zero references `Root`, but only when
 the host also supplies a `ReferenceIndex`; without that source, a
-`reach=detached` or `reach=head` query returns 400. Without a reachability
+`reach=detached` or `reach=root` query returns 400. Without a reachability
 source, every `reach` query returns 400.
 
 Byte integrity and root reachability are orthogonal axes, and the viewer MUST
@@ -182,18 +182,18 @@ keep them independent facts in both storage and display, including in their
 names: `Status` is not a label either axis may use, because a single "status"
 implies one verdict where there are two. The table therefore gives each axis a
 column of its own — `Integrity` (Unverified, Verified, or Corrupt) and
-`References` (Resolved, Orphaned, Detached, or Head) — and the inspector names
-the same states. `Detached` has a distinct muted-violet pill and `Head` a
+`References` (Resolved, Orphaned, Detached, or Root) — and the inspector names
+the same states. `Detached` has a distinct muted-violet pill and `Root` a
 distinct blue pill; Resolved remains green and Orphaned amber. `Resolved`
 rather than `Reachable`, because a root has no inbound
 references yet is reachable by definition, and the latter name invited reading
-the column as a refcount; `Head` is the more specific label reserved for the
+the column as a refcount; `Root` is the more specific label reserved for the
 zero-inbound case of that same reachable state, so the two pills never
 overlap on one object. Neither axis may be collapsed into or suppressed by
 the other, because
 doing so hides a corrupt orphan's integrity behind its reachability (or the
 reverse) exactly when both matter. The `References` column and its filter appear only when a `ReachabilityIndex`
-is configured; the `Detached` and `Head` filter choices additionally require a
+is configured; the `Detached` and `Root` filter choices additionally require a
 `ReferenceIndex`. The inbound-reference count is named `Inbound` so it never
 collides with them. Each filter matches its own axis, so a corrupt orphan is
 returned by `status=corrupt` and by `reach=orphaned` alike.

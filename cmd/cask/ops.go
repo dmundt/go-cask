@@ -23,9 +23,12 @@ type target struct {
 	raw *fs.Backend
 }
 
+// openTarget returns the store the ops speak to. A missing -store is a usage
+// error (exit 2); a backend failure is a runtime error (exit 1) — the caller
+// classifies the returned error (cli.md §3).
 func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
 	if mf.store == "" {
-		return nil, fmt.Errorf("-store <path> is required")
+		return nil, usagef("-store <path> is required")
 	}
 	raw, err := fs.New(mf.store)
 	if err != nil {
@@ -42,11 +45,19 @@ func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
 
-// pruneCount runs raw.Prune (delete unreachable-from-roots objects older
-// than minAge; dryRun reports without deleting) and returns how many objects
-// it deleted / would delete.
+// pruneCount runs raw.Prune (delete objects absent from roots AND older than
+// minAge; dryRun reports without deleting) and returns how many objects it
+// deleted / would delete. roots is treated as the complete reachable set at
+// the byte layer: the store cannot interpret references, so cask cannot
+// expand a root into what it points to — graph-aware reachability is the
+// app's job (cas-core §4.11, cas.Reachable). Pass every digest that must
+// survive, not just entry points, or Prune/GC will delete what they reference.
 func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Digest, minAge time.Duration, dryRun bool) (int, error) {
-	doomed, err := raw.Prune(ctx, roots, minAge, dryRun)
+	reachable := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		reachable[r.String()] = true
+	}
+	doomed, err := raw.Prune(ctx, reachable, minAge, dryRun)
 	if err != nil {
 		return 0, err
 	}
@@ -55,21 +66,30 @@ func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Digest, minAge
 
 // --- put ---
 
+// putArgs holds put's flag values.
+type putArgs struct {
+	jsonOut bool
+}
+
+// putFlags registers put's flags over a; opPut and the command table both use
+// it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func putFlags(a *putArgs) *flag.FlagSet {
+	flags := newFlagSet("put")
+	flags.BoolVar(&a.jsonOut, "json", false, "machine-readable JSON")
+	return flags
+}
+
 func opPut(ctx context.Context, t *target, args []string) error {
-	// Flags may follow the positional (spec order: put <file> [-json]), so
-	// std flag parsing is not used here.
-	jsonOut := false
-	var files []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-json":
-			jsonOut = true
-		default:
-			files = append(files, args[i])
-		}
+	var a putArgs
+	flags := putFlags(&a)
+	// Flags may follow the operand (cli.md §2: "put <file> [-json]"), so the
+	// arguments are parsed by position-independent operand parsing.
+	if err := parseOperands(flags, args); err != nil {
+		return err
 	}
+	files := flags.Args()
 	if len(files) != 1 {
-		return usagef("put needs exactly one <file|- >")
+		return usagef("put needs exactly one <file|->")
 	}
 	var r io.Reader
 	if files[0] == "-" {
@@ -86,7 +106,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return err
 	}
-	if jsonOut {
+	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"hash": sha256.Format(h), "deduplicated": dedup})
 	}
 	if dedup {
@@ -128,21 +148,27 @@ func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Digest, bo
 
 // --- get (default output: stdout) ---
 
+// getArgs holds get's flag values.
+type getArgs struct {
+	out string
+}
+
+// getFlags registers get's flags over a; opGet and the command table both use
+// it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func getFlags(a *getArgs) *flag.FlagSet {
+	flags := newFlagSet("get")
+	flags.StringVar(&a.out, "o", "", "write to this file instead of stdout")
+	return flags
+}
+
 func opGet(ctx context.Context, t *target, args []string) error {
-	// Flags may follow the positional (spec order: get <hash> [-o <file>]).
-	out := ""
-	var hashes []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-o":
-			if i+1 >= len(args) {
-				return usagef("-o needs a path")
-			}
-			out, i = args[i+1], i+1
-		default:
-			hashes = append(hashes, args[i])
-		}
+	var a getArgs
+	flags := getFlags(&a)
+	// Flags may follow the operand (cli.md §2: "get <hash> [-o <file>]").
+	if err := parseOperands(flags, args); err != nil {
+		return err
 	}
+	hashes := flags.Args()
 	if len(hashes) != 1 {
 		return usagef("get needs exactly one <hash>")
 	}
@@ -157,8 +183,8 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	defer rc.Close()
 
 	w := io.Writer(os.Stdout)
-	if out != "" {
-		f, err := os.Create(out)
+	if a.out != "" {
+		f, err := os.Create(a.out)
 		if err != nil {
 			return err
 		}
@@ -171,19 +197,34 @@ func opGet(ctx context.Context, t *target, args []string) error {
 
 // --- list ---
 
+// listArgs holds list's flag values.
+type listArgs struct {
+	limit   int
+	offset  int
+	jsonOut bool
+}
+
+// listFlags registers list's flags over a; opList and the command table both use
+// it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func listFlags(a *listArgs) *flag.FlagSet {
+	flags := newFlagSet("list")
+	flags.IntVar(&a.limit, "limit", 100, "max items (1-1000)")
+	flags.IntVar(&a.offset, "offset", 0, "start offset")
+	flags.BoolVar(&a.jsonOut, "json", false, "machine-readable JSON")
+	return flags
+}
+
 func opList(ctx context.Context, t *target, args []string) error {
-	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	limit := fs.Int("limit", 100, "max items (1-1000)")
-	offset := fs.Int("offset", 0, "start offset")
-	jsonOut := fs.Bool("json", false, "machine-readable JSON")
-	if err := fs.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a listArgs
+	flags := listFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if *limit < 1 || *limit > 1000 {
-		return usagef("limit must be between 1 and 1000, got %d", *limit)
+	if a.limit < 1 || a.limit > 1000 {
+		return usagef("limit must be between 1 and 1000, got %d", a.limit)
 	}
-	if *offset < 0 {
-		return usagef("offset must be >= 0, got %d", *offset)
+	if a.offset < 0 {
+		return usagef("offset must be >= 0, got %d", a.offset)
 	}
 	type item struct {
 		// Hash is the object's printable digest.
@@ -198,9 +239,12 @@ func opList(ctx context.Context, t *target, args []string) error {
 		return err
 	}
 	total := len(digests)
-	items := make([]item, 0, total)
+	// Size the result from the page that is actually reported, not from the
+	// whole store: the page is bounded by -limit (cli.md §2).
+	page := index.Paginate(digests, a.offset, a.limit)
+	items := make([]item, 0, len(page))
 	skipped := 0
-	for _, h := range index.Paginate(digests, *offset, *limit) {
+	for _, h := range page {
 		size, err := t.raw.Size(ctx, h)
 		if err != nil {
 			// List reports every digest-named file, including one at a path the
@@ -218,7 +262,7 @@ func opList(ctx context.Context, t *target, args []string) error {
 	if skipped > 0 {
 		fmt.Fprintf(os.Stderr, "cask: skipped %d digest-named file(s) that are not readable objects\n", skipped)
 	}
-	if *jsonOut {
+	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"total": total, "objects": items})
 	}
 	for _, it := range items {
@@ -229,16 +273,29 @@ func opList(ctx context.Context, t *target, args []string) error {
 
 // --- meta ---
 
+// metaArgs holds meta's flag values.
+type metaArgs struct {
+	jsonOut bool
+}
+
+// metaFlags registers meta's flags over a; opMeta and the command table both
+// use it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func metaFlags(a *metaArgs) *flag.FlagSet {
+	flags := newFlagSet("meta")
+	flags.BoolVar(&a.jsonOut, "json", false, "machine-readable JSON")
+	return flags
+}
+
 func opMeta(ctx context.Context, t *target, args []string) error {
-	fs := flag.NewFlagSet("meta", flag.ContinueOnError)
-	jsonOut := fs.Bool("json", false, "machine-readable JSON")
-	if err := fs.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a metaArgs
+	flags := metaFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if fs.NArg() != 1 {
+	if flags.NArg() != 1 {
 		return usagef("meta needs exactly one <hash>")
 	}
-	h, err := sha256.Parse(fs.Arg(0))
+	h, err := sha256.Parse(flags.Arg(0))
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
@@ -256,7 +313,7 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 		return err
 	}
 	typ := index.EnvelopeType(data)
-	if *jsonOut {
+	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size, "type": typ,
 		})
@@ -267,8 +324,19 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 
 // --- stats ---
 
+// statsFlags registers stats' flags: the command takes none, but parsing its
+// arguments gives it the same -h/-help handling and unknown-flag rejection as
+// every other command (cli.md §4).
+func statsFlags() *flag.FlagSet {
+	return newFlagSet("stats")
+}
+
 func opStats(ctx context.Context, t *target, args []string) error {
-	if len(args) != 0 {
+	flags := statsFlags()
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
 		return usagef("stats takes no arguments")
 	}
 	st, err := t.raw.Stats(ctx)
@@ -281,12 +349,28 @@ func opStats(ctx context.Context, t *target, args []string) error {
 
 // --- verify ---
 
+// verifyArgs holds verify's flag values.
+type verifyArgs struct {
+	all bool
+}
+
+// verifyFlags registers verify's flags over a; opVerify and the command table
+// both use it, so the accepted and the documented flags are one set (cli.md
+// §2, §4). --all is the cli.md §2 alternative to a single <hash>.
+func verifyFlags(a *verifyArgs) *flag.FlagSet {
+	flags := newFlagSet("verify")
+	flags.BoolVar(&a.all, "all", false, "verify every object in the store")
+	return flags
+}
+
 func opVerify(ctx context.Context, t *target, args []string) error {
-	if len(args) == 0 {
-		return usagef("verify needs <hash> or --all")
+	var a verifyArgs
+	flags := verifyFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if args[0] == "--all" {
-		if len(args) != 1 {
+	if a.all {
+		if flags.NArg() != 0 {
 			return usagef("verify --all takes no additional arguments")
 		}
 		digests, err := t.raw.List(ctx)
@@ -306,10 +390,10 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 		}
 		return nil
 	}
-	if len(args) != 1 {
+	if flags.NArg() != 1 {
 		return usagef("verify needs exactly one <hash> or --all")
 	}
-	h, err := sha256.Parse(args[0])
+	h, err := sha256.Parse(flags.Arg(0))
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
@@ -328,30 +412,43 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 // the dangerous variant, only safe when no other process is writing.
 const gcDefaultGrace = 1 * time.Hour
 
+// gcArgs holds gc's flag values.
+type gcArgs struct {
+	minAge time.Duration
+}
+
+// gcFlags registers gc's flags over a; opGC and the command table both use it,
+// so the accepted and the documented flags are one set (cli.md §2, §4).
+func gcFlags(a *gcArgs) *flag.FlagSet {
+	flags := newFlagSet("gc")
+	flags.DurationVar(&a.minAge, "min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
+	return flags
+}
+
 func opGC(ctx context.Context, t *target, args []string) error {
-	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
-	minAge := fs.Duration("min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
-	if err := fs.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a gcArgs
+	flags := gcFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if *minAge < 0 {
-		return usagef("min-age must be >= 0, got %s", *minAge)
+	if a.minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", a.minAge)
 	}
-	roots, err := parseDigests(fs.Args())
+	roots, err := parseDigests(flags.Args())
 	if err != nil {
 		return err
 	}
 	if len(roots) == 0 {
 		return usagef("gc needs at least one root hash")
 	}
-	if *minAge == 0 {
+	if a.minAge == 0 {
 		fmt.Fprintln(os.Stderr, "warning: gc --min-age 0 deletes every unreachable object immediately; only safe when no other process is writing (cas-core §6)")
 	}
 	// Reachability is the given roots themselves at the byte layer (the
 	// store cannot interpret references; graph-aware reachability is the
 	// app's job, cas-core §4.11). Only objects older than minAge are
 	// reclaimed, so a concurrent writer's recent objects survive the sweep.
-	deleted, err := pruneCount(ctx, t.raw, roots, *minAge, false)
+	deleted, err := pruneCount(ctx, t.raw, roots, a.minAge, false)
 	if err != nil {
 		return err
 	}
@@ -361,19 +458,32 @@ func opGC(ctx context.Context, t *target, args []string) error {
 
 // --- clean ---
 
+// cleanArgs holds clean's flag values.
+type cleanArgs struct {
+	minAge time.Duration
+}
+
+// cleanFlags registers clean's flags over a; opClean and the command table both
+// use it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func cleanFlags(a *cleanArgs) *flag.FlagSet {
+	flags := newFlagSet("clean")
+	flags.DurationVar(&a.minAge, "min-age", 24*time.Hour, "minimum age of orphan *.tmp files to remove")
+	return flags
+}
+
 func opClean(ctx context.Context, t *target, args []string) error {
-	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
-	minAge := fs.Duration("min-age", 24*time.Hour, "minimum age of orphan *.tmp files to remove")
-	if err := fs.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a cleanArgs
+	flags := cleanFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if *minAge < 0 {
-		return usagef("min-age must be >= 0, got %s", *minAge)
+	if a.minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", a.minAge)
 	}
-	if fs.NArg() != 0 {
+	if flags.NArg() != 0 {
 		return usagef("clean takes no positional arguments")
 	}
-	removed, err := t.raw.Clean(ctx, *minAge)
+	removed, err := t.raw.Clean(ctx, a.minAge)
 	if err != nil {
 		return err
 	}
@@ -383,31 +493,53 @@ func opClean(ctx context.Context, t *target, args []string) error {
 
 // --- prune ---
 
+// pruneArgs holds prune's flag values.
+type pruneArgs struct {
+	minAge time.Duration
+	dryRun bool
+}
+
+// pruneFlags registers prune's flags over a; opPrune and the command table both
+// use it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func pruneFlags(a *pruneArgs) *flag.FlagSet {
+	flags := newFlagSet("prune")
+	flags.DurationVar(&a.minAge, "min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
+	flags.BoolVar(&a.dryRun, "dry-run", true, "report without deleting (default true)")
+	return flags
+}
+
 func opPrune(ctx context.Context, t *target, args []string) error {
-	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
-	minAge := fs.Duration("min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
-	dryRun := fs.Bool("dry-run", true, "report without deleting (default true)")
-	if err := fs.Parse(args); err != nil {
-		return usageError{err.Error()}
+	var a pruneArgs
+	flags := pruneFlags(&a)
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	if *minAge < 0 {
-		return usagef("min-age must be >= 0, got %s", *minAge)
+	if a.minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", a.minAge)
 	}
-	roots, err := parseDigests(fs.Args())
+	roots, err := parseDigests(flags.Args())
 	if err != nil {
 		return err
 	}
 	if len(roots) == 0 {
 		return usagef("prune needs at least one root hash")
 	}
-	if *minAge == 0 {
+	if a.minAge == 0 {
 		fmt.Fprintln(os.Stderr, "warning: prune --min-age 0 deletes every unreachable object immediately; only safe when no other process is writing (cas-core §6)")
 	}
-	doomed, err := t.raw.Prune(ctx, roots, *minAge, *dryRun)
+	// roots is the complete reachable set at the byte layer (the store
+	// cannot interpret references; graph-aware reachability is the app's
+	// job, cas-core §4.11) — pass every digest that must survive, not just
+	// entry points.
+	reachable := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		reachable[r.String()] = true
+	}
+	doomed, err := t.raw.Prune(ctx, reachable, a.minAge, a.dryRun)
 	if err != nil {
 		return err
 	}
-	if *dryRun {
+	if a.dryRun {
 		fmt.Printf("prune (dry-run): would delete %d objects\n", len(doomed))
 		for _, h := range doomed {
 			fmt.Printf("  %s\n", h)

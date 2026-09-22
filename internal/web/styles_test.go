@@ -254,7 +254,7 @@ func TestWorkbenchInteractionStates(t *testing.T) {
 		".viewer-status-detached",
 		"background: #e9e5f6;",
 		"color: #442f70;",
-		".viewer-status-head",
+		".viewer-status-root",
 		"background: #dce6f7;",
 		"color: #1d4f8a;",
 		"filter: brightness(0.97);",

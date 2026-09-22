@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 
@@ -110,7 +111,7 @@ func TestImportRejectsLargeDeclaredCountWithoutPreallocating(t *testing.T) {
 	data := make([]byte, headerSize)
 	copy(data[:8], magic[:])
 	binary.BigEndian.PutUint16(data[8:10], version)
-	binary.BigEndian.PutUint64(data[10:], uint64(maxInt()))
+	binary.BigEndian.PutUint64(data[10:], uint64(math.MaxInt))
 
 	if err := Import(context.Background(), membackend.New(), bytes.NewReader(data)); err == nil {
 		t.Fatal("Import with missing records must fail")
@@ -134,6 +135,24 @@ func TestImportRejectsDuplicateDigest(t *testing.T) {
 
 	if err := Import(ctx, membackend.New(), bytes.NewReader(data)); err == nil {
 		t.Fatal("duplicate digest must fail")
+	}
+}
+
+// TestImportDoesNotAllocateDeclaredPayloadSize pins the bounded payload read:
+// the record header is untrusted input, so a payloadSize far larger than the
+// archive must fail on the bytes that are actually missing (io.ErrUnexpectedEOF)
+// instead of allocating the declared amount — a ~42-byte archive claiming 1<<40
+// must not reserve a terabyte.
+func TestImportDoesNotAllocateDeclaredPayloadSize(t *testing.T) {
+	digest := sha256.Of([]byte("payload"))
+	data := append(archiveWithHeader(1), make([]byte, recordHeaderSize)...)
+	binary.BigEndian.PutUint64(data[headerSize:headerSize+8], uint64(len(digest)))
+	binary.BigEndian.PutUint64(data[headerSize+8:headerSize+16], 1<<40)
+	data = append(data, digest...)
+
+	err := Import(context.Background(), membackend.New(), bytes.NewReader(data))
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("Import(oversized declared payload) error = %v, want io.ErrUnexpectedEOF", err)
 	}
 }
 

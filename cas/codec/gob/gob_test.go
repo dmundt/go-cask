@@ -14,7 +14,7 @@ type obj struct {
 }
 
 func TestRoundTrip(t *testing.T) {
-	c := gob.New[obj]()
+	c := gob.NewRaw[obj]()
 	orig := obj{Title: "gob", Body: "test"}
 	data, err := c.Encode(orig)
 	if err != nil {
@@ -46,7 +46,7 @@ func TestCascadeRoundTrip(t *testing.T) {
 }
 
 func TestDecodeError(t *testing.T) {
-	c := gob.New[obj]()
+	c := gob.NewRaw[obj]()
 	if _, err := c.Decode([]byte("garbage")); err == nil {
 		t.Fatal("invalid gob must error")
 	}
@@ -54,7 +54,7 @@ func TestDecodeError(t *testing.T) {
 
 func TestMarshalError(t *testing.T) {
 	// encoding/gob cannot encode a channel, so Marshal must surface the error.
-	c := gob.New[chan int]()
+	c := gob.NewRaw[chan int]()
 	if _, err := c.Encode(make(chan int)); err == nil {
 		t.Fatal("encoding an unsupported type must error")
 	}

@@ -1,9 +1,11 @@
-// Package backend provides shared types for Backend implementations.
-// Concrete backends (fs, memory, s3, ...) define their own Config and
-// option functions; the generic Option is a func that applies a backend's
-// own configuration struct.
+// Package backend provides shared helpers for Backend implementations.
+//
+// Concrete backends (fs, memory, packfs, s3, ...) each declare their own
+// configuration struct and their own Option type — a func over that concrete
+// struct. There is no shared Option type: a cross-backend option is therefore a
+// compile-time error instead of a silently ignored one (AGENTS.md principle 4,
+// no `any` in the exported API).
+//
+// What does live here is the streaming plumbing every backend needs:
+// ContextReader, WriteAll, ReadAll, and ReadPayload.
 package backend
-
-// Option configures a Backend. Each backend defines its own concrete Config
-// type and functions that return Option to mutate it.
-type Option func(any)

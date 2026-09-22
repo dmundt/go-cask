@@ -84,12 +84,17 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 }
 
 // reachableFromHead marks every object reachable from the HEAD commit by
-// following References() through the gitlike object model. Without a HEAD
-// the store has no roots and every object is unreachable.
+// following References() through the gitlike object model. Without a HEAD the
+// store has no roots and every object is unreachable — but only a genuinely
+// absent HEAD means that: an unreadable or malformed HEAD is corruption and is
+// reported instead of being treated as an empty root set.
 func (a *app) reachableFromHead(ctx context.Context) (map[string]bool, error) {
-	head, err := a.headCommit()
-	if err != nil || head.IsZero() {
-		return map[string]bool{}, nil // no roots yet
+	head, present, err := a.headCommitOrAbsent()
+	if err != nil {
+		return nil, err
+	}
+	if !present {
+		return map[string]bool{}, nil // no HEAD yet: no roots
 	}
 	seen := make(map[string]bool)
 	if err := a.markReachable(ctx, head, seen); err != nil {

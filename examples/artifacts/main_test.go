@@ -217,3 +217,41 @@ func TestRunUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestRunStoreFlagForms pins the standard flag parsing: the store directory may
+// be spelled -store dir, -store=dir, or --store dir, and -h/--help and an
+// unknown flag are usage errors that print the usage text (exit 2).
+func TestRunStoreFlagForms(t *testing.T) {
+	store := t.TempDir()
+	var stdout, stderr bytes.Buffer
+
+	for _, args := range [][]string{
+		{"-store", store, "stats"},
+		{"-store=" + store, "stats"},
+		{"--store", store, "stats"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("args %v: code=%d stderr=%s", args, code, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "objects") {
+			t.Fatalf("args %v: stats output = %q", args, stdout.String())
+		}
+	}
+
+	for _, args := range [][]string{
+		{"-h"},
+		{"--help"},
+		{"-store=" + store, "-nope", "stats"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("args %v: code=%d, want 2", args, code)
+		}
+		if !strings.Contains(stderr.String(), "usage: artifacts") {
+			t.Fatalf("args %v: stderr = %q, want the usage text", args, stderr.String())
+		}
+	}
+}

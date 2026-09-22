@@ -13,7 +13,7 @@ This codec is valid as an opt-in compatibility option, but it is not the recomme
 ## Typical use
 
 ```go
-codec := gob.New[MyType]()
+codec := gob.NewRaw[MyType]()
 store := cas.New(raw, codec, sha256.New())
 ```
 

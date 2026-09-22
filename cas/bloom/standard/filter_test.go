@@ -87,7 +87,10 @@ func TestGuardUsesFilterForHotPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(raw, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := cas.NewDigest([]byte("hot path"))
 	if err := guard.Put(ctx, d, io.NopCloser(bytes.NewReader([]byte("payload")))); err != nil {
 		t.Fatal(err)
@@ -109,7 +112,11 @@ func Example() {
 		fmt.Println("filter error:", err)
 		return
 	}
-	guard := bloom.NewGuard(backend, filter)
+	guard, err := bloom.NewGuard(backend, filter)
+	if err != nil {
+		fmt.Println("guard error:", err)
+		return
+	}
 
 	d := cas.Digest("hello world")
 	if err := guard.Put(ctx, d, strings.NewReader("hello world")); err != nil {

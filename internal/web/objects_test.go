@@ -534,3 +534,41 @@ func TestUnreadableObjectRowSaysSo(t *testing.T) {
 		t.Fatalf("readable row must show its type: %.400q", body)
 	}
 }
+
+// TestObjectListSnapshotFailureIsA500NotAPanic guards the fast path's error
+// handling. When the metadata snapshot cannot be built the handler used to keep
+// the default path's empty page and look the selection up in rows that were
+// never produced, which panicked on a nil slice. A canceled request context is
+// an error the store walk reports immediately, and the handler is called
+// directly rather than through a server so a panic fails this test instead of
+// being recovered and logged by net/http.
+func TestObjectListSnapshotFailureIsA500NotAPanic(t *testing.T) {
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// The default path must not hand back a page naming a row it never
+	// produced: that invariant is what makes the caller's selection lookup
+	// safe even though it runs after the error check.
+	result, err := srv.defaultObjectPage(ctx, "", defaultObjectBrowserState())
+	if err == nil {
+		t.Fatal("canceled snapshot build must report an error")
+	}
+	if result.Page.Selected >= 0 || len(result.Rows) != 0 {
+		t.Fatalf("failed default page = %+v, want no selection over no rows", result.Page)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.objects(rec, httptest.NewRequest(http.MethodGet, "/viewer/objects", nil).WithContext(ctx))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("snapshot failure = %d %.200q, want 500", rec.Code, rec.Body.String())
+	}
+}

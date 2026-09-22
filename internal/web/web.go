@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
@@ -89,29 +90,53 @@ type Server struct {
 	sessions      *sessions
 	loginThrottle *throttle
 	meta          *metaCache
-	snapshotMu    sync.Mutex
-	snapshot      *index.Snapshot
-	snapshotAt    time.Time
-	tmpl          *template.Template
+	// snapshot is the published metadata snapshot together with the time it
+	// was built. The pair travels as one value, so a reader that loads it
+	// never sees a snapshot under the wrong timestamp.
+	snapshot atomic.Pointer[snapshotState]
+	// snapshotMu serializes snapshot builds. It is only taken once a reader
+	// has found the published snapshot missing or stale, so the steady state
+	// is a lock-free load.
+	snapshotMu sync.Mutex
+	tmpl       *template.Template
 }
 
 const snapshotRefreshInterval = 500 * time.Millisecond
+
+// snapshotState is a built metadata snapshot and the instant it was built.
+type snapshotState struct {
+	// snapshot is the built index.
+	snapshot *index.Snapshot
+	// builtAt is when the store walk that produced snapshot finished.
+	builtAt time.Time
+}
 
 // metadataSnapshot reuses one bounded metadata walk for the short bursts of
 // requests produced by filtering and htmx refreshes. The store remains
 // authoritative; expiry keeps externally-added objects visible without
 // changing any public storage behavior.
+//
+// The published snapshot is read without the lock, and the store walk runs
+// under it, so a request that arrives while a build is in flight never shares
+// the walk and never blocks a reader that already has a fresh snapshot. The
+// freshness rule and the error contract are unchanged: a failed build reports
+// its error and publishes nothing, so the next caller retries.
 func (s *Server) metadataSnapshot(ctx context.Context) (*index.Snapshot, error) {
+	if current := s.snapshot.Load(); current != nil && time.Since(current.builtAt) < snapshotRefreshInterval {
+		return current.snapshot, nil
+	}
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
-	if s.snapshot != nil && time.Since(s.snapshotAt) < snapshotRefreshInterval {
-		return s.snapshot, nil
+	// Another handler may have built the snapshot while this one waited for
+	// the lock, so the fast path is checked again before walking the store.
+	if current := s.snapshot.Load(); current != nil && time.Since(current.builtAt) < snapshotRefreshInterval {
+		return current.snapshot, nil
 	}
 	snapshot, err := index.BuildSnapshot(ctx, s.store)
 	if err != nil {
 		return nil, err
 	}
-	s.snapshot, s.snapshotAt = snapshot, time.Now()
+	s.snapshot.Store(&snapshotState{snapshot: snapshot, builtAt: time.Now()})
 	return snapshot, nil
 }
 
@@ -131,11 +156,6 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		// objectRow.Short.
 		"shortDigest": shortDigest,
 		"formatBytes": formatBytes,
-		// Every link that selects an object navigates the same way, and one
-		// page emits a dozen of them: seven cells per row, three inspector
-		// tabs, two history arrows, and one per reference. Emitting the shared
-		// attributes from one place keeps a copy from drifting.
-		"selectLink": selectionLinkAttrs,
 		// The top bar is rendered from several page payloads that share only a
 		// CSRF token, so the Verify control builds its own state from it.
 		"verifyAll": func(csrf string) verifyAllState {

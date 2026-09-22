@@ -84,6 +84,55 @@ func TestPackBackendSupportsLargeDigests(t *testing.T) {
 	}
 }
 
+// TestPackBackendPutStreamsLargeObject covers the streaming Put path: the
+// object is spooled to a scratch file and copied into the length-prefixed pack
+// record, so an object larger than any single buffer round-trips with the right
+// record length and no scratch file left behind.
+func TestPackBackendPutStreamsLargeObject(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "stream-large")
+	b, err := New(base, WithEnabled(), WithPackMaxEntries(0), WithPackMaxBytes(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	payload := make([]byte, 2<<20)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+	d := cas.NewDigest([]byte("large-object"))
+	if err := b.Put(ctx, d, bytesReader(payload)); err != nil {
+		t.Fatalf("Put() = %v, want nil", err)
+	}
+	rec, ok := b.index[string(d)]
+	if !ok {
+		t.Fatal("Put did not record the object in the pack index")
+	}
+	if rec.Size != int64(len(payload)) {
+		t.Fatalf("pack record size = %d, want %d", rec.Size, len(payload))
+	}
+	reader, err := b.Get(ctx, d)
+	if err != nil {
+		t.Fatalf("Get() = %v, want nil", err)
+	}
+	defer reader.Close()
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("Get() returned %d bytes, want the %d stored bytes", len(got), len(payload))
+	}
+	spool, err := filepath.Glob(filepath.Join(base, "packs", "*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spool) != 0 {
+		t.Fatalf("Put left scratch files behind: %v", spool)
+	}
+}
+
 func TestPackBackendRejectsTruncatedPackPayload(t *testing.T) {
 	ctx := context.Background()
 	b, err := New(filepath.Join(t.TempDir(), "truncated"), WithEnabled())
@@ -512,41 +561,35 @@ func TestPackBackendPersistIndexFailure(t *testing.T) {
 }
 
 func TestPackBackendFaultInjectionAndCloseBranches(t *testing.T) {
-	oldMkdirAll, oldReadFile, oldWriteFile, oldRename, oldOpenFile := mkdirAllFn, readFileFn, writeFileFn, renameFn, openFileFn
-	defer func() {
-		mkdirAllFn, readFileFn, writeFileFn, renameFn, openFileFn = oldMkdirAll, oldReadFile, oldWriteFile, oldRename, oldOpenFile
-	}()
-
-	mkdirAllFn = func(string, os.FileMode) error { return errors.New("mkdir fail") }
-	if _, err := New(filepath.Join(t.TempDir(), "fault-new"), WithEnabled()); err == nil {
+	op := realOps()
+	op.mkdirAll = func(string, os.FileMode) error { return errors.New("mkdir fail") }
+	if _, err := newWithOps(filepath.Join(t.TempDir(), "fault-new"), op, WithEnabled()); err == nil {
 		t.Fatal("New should fail when mkdirAll fails")
 	}
-	mkdirAllFn = os.MkdirAll
 
 	b := &Backend{manifestPath: filepath.Join(t.TempDir(), "manifest.json"), index: map[string]packRecord{"abc": {Pack: "pack.bin", Offset: 1, Size: 2}}}
-	readFileFn = func(string) ([]byte, error) { return nil, errors.New("read fail") }
+	b.op.readFile = func(string) ([]byte, error) { return nil, errors.New("read fail") }
 	if err := b.loadIndex(); err == nil {
 		t.Fatal("loadIndex should fail on read error")
 	}
-	readFileFn = os.ReadFile
 
-	writeFileFn = func(string, []byte, os.FileMode) error { return errors.New("write fail") }
+	b.op.writeFile = func(string, []byte, os.FileMode) error { return errors.New("write fail") }
 	if err := b.persistIndex(); err == nil {
 		t.Fatal("persistIndex should fail on write error")
 	}
-	writeFileFn = os.WriteFile
-	renameFn = func(string, string) error { return errors.New("rename fail") }
+	b.op.writeFile = nil
+	b.op.rename = func(string, string) error { return errors.New("rename fail") }
 	if err := b.persistIndex(); err == nil {
 		t.Fatal("persistIndex should fail on rename error")
 	}
-	renameFn = os.Rename
+	b.op.rename = nil
 
 	b = &Backend{packDir: t.TempDir()}
-	openFileFn = func(string, int, os.FileMode) (*os.File, error) { return nil, errors.New("open fail") }
+	b.op.openFile = func(string, int, os.FileMode) (*os.File, error) { return nil, errors.New("open fail") }
 	if err := b.ensurePackFile(); err == nil {
 		t.Fatal("ensurePackFile should fail on open error")
 	}
-	openFileFn = os.OpenFile
+	b.op.openFile = nil
 
 	file, err := os.CreateTemp(t.TempDir(), "pack-close-*.pack")
 	if err != nil {
@@ -581,7 +624,7 @@ func TestPackBackendFileOpenAndWriteFailureBranches(t *testing.T) {
 	if err := b.ensurePackFile(); err == nil {
 		t.Fatal("ensurePackFile should fail when the pack directory cannot be opened")
 	}
-	if err := b.appendPackRecord(cas.NewDigest([]byte("abc")), []byte("payload")); err == nil {
+	if err := b.appendPackRecord(ctx, cas.NewDigest([]byte("abc")), bytesReader([]byte("payload")), int64(len("payload"))); err == nil {
 		t.Fatal("appendPackRecord should fail when the pack file cannot be created")
 	}
 	if err := b.Put(ctx, cas.NewDigest([]byte("abc")), bytesReader([]byte("payload"))); err == nil {
@@ -629,39 +672,41 @@ func TestPackBackendLooseOperationErrorBranches(t *testing.T) {
 	}
 	defer b.Close()
 
-	oldPut, oldGet, oldExists, oldDelete, oldList, oldStats := loosePutFn, looseGetFn, looseExistsFn, looseDeleteFn, looseListFn, looseStatsFn
+	oldPut, oldGet, oldExists, oldDelete, oldList, oldStats := b.op.loosePut, b.op.looseGet, b.op.looseExists, b.op.looseDelete, b.op.looseList, b.op.looseStats
 	defer func() {
-		loosePutFn, looseGetFn, looseExistsFn, looseDeleteFn, looseListFn, looseStatsFn = oldPut, oldGet, oldExists, oldDelete, oldList, oldStats
+		b.op.loosePut, b.op.looseGet, b.op.looseExists, b.op.looseDelete, b.op.looseList, b.op.looseStats = oldPut, oldGet, oldExists, oldDelete, oldList, oldStats
 	}()
 
-	loosePutFn = func(context.Context, *fsbackend.Backend, cas.Digest, io.Reader) error { return io.ErrUnexpectedEOF }
+	b.op.loosePut = func(context.Context, *fsbackend.Backend, cas.Digest, io.Reader) error { return io.ErrUnexpectedEOF }
 	if err := b.Put(ctx, cas.NewDigest([]byte("put-fail")), bytesReader([]byte("x"))); err == nil {
 		t.Fatal("loosePut error should surface from Put")
 	}
 
-	looseGetFn = func(context.Context, *fsbackend.Backend, cas.Digest) (io.ReadCloser, error) {
+	b.op.looseGet = func(context.Context, *fsbackend.Backend, cas.Digest) (io.ReadCloser, error) {
 		return nil, io.ErrUnexpectedEOF
 	}
 	if _, err := b.Get(ctx, cas.NewDigest([]byte("get-fail"))); err == nil {
 		t.Fatal("looseGet error should surface from Get")
 	}
 
-	looseExistsFn = func(context.Context, *fsbackend.Backend, cas.Digest) (bool, error) { return false, io.ErrUnexpectedEOF }
+	b.op.looseExists = func(context.Context, *fsbackend.Backend, cas.Digest) (bool, error) {
+		return false, io.ErrUnexpectedEOF
+	}
 	if _, err := b.Exists(ctx, cas.NewDigest([]byte("exists-fail"))); err == nil {
 		t.Fatal("looseExists error should surface from Exists")
 	}
 
-	looseDeleteFn = func(context.Context, *fsbackend.Backend, cas.Digest) error { return io.ErrUnexpectedEOF }
+	b.op.looseDelete = func(context.Context, *fsbackend.Backend, cas.Digest) error { return io.ErrUnexpectedEOF }
 	if err := b.Delete(ctx, cas.NewDigest([]byte("delete-fail"))); err == nil {
 		t.Fatal("looseDelete error should surface from Delete")
 	}
 
-	looseListFn = func(context.Context, *fsbackend.Backend) ([]cas.Digest, error) { return nil, io.ErrUnexpectedEOF }
+	b.op.looseList = func(context.Context, *fsbackend.Backend) ([]cas.Digest, error) { return nil, io.ErrUnexpectedEOF }
 	if _, err := b.List(ctx); err == nil {
 		t.Fatal("looseList error should surface from List")
 	}
 
-	looseStatsFn = func(context.Context, *fsbackend.Backend) (*cas.Stats, error) { return nil, io.ErrUnexpectedEOF }
+	b.op.looseStats = func(context.Context, *fsbackend.Backend) (*cas.Stats, error) { return nil, io.ErrUnexpectedEOF }
 	if _, err := b.Stats(ctx); err == nil {
 		t.Fatal("looseStats error should surface from Stats")
 	}
