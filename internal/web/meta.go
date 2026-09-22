@@ -37,7 +37,7 @@ type objectMeta struct {
 // this cache every keystroke in the search box would re-read and re-stat the
 // entire store.
 type metaCache struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	byDigest map[string]objectMeta
 }
 
@@ -46,8 +46,8 @@ func newMetaCache() *metaCache {
 }
 
 func (c *metaCache) lookup(key string) (objectMeta, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	meta, ok := c.byDigest[key]
 	return meta, ok
 }
