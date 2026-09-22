@@ -480,6 +480,10 @@ body.viewer-shell {
   justify-content: center;
 }
 
+/* The page buttons are glyphs, so they sit tight against their own box. This
+   stays a rule of its own: .viewer-pager a is padded with the rest of the
+   controls further up, and merging this into the rule above would reset that
+   padding along with it. */
 .viewer-page-button {
   padding: 0;
 }
