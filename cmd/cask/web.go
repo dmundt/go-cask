@@ -18,6 +18,7 @@ import (
 	"time"
 
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
+	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
@@ -85,6 +86,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	token := randomToken()
 	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
 	webSrv, err := web.New(raw, web.Config{
+		Hasher:       sha256.New(),
 		StartupToken: token,
 		RoleTokens:   roleTokens,
 		References:   references,

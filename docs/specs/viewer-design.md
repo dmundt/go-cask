@@ -98,6 +98,12 @@ successful or failed verification MUST refresh the visible object table through
 an htmx response event so its status cell immediately reflects the
 session-scoped result.
 
+Digest URLs are algorithm-agnostic at the viewer layer. `Server` receives a
+`cas.Hasher`; routes parse canonical hex with `cas.ParseDigest` and validate
+the resulting width through that hasher. The CLI supplies SHA-256 by default,
+while another client can inject a compatible hasher without changing viewer
+routes.
+
 Each recorded verification MUST carry the time it ran, and the Metadata tab
 MUST restate the recorded finding — its state, its explanation, the digests of
 a mismatch, and the time of the check — every time the object is selected, not

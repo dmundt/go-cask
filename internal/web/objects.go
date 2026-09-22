@@ -136,7 +136,7 @@ type referenceRow struct {
 // a state, turn the store into the rows that state matches, page and select
 // among them, then render whichever part of the page the request asked for.
 func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
-	state, err := parseObjectBrowserState(r.URL.Query())
+	state, err := parseObjectBrowserState(r.URL.Query(), s.cfg.Hasher)
 	if err != nil {
 		http.Error(w, "invalid object browser query", http.StatusBadRequest)
 		return
@@ -516,7 +516,7 @@ func integrityLabel(status string) string {
 // object view — the browser's inspector — so this route selects the object
 // there rather than rendering a second, divergent detail page.
 func (s *Server) objectPermalink(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseDigest(w, r)
+	h, ok := s.parseDigest(w, r)
 	if !ok {
 		return
 	}
@@ -533,7 +533,7 @@ func (s *Server) objectPermalink(w http.ResponseWriter, r *http.Request) {
 // object's leading bytes, lazily fetched once the tab is revealed. It serves
 // HTML, not the stored bytes — the CLI is where raw content is read.
 func (s *Server) objectDump(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseDigest(w, r)
+	h, ok := s.parseDigest(w, r)
 	if !ok {
 		return
 	}

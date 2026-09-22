@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/cas"
 )
 
 const (
@@ -82,7 +82,7 @@ var (
 	objectTabs = []string{"metadata", "references", "bytes"}
 )
 
-func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
+func parseObjectBrowserState(values url.Values, hasher cas.Hasher) (objectBrowserState, error) {
 	state := defaultObjectBrowserState()
 	var err error
 	if state.Query, err = queryValue(values, "q"); err != nil {
@@ -123,9 +123,12 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 		return state, err
 	}
 	if state.Selected != "" {
-		digest, parseErr := sha256.Parse(state.Selected)
+		digest, parseErr := cas.ParseDigest(state.Selected)
 		if parseErr != nil {
 			return state, fmt.Errorf("invalid selected object: %w", parseErr)
+		}
+		if err := hasher.Validate(digest); err != nil {
+			return state, fmt.Errorf("invalid selected object: %w", err)
 		}
 		state.Selected = digest.String()
 	} else if _, present := values["selected"]; present {

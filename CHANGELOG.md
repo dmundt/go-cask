@@ -46,6 +46,12 @@ first-cycle exceptions recorded in `versioning.md` §1.
   collection operation remains distinguishable by its literal route while
   both actions share the same verb and operation name.
 
+- Viewer object routes no longer hardcode SHA-256 parsing or verification.
+  `Config.Hasher` supplies the digest policy; canonical URL text is parsed by
+  the core and validated by that hasher. Existing callers retain the SHA-256
+  default, while alternate hash implementations can now serve the same
+  viewer routes.
+
 - The object browser handler is split into named stages — building rows,
   paging and selecting, recording the reference trail, building the inspector,
   and choosing the fragment — in place of one 224-line function. The inspector

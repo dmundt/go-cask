@@ -10,7 +10,6 @@ import (
 	"net/http"
 
 	"github.com/dmundt/go-cask/cas"
-	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // verifyAllFragment verifies every stored object and records each result in the
@@ -24,13 +23,12 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := sessionID(r)
-	hasher := sha256.New()
 	verified, corrupt := 0, 0
 	for _, h := range digests {
 		if err := r.Context().Err(); err != nil {
 			return
 		}
-		if err := s.store.Verify(r.Context(), h, hasher); err != nil {
+		if err := s.store.Verify(r.Context(), h, s.cfg.Hasher); err != nil {
 			outcome := s.describeVerifyFailure(r.Context(), h, err)
 			outcome.Integrity = "corrupt"
 			outcome.IntegrityLabel = integrityLabel("corrupt")
@@ -75,14 +73,14 @@ type actionOutcome struct {
 }
 
 func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
-	h, ok := parseDigest(w, r)
+	h, ok := s.parseDigest(w, r)
 	if !ok {
 		return
 	}
 	// Every operator action is audit-logged with the acting session, the
 	// affected object, and the result (viewer-security §9).
 	id := sessionID(r)
-	if err := s.store.Verify(r.Context(), h, sha256.New()); err != nil {
+	if err := s.store.Verify(r.Context(), h, s.cfg.Hasher); err != nil {
 		slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", false)
 		w.Header().Set("HX-Trigger", "object-status-updated")
 		outcome := s.describeVerifyFailure(r.Context(), h, err)
@@ -153,7 +151,7 @@ func (s *Server) recomputeDigest(ctx context.Context, h cas.Digest) string {
 		return ""
 	}
 	defer rc.Close()
-	actual, err := sha256.New().Digest(rc)
+	actual, err := s.cfg.Hasher.Digest(rc)
 	if err != nil {
 		return ""
 	}

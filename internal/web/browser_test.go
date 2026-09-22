@@ -16,7 +16,47 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
 )
+
+func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := tlvEnvelope("blob@1", []byte("sha512 viewer"))
+	digest := sha512.Of(payload)
+	if err := raw.Put(ctx, digest, bytes.NewReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(raw, Config{StartupToken: testStartupToken, Hasher: sha512.New()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	admin := login(t, ts, testStartupToken)
+	resp, err := admin.Get(ts.URL + "/viewer/objects/" + digest.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), digest.String()) {
+		t.Fatalf("SHA-512 permalink = %d, want 200 containing %s", resp.StatusCode, digest)
+	}
+	csrf := csrfFromPage(string(body))
+	resp, err = admin.PostForm(ts.URL+"/viewer/objects/"+digest.String()+"/verify", url.Values{"csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("SHA-512 verify = %d, want 200", resp.StatusCode)
+	}
+}
 
 func TestFilterDroppingSelectionSwapsInspector(t *testing.T) {
 	ctx := context.Background()
