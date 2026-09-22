@@ -8,6 +8,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening the viewer on an empty store no longer fails while preview graph
+  metadata is unavailable.
+
 ## [v1.6.3] - 2026-09-22
 
 ### Changed

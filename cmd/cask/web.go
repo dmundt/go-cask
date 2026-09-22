@@ -94,14 +94,17 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 
 	token := randomToken()
 	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
-	webSrv, err := web.New(raw, web.Config{
+	viewerConfig := web.Config{
 		Hasher:        hasher,
 		HashAlgorithm: *hashAlgorithm,
 		StartupToken:  token,
 		RoleTokens:    roleTokens,
-		References:    references,
-		Reachability:  references,
-	})
+	}
+	if references != nil {
+		viewerConfig.References = references
+		viewerConfig.Reachability = references
+	}
+	webSrv, err := web.New(raw, viewerConfig)
 	if err != nil {
 		slog.Error("viewer setup", "err", err)
 		os.Exit(1)
