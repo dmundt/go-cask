@@ -7,6 +7,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"maps"
 	"net/http"
 	"slices"
@@ -58,6 +59,9 @@ type objectRow struct {
 	Selected bool
 	// SelectURL opens this row in the browser inspector.
 	SelectURL string
+	// SelectAttrs is the shared selection link attributes for every visible
+	// cell in this row. It is rendered seven times, so precompute it once.
+	SelectAttrs template.HTMLAttr
 }
 
 // --- objects list ---
@@ -148,28 +152,38 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := sessionID(r)
-	rows, types, typeFound, total, matchedSize, err := s.objectRows(r.Context(), id, state)
-	if err != nil {
-		http.Error(w, "list failed", http.StatusInternalServerError)
-		return
+	rows, types, typeFound, total, matchedSize, page, resolvedState, fast, err := s.defaultObjectPage(r.Context(), id, state)
+	if !fast {
+		rows, types, typeFound, total, matchedSize, err = s.objectRows(r.Context(), id, state)
+		if err != nil {
+			http.Error(w, "list failed", http.StatusInternalServerError)
+			return
+		}
+		if !typeFound {
+			http.Error(w, "invalid object type", http.StatusBadRequest)
+			return
+		}
+		sortObjectRows(rows, state)
+		page, state = pageObjects(rows, state)
+	} else {
+		state = resolvedState
 	}
-	if !typeFound {
-		http.Error(w, "invalid object type", http.StatusBadRequest)
-		return
-	}
-	sortObjectRows(rows, state)
 	// The refresher reloads from the URL the request named, so that URL is
 	// captured before paging: a page the browser chose on the operator's behalf
 	// must not become one they are pinned to.
 	refreshURL := state.url()
-	page, state := pageObjects(rows, state)
 	if page.Defaulted {
 		// A defaulted selection is the exception — it has to be named, because
 		// the original URL would resurrect the row the filter dropped.
 		refreshURL = state.url()
 	}
 	linkRows(page.Rows, state)
+	prepareObjectRows(page.Rows)
 	s.recordTrail(id, state)
+	matched := len(rows)
+	if fast {
+		matched = total
+	}
 
 	data := objectBrowserData{
 		State:           state,
@@ -181,26 +195,70 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		Objects:         page.Rows,
 		HasAny:          len(page.Rows) > 0,
 		Total:           total,
-		Matched:         len(rows),
+		Matched:         matched,
 		TotalSize:       matchedSize,
 		RangeStart:      page.RangeStart,
 		RangeEnd:        page.RangeEnd,
 		CurrentPage:     state.Offset/state.Limit + 1,
-		PageCount:       max((len(rows)+state.Limit-1)/state.Limit, 1),
+		PageCount:       max((matched+state.Limit-1)/state.Limit, 1),
 		FirstURL:        paginationURL(state, 0),
 		PreviousURL:     paginationURL(state, max(state.Offset-state.Limit, 0)),
-		NextURL:         paginationURL(state, min(state.Offset+state.Limit, max(len(rows)-1, 0))),
-		LastURL:         paginationURL(state, max(len(rows)-1, 0)/state.Limit*state.Limit),
+		NextURL:         paginationURL(state, min(state.Offset+state.Limit, max(matched-1, 0))),
+		LastURL:         paginationURL(state, max(matched-1, 0)/state.Limit*state.Limit),
 		SortColumns:     sortColumns(state, s.cfg.Reachability != nil),
-		HasPrevious:     state.Offset > 0 && len(rows) > 0,
-		HasNext:         state.Offset+state.Limit < len(rows),
+		HasPrevious:     state.Offset > 0 && matched > 0,
+		HasNext:         state.Offset+state.Limit < matched,
 		CSRF:            s.csrfFor(r),
 		Role:            s.roleFor(r),
 	}
 	if page.Selected >= 0 {
-		data.Inspector = s.inspectorFor(r.Context(), id, state, rows[page.Selected])
+		selected := rows[page.Selected]
+		if fast {
+			selected = page.Rows[page.Selected]
+		}
+		data.Inspector = s.inspectorFor(r.Context(), id, state, selected)
 	}
 	s.renderObjects(w, r, data)
+}
+
+// defaultObjectPage keeps the common unfiltered hash-ascending browser path
+// proportional to its visible page. BuildSnapshot preserves Backend.List's
+// digest order, so constructing and sorting one row per stored object adds no
+// information before pagination.
+func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, totalSize int64, page objectPage, resolvedState objectBrowserState, fast bool, err error) {
+	if state.Query != "" || state.Type != "" || state.Size != "" || state.Status != "" ||
+		state.Reach != "" || state.Sort != "hash" || state.Direction != "asc" ||
+		state.Selected != "" || state.Deselected {
+		return nil, nil, false, 0, 0, objectPage{}, state, false, nil
+	}
+	snapshot, err := s.metadataSnapshot(ctx)
+	if err != nil {
+		return nil, nil, false, 0, 0, objectPage{}, state, true, err
+	}
+	total, totalSize = snapshot.Total, snapshot.Bytes
+	types = snapshot.Types
+	typeFound, fast = true, true
+	if state.Offset >= len(snapshot.Entries) {
+		return nil, types, true, total, totalSize, objectPage{Selected: -1}, state, true, nil
+	}
+	end := min(state.Offset+state.Limit, len(snapshot.Entries))
+	rows = make([]objectRow, 0, end-state.Offset)
+	hasVerifications := s.sessions.hasVerifications(id)
+	for _, entry := range snapshot.Entries[state.Offset:end] {
+		rows = append(rows, s.objectRowFromMeta(id, entry, hasVerifications))
+	}
+	page = objectPage{
+		Rows:       rows,
+		RangeStart: state.Offset + 1,
+		RangeEnd:   end,
+		Selected:   -1,
+	}
+	if len(rows) > 0 {
+		state.Selected = rows[0].digestString()
+		page.Selected = 0
+		page.Defaulted = true
+	}
+	return rows, types, true, total, totalSize, page, state, true, nil
 }
 
 // objectRows builds one row per stored object and keeps the ones state matches.
@@ -214,15 +272,16 @@ func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserS
 	}
 	present := make(map[string]bool)
 	typeFound = state.Type == ""
+	hasVerifications := s.sessions.hasVerifications(id)
 	for _, entry := range snapshot.Entries {
-		row := s.objectRowFromMeta(id, entry)
+		row := s.objectRowFromMeta(id, entry, hasVerifications)
 		if row.Type != "" {
 			present[row.Type] = true
 		}
 		if state.Type == row.Type {
 			typeFound = true
 		}
-		if matchesObjectRow(row, state) {
+		if matchesObjectRow(&row, state) {
 			rows = append(rows, row)
 			matchedSize += row.Size
 		}
@@ -233,40 +292,63 @@ func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserS
 // objectRowFor renders one stored object as a table row.
 func (s *Server) objectRowFor(ctx context.Context, id string, h cas.Digest) objectRow {
 	meta := s.objectMetaFor(ctx, h)
-	return s.objectRowFromMeta(id, index.Entry{
+	row := s.objectRowFromMeta(id, index.Entry{
 		Digest: h, Type: meta.Type, Size: meta.Size, Written: meta.Written,
 		Unreadable: meta.Unreadable,
-	})
+	}, s.sessions.hasVerifications(id))
+	prepareObjectRow(&row)
+	return row
 }
 
-func (s *Server) objectRowFromMeta(id string, entry index.Entry) objectRow {
+func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerifications bool) objectRow {
 	h := entry.Digest
 	row := objectRow{
-		hash:   h,
-		Digest: h.String(),
-		Short:  shortDigest(h),
+		hash: h,
 		// An unreadable object keeps an empty Type so a type filter can never
 		// match it — the type is unknown, not blank — while the cell still says
 		// what happened.
 		Type:              entry.Type,
-		TypeLabel:         entry.Type,
 		Unreadable:        entry.Unreadable,
 		Size:              entry.Size,
-		Integrity:         s.sessions.verification(id, h.String()),
+		Integrity:         "not-verified",
 		Written:           entry.Written,
-		WrittenLabel:      formatWritten(entry.Written),
 		ReachabilityKnown: s.cfg.Reachability != nil,
 	}
-	if entry.Unreadable {
-		row.TypeLabel = "unreadable"
+	if hasVerifications {
+		row.Integrity = s.sessions.verification(id, h.String())
 	}
-	row.IntegrityLabel = integrityLabel(row.Integrity)
 	row.Orphaned = row.ReachabilityKnown && !s.cfg.Reachability.IsReachable(h)
 	if s.cfg.References != nil {
 		row.References = len(s.cfg.References.Inbound(h))
 		row.ReferencesAvailable = true
 	}
 	return row
+}
+
+// prepareObjectRows adds template-only values after filtering, sorting, and
+// paging. Rendering a 25-row page must not format 100,000 off-page rows.
+func prepareObjectRows(rows []objectRow) {
+	for i := range rows {
+		prepareObjectRow(&rows[i])
+	}
+}
+
+func prepareObjectRow(row *objectRow) {
+	row.digestString()
+	row.Short = shortDigest(row.hash)
+	row.TypeLabel = row.Type
+	if row.Unreadable {
+		row.TypeLabel = "unreadable"
+	}
+	row.IntegrityLabel = integrityLabel(row.Integrity)
+	row.WrittenLabel = formatWritten(row.Written)
+}
+
+func (row *objectRow) digestString() string {
+	if row.Digest == "" {
+		row.Digest = row.hash.String()
+	}
+	return row.Digest
 }
 
 // objectPage is the slice of rows one page shows, and where that slice sits in
@@ -309,7 +391,7 @@ func pageObjects(rows []objectRow, state objectBrowserState) (objectPage, object
 	// deselect is honoured rather than undone. The URL is left alone: the
 	// default is a rendering choice, not navigation.
 	if page.Selected < 0 && len(page.Rows) > 0 && !state.Deselected {
-		state.Selected = page.Rows[0].Digest
+		state.Selected = page.Rows[0].digestString()
 		page.Selected = state.Offset
 		page.Defaulted = true
 	}
@@ -322,7 +404,12 @@ func indexOfDigest(rows []objectRow, digest string) int {
 	if digest == "" {
 		return -1
 	}
-	return slices.IndexFunc(rows, func(row objectRow) bool { return row.Digest == digest })
+	for i := range rows {
+		if rows[i].digestString() == digest {
+			return i
+		}
+	}
+	return -1
 }
 
 // linkRows marks the selected row and points every row at the state its own
@@ -331,17 +418,19 @@ func linkRows(rows []objectRow, state objectBrowserState) {
 	for i := range rows {
 		rowState := state
 		rowState.Nav = ""
-		rows[i].Selected = rows[i].Digest == state.Selected
+		digest := rows[i].digestString()
+		rows[i].Selected = digest == state.Selected
 		// Clicking the selected row again clears the inspector, so its link
 		// points at the deselected state instead of at itself.
 		if rows[i].Selected {
 			rowState.Selected = ""
 			rowState.Deselected = true
 		} else {
-			rowState.Selected = rows[i].Digest
+			rowState.Selected = digest
 			rowState.Deselected = false
 		}
 		rows[i].SelectURL = rowState.url()
+		rows[i].SelectAttrs = selectionLinkAttrs(rows[i].SelectURL)
 	}
 }
 

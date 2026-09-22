@@ -52,12 +52,12 @@
 </form>{{end}}
 
 {{define "object-row"}}<tr{{if .Selected}} class="viewer-selected" aria-current="true"{{end}}>
-<td><a class="viewer-row-link" {{selectLink .SelectURL}}>{{.Short}}</a></td>
-<td class="viewer-type"><a class="viewer-row-link" {{selectLink .SelectURL}}>{{if .Unreadable}}<span class="viewer-unreadable">unreadable</span>{{else}}{{.TypeLabel}}{{end}}</a></td>
-<td><a class="viewer-row-link" {{selectLink .SelectURL}}>{{formatBytes .Size}}</a></td>
-<td class="viewer-references"><a class="viewer-row-link" {{selectLink .SelectURL}}>{{.References}}</a></td>
-<td class="viewer-status-cell"><a class="viewer-row-link" {{selectLink .SelectURL}}><span class="viewer-status viewer-status-{{.Integrity}}">{{.IntegrityLabel}}</span></a></td>{{if .ReachabilityKnown}}<td class="viewer-status-cell"><a class="viewer-row-link" {{selectLink .SelectURL}}>{{if .Orphaned}}<span class="viewer-status viewer-status-orphaned">Orphaned</span>{{else}}<span class="viewer-status viewer-status-reachable">Resolved</span>{{end}}</a></td>{{end}}
-<td><a class="viewer-row-link" {{selectLink .SelectURL}}>{{.WrittenLabel}}</a></td>
+<td><a class="viewer-row-link" {{.SelectAttrs}}>{{.Short}}</a></td>
+<td class="viewer-type"><a class="viewer-row-link" {{.SelectAttrs}}>{{if .Unreadable}}<span class="viewer-unreadable">unreadable</span>{{else}}{{.TypeLabel}}{{end}}</a></td>
+<td><a class="viewer-row-link" {{.SelectAttrs}}>{{formatBytes .Size}}</a></td>
+<td class="viewer-references"><a class="viewer-row-link" {{.SelectAttrs}}>{{.References}}</a></td>
+<td class="viewer-status-cell"><a class="viewer-row-link" {{.SelectAttrs}}><span class="viewer-status viewer-status-{{.Integrity}}">{{.IntegrityLabel}}</span></a></td>{{if .ReachabilityKnown}}<td class="viewer-status-cell"><a class="viewer-row-link" {{.SelectAttrs}}>{{if .Orphaned}}<span class="viewer-status viewer-status-orphaned">Orphaned</span>{{else}}<span class="viewer-status viewer-status-reachable">Resolved</span>{{end}}</a></td>{{end}}
+<td><a class="viewer-row-link" {{.SelectAttrs}}>{{.WrittenLabel}}</a></td>
 </tr>{{end}}
 
 {{define "sort-header"}}<th{{if .Class}} class="{{.Class}}"{{end}} scope="col"{{if .Active}} aria-sort="{{.AriaSort}}"{{end}}><span class="viewer-sort-head">{{.Label}}<a class="viewer-sort-button{{if .Active}} viewer-sort-active{{end}}" href="{{.URL}}" hx-get="{{.URL}}" hx-target="#object-list" hx-push-url="true" aria-label="Sort {{.Name}} {{.NextDirection}}">{{.Glyph}}</a></span></th>{{end}}

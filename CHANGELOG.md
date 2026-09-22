@@ -8,6 +8,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.6.3] - 2026-09-22
+
+### Changed
+
+- Viewer object-list rendering now scales with visible rows for the default
+  hash-ordered view, avoiding per-object formatting and sorting work for
+  large stores.
+- Added opt-in viewer scale benchmarks for 100 through 100,000 stored objects.
+
 ## [v1.6.2] - 2026-09-22
 
 ### Changed

@@ -317,7 +317,7 @@ The object-browser URL owns all view state:
   object, because a table pick is a new point of departure rather than a step
   in the chain that led there. `nav=stay` (a tab switch) re-renders the same
   selection and MUST leave the trail untouched. An exhausted direction renders
-  as an inert, dimmed `<span>` rather than a dead link. `nav` describes a
+  as inert, dimmed text rather than a dead link. `nav` describes a
   single click, so it MUST NOT be carried by the URLs built from that state.
   The trail is session state — it disappears with the session and is never
   persisted.

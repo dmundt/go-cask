@@ -4,6 +4,7 @@
 package web
 
 import (
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"math"
@@ -90,11 +91,14 @@ func formatBytes(size int64) string {
 }
 
 func shortDigest(d cas.Digest) string {
-	prefix := d.Prefix(8)
-	if len(d.String()) <= len(prefix) {
-		return prefix
+	const prefixChars = 8
+	if len(d)*2 <= prefixChars {
+		return d.String()
 	}
-	return prefix + "…"
+	var short [prefixChars + len("…")]byte
+	hex.Encode(short[:prefixChars], d[:prefixChars/2])
+	copy(short[prefixChars:], "…")
+	return string(short[:])
 }
 
 // Version reports the build's module version, rendered as the viewer and the
