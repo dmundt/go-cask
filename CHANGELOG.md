@@ -10,6 +10,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [v1.6.1] - 2026-09-22
+
+### Changed
+
+- Viewer object browsing reuses bounded metadata snapshots, reducing repeated
+  filesystem scans during filtering, sorting, pagination, and htmx refreshes.
+- Viewer verification reports the mismatched digest from its existing hash pass
+  instead of reading corrupt objects a second time.
+
 ## [v1.6.0] - 2026-09-22
 
 ### Added

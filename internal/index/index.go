@@ -4,9 +4,15 @@
 package index
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
+	"io"
+	"sort"
 	"strings"
+	"time"
+
+	"github.com/dmundt/go-cask/cas"
 )
 
 // Paginate returns the items in the [offset, offset+limit) window, bounded to
@@ -56,6 +62,7 @@ func envelopeType(data []byte) (string, error) {
 	if len(data) < 1 || data[0] != envelopeVersion {
 		return "", errNotEnvelope
 	}
+
 	typeLen, n := binary.Uvarint(data[1:])
 	if n <= 0 {
 		return "", errNotEnvelope
@@ -69,4 +76,78 @@ func envelopeType(data []byte) (string, error) {
 		name += "@1" // legacy unversioned type name
 	}
 	return name, nil
+}
+
+// Entry is the immutable metadata used by the viewer query path. Keeping the
+// result of one store walk together avoids re-opening and re-statting every
+// object for each filter, sort, or pagination request.
+type Entry struct {
+	Digest     cas.Digest
+	Type       string
+	Size       int64
+	Written    time.Time
+	Unreadable bool
+}
+
+// Snapshot is a point-in-time metadata index. Callers must treat Entries as
+// read-only; a new snapshot is built when the backing store changes.
+type Snapshot struct {
+	Entries []Entry
+	Types   []string
+	Total   int
+	Bytes   int64
+}
+
+type metadataSource interface {
+	cas.Backend
+	Size(context.Context, cas.Digest) (int64, error)
+	ModTime(context.Context, cas.Digest) (time.Time, error)
+}
+
+// BuildSnapshot scans source once and records bounded envelope metadata.
+// Unreadable records remain indexed so the browser can report them without
+// repeatedly retrying a broken object during one request burst.
+func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error) {
+	digests, err := source.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s := &Snapshot{Entries: make([]Entry, 0, len(digests)), Total: len(digests)}
+	types := make(map[string]struct{})
+	for _, d := range digests {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		e := Entry{Digest: d}
+		rc, readErr := source.Get(ctx, d)
+		if readErr == nil {
+			prefix, err := io.ReadAll(io.LimitReader(rc, 64<<10))
+			closeErr := rc.Close()
+			if err != nil || closeErr != nil {
+				e.Unreadable = true
+			} else {
+				e.Type = EnvelopeType(prefix)
+			}
+		} else {
+			e.Unreadable = true
+		}
+		if e.Size, err = source.Size(ctx, d); err != nil {
+			e.Unreadable = true
+		} else {
+			s.Bytes += e.Size
+		}
+		if e.Written, err = source.ModTime(ctx, d); err != nil {
+			e.Unreadable = true
+		}
+		if e.Type != "" {
+			types[e.Type] = struct{}{}
+		}
+		s.Entries = append(s.Entries, e)
+	}
+	s.Types = make([]string, 0, len(types))
+	for typ := range types {
+		s.Types = append(s.Types, typ)
+	}
+	sort.Strings(s.Types)
+	return s, nil
 }

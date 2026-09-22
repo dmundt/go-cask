@@ -6,6 +6,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -28,8 +29,10 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 		if err := r.Context().Err(); err != nil {
 			return
 		}
-		if err := s.store.Verify(r.Context(), h, s.cfg.Hasher); err != nil {
+		err, actual := s.verifyObject(r.Context(), h)
+		if err != nil {
 			outcome := s.describeVerifyFailure(r.Context(), h, err)
+			outcome.Actual = actual
 			outcome.Integrity = "corrupt"
 			outcome.IntegrityLabel = integrityLabel("corrupt")
 			s.sessions.setVerification(id, h.String(), "corrupt", outcome)
@@ -80,10 +83,12 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 	// Every operator action is audit-logged with the acting session, the
 	// affected object, and the result (viewer-security §9).
 	id := sessionID(r)
-	if err := s.store.Verify(r.Context(), h, s.cfg.Hasher); err != nil {
+	err, actual := s.verifyObject(r.Context(), h)
+	if err != nil {
 		slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", false)
 		w.Header().Set("HX-Trigger", "object-status-updated")
 		outcome := s.describeVerifyFailure(r.Context(), h, err)
+		outcome.Actual = actual
 		outcome.Integrity = "corrupt"
 		outcome.IntegrityLabel = integrityLabel("corrupt")
 		s.sessions.setVerification(id, h.String(), "corrupt", outcome)
@@ -118,13 +123,13 @@ func verifiedOutcome(h cas.Digest) actionOutcome {
 
 // describeVerifyFailure turns a verification error into operator-facing prose.
 func (s *Server) describeVerifyFailure(ctx context.Context, h cas.Digest, err error) actionOutcome {
+	_ = ctx
 	switch {
 	case errors.Is(err, cas.ErrDigestMismatch):
 		return actionOutcome{
 			Headline: "Corrupt",
 			Summary:  "Stored bytes no longer hash to this address, so the content has changed since it was written. The object is unusable and must be restored from a backup or re-ingested.",
 			Expected: h.String(),
-			Actual:   s.recomputeDigest(ctx, h),
 		}
 	case errors.Is(err, cas.ErrNotFound):
 		return actionOutcome{
@@ -142,18 +147,24 @@ func (s *Server) describeVerifyFailure(ctx context.Context, h cas.Digest, err er
 	}
 }
 
-// recomputeDigest reports the digest the stored bytes actually hash to, so a
-// mismatch shows both sides rather than one unexplained number. It returns an
-// empty string when the bytes cannot be re-read.
-func (s *Server) recomputeDigest(ctx context.Context, h cas.Digest) string {
+// verifyObject hashes one open stream and returns its actual digest. Keeping
+// the digest from the verification pass avoids a second full read when a
+// mismatch must be explained to an operator.
+func (s *Server) verifyObject(ctx context.Context, h cas.Digest) (error, string) {
+	if err := s.cfg.Hasher.Validate(h); err != nil {
+		return err, ""
+	}
 	rc, err := s.store.Get(ctx, h)
 	if err != nil {
-		return ""
+		return err, ""
 	}
 	defer rc.Close()
 	actual, err := s.cfg.Hasher.Digest(rc)
 	if err != nil {
-		return ""
+		return fmt.Errorf("cas: verify read: %w", err), ""
 	}
-	return actual.String()
+	if !actual.Equal(h) {
+		return fmt.Errorf("%w: %s", cas.ErrDigestMismatch, h), actual.String()
+	}
+	return nil, actual.String()
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/internal/index"
 )
 
 type objectRow struct {
@@ -147,7 +148,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := sessionID(r)
-	rows, types, typeFound, total, err := s.objectRows(r.Context(), id, state)
+	rows, types, typeFound, total, matchedSize, err := s.objectRows(r.Context(), id, state)
 	if err != nil {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
@@ -181,7 +182,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		HasAny:          len(page.Rows) > 0,
 		Total:           total,
 		Matched:         len(rows),
-		TotalSize:       totalSize(rows),
+		TotalSize:       matchedSize,
 		RangeStart:      page.RangeStart,
 		RangeEnd:        page.RangeEnd,
 		CurrentPage:     state.Offset/state.Limit + 1,
@@ -206,15 +207,15 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 // It also reports every type present in the store, which the type filter
 // offers, and whether the requested type was among them: a filter naming a type
 // no object carries is a malformed request, not an empty page.
-func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, err error) {
-	digests, err := s.store.List(ctx)
+func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, matchedSize int64, err error) {
+	snapshot, err := s.metadataSnapshot(ctx)
 	if err != nil {
-		return nil, nil, false, 0, err
+		return nil, nil, false, 0, 0, err
 	}
 	present := make(map[string]bool)
 	typeFound = state.Type == ""
-	for _, h := range digests {
-		row := s.objectRowFor(ctx, id, h)
+	for _, entry := range snapshot.Entries {
+		row := s.objectRowFromMeta(id, entry)
 		if row.Type != "" {
 			present[row.Type] = true
 		}
@@ -223,14 +224,23 @@ func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserS
 		}
 		if matchesObjectRow(row, state) {
 			rows = append(rows, row)
+			matchedSize += row.Size
 		}
 	}
-	return rows, slices.Sorted(maps.Keys(present)), typeFound, len(digests), nil
+	return rows, slices.Sorted(maps.Keys(present)), typeFound, snapshot.Total, matchedSize, nil
 }
 
 // objectRowFor renders one stored object as a table row.
 func (s *Server) objectRowFor(ctx context.Context, id string, h cas.Digest) objectRow {
 	meta := s.objectMetaFor(ctx, h)
+	return s.objectRowFromMeta(id, index.Entry{
+		Digest: h, Type: meta.Type, Size: meta.Size, Written: meta.Written,
+		Unreadable: meta.Unreadable,
+	})
+}
+
+func (s *Server) objectRowFromMeta(id string, entry index.Entry) objectRow {
+	h := entry.Digest
 	row := objectRow{
 		hash:   h,
 		Digest: h.String(),
@@ -238,16 +248,16 @@ func (s *Server) objectRowFor(ctx context.Context, id string, h cas.Digest) obje
 		// An unreadable object keeps an empty Type so a type filter can never
 		// match it — the type is unknown, not blank — while the cell still says
 		// what happened.
-		Type:              meta.Type,
-		TypeLabel:         meta.Type,
-		Unreadable:        meta.Unreadable,
-		Size:              meta.Size,
+		Type:              entry.Type,
+		TypeLabel:         entry.Type,
+		Unreadable:        entry.Unreadable,
+		Size:              entry.Size,
 		Integrity:         s.sessions.verification(id, h.String()),
-		Written:           meta.Written,
-		WrittenLabel:      formatWritten(meta.Written),
+		Written:           entry.Written,
+		WrittenLabel:      formatWritten(entry.Written),
 		ReachabilityKnown: s.cfg.Reachability != nil,
 	}
-	if meta.Unreadable {
+	if entry.Unreadable {
 		row.TypeLabel = "unreadable"
 	}
 	row.IntegrityLabel = integrityLabel(row.Integrity)
@@ -422,15 +432,6 @@ func typeOptions(types []string, selected string) []filterOption {
 		options = append(options, filterOption{Value: typ, Label: typ, Selected: typ == selected})
 	}
 	return options
-}
-
-// totalSize sums the matched rows, which the pager reports beside their count.
-func totalSize(rows []objectRow) int64 {
-	var total int64
-	for _, row := range rows {
-		total += row.Size
-	}
-	return total
 }
 
 func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, digests []cas.Digest) []referenceRow {

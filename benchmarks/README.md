@@ -34,6 +34,7 @@ The suite is split by subsystem so each family keeps a coherent ownership bounda
 | [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard benchmarks |
 | [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, and concurrency checks |
 | [`scale_bench_test.go`](./scale_bench_test.go) | On-demand state-scaling probes |
+| `internal/index/index_bench_test.go` | Viewer metadata snapshot scan at 100/1,000 objects |
 
 All files live in `benchmarks/` and use standard `go test -bench`. Every timed benchmark reports allocations. `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput is reported only where one payload of known size defines each operation; benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
 
