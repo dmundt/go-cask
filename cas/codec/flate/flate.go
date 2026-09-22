@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/dmundt/go-cask/cas"
@@ -21,6 +22,19 @@ type Codec[T any] struct {
 }
 
 var errNilCodec = errors.New("flatecodec: next codec is nil")
+
+// MaxDecodedBytes bounds how many bytes a single Decode call will decompress.
+// The compressed payload is stored data, and a small one can expand without
+// limit (a compression bomb), so the read stops at this ceiling instead of
+// allocating until the machine gives up. A caller whose legitimate payload
+// exceeds it needs a codec that streams rather than this decompress-to-memory
+// layer.
+const MaxDecodedBytes = 1 << 30
+
+// ErrDecodedTooLarge reports a payload whose decompressed form exceeds
+// MaxDecodedBytes. The condition belongs to the encoded bytes, not to the
+// wrapped codec, so the wrapped codec is never asked to decode them.
+var ErrDecodedTooLarge = fmt.Errorf("flatecodec: decoded payload exceeds %d bytes", MaxDecodedBytes)
 
 // New returns a flate-compressing codec for type T.
 func New[T any](next cas.Codec[T]) Codec[T] {
@@ -53,7 +67,12 @@ func encodeCompressed[T any](next cas.Codec[T], v T, newWriter func(io.Writer, i
 	return buf.Bytes(), nil
 }
 
-func decodeCompressed[T any](next cas.Codec[T], data []byte, newReader func(io.Reader) (io.ReadCloser, error)) (T, error) {
+// decodeCompressed inflates data and hands the bytes to next. maxDecoded bounds
+// the inflated payload: the stored bytes are untrusted, and a small compressed
+// payload can expand without limit, so the read is capped rather than trusting
+// the stream. It is a parameter rather than the constant directly so the
+// internal tests can exercise the ceiling without inflating a gigabyte.
+func decodeCompressed[T any](next cas.Codec[T], data []byte, maxDecoded int64, newReader func(io.Reader) (io.ReadCloser, error)) (T, error) {
 	var zero T
 	if next == nil {
 		return zero, errNilCodec
@@ -65,9 +84,16 @@ func decodeCompressed[T any](next cas.Codec[T], data []byte, newReader func(io.R
 	}
 	defer r.Close()
 
-	payload, err := io.ReadAll(r)
+	// The ceiling applies to the decompressed stream, not to data: a small
+	// compressed payload can expand far beyond its own size. LimitReader stops
+	// the decompressor one byte past the ceiling, so the check below can tell
+	// "exactly at the limit" from "over it".
+	payload, err := io.ReadAll(io.LimitReader(r, maxDecoded+1))
 	if err != nil {
 		return zero, err
+	}
+	if int64(len(payload)) > maxDecoded {
+		return zero, ErrDecodedTooLarge
 	}
 	return next.Decode(payload)
 }
@@ -81,9 +107,10 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 }
 
 // Decode inflates the incoming data and then decodes it with the wrapped
-// codec.
+// codec. A payload that inflates past MaxDecodedBytes is rejected with
+// ErrDecodedTooLarge.
 func (c Codec[T]) Decode(data []byte) (T, error) {
-	return decodeCompressed(c.next, data, func(r io.Reader) (io.ReadCloser, error) {
+	return decodeCompressed(c.next, data, MaxDecodedBytes, func(r io.Reader) (io.ReadCloser, error) {
 		return flate.NewReader(r), nil
 	})
 }

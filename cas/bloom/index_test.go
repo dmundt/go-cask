@@ -38,7 +38,10 @@ func TestParametersHandlesEdgeCases(t *testing.T) {
 		{name: "probe clamp", expectedItems: 10, rate: 0.999, wantM: 1, wantK: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gotM, gotK := Parameters(tc.expectedItems, tc.rate)
+			gotM, gotK, err := Parameters(tc.expectedItems, tc.rate)
+			if err != nil {
+				t.Fatalf("Parameters(%d, %v) returned unexpected error: %v", tc.expectedItems, tc.rate, err)
+			}
 			if gotM != tc.wantM || gotK != tc.wantK {
 				t.Fatalf("Parameters(%d, %v) = (%d, %d), want (%d, %d)", tc.expectedItems, tc.rate, gotM, gotK, tc.wantM, tc.wantK)
 			}
@@ -69,6 +72,16 @@ func (f *stubFilter) Contains(d cas.Digest) bool {
 func (f *stubFilter) Remove(d cas.Digest) {
 	f.removed = append(f.removed, d.String())
 	delete(f.present, d.String())
+}
+
+// mustGuard builds a Guard from non-nil arguments and fails the test otherwise.
+func mustGuard(t *testing.T, backend cas.Backend, filter Filter) *Guard {
+	t.Helper()
+	guard, err := NewGuard(backend, filter)
+	if err != nil {
+		t.Fatalf("NewGuard() error = %v", err)
+	}
+	return guard
 }
 
 type stubBackend struct {
@@ -132,22 +145,24 @@ func (b *stubBackend) Stats(ctx context.Context) (*cas.Stats, error) {
 	return b.stats, nil
 }
 
-func TestNewGuardPanicsOnNilInput(t *testing.T) {
+func TestNewGuardRejectsNilInput(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		be   cas.Backend
-		f    guardFilter
+		f    Filter
 	}{
 		{name: "backend nil", be: nil, f: &stubFilter{present: map[string]bool{}}},
 		{name: "filter nil", be: &stubBackend{stored: map[string][]byte{}}, f: nil},
+		{name: "both nil", be: nil, f: nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("expected panic")
-				}
-			}()
-			_ = NewGuard(tc.be, tc.f)
+			guard, err := NewGuard(tc.be, tc.f)
+			if err == nil {
+				t.Fatal("NewGuard() error = nil, want a non-nil error for a nil argument")
+			}
+			if guard != nil {
+				t.Fatalf("NewGuard() = %v, want a nil guard alongside the error", guard)
+			}
 		})
 	}
 }
@@ -156,7 +171,7 @@ func TestGuardPutAndFilterDelegation(t *testing.T) {
 	ctx := context.Background()
 	backend := &stubBackend{stored: map[string][]byte{}}
 	filter := &stubFilter{present: map[string]bool{}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 	d := cas.NewDigest([]byte("guard put"))
 
 	if err := guard.Put(ctx, d, bytes.NewReader([]byte("payload"))); err != nil {
@@ -177,7 +192,7 @@ func TestGuardExistsShortCircuitsOnNegativeBloomResult(t *testing.T) {
 	ctx := context.Background()
 	backend := &stubBackend{stored: map[string][]byte{}}
 	filter := &stubFilter{present: map[string]bool{}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 	d := cas.NewDigest([]byte("absent"))
 
 	ok, err := guard.Exists(ctx, d)
@@ -196,7 +211,7 @@ func TestGuardExistsUsesBackendAfterPositiveBloomResult(t *testing.T) {
 	ctx := context.Background()
 	backend := &stubBackend{stored: map[string][]byte{}}
 	filter := &stubFilter{present: map[string]bool{}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 	d := cas.NewDigest([]byte("present"))
 	filter.present[d.String()] = true
 	backend.stored[d.String()] = []byte("payload")
@@ -213,20 +228,23 @@ func TestGuardExistsUsesBackendAfterPositiveBloomResult(t *testing.T) {
 	}
 }
 
-func TestGuardZeroDigestSkipsBloomLookup(t *testing.T) {
+func TestGuardExistsRejectsAbsentDigest(t *testing.T) {
 	backend := &stubBackend{stored: map[string][]byte{}}
 	filter := &stubFilter{present: map[string]bool{}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 
 	ok, err := guard.Exists(context.Background(), cas.Digest{})
-	if err != nil {
-		t.Fatalf("Exists() error = %v", err)
+	if !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("Exists(absent digest) = (%v, %v), want (false, ErrInvalidDigest)", ok, err)
 	}
 	if ok {
-		t.Fatal("zero digest should never exist")
+		t.Fatal("absent digest should never be reported as present")
 	}
 	if backend.existsCalls != 0 {
-		t.Fatalf("backend.Exists calls = %d, want 0 for zero digest", backend.existsCalls)
+		t.Fatalf("backend.Exists calls = %d, want 0 for an absent digest", backend.existsCalls)
+	}
+	if filter.contains != nil {
+		t.Fatalf("filter.Contains calls = %v, want none for an absent digest", filter.contains)
 	}
 }
 
@@ -235,7 +253,7 @@ func TestGuardDeleteRemovesWhenSupported(t *testing.T) {
 	d := cas.NewDigest([]byte("dig"))
 	backend := &stubBackend{stored: map[string][]byte{d.String(): []byte("payload")}}
 	filter := &stubFilter{present: map[string]bool{d.String(): true}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 
 	if err := guard.Delete(ctx, d); err != nil {
 		t.Fatalf("Delete() error = %v", err)
@@ -253,7 +271,7 @@ func TestGuardDeletePropagatesBackendErrors(t *testing.T) {
 	d := cas.NewDigest([]byte("dig"))
 	backend := &stubBackend{stored: map[string][]byte{d.String(): []byte("payload")}, deleteErr: errors.New("delete fail")}
 	filter := &stubFilter{present: map[string]bool{d.String(): true}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 
 	if err := guard.Delete(ctx, d); err == nil {
 		t.Fatal("Delete() error = nil, want non-nil")
@@ -270,7 +288,7 @@ func TestGuardDelegatesGetListStatsAndFilter(t *testing.T) {
 	ctx := context.Background()
 	backend := &stubBackend{stored: map[string][]byte{}}
 	filter := &stubFilter{present: map[string]bool{}}
-	guard := NewGuard(backend, filter)
+	guard := mustGuard(t, backend, filter)
 
 	d := cas.NewDigest([]byte("get me"))
 	backend.stored[d.String()] = []byte("payload")
@@ -326,7 +344,10 @@ func TestResolveIndexHash(t *testing.T) {
 }
 
 func TestParametersAndIndices(t *testing.T) {
-	m, k := Parameters(100, 0.01)
+	m, k, err := Parameters(100, 0.01)
+	if err != nil {
+		t.Fatalf("Parameters(100, 0.01) returned unexpected error: %v", err)
+	}
 	if m == 0 || k == 0 {
 		t.Fatalf("Parameters(100, 0.01) = (%d, %d), want positive values", m, k)
 	}

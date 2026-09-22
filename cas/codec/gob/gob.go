@@ -6,9 +6,9 @@
 // and consumer must be Go programs using the same type, and the format is
 // neither a long-term archive format nor a stable external wire format.
 //
-// New[T]() returns a codec for any storable value T, so a store can be built
-// directly: cas.New(raw, gob.New[T](), algo). It satisfies the codec round-trip
-// contract, Decode(Encode(v)) == v.
+// NewRaw[T]() returns a codec for any storable value T, so a store can be built
+// directly: cas.New(raw, gob.NewRaw[T](), algo). It satisfies the codec
+// round-trip contract, Decode(Encode(v)) == v.
 package gob
 
 import (
@@ -26,15 +26,18 @@ type Codec[T any] struct {
 	next cas.Codec[T]
 }
 
-// New returns a gob codec for type T. When a wrapped codec is supplied, gob
-// becomes the outermost layer in a cascade.
-func New[T any](next ...cas.Codec[T]) Codec[T] {
-	var wrapped cas.Codec[T]
-	if len(next) > 0 {
-		wrapped = next[0]
-	}
-	return Codec[T]{next: wrapped}
+// New returns a gob codec that wraps next: the value is serialized by the inner
+// codec and the resulting bytes are then gob-encoded as a transport layer, so
+// gob becomes the outermost layer in a cascade. A nil next is the documented
+// escape hatch for gob-encoding T directly; NewRaw is the same thing in one
+// word and reads better.
+func New[T any](next cas.Codec[T]) Codec[T] {
+	return Codec[T]{next: next}
 }
+
+// NewRaw returns a gob codec that gob-encodes T directly, with no inner codec.
+// Use it instead of New(nil) when nothing is wrapped.
+func NewRaw[T any]() Codec[T] { return Codec[T]{} }
 
 // Encode gob-encodes v directly or, when wrapped, the bytes produced by the
 // inner codec.

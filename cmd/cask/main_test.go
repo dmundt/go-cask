@@ -522,8 +522,12 @@ func TestVersionAndWebHelpers(t *testing.T) {
 				t.Fatalf("isLoopbackBind(%q) = %v, want %v", tc.addr, got, tc.want)
 			}
 		}
-		if tok := randomToken(); len(tok) == 0 || strings.Count(tok, "-") != 2 {
-			t.Fatalf("randomToken() = %q, want 3 groups separated by dashes", tok)
+		tok, err := randomToken()
+		if err != nil {
+			t.Fatalf("randomToken() error = %v", err)
+		}
+		if len(tok) != 14 || strings.Count(tok, "-") != 2 || tok != strings.ToUpper(tok) {
+			t.Fatalf("randomToken() = %q, want 3 uppercase hex groups separated by dashes", tok)
 		}
 	})
 

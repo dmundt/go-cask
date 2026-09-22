@@ -4,14 +4,13 @@ package crc64
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"hash"
 	"hash/crc64"
 	"io"
-	"strings"
 
 	"github.com/dmundt/go-cask/cas"
+	hashutil "github.com/dmundt/go-cask/cas/hash"
 )
 
 // Name is the digest algorithm name used by this package.
@@ -26,10 +25,14 @@ type Hasher struct{}
 // New returns a CRC-64/ECMA CAS hasher.
 func New() Hasher { return Hasher{} }
 
+// ecmaTable is the CRC-64/ECMA polynomial table, built once and shared by every
+// use in this package. It is read-only after construction, so sharing it is
+// safe and avoids rebuilding the 256-entry table on every digest.
+var ecmaTable = crc64.MakeTable(crc64.ECMA)
+
 // Digest computes the CRC-64/ECMA digest of data read from r.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
-	tbl := crc64.MakeTable(crc64.ECMA)
-	h := crc64.New(tbl)
+	h := crc64.New(ecmaTable)
 	if _, err := io.Copy(h, r); err != nil {
 		return nil, fmt.Errorf("cas/verify/crc64: %w", err)
 	}
@@ -39,52 +42,27 @@ func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
 	return cas.NewDigest(b), nil
 }
 
-// Validate checks that d is a valid CRC-64/ECMA digest.
+// Validate checks that d is a valid CRC-64/ECMA digest: present and exactly
+// Size bytes.
 func (Hasher) Validate(d cas.Digest) error {
-	if d.IsZero() {
-		return fmt.Errorf("%w: absent digest", cas.ErrInvalidDigest)
-	}
-	if len(d) != Size {
-		return fmt.Errorf("%w: digest is %d bytes, want %d", cas.ErrInvalidDigest, len(d), Size)
-	}
-	return nil
+	return hashutil.ValidateDigestSize(d, Name, Size)
 }
 
 // NewHasher returns a standard library CRC-64 hash.Hash64.
-func NewHasher() hash.Hash64 { return crc64.New(crc64.MakeTable(crc64.ECMA)) }
+func NewHasher() hash.Hash64 { return crc64.New(ecmaTable) }
 
 // Of returns the CRC-64/ECMA digest of data.
 func Of(data []byte) cas.Digest {
-	tbl := crc64.MakeTable(crc64.ECMA)
-	v := crc64.Checksum(data, tbl)
+	v := crc64.Checksum(data, ecmaTable)
 	b := make([]byte, Size)
 	binary.BigEndian.PutUint64(b, v)
 	return cas.NewDigest(b)
 }
 
-// Format formats d as a CRC-64/ECMA digest string.
-func Format(d cas.Digest) string {
-	if d.IsZero() {
-		return ""
-	}
-	return Name + ":" + hex.EncodeToString(d)
-}
+// Format renders a digest in the printable "crc64:hexdigest" form, and the
+// absent digest as "".
+func Format(d cas.Digest) string { return hashutil.FormatDigest(Name, d) }
 
-// Parse parses a CRC-64/ECMA digest string.
-func Parse(s string) (cas.Digest, error) {
-	body, ok := strings.CutPrefix(s, Name+":")
-	if !ok {
-		if strings.Contains(s, ":") {
-			return nil, fmt.Errorf("%w: %q is not a %s digest", cas.ErrInvalidDigest, s, Name)
-		}
-		body = s
-	}
-	d, err := cas.ParseDigest(body)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
-	}
-	if err := (Hasher{}).Validate(d); err != nil {
-		return nil, fmt.Errorf("%w: %q", cas.ErrInvalidDigest, s)
-	}
-	return d, nil
-}
+// Parse accepts the printable "crc64:hexdigest" form and the bare hex form, and
+// rejects anything else with cas.ErrInvalidDigest.
+func Parse(s string) (cas.Digest, error) { return hashutil.ParseDigest(Name, s, Size) }

@@ -59,6 +59,38 @@ func encodeEnvelope(typ string, payload []byte) []byte {
 	return out
 }
 
+// decodeEnvelopeType decodes only the leading header of an envelope —
+// [version u8][uvarint typeLen][type] — and returns the versioned type name
+// together with the offset where the payload-length field starts.
+//
+// It reads no byte beyond the type, so a truncated object prefix (a caller that
+// read a bounded number of bytes rather than the whole object) still yields the
+// type. Both decodeEnvelope and the exported EnvelopeType are built on it, so
+// there is exactly one implementation of the header layout.
+func decodeEnvelopeType(data []byte) (string, int, error) {
+	if len(data) < 1 {
+		return "", 0, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)
+	}
+	if data[0] != envelopeVersion {
+		return "", 0, fmt.Errorf("%w: unsupported envelope version %d", ErrUnknownType, data[0])
+	}
+	off := 1
+	typeLen, n := binary.Uvarint(data[off:])
+	if n <= 0 {
+		return "", 0, fmt.Errorf("%w: truncated type length", ErrUnknownType)
+	}
+	off += n
+	if typeLen == 0 || typeLen > uint64(len(data)-off) {
+		return "", 0, fmt.Errorf("%w: object missing or oversized type", ErrUnknownType)
+	}
+	typeName := string(data[off : off+int(typeLen)])
+	off += int(typeLen)
+	if !strings.Contains(typeName, "@") {
+		typeName += "@1" // legacy unversioned type name
+	}
+	return typeName, off, nil
+}
+
 // decodeEnvelope decodes a TLV envelope from an in-memory buffer, returning the
 // versioned type name (an absent major version reads as "@1",
 // object-versioning §2) and the codec payload. The payload is returned as a
@@ -71,25 +103,9 @@ func encodeEnvelope(typ string, payload []byte) []byte {
 // readers tolerate a frame extension that appends fields without breaking
 // existing objects, while the writer never emits a trailer.
 func decodeEnvelope(data []byte) (string, []byte, error) {
-	if len(data) < 1 {
-		return "", nil, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)
-	}
-	if data[0] != envelopeVersion {
-		return "", nil, fmt.Errorf("%w: unsupported envelope version %d", ErrUnknownType, data[0])
-	}
-	off := 1
-	typeLen, n := binary.Uvarint(data[off:])
-	if n <= 0 {
-		return "", nil, fmt.Errorf("%w: truncated type length", ErrUnknownType)
-	}
-	off += n
-	if typeLen == 0 || typeLen > uint64(len(data)-off) {
-		return "", nil, fmt.Errorf("%w: object missing or oversized type", ErrUnknownType)
-	}
-	typeName := string(data[off : off+int(typeLen)])
-	off += int(typeLen)
-	if strings.IndexByte(typeName, '@') < 0 {
-		typeName += "@1" // legacy unversioned type name
+	typeName, off, err := decodeEnvelopeType(data)
+	if err != nil {
+		return "", nil, err
 	}
 	payloadLen, n := binary.Uvarint(data[off:])
 	if n <= 0 {
@@ -100,6 +116,23 @@ func decodeEnvelope(data []byte) (string, []byte, error) {
 		return "", nil, fmt.Errorf("%w: payload length exceeds envelope size", ErrUnknownType)
 	}
 	return typeName, data[off : off+int(payloadLen)], nil
+}
+
+// EnvelopeType returns the versioned type name of the envelope at the start of
+// data without reading its payload. It is the header-only counterpart of
+// EnvelopeFromBytes, for callers that only need to know what an object is: a
+// bounded prefix of the object is enough, so the payload is never buffered and
+// a truncated prefix still yields its type. An absent major version reads back
+// as "@1" (object-versioning §2).
+//
+// It returns ErrUnknownType when data does not begin with a usable envelope
+// header.
+func EnvelopeType(data []byte) (string, error) {
+	typeName, _, err := decodeEnvelopeType(data)
+	if err != nil {
+		return "", err
+	}
+	return typeName, nil
 }
 
 // EnvelopeFromBytes decodes a TLV envelope, returning the versioned type name

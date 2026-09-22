@@ -2,6 +2,7 @@
 package fs
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -11,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,42 +38,33 @@ const (
 	MaxFanDepth = 64
 )
 
-// config is the filesystem backend's own configuration, applied via
-// backend.Option functions. Options are backend-specific; memory and s3
-// define their own config types.
+// config is the filesystem backend's own configuration. Option is a func over
+// this concrete type, so only fs options can configure fs — passing another
+// backend's option is a compile-time error rather than a no-op.
 type config struct {
 	fanOut    int
 	fanLevels int
 	dirSync   bool
 }
 
+// Option configures a filesystem Backend.
+type Option func(*config)
+
 // WithFanOut sets the number of hex characters per fan-out directory level.
 // 0 means "flat" (no fan-out directories).
-func WithFanOut(n int) backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.fanOut = n
-		}
-	}
+func WithFanOut(n int) Option {
+	return func(c *config) { c.fanOut = n }
 }
 
 // WithFanLevels sets the number of fan-out directory levels. 0 means "flat".
-func WithFanLevels(n int) backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.fanLevels = n
-		}
-	}
+func WithFanLevels(n int) Option {
+	return func(c *config) { c.fanLevels = n }
 }
 
 // WithDirSync enables a best-effort fsync of the parent directory after the
 // atomic rename that publishes an object.
-func WithDirSync() backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.dirSync = true
-		}
-	}
+func WithDirSync() Option {
+	return func(c *config) { c.dirSync = true }
 }
 
 // Backend is the filesystem backend: each object is one file under
@@ -93,7 +85,7 @@ var _ cas.Backend = (*Backend)(nil)
 
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
-func New(basePath string, opts ...backend.Option) (*Backend, error) {
+func New(basePath string, opts ...Option) (*Backend, error) {
 	cfg := config{fanOut: DefaultFanOut, fanLevels: DefaultFanLevels}
 	for _, o := range opts {
 		o(&cfg)
@@ -195,8 +187,10 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		return fmt.Errorf("cas: create temp file: %w", err)
 	}
 	cleanup := func() {
-		f.Close()
-		os.Remove(tmp)
+		// Best effort: the write already failed, so a cleanup error here cannot
+		// be reported without hiding the primary error.
+		_ = f.Close()      // the file is about to be discarded
+		_ = os.Remove(tmp) // the temp object is unusable
 	}
 	if _, err := io.Copy(f, backend.ContextReader{Ctx: ctx, R: r}); err != nil {
 		cleanup()
@@ -207,7 +201,7 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		return fmt.Errorf("cas: sync object: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // the temp object is unusable
 		return fmt.Errorf("cas: close object: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -216,10 +210,10 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		// regular file satisfies an idempotent Put (cas-core §4.4). Anything
 		// else at the path (a directory, a device) is a real failure.
 		if fi, statErr := os.Stat(path); statErr == nil && fi.Mode().IsRegular() {
-			os.Remove(tmp)
+			_ = os.Remove(tmp) // the object is already published
 			return nil
 		}
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // best effort: the publish error is what matters
 		return fmt.Errorf("cas: publish object: %w", err)
 	}
 	if s.dirSync {
@@ -262,9 +256,9 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 		return nil, err
 	}
 	path := s.digestPath(d)
-	f, err := openObject(path)
+	f, err := openWithRetry(os.Open, path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
 		return nil, fmt.Errorf("cas: open object: %w", err)
@@ -272,18 +266,13 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	return f, nil
 }
 
-// openObject opens an object file for reading, retrying briefly while the file
-// exists but cannot be opened. On Windows a concurrent atomic rename makes the
-// destination momentarily unopenable ("access is denied" / "being used by
-// another process"), so a lock-free reader may need a moment before it sees
-// the old or the new file (cas-core §4.4 rename caveat). A missing file is
-// reported immediately.
-func openObject(path string) (*os.File, error) {
-	return openWithRetry(os.Open, path)
-}
-
-// openWithRetry implements openObject with an injectable open function, so the
-// transient-failure path is testable on every platform.
+// openWithRetry opens an object file for reading, retrying briefly while the
+// file exists but cannot be opened. On Windows a concurrent atomic rename makes
+// the destination momentarily unopenable ("access is denied" / "being used by
+// another process"), so a lock-free reader may need a moment before it sees the
+// old or the new file (cas-core §4.4 rename caveat). A missing file is reported
+// immediately. open is injectable so the transient-failure path is testable on
+// every platform.
 func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, error) {
 	const attempts = 20
 	var err error
@@ -316,7 +305,7 @@ func (s *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if os.IsNotExist(err) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
 	return false, fmt.Errorf("cas: stat object: %w", err)
@@ -332,7 +321,7 @@ func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := os.Remove(s.digestPath(d)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(s.digestPath(d)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("cas: delete object: %w", err)
 	}
 	return nil
@@ -349,7 +338,7 @@ func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
 	}
 	fi, err := os.Stat(s.digestPath(d))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
 		return 0, fmt.Errorf("cas: stat object: %w", err)
@@ -368,7 +357,7 @@ func (s *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) 
 	}
 	fi, err := os.Stat(s.digestPath(d))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
 		return time.Time{}, fmt.Errorf("cas: stat object: %w", err)
@@ -474,11 +463,17 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
-	sort.Slice(digests, func(i, j int) bool { return digests[i].String() < digests[j].String() })
+	// Hex order equals byte order (the hex alphabet '0'-'9','a'-'f' is ordinal
+	// and nibble-preserving), so comparing raw digest bytes sorts exactly like
+	// comparing the rendered hex strings the tests assert on — without
+	// allocating two strings per comparison.
+	slices.SortFunc(digests, func(a, b cas.Digest) int { return bytes.Compare(a, b) })
 	return digests, nil
 }
 
-// Stats walks the tree and returns the object count and total size.
+// Stats walks the tree and returns the object count and total size. A file that
+// cannot be stat'ed fails the walk: an error is returned rather than silently
+// undercounting the store.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -503,7 +498,7 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		}
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			return err
 		}
 		st.TotalSize += info.Size()
 		st.ObjectCount++

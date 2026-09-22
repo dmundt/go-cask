@@ -97,6 +97,28 @@ func isNilValue[T any](v T) bool {
 	}
 }
 
+// encoded produces the stored form of obj together with its digest: the
+// validation, codec encode, envelope framing, hashing and key check that every
+// write path shares, so Put and PutDedup cannot drift apart. obj is validated
+// before anything is encoded, so an invalid object is never written.
+func (s *Store[T]) encoded(obj T) (Digest, []byte, error) {
+	if err := validateObject(obj); err != nil {
+		return nil, nil, err
+	}
+	data, err := s.marshal(obj)
+	if err != nil {
+		return nil, nil, err
+	}
+	d, err := s.hasher.Digest(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.check(d, "store: put"); err != nil {
+		return nil, nil, err
+	}
+	return d, data, nil
+}
+
 // Put encodes obj with the store codec, prepends the type string, and
 // stores it. The digest covers the type AND the payload, so identical content
 // always produces the identical address (dedup) and a type change produces
@@ -107,18 +129,8 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := validateObject(obj); err != nil {
-		return nil, err
-	}
-	data, err := s.marshal(obj)
+	d, data, err := s.encoded(obj)
 	if err != nil {
-		return nil, err
-	}
-	d, err := s.hasher.Digest(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	if err := s.check(d, "store: put"); err != nil {
 		return nil, err
 	}
 	if err := s.raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
@@ -134,18 +146,8 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	if err := validateObject(obj); err != nil {
-		return nil, false, err
-	}
-	data, err := s.marshal(obj)
+	d, data, err := s.encoded(obj)
 	if err != nil {
-		return nil, false, err
-	}
-	d, err := s.hasher.Digest(bytes.NewReader(data))
-	if err != nil {
-		return nil, false, err
-	}
-	if err := s.check(d, "store: put"); err != nil {
 		return nil, false, err
 	}
 	exists, err := s.raw.Exists(ctx, d)
@@ -176,7 +178,7 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 		// i.e. an object Put succeeds on but Get can never read.
 		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
 	}
-	if strings.IndexByte(typ, '@') < 0 {
+	if !strings.Contains(typ, "@") {
 		// Object[T].Type MUST return a versioned name "<type>@<major>"
 		// (object.go, object-versioning.md). decodeEnvelope reads a legacy
 		// unversioned name as "@1", so writing one produces an object whose
@@ -257,8 +259,5 @@ func (s *Store[T]) Delete(ctx context.Context, d Digest) error {
 	if err := s.check(d, "store: delete"); err != nil {
 		return err
 	}
-	if err := s.raw.Delete(ctx, d); err != nil {
-		return err
-	}
-	return nil
+	return s.raw.Delete(ctx, d)
 }

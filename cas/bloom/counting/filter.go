@@ -48,7 +48,10 @@ func NewFilter(cfg Config) (*Filter, error) {
 	if cfg.CounterBits != 4 && cfg.CounterBits != 8 && cfg.CounterBits != 16 {
 		return nil, fmt.Errorf("bloom/counting: counter bits must be one of 4, 8, 16")
 	}
-	m, k := bloom.Parameters(cfg.ExpectedItems, cfg.FalsePositiveRate)
+	m, k, err := bloom.Parameters(cfg.ExpectedItems, cfg.FalsePositiveRate)
+	if err != nil {
+		return nil, fmt.Errorf("bloom/counting: %w", err)
+	}
 	mask := uint32((1 << cfg.CounterBits) - 1)
 	return &Filter{counts: make([]uint32, m), k: k, m: m, bits: cfg.CounterBits, mask: mask, hash: bloom.ResolveIndexHash(cfg.Hash)}, nil
 }

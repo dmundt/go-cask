@@ -151,7 +151,11 @@ func (s *server) requireRole(roles []string, next http.HandlerFunc) http.Handler
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		// The status line and headers are already committed, so the failure can
+		// no longer become an error response — log it instead.
+		slog.Error("cas api write json", "status", status, "err", err)
+	}
 }
 
 // Store raw bytes — the digest is computed while streaming
@@ -244,7 +248,11 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, rc)
+	if _, err := io.Copy(w, rc); err != nil {
+		// A mid-stream failure (client disconnect, read error) cannot be turned
+		// into an error response: 200 and the headers are already committed.
+		slog.Error("cas api stream object", "hash", h.String(), "err", err)
+	}
 }
 
 // DELETE /objects/{hash}: admin; deleting a missing object is a no-op.
@@ -356,25 +364,38 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 		}
 		reachable[h.String()] = true
 	}
-	before, _ := s.raw.Stats(r.Context())
+	before, err := s.raw.Stats(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
+		return
+	}
 	if err := s.raw.GC(r.Context(), reachable); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gc failed"})
 		return
 	}
-	after, _ := s.raw.Stats(r.Context())
-	deleted := before.ObjectCount - after.ObjectCount
-	for hs := range s.sizes {
-		if !reachable[hs] {
-			delete(s.sizes, hs)
-		}
+	// The sweep already happened: keep the in-memory size index in step with
+	// the store even if the post-GC stats below fail.
+	s.retainSizes(reachable)
+	after, err := s.raw.Stats(r.Context())
+	if err != nil {
+		// GC succeeded but its outcome cannot be reported truthfully, so answer
+		// 500 rather than inventing a "deleted" count; the failure is logged.
+		slog.Error("cas api gc stats", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
+		return
 	}
+	deleted := before.ObjectCount - after.ObjectCount
 	slog.Info("cas api audit", "action", "gc", "deleted", deleted)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 func (s *server) openapi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-	w.Write(openapiYAML)
+	if _, err := w.Write(openapiYAML); err != nil {
+		// The body is a single write of an embedded asset; headers are already
+		// committed, so a failure can only be logged.
+		slog.Error("cas api write openapi", "err", err)
+	}
 }
 
 // parseDigestParam validates the {hash} path value with sha256.Parse → 400 on

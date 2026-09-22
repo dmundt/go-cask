@@ -7,28 +7,26 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
 )
 
-// config holds the in-memory backend's own configuration, applied via
-// backend.Option functions.
+// config holds the in-memory backend's own configuration.
 type config struct {
 	maxBytes int64
 }
 
+// Option configures the in-memory Backend.
+type Option func(*config)
+
 // WithMaxSize caps the total stored bytes. 0 (the default) means unbounded.
 // Once the cap is set (> 0), every Put is checked before allocation and
 // rejected with an error if it would exceed the cap.
-func WithMaxSize(maxBytes int64) backend.Option {
-	return func(cfg any) {
-		if c, ok := cfg.(*config); ok {
-			c.maxBytes = maxBytes
-		}
-	}
+func WithMaxSize(maxBytes int64) Option {
+	return func(c *config) { c.maxBytes = maxBytes }
 }
 
 // Backend is an in-memory Backend keeping objects in a map[string][]byte,
@@ -46,7 +44,7 @@ type Backend struct {
 var _ cas.Backend = (*Backend)(nil)
 
 // New creates an empty in-memory backend. Options may include WithMaxSize.
-func New(opts ...backend.Option) *Backend {
+func New(opts ...Option) *Backend {
 	cfg := config{}
 	for _, o := range opts {
 		o(&cfg)
@@ -180,7 +178,10 @@ func (m *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 		}
 		digests = append(digests, cas.NewDigest([]byte(key)))
 	}
-	sort.Slice(digests, func(i, j int) bool { return digests[i].String() < digests[j].String() })
+	// Hex order equals byte order, so comparing raw digest bytes sorts exactly
+	// like comparing the rendered hex strings — without allocating two strings
+	// per comparison.
+	slices.SortFunc(digests, func(a, b cas.Digest) int { return bytes.Compare(a, b) })
 	return digests, nil
 }
 

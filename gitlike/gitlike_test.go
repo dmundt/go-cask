@@ -565,7 +565,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := NewPreloader(cached, 0) // workers <= 0 → default
+	p := NewPreloader(ctx, cached, 0) // workers <= 0 → default
 	defer p.Stop()
 	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(mustDigest(t, strings.Repeat("ab", 32))), Author: "a"})
 	if err != nil {
@@ -591,7 +591,7 @@ func TestPreloader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := NewPreloader(cached, 2)
+	p := NewPreloader(ctx, cached, 2)
 	defer p.Stop()
 
 	hb := putBlob(t, repo, "data")
@@ -1067,10 +1067,10 @@ func TestValidate(t *testing.T) {
 func TestRepositoryWithAnotherCodec(t *testing.T) {
 	ctx := context.Background()
 	repo := NewRepository(mem.New(), sha256hash.New(), Codecs{
-		Blob:   gobcodec.New[*Blob](),
-		Tree:   gobcodec.New[*Tree](),
-		Commit: gobcodec.New[*Commit](),
-		Tag:    gobcodec.New[*Tag](),
+		Blob:   gobcodec.NewRaw[*Blob](),
+		Tree:   gobcodec.NewRaw[*Tree](),
+		Commit: gobcodec.NewRaw[*Commit](),
+		Tag:    gobcodec.NewRaw[*Tag](),
 	})
 
 	// The invariant is codec-independent: a gob-backed repository refuses a
@@ -1124,8 +1124,8 @@ func TestPutRejectsCommitWithoutTree(t *testing.T) {
 
 // --- parseType / ResolveAny error branches ---
 
-// TestParseTypeRejectsMalformedEnvelope covers parseType's EnvelopeFromBytes
-// error return (garbage bytes are not a TLV envelope).
+// TestParseTypeRejectsMalformedEnvelope covers parseType's cas.EnvelopeType
+// error return (garbage bytes are not a TLV envelope header).
 func TestParseTypeRejectsMalformedEnvelope(t *testing.T) {
 	// Version byte 0 is not the current envelope version.
 	if _, err := parseType([]byte{0x00}); err == nil {

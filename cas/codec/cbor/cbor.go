@@ -7,6 +7,7 @@ package cbor
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -26,8 +27,8 @@ type Codec[T any] struct {
 }
 
 var (
-	errNilEncode = fmt.Errorf("cbor: encode func is nil")
-	errNilDecode = fmt.Errorf("cbor: decode func is nil")
+	errNilEncode = errors.New("cbor: encode func is nil")
+	errNilDecode = errors.New("cbor: decode func is nil")
 )
 
 // New wraps an inner codec and preserves the repo's stack model: the next codec
@@ -35,12 +36,6 @@ var (
 // representational layer. The caller still supplies the CBOR conversion logic.
 func New[T any](next cas.Codec[T], encode func(T) ([]byte, error), decode func([]byte) (T, error)) Codec[T] {
 	return Codec[T]{next: next, encode: encode, decode: decode}
-}
-
-// NewWithNext is the explicit wrapper constructor for CBOR stacks; it mirrors
-// the repo's next-first chaining convention for codec wrappers.
-func NewWithNext[T any](next cas.Codec[T], encode func(T) ([]byte, error), decode func([]byte) (T, error)) Codec[T] {
-	return New(next, encode, decode)
 }
 
 // NewRaw creates a direct CBOR codec for a concrete T using explicit conversion
@@ -150,106 +145,6 @@ func encodeMapValue(v map[string]any) ([]byte, error) {
 	return appendMapValue(nil, v)
 }
 
-func estimateAnySize(v any) (int, error) {
-	switch x := v.(type) {
-	case nil:
-		return 1, nil
-	case bool:
-		return 1, nil
-	case int:
-		if x >= 0 {
-			return lenMajorHeader(0, uint64(x)), nil
-		}
-		return lenMajorHeader(1, uint64(-(x + 1))), nil
-	case int8:
-		if x >= 0 {
-			return lenMajorHeader(0, uint64(x)), nil
-		}
-		return lenMajorHeader(1, uint64(-(x + 1))), nil
-	case int16:
-		if x >= 0 {
-			return lenMajorHeader(0, uint64(x)), nil
-		}
-		return lenMajorHeader(1, uint64(-(x + 1))), nil
-	case int32:
-		if x >= 0 {
-			return lenMajorHeader(0, uint64(x)), nil
-		}
-		return lenMajorHeader(1, uint64(-(x + 1))), nil
-	case int64:
-		if x >= 0 {
-			return lenMajorHeader(0, uint64(x)), nil
-		}
-		return lenMajorHeader(1, uint64(-(x + 1))), nil
-	case uint:
-		return lenMajorHeader(0, uint64(x)), nil
-	case uint8:
-		return lenMajorHeader(0, uint64(x)), nil
-	case uint16:
-		return lenMajorHeader(0, uint64(x)), nil
-	case uint32:
-		return lenMajorHeader(0, uint64(x)), nil
-	case uint64:
-		return lenMajorHeader(0, x), nil
-	case float32:
-		return 9, nil
-	case float64:
-		return 9, nil
-	case string:
-		return lenMajorHeader(3, uint64(len(x))) + len(x), nil
-	case []byte:
-		return lenMajorHeader(2, uint64(len(x))) + len(x), nil
-	case []string:
-		total := lenMajorHeader(4, uint64(len(x)))
-		for _, s := range x {
-			total += lenMajorHeader(3, uint64(len(s))) + len(s)
-		}
-		return total, nil
-	case []any:
-		total := lenMajorHeader(4, uint64(len(x)))
-		for _, item := range x {
-			sz, err := estimateAnySize(item)
-			if err != nil {
-				return 0, err
-			}
-			total += sz
-		}
-		return total, nil
-	case map[string]any:
-		keys := make([]string, 0, len(x))
-		for key := range x {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		total := lenMajorHeader(5, uint64(len(keys)))
-		for _, key := range keys {
-			encodedKey := appendMajor(nil, 3, uint64(len(key)))
-			total += len(encodedKey) + len(key)
-			sz, err := estimateAnySize(x[key])
-			if err != nil {
-				return 0, err
-			}
-			total += sz
-		}
-		return total, nil
-	case map[string]string:
-		keys := make([]string, 0, len(x))
-		for key := range x {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		total := lenMajorHeader(5, uint64(len(keys)))
-		for _, key := range keys {
-			encodedKey := appendMajor(nil, 3, uint64(len(key)))
-			total += len(encodedKey) + len(key)
-			total += lenMajorHeader(3, uint64(len(x[key]))) + len(x[key])
-		}
-		return total, nil
-	default:
-		return 0, fmt.Errorf("cbor: unsupported value type %T", v)
-	}
-}
-
 func decodeAny(data []byte) (any, error) {
 	value, rest, err := decodeOne(data)
 	if err != nil {
@@ -307,23 +202,6 @@ func appendArrayValue(dst []byte, items []any) ([]byte, error) {
 	return dst, nil
 }
 
-func encodeArray(items []any) ([]byte, error) {
-	totalSize := lenMajorHeader(4, uint64(len(items)))
-	for _, item := range items {
-		sz, err := estimateAnySize(item)
-		if err != nil {
-			return nil, err
-		}
-		totalSize += sz
-	}
-	out := make([]byte, 0, totalSize)
-	return appendArrayValue(out, items)
-}
-
-func encodeBytes(data []byte) ([]byte, error) {
-	return appendBytes(nil, data), nil
-}
-
 func appendBytes(dst []byte, data []byte) []byte {
 	dst = appendMajor(dst, 2, uint64(len(data)))
 	return append(dst, data...)
@@ -355,50 +233,6 @@ func encodeFloat64Into(dst []byte, v float64) ([]byte, error) {
 		buf[i] = byte(bits >> (8 * (7 - i)))
 	}
 	return append(append(dst, 0xfb), buf...), nil
-}
-
-func encodeStringBytes(data []byte) ([]byte, error) {
-	out := appendMajor(nil, 3, uint64(len(data)))
-	return append(out, data...), nil
-}
-
-func encodeInt64(v int64) ([]byte, error) {
-	if v >= 0 {
-		return appendMajor(nil, 0, uint64(v)), nil
-	}
-	return appendMajor(nil, 1, uint64(-(v + 1))), nil
-}
-
-func encodeUint64(v uint64) ([]byte, error) {
-	return appendMajor(nil, 0, v), nil
-}
-
-func encodeFloat64(v float64) ([]byte, error) {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return nil, fmt.Errorf("cbor: unsupported float value %v", v)
-	}
-	bits := math.Float64bits(v)
-	buf := make([]byte, 8)
-	for i := range buf {
-		buf[i] = byte(bits >> (8 * (7 - i)))
-	}
-	return append([]byte{0xfb}, buf...), nil
-}
-
-func lenMajorHeader(mt byte, length uint64) int {
-	if length < 24 {
-		return 1
-	}
-	if length <= math.MaxUint8 {
-		return 2
-	}
-	if length <= math.MaxUint16 {
-		return 3
-	}
-	if length <= math.MaxUint32 {
-		return 5
-	}
-	return 9
 }
 
 func appendMajor(dst []byte, mt byte, length uint64) []byte {
@@ -489,19 +323,27 @@ func decodeOne(data []byte) (any, []byte, error) {
 	case 1:
 		return -1 - int64(length), data[headerLen:], nil
 	case 2:
-		payloadEnd := payloadStart + int(length)
-		if payloadEnd > len(data) {
+		// The declared length is untrusted: reject it before converting to int
+		// or slicing, otherwise a huge value overflows and panics.
+		if length > uint64(len(data)-payloadStart) {
 			return nil, nil, fmt.Errorf("cbor: truncated value")
 		}
+		payloadEnd := payloadStart + int(length)
 		return data[payloadStart:payloadEnd], data[payloadEnd:], nil
 	case 3:
-		payloadEnd := payloadStart + int(length)
-		if payloadEnd > len(data) {
+		if length > uint64(len(data)-payloadStart) {
 			return nil, nil, fmt.Errorf("cbor: truncated value")
 		}
+		payloadEnd := payloadStart + int(length)
 		return string(data[payloadStart:payloadEnd]), data[payloadEnd:], nil
 	case 4:
-		items := make([]any, 0, int(length))
+		// Every item occupies at least one byte, so a declared count larger
+		// than the bytes remaining is malformed. Rejecting it before the loop
+		// keeps the count from sizing any allocation.
+		if length > uint64(len(data)-payloadStart) {
+			return nil, nil, fmt.Errorf("cbor: truncated value")
+		}
+		items := make([]any, 0)
 		cursor := payloadStart
 		for i := uint64(0); i < length; i++ {
 			item, rest, err := decodeOne(data[cursor:])
@@ -513,7 +355,12 @@ func decodeOne(data []byte) (any, []byte, error) {
 		}
 		return items, data[cursor:], nil
 	case 5:
-		m := make(map[string]any, int(length))
+		// Same guard as arrays; a pair needs at least two bytes, but one byte
+		// per entry is already enough to bound the decode by the input size.
+		if length > uint64(len(data)-payloadStart) {
+			return nil, nil, fmt.Errorf("cbor: truncated value")
+		}
+		m := make(map[string]any)
 		cursor := payloadStart
 		for i := uint64(0); i < length; i++ {
 			key, rest, err := decodeOne(data[cursor:])
