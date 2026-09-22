@@ -160,11 +160,14 @@ func Version() string {
 	return "dev"
 }
 
-// rowLinkAttrs renders the attributes every object-row cell link carries: the
-// href for a cold click, the htmx request that swaps the inspector in place,
-// and the header that marks the request as a selection. The URL is escaped
-// here because the result is injected as raw attribute text.
-func rowLinkAttrs(selectURL string) template.HTMLAttr {
+// selectionLinkAttrs renders the attributes every link that selects an object
+// carries: the href for a cold click, the htmx request that swaps the inspector
+// in place, and the header that marks the request as a selection. Row cells,
+// inspector tabs, history arrows, and reference links all navigate the same
+// way, so they all emit these from here — a copy that quietly lost the
+// selection header would still look right. The URL is escaped because the
+// result is injected as raw attribute text.
+func selectionLinkAttrs(selectURL string) template.HTMLAttr {
 	escaped := template.HTMLEscapeString(selectURL)
 	return template.HTMLAttr(fmt.Sprintf(
 		`href="%s" hx-get="%s" hx-target="#object-inspector" hx-headers='{"X-Viewer-Selection":"true"}' hx-push-url="true"`,
@@ -192,11 +195,11 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		// objectRow.Short.
 		"shortDigest": shortDigest,
 		"formatBytes": formatBytes,
-		// Every cell in an object row is the same link to the same object, and
-		// a row has seven of them. Emitting the shared attributes from one
-		// place keeps a copy from drifting — a cell that quietly lost the
-		// selection header would still look right.
-		"rowLink": rowLinkAttrs,
+		// Every link that selects an object navigates the same way, and one
+		// page emits a dozen of them: seven cells per row, three inspector
+		// tabs, two history arrows, and one per reference. Emitting the shared
+		// attributes from one place keeps a copy from drifting.
+		"selectLink": selectionLinkAttrs,
 		// The top bar is rendered from several page payloads that share only a
 		// CSRF token, so the Verify control builds its own state from it.
 		"verifyAll": func(csrf string) verifyAllState {
@@ -559,9 +562,95 @@ func parseObjectBrowserState(values url.Values) (objectBrowserState, error) {
 	return state, nil
 }
 
-// objectSortKeys lists every sortable column. "status" and "reach" are the two
-// integrity/reachability axes; "inbound" is the reference count.
-var objectSortKeys = []string{"hash", "type", "size", "inbound", "status", "reach", "written"}
+// objectSortKeys lists every sortable column. It is derived from the header
+// description below so a key the URL accepts and a column the table renders
+// can never disagree.
+var objectSortKeys = func() []string {
+	keys := make([]string, 0, len(objectSortColumns))
+	for _, column := range objectSortColumns {
+		keys = append(keys, column.Key)
+	}
+	return keys
+}()
+
+// objectSortColumns describes the object table's header, in display order. It
+// is the single source for both the sortable keys and the markup: seven
+// hand-written copies of the same header is how the Hash column's accessible
+// name drifted out of step with its own arrow.
+var objectSortColumns = []struct {
+	// Key is the sort key this column requests, and the value parsed back out
+	// of the "sort" query parameter.
+	Key string
+	// Label is the visible column heading.
+	Label string
+	// Name is the column as the accessible name says it, which is not always
+	// the heading: "Inbound" counts inbound references and says so.
+	Name string
+	// Class is the <th> class, empty when the column needs none.
+	Class string
+	// NeedsReachability marks a column the viewer can only render when the
+	// host supplies a reachability index.
+	NeedsReachability bool
+}{
+	{Key: "hash", Label: "Hash", Name: "hash"},
+	{Key: "type", Label: "Type", Name: "type"},
+	{Key: "size", Label: "Size", Name: "size"},
+	{Key: "inbound", Label: "Inbound", Name: "inbound references", Class: "viewer-references"},
+	{Key: "status", Label: "Integrity", Name: "integrity", Class: "viewer-status-cell"},
+	{Key: "reach", Label: "References", Name: "references", Class: "viewer-status-cell", NeedsReachability: true},
+	{Key: "written", Label: "Written", Name: "written"},
+}
+
+// sortColumn is one rendered table header. Every decision the markup would
+// otherwise make is resolved here, so the template carries no per-column logic.
+type sortColumn struct {
+	Label string
+	Name  string
+	Class string
+	// URL sorts by this column: it flips the direction when the column already
+	// owns the sort and starts ascending otherwise.
+	URL string
+	// Active reports that this column owns the current sort.
+	Active bool
+	// AriaSort is the active column's current order, empty for the rest.
+	AriaSort string
+	// NextDirection names the order the next click applies. An inactive column
+	// always starts ascending, whatever the active column is doing.
+	NextDirection string
+	// Glyph is the direction indicator: the active column's current order, and
+	// the ascending arrow everywhere else.
+	Glyph string
+}
+
+// sortColumns renders the table header for state, dropping the reachability
+// column when the host supplies no index for it.
+func sortColumns(state objectBrowserState, hasReachability bool) []sortColumn {
+	columns := make([]sortColumn, 0, len(objectSortColumns))
+	for _, def := range objectSortColumns {
+		if def.NeedsReachability && !hasReachability {
+			continue
+		}
+		column := sortColumn{
+			Label:         def.Label,
+			Name:          def.Name,
+			Class:         def.Class,
+			URL:           sortURL(state, def.Key),
+			Active:        state.Sort == def.Key,
+			NextDirection: "ascending",
+			Glyph:         "▲",
+		}
+		if column.Active {
+			column.AriaSort = state.Direction + "ending"
+			if state.Direction == "asc" {
+				column.NextDirection = "descending"
+			} else {
+				column.Glyph = "▼"
+			}
+		}
+		columns = append(columns, column)
+	}
+	return columns
+}
 
 // objectStates lists the selectable integrity filters in display order.
 // Reachability is the other, independent axis and has its own filter.
@@ -613,18 +702,14 @@ type objectBrowserData struct {
 	PreviousURL     string
 	NextURL         string
 	LastURL         string
-	SortHashURL     string
-	SortTypeURL     string
-	SortSizeURL     string
-	SortInboundURL  string
-	SortStatusURL   string
-	SortReachURL    string
-	SortWrittenURL  string
-	HasPrevious     bool
-	HasNext         bool
-	Inspector       *browserInspector
-	CSRF            string
-	Role            string
+	// SortColumns is the table header: one entry per rendered column, already
+	// resolved into the link, the arrow, and the accessible name it needs.
+	SortColumns []sortColumn
+	HasPrevious bool
+	HasNext     bool
+	Inspector   *browserInspector
+	CSRF        string
+	Role        string
 }
 
 type filterOption struct {
@@ -926,13 +1011,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	data.PreviousURL = paginationURL(state, max(state.Offset-state.Limit, 0))
 	data.NextURL = paginationURL(state, min(state.Offset+state.Limit, max(len(rows)-1, 0)))
 	data.LastURL = paginationURL(state, ((max(len(rows)-1, 0))/state.Limit)*state.Limit)
-	data.SortHashURL = sortURL(state, "hash")
-	data.SortTypeURL = sortURL(state, "type")
-	data.SortSizeURL = sortURL(state, "size")
-	data.SortInboundURL = sortURL(state, "inbound")
-	data.SortStatusURL = sortURL(state, "status")
-	data.SortReachURL = sortURL(state, "reach")
-	data.SortWrittenURL = sortURL(state, "written")
+	data.SortColumns = sortColumns(state, data.HasReachability)
 	data.HasPrevious = state.Offset > 0 && len(rows) > 0
 	data.HasNext = state.Offset+state.Limit < len(rows)
 	if r.Header.Get("HX-Request") == "true" {
