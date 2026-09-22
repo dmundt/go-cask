@@ -58,14 +58,22 @@ func TestLoginFlow(t *testing.T) {
 
 func TestRoleTokensLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
+	// A configured role token is a login in its own right, and it grants that
+	// role rather than the startup token's admin rank: the viewer rank reads
+	// the browser but cannot reach an operator route.
 	viewer := login(t, ts, "viewer-tok")
-	resp, err := viewer.Get(ts.URL + "/viewer/gc")
+	if got := statusCode(t, viewer, ts.URL+"/viewer/objects"); got != http.StatusOK {
+		t.Fatalf("viewer token browsing objects = %d, want 200", got)
+	}
+	resp, err := viewer.PostForm(ts.URL+"/viewer/objects/verify-all", url.Values{
+		"csrf": {csrfFromPage(getBody(t, viewer, ts.URL+"/viewer/objects"))},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("removed gc page = %d, want 404", resp.StatusCode)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer token reaching an operator route = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -229,7 +237,7 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 
 	t.Run("csrf and session cookie helpers", func(t *testing.T) {
 		sess := &Session{ID: "abc", CSRF: "csrf-token"}
-		req := httptest.NewRequest(http.MethodPost, "/viewer/gc", strings.NewReader(url.Values{"csrf": {"csrf-token"}}.Encode()))
+		req := httptest.NewRequest(http.MethodPost, "/viewer/objects/verify-all", strings.NewReader(url.Values{"csrf": {"csrf-token"}}.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if !csrfOK(req, sess) {
 			t.Fatal("csrfOK accepted matching token")

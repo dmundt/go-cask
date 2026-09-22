@@ -8,20 +8,33 @@ import (
 	"testing"
 )
 
-func TestDashboardRouteRemoved(t *testing.T) {
+// TestUnknownViewerPathsAnswerUniformly pins the catch-all: the viewer
+// serves a fixed set of routes, and every other path under the prefix — a
+// route that was removed, one that never existed, or one the viewer refuses
+// to offer at all, such as deleting an object — answers the same way. The
+// reply turns on the caller's session, not on the path, so an anonymous
+// caller cannot map the surface by probing it.
+func TestUnknownViewerPathsAnswerUniformly(t *testing.T) {
 	ts, _ := newTestServer(t)
-	// The route is gone, but it still answers through the auth gate: an
-	// anonymous caller learns nothing about which paths the viewer knows.
-	resp, err := ts.Client().Get(ts.URL + "/viewer/dashboard")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("anonymous dashboard route = %d, want 401", resp.StatusCode)
-	}
-	if got := statusCode(t, login(t, ts, testStartupToken), ts.URL+"/viewer/dashboard"); got != http.StatusNotFound {
-		t.Fatalf("dashboard route = %d, want 404", got)
+	authed := login(t, ts, testStartupToken)
+	for _, path := range []string{
+		"/viewer/dashboard",
+		"/viewer/dashboard/",
+		"/viewer/gc",
+		"/viewer/nothing-here",
+		"/viewer/static/viewer.js",
+	} {
+		resp, err := ts.Client().Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("anonymous GET %s = %d, want 401", path, resp.StatusCode)
+		}
+		if got := statusCode(t, authed, ts.URL+path); got != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, got)
+		}
 	}
 }
 
@@ -125,6 +138,11 @@ func TestResponsesCarryHardeningHeaders(t *testing.T) {
 		}
 		if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
 			t.Fatalf("%s X-Frame-Options = %q, want DENY", path, got)
+		}
+		// A token may appear in the landing URL, so no response may pass its
+		// own URL on as a Referer.
+		if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+			t.Fatalf("%s Referrer-Policy = %q, want no-referrer", path, got)
 		}
 		csp := resp.Header.Get("Content-Security-Policy")
 		for _, want := range []string{"default-src 'none'", "script-src 'self'", "frame-ancestors 'none'",

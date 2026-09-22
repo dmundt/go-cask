@@ -121,39 +121,41 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /viewer/login", s.loginPage)
 	mux.HandleFunc("POST /viewer/login", s.loginPost)
-	mux.HandleFunc("GET /viewer/static/htmx.min.js", s.htmx)
-	mux.HandleFunc("GET /viewer/static/viewer.css", s.css)
-	mux.HandleFunc("GET /viewer/", func(w http.ResponseWriter, r *http.Request) {
-		// Never let a token in the URL leak via Referer.
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
-			s.loginToken(w, r, token)
-			return
-		}
-		if _, ok := s.sessions.get(sessionID(r)); !ok {
-			http.Redirect(w, r, "/viewer/login", http.StatusSeeOther)
-			return
-		}
-		s.require(RoleViewer, s.objects)(w, r)
-	})
-	// These routes exist only to keep the "GET /viewer/" prefix from swallowing
-	// paths the viewer no longer serves. They answer through s.require so an
-	// anonymous caller is sent to the login page like everywhere else: a bare
-	// 404 would tell an unauthenticated caller which paths the viewer knows.
-	mux.HandleFunc("GET /viewer/dashboard", s.require(RoleViewer, http.NotFound))
-	mux.HandleFunc("GET /viewer/dashboard/", s.require(RoleViewer, http.NotFound))
-	mux.HandleFunc("GET /viewer/gc", s.require(RoleViewer, http.NotFound))
-	mux.HandleFunc("POST /viewer/gc", s.require(RoleOperator, http.NotFound))
+	mux.HandleFunc("GET /viewer/static/htmx.min.js", s.htmxScript)
+	mux.HandleFunc("GET /viewer/static/viewer.css", s.stylesheet)
+	mux.HandleFunc("GET /viewer/{$}", s.landing)
 	mux.HandleFunc("GET /viewer/objects", s.require(RoleViewer, s.objects))
-	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectDetail))
-	mux.HandleFunc("GET /viewer/objects/{hash}/raw", s.require(RoleViewer, s.objectRaw))
+	mux.HandleFunc("GET /viewer/objects/{hash}", s.require(RoleViewer, s.objectPermalink))
+	mux.HandleFunc("GET /viewer/objects/{hash}/hexdump", s.require(RoleViewer, s.objectHexdump))
 	mux.HandleFunc("POST /viewer/objects/verify-all", s.require(RoleOperator, s.verifyAllFragment))
 	mux.HandleFunc("POST /viewer/objects/{hash}/verify", s.require(RoleOperator, s.verifyFragment))
-	// The viewer inspects; it does not destroy. Deleting an object is a
-	// store-lifecycle operation that belongs to the CLI, where it can be
-	// scripted, audited, and paired with the roots a sweep needs.
-	mux.HandleFunc("POST /viewer/objects/{hash}/delete", s.require(RoleOperator, http.NotFound))
+	// Everything else under the prefix is not a viewer route. The catch-all
+	// names no method, so a path the viewer never served answers the same way
+	// whichever verb asks for it -- including the delete and GC routes the
+	// viewer deliberately does not have, since destroying an object is a
+	// store-lifecycle operation that belongs to the CLI. It answers through
+	// s.require so the reply turns on the caller's session rather than on the
+	// path: 401 without one, 404 with. A bare 404 would let an anonymous
+	// caller map which paths the viewer knows.
+	mux.HandleFunc("/viewer/", s.require(RoleViewer, http.NotFound))
 	return secureHeaders(mux)
+}
+
+// landing is the viewer's entry point. It completes the documented `?token=`
+// deep link (viewer-security §5.1), sends a caller without a session to the
+// login page so a browser can reach it, and otherwise shows the object
+// browser. It is registered for the exact path: every other path under the
+// prefix belongs to a named route or to the catch-all.
+func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
+	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
+		s.loginToken(w, r, token)
+		return
+	}
+	if _, ok := s.sessions.get(sessionID(r)); !ok {
+		http.Redirect(w, r, "/viewer/login", http.StatusSeeOther)
+		return
+	}
+	s.require(RoleViewer, s.objects)(w, r)
 }
 
 // secureHeaders applies the response hardening every viewer response carries.
@@ -173,18 +175,23 @@ func secureHeaders(next http.Handler) http.Handler {
 				"connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; "+
 				"frame-ancestors 'none'")
 		header.Set("X-Frame-Options", "DENY")
+		// The documented `?token=` deep link puts a credential in the URL, so
+		// no viewer response may carry its own URL onward as a Referer
+		// (viewer-security §11). Setting it here covers every response rather
+		// than only the one route that can be reached with a token in hand.
+		header.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) htmx(w http.ResponseWriter, r *http.Request) {
+func (s *Server) htmxScript(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	if _, err := w.Write(htmxJS); err != nil {
 		slog.Error("viewer htmx write", "err", err)
 	}
 }
 
-func (s *Server) css(w http.ResponseWriter, r *http.Request) {
+func (s *Server) stylesheet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	if _, err := w.Write(viewerCSS); err != nil {
 		slog.Error("viewer css write", "err", err)

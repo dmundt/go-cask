@@ -21,6 +21,26 @@ first-cycle exceptions recorded in `versioning.md` §1.
 
 ### Changed
 
+- The viewer's route table is now the whole viewer surface. Paths the viewer
+  no longer serves were each pinned by their own placeholder route, which left
+  every *other* unclaimed path under the prefix falling through to the landing
+  and answering with the object browser. One catch-all replaces the
+  placeholders: it names no method, so a removed route, a path that never
+  existed, and an operation the viewer refuses to offer at all -- deleting an
+  object, collecting garbage -- all answer alike, and on the caller's session
+  rather than on the path. The surface cannot be mapped by probing it.
+
+- Every viewer response now carries `Referrer-Policy: no-referrer`, not only
+  the landing. The landing is where a token can appear in the URL, but a
+  policy that covers every response cannot be outflanked by a link added
+  later.
+
+- Two routes were renamed to say what they do. The hexdump fragment answered
+  at `.../raw` while serving an HTML table rather than the stored bytes; it is
+  now `.../hexdump`, matching the inspector tab it fills. The handler behind
+  `/viewer/objects/{hash}` is named for the permalink it is, not for a detail
+  page the viewer does not have.
+
 - The object browser handler is split into named stages — building rows,
   paging and selecting, recording the reference trail, building the inspector,
   and choosing the fragment — in place of one 224-line function. The inspector

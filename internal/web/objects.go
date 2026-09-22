@@ -115,7 +115,7 @@ type browserInspector struct {
 	Inbound             []referenceRow
 	Outbound            []referenceRow
 	Timestamp           string
-	RawURL              string
+	HexdumpURL          string
 	MetadataURL         string
 	BytesURL            string
 	ReferencesURL       string
@@ -378,7 +378,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		WrittenLabel:        row.WrittenLabel,
 		ReferencesAvailable: s.cfg.References != nil,
 		Timestamp:           formatTimestamp(row.Written),
-		RawURL:              "/viewer/objects/" + row.Digest + "/raw",
+		HexdumpURL:          "/viewer/objects/" + row.Digest + "/hexdump",
 		MetadataURL:         tabURL("metadata"),
 		BytesURL:            tabURL("bytes"),
 		ReferencesURL:       tabURL("references"),
@@ -511,11 +511,11 @@ func integrityLabel(status string) string {
 	}
 }
 
-// objectDetail is the cold-load entry point for a single object
+// objectPermalink is the cold-load entry point for a single object
 // (viewer-design §3): a bookmark or a shared link. The viewer has exactly one
 // object view — the browser's inspector — so this route selects the object
 // there rather than rendering a second, divergent detail page.
-func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
+func (s *Server) objectPermalink(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseDigest(w, r)
 	if !ok {
 		return
@@ -529,7 +529,10 @@ func (s *Server) objectDetail(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, state.url(), http.StatusSeeOther)
 }
 
-func (s *Server) objectRaw(w http.ResponseWriter, r *http.Request) {
+// objectHexdump renders the inspector's Bytes tab: a hexdump table of the
+// object's leading bytes, lazily fetched once the tab is revealed. It serves
+// HTML, not the stored bytes — the CLI is where raw content is read.
+func (s *Server) objectHexdump(w http.ResponseWriter, r *http.Request) {
 	h, ok := parseDigest(w, r)
 	if !ok {
 		return
