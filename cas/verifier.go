@@ -50,11 +50,14 @@ func Verify(ctx context.Context, raw Backend, d Digest, hasher Hasher) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
 
 	actual, err := hasher.Digest(rc)
 	if err != nil {
+		_ = rc.Close()
 		return fmt.Errorf("cas: verify read: %w", err)
+	}
+	if err := rc.Close(); err != nil {
+		return fmt.Errorf("cas: verify close: %w", err)
 	}
 	if !actual.Equal(d) {
 		return fmt.Errorf("%w: %s", ErrDigestMismatch, d)

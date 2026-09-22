@@ -46,7 +46,7 @@ func main() {
 	}
 	switch cmd {
 	case "web":
-		runWeb(ctx, mf, args)
+		os.Exit(runWeb(ctx, mf, args))
 	case "version":
 		runVersion()
 	default:

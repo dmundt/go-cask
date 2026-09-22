@@ -15,11 +15,14 @@ import (
 // underlying store. A positive result is only a hint, and the real backend still
 // decides the final answer.
 type guardFilter interface {
+	// Add records a digest in the filter.
 	Add(cas.Digest)
+	// Contains reports whether the filter might contain a digest.
 	Contains(cas.Digest) bool
 }
 
 type removerFilter interface {
+	// Remove removes a digest from the filter.
 	Remove(cas.Digest)
 }
 

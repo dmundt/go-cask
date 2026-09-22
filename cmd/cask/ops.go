@@ -186,9 +186,12 @@ func opList(ctx context.Context, t *target, args []string) error {
 		return usagef("offset must be >= 0, got %d", *offset)
 	}
 	type item struct {
-		Hash      string `json:"hash"`
+		// Hash is the object's printable digest.
+		Hash string `json:"hash"`
+		// Algorithm identifies the digest algorithm.
 		Algorithm string `json:"algorithm"`
-		Size      int64  `json:"size"`
+		// Size is the stored object's byte count.
+		Size int64 `json:"size"`
 	}
 	digests, err := t.raw.List(ctx)
 	if err != nil {
@@ -283,6 +286,9 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 		return usagef("verify needs <hash> or --all")
 	}
 	if args[0] == "--all" {
+		if len(args) != 1 {
+			return usagef("verify --all takes no additional arguments")
+		}
 		digests, err := t.raw.List(ctx)
 		if err != nil {
 			return err
@@ -299,6 +305,9 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 			return fmt.Errorf("%d corrupt objects", bad)
 		}
 		return nil
+	}
+	if len(args) != 1 {
+		return usagef("verify needs exactly one <hash> or --all")
 	}
 	h, err := sha256.Parse(args[0])
 	if err != nil {
@@ -324,6 +333,9 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	minAge := fs.Duration("min-age", gcDefaultGrace, "only delete unreachable objects older than this (0 = immediate, dangerous)")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
+	}
+	if *minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", *minAge)
 	}
 	roots, err := parseDigests(fs.Args())
 	if err != nil {
@@ -355,6 +367,9 @@ func opClean(ctx context.Context, t *target, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
+	if *minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", *minAge)
+	}
 	if fs.NArg() != 0 {
 		return usagef("clean takes no positional arguments")
 	}
@@ -374,6 +389,9 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	dryRun := fs.Bool("dry-run", true, "report without deleting (default true)")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
+	}
+	if *minAge < 0 {
+		return usagef("min-age must be >= 0, got %s", *minAge)
 	}
 	roots, err := parseDigests(fs.Args())
 	if err != nil {

@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v32
+version: v34
 ---
 
 # Viewer Design — go-cask
@@ -48,7 +48,7 @@ must not use shadows, gradients, elevation, or card-like decoration. The CSS fil
 | Filter bar | 36px; search, type, size, and integrity filters plus reset |
 | Main workspace | flexible object-list column and 440px inspector column; the inspector resizes natively through CSS |
 | Inspector bounds | 280px–560px visual range; fixed 440px default |
-| Object table | fixed 26px dense mono rows, sticky 11px/600 muted header, content-sized digest/size/inbound/integrity/references/written columns, type fills remaining width |
+| Object table | fixed 26px dense mono rows, sticky 12px/600 muted header, content-sized digest/size/inbound/integrity/references/written columns, type fills remaining width |
 | Controls | one 28px height across form controls, actions, and pager; compact bordered pager/action controls; icon-sized history arrows stay 22px |
 | Narrow view | at ≤900px, document scrolls; list precedes full-width inspector; filters scroll horizontally |
 
@@ -156,7 +156,9 @@ The integrity filter orders its states as Verified, Unverified, and Corrupt.
 These are exclusive alternatives on one axis, so the filter is a single-choice
 `status` control with an empty value meaning every state. Reachability is the
 other axis and MUST be a separate single-choice `reach` filter
-(`reachable`/`orphaned`, empty meaning either). The two combine with AND —
+(`reachable`/`orphaned`/`detached`, empty meaning either). `detached` means
+an orphaned object with zero host-supplied inbound references; it is a
+disconnected component entry, not a retention root. The two combine with AND —
 `status=corrupt&reach=orphaned` returns corrupt orphans only. Mixing the axes
 in one control is forbidden: it makes
 combinations that describe nothing selectable. An unknown value on either
@@ -165,24 +167,28 @@ root-based graph
 reachability. Only then does the viewer offer the reachability filter and label
 objects that
 are unreachable from those roots as orphaned. It MUST NOT infer orphanhood from
-zero inbound references. Without this source, a `reach` query returns 400.
+zero inbound references. It MAY label an orphan with zero references
+`Detached`, but only when the host also supplies a `ReferenceIndex`; without
+that source, a `reach=detached` query returns 400. Without a reachability
+source, every `reach` query returns 400.
 
 Byte integrity and root reachability are orthogonal axes, and the viewer MUST
 keep them independent facts in both storage and display, including in their
 names: `Status` is not a label either axis may use, because a single "status"
 implies one verdict where there are two. The table therefore gives each axis a
 column of its own — `Integrity` (Unverified, Verified, or Corrupt) and
-`References` (Resolved or Orphaned) — and the inspector names the same two
-rows. `Resolved` rather than `Reachable`, because a root has no inbound
+`References` (Resolved, Orphaned, or Detached) — and the inspector names the
+same states. `Detached` has a distinct muted-violet pill; Resolved remains
+green and Orphaned amber. `Resolved` rather than `Reachable`, because a root has no inbound
 references yet is reachable by definition, and the latter name invited reading
 the column as a refcount. Neither axis may be collapsed into or suppressed by
 the other, because
 doing so hides a corrupt orphan's integrity behind its reachability (or the
-reverse) exactly when both matter. The `References` column and its filter
-appear only when a `ReachabilityIndex` is configured; the inbound-reference
-count is named `Inbound` so it never collides with them. Each filter matches
-its own axis, so a corrupt orphan is returned by `status=corrupt` and by
-`reach=orphaned` alike.
+reverse) exactly when both matter. The `References` column and its filter appear only when a `ReachabilityIndex`
+is configured; the `Detached` filter choice additionally requires a
+`ReferenceIndex`. The inbound-reference count is named `Inbound` so it never
+collides with them. Each filter matches its own axis, so a corrupt orphan is
+returned by `status=corrupt` and by `reach=orphaned` alike.
 
 Verification MUST remain available for orphaned objects. Orphans are the
 objects most likely to rot unnoticed and are the ones GC is about to reclaim,

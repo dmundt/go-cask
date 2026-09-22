@@ -109,7 +109,7 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("mem: snapshot exceeds max size %d bytes", m.maxBytes)
 	}
 
-	objects := make(map[string][]byte, int(count))
+	objects := make(map[string][]byte)
 	var total uint64
 	var lengths [16]byte
 	for i := uint64(0); i < count; i++ {
@@ -158,6 +158,17 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 	}
 	if total != declaredTotal {
 		return errors.New("mem: snapshot total size mismatch")
+	}
+	var extra [1]byte
+	n, err := backend.ContextReader{Ctx: ctx, R: r}.Read(extra[:])
+	if n != 0 {
+		return errors.New("mem: snapshot trailing data")
+	}
+	if err != io.EOF {
+		if err == nil {
+			return errors.New("mem: snapshot trailing data")
+		}
+		return fmt.Errorf("mem: check snapshot trailing data: %w", err)
 	}
 
 	m.mu.Lock()

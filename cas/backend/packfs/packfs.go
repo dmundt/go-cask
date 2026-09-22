@@ -11,11 +11,14 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +26,8 @@ import (
 	"github.com/dmundt/go-cask/cas/backend"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
 )
+
+var errInvalidPackRecord = errors.New("invalid pack record")
 
 // Config is the opt-in pack backend configuration.
 type config struct {
@@ -61,13 +66,17 @@ func WithPackMaxEntries(maxEntries int) backend.Option {
 }
 
 type packRecord struct {
-	Pack   string `json:"pack"`   // Pack identifies the pack file.
-	Offset int64  `json:"offset"` // Offset is the payload start in Pack.
-	Size   int64  `json:"size"`   // Size is the payload length.
+	// Pack identifies the pack file.
+	Pack string `json:"pack"`
+	// Offset is the payload start in Pack.
+	Offset int64 `json:"offset"`
+	// Size is the payload length.
+	Size int64 `json:"size"`
 }
 
 type manifest struct {
-	Entries map[string]packRecord `json:"entries"` // Entries maps digests to pack locations.
+	// Entries maps digests to pack locations.
+	Entries map[string]packRecord `json:"entries"`
 }
 
 var (
@@ -162,13 +171,12 @@ func (b *Backend) loadIndex() error {
 	}
 	filtered := make(map[string]packRecord, len(m.Entries))
 	for key, rec := range m.Entries {
-		if rec.Pack == "" {
+		if err := cas.CheckDigest(cas.NewDigest([]byte(key)), "pack: manifest"); err != nil {
 			continue
 		}
-		if _, err := os.Stat(rec.Pack); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
+		valid, err := b.validPackRecord(rec)
+		if err != nil || !valid {
+			continue
 		}
 		filtered[key] = rec
 	}
@@ -178,14 +186,35 @@ func (b *Backend) loadIndex() error {
 
 func (b *Backend) pruneMissingPackEntriesLocked() {
 	for key, rec := range b.index {
-		if rec.Pack == "" {
-			delete(b.index, key)
-			continue
-		}
-		if _, err := os.Stat(rec.Pack); err != nil && os.IsNotExist(err) {
+		valid, err := b.validPackRecord(rec)
+		if err != nil || !valid {
 			delete(b.index, key)
 		}
 	}
+}
+
+func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
+	if rec.Offset < 0 || rec.Size < 0 || rec.Offset > math.MaxInt64-rec.Size {
+		return false, errInvalidPackRecord
+	}
+	rel, err := filepath.Rel(b.packDir, rec.Pack)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return false, errInvalidPackRecord
+	}
+	info, err := os.Lstat(rec.Pack)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, errInvalidPackRecord
+	}
+	if info.Size() < rec.Offset+rec.Size {
+		return false, errInvalidPackRecord
+	}
+	return true, nil
 }
 
 func (b *Backend) persistIndex() error {
@@ -262,11 +291,11 @@ func (b *Backend) appendPackRecord(d cas.Digest, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("cas: seek pack file: %w", err)
 	}
-	var header [4 + 32 + 8]byte
+	header := make([]byte, 4+len(d)+8)
 	binary.BigEndian.PutUint32(header[0:4], uint32(len(d)))
 	copy(header[4:4+len(d)], d)
 	binary.BigEndian.PutUint64(header[4+len(d):4+len(d)+8], uint64(payloadSize))
-	if _, err := b.packFile.Write(header[:4+len(d)+8]); err != nil {
+	if _, err := b.packFile.Write(header); err != nil {
 		return fmt.Errorf("cas: write pack header: %w", err)
 	}
 	if _, err := b.packFile.Write(data); err != nil {
@@ -314,27 +343,24 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rec, ok := b.index[string(d)]; ok {
-		if _, err := os.Stat(rec.Pack); err != nil {
-			if os.IsNotExist(err) {
-				delete(b.index, string(d))
-				if persistErr := b.persistIndex(); persistErr != nil {
-					return nil, persistErr
-				}
-			} else {
-				return nil, fmt.Errorf("cas: open pack file: %w", err)
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return nil, fmt.Errorf("cas: validate pack record: %w", err)
+		}
+		if !valid {
+			delete(b.index, string(d))
+			if persistErr := b.persistIndex(); persistErr != nil {
+				return nil, persistErr
 			}
 		} else {
 			f, err := openFn(rec.Pack)
 			if err != nil {
 				return nil, fmt.Errorf("cas: open pack file: %w", err)
 			}
-			data := make([]byte, rec.Size)
-			if _, err := io.NewSectionReader(f, rec.Offset, rec.Size).Read(data); err != nil && err != io.EOF {
-				_ = f.Close()
-				return nil, fmt.Errorf("cas: read pack entry: %w", err)
-			}
-			_ = f.Close()
-			return io.NopCloser(bytes.NewReader(data)), nil
+			return &sectionReadCloser{
+				Reader: io.NewSectionReader(f, rec.Offset, rec.Size),
+				closer: f,
+			}, nil
 		}
 	}
 	return looseGetFn(ctx, b.loose, d)
@@ -351,20 +377,31 @@ func (b *Backend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rec, ok := b.index[string(d)]; ok {
-		if _, err := os.Stat(rec.Pack); err != nil {
-			if os.IsNotExist(err) {
-				delete(b.index, string(d))
-				if persistErr := b.persistIndex(); persistErr != nil {
-					return false, persistErr
-				}
-			} else {
-				return false, err
-			}
-			return false, nil
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return false, fmt.Errorf("cas: validate pack record: %w", err)
 		}
-		return true, nil
+		if !valid {
+			delete(b.index, string(d))
+			if persistErr := b.persistIndex(); persistErr != nil {
+				return false, persistErr
+			}
+		}
+		if valid {
+			return true, nil
+		}
 	}
 	return looseExistsFn(ctx, b.loose, d)
+}
+
+type sectionReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+// Close closes the packed object's backing file.
+func (r *sectionReadCloser) Close() error {
+	return r.closer.Close()
 }
 
 // Delete removes the digest from the loose backend and drops any index record.

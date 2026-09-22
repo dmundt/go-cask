@@ -17,10 +17,10 @@
   --viewer-font: "Segoe UI", Helvetica, system-ui, sans-serif;
   --viewer-mono: "JetBrains Mono", "IBM Plex Mono", Consolas, ui-monospace, monospace;
 
-  /* VS Code-like compact type scale: 12px UI, 11px labels, 12px mono data. */
-  --viewer-ui: 12px;
-  --viewer-label: 11px;
-  --viewer-mono-size: 12px;
+  /* VS Code-like compact type scale: 13px UI, 12px labels, 13px mono data. */
+  --viewer-ui: 13px;
+  --viewer-label: 12px;
+  --viewer-mono-size: 13px;
   --viewer-control: var(--viewer-ui);
   --viewer-control-sm: var(--viewer-ui);
   --viewer-control-xs: var(--viewer-label);
@@ -125,7 +125,7 @@ a {
   align-items: center;
   gap: 8px;
   color: var(--viewer-fg);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-decoration: none;
@@ -261,7 +261,7 @@ a {
   position: absolute;
   left: 9px;
   color: var(--viewer-muted);
-  font: 16px/1 var(--viewer-font);
+  font: 18px/1 var(--viewer-font);
   pointer-events: none;
 }
 
@@ -456,30 +456,35 @@ a {
   border-radius: 2px;
   min-height: 19px;
   background: #ececec;
-  color: #5a5a5a;
-  font: 700 var(--viewer-label)/1.2 var(--viewer-font);
+  color: #404040;
+  font: 600 var(--viewer-label)/1.2 var(--viewer-font);
   letter-spacing: 0;
   text-transform: capitalize;
 }
 
 .viewer-status-verified {
   background: #dfeedd;
-  color: #2f6a31;
+  color: #1e4d20;
 }
 
 .viewer-status-reachable {
   background: #e7f2e5;
-  color: #2f6a31;
+  color: #1e4d20;
 }
 
 .viewer-status-orphaned {
   background: #f2ebdd;
-  color: #8a5f00;
+  color: #6b4900;
+}
+
+.viewer-status-detached {
+  background: #e9e5f6;
+  color: #442f70;
 }
 
 .viewer-status-corrupt {
   background: #f3e0e0;
-  color: #8a3030;
+  color: #6b2424;
 }
 
 .viewer-status:hover {

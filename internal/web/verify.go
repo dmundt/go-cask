@@ -54,7 +54,9 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 
 // verifyAllState backs the top-bar Verify control.
 type verifyAllState struct {
-	CSRF  string
+	// CSRF is the per-session CSRF token.
+	CSRF string
+	// Label is the visible control text.
 	Label string
 }
 
@@ -62,16 +64,25 @@ type verifyAllState struct {
 // It replaces the raw error string: a sentinel classifies the failure and the
 // recomputed digest shows the operator exactly how the bytes diverged.
 type actionOutcome struct {
-	OK       bool
+	// OK reports whether the action succeeded.
+	OK bool
+	// Headline is the concise result title.
 	Headline string
-	Summary  string
+	// Summary is the human-readable result summary.
+	Summary string
+	// Expected is the expected digest.
 	Expected string
-	Actual   string
-	Detail   string
-	Checked  string
+	// Actual is the digest computed from stored bytes.
+	Actual string
+	// Detail contains supplemental diagnostic information.
+	Detail string
+	// Checked is the formatted verification time.
+	Checked string
 	// Integrity and IntegrityLabel refresh the inspector's Integrity row out
 	// of band; they stay empty for actions that leave no object behind.
-	Integrity      string
+	// Integrity is the refreshed integrity state.
+	Integrity string
+	// IntegrityLabel is the human-readable refreshed integrity state.
 	IntegrityLabel string
 }
 

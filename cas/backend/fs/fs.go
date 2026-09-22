@@ -387,6 +387,9 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 	cutoff := time.Now().Add(-olderThan)
 	removed := 0
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err != nil {
 			return err
 		}
@@ -448,6 +451,9 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	}
 	var digests []cas.Digest
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err != nil {
 			return err
 		}
@@ -479,6 +485,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	}
 	st := &cas.Stats{}
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err != nil {
 			return err
 		}
@@ -526,6 +535,9 @@ func (s *Backend) GC(ctx context.Context, reachable map[string]bool) error {
 		return err
 	}
 	for _, d := range digests {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !s.addressable(d) {
 			continue // a digest-named file this layout cannot address: List reports it, no sweep may touch it (cas-core §4.4)
 		}
@@ -551,6 +563,9 @@ func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Dur
 	now := time.Now()
 	var doomed []cas.Digest
 	for _, d := range digests {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !s.addressable(d) {
 			continue // not an object of this layout: no canonical path to age-check or delete
 		}
@@ -568,6 +583,9 @@ func (s *Backend) Prune(ctx context.Context, roots []cas.Digest, minAge time.Dur
 	}
 	if !dryRun {
 		for _, d := range doomed {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if err := s.Delete(ctx, d); err != nil {
 				return nil, err
 			}

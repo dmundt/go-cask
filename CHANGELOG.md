@@ -8,6 +8,34 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.6.4] - 2026-09-22
+
+### Added
+
+- Viewer reference state now identifies **Detached** objects: orphaned objects
+  with no inbound references, shown with a distinct violet pill and filter.
+
+### Changed
+
+- Viewer status pills use semibold weight and darker per-state text colors
+  for improved contrast against their tinted backgrounds.
+- Viewer type scale increased roughly 10% (UI text, labels, monospace data,
+  brand text, and search icon) for improved legibility.
+
+### Fixed
+
+- Opening the viewer on an empty store no longer fails while preview graph
+  metadata is unavailable.
+- Pack storage now supports digest widths beyond SHA-256 and rejects truncated
+  payload records instead of returning zero-padded data.
+- In-memory snapshot restore now rejects trailing data.
+- Pack manifests reject unsafe file locations and malformed record bounds.
+- Long filesystem maintenance scans respond promptly to context cancellation.
+- Typed reads and integrity verification report backend close failures.
+- Snapshot imports avoid attacker-controlled up-front map allocation.
+- CLI maintenance commands reject negative retention ages, `verify` rejects
+  extra operands, and viewer startup errors return documented exit codes.
+
 ## [v1.6.3] - 2026-09-22
 
 ### Changed

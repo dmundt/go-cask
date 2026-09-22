@@ -103,7 +103,7 @@ type previewObject struct {
 }
 
 func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
-	references := previewObjectReferences(digests)
+	references := previewObjectReferences(ordinal, digests)
 	data := previewEnvelope(
 		previewObjectTypes[ordinal%len(previewObjectTypes)],
 		ordinal,
@@ -118,8 +118,11 @@ func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 	}
 }
 
-func previewObjectReferences(digests []cas.Digest) []cas.Digest {
-	count := min(len(digests), len(digests)%4)
+// previewObjectReferences makes an eight-object preview block contain a
+// reachable root at ordinal 3, an orphan with inbound references at ordinal 4,
+// and detached orphan entries at ordinals 5 through 7.
+func previewObjectReferences(ordinal int, digests []cas.Digest) []cas.Digest {
+	count := min(len(digests), ordinal%4)
 	if count == 0 {
 		return nil
 	}
@@ -128,6 +131,12 @@ func previewObjectReferences(digests []cas.Digest) []cas.Digest {
 		references = append(references, digests[len(digests)-1-offset])
 	}
 	return references
+}
+
+// previewDetachedOrdinal reports whether ordinal seeds a detached preview
+// object: it is not a root-reachable graph member and has no inbound edge.
+func previewDetachedOrdinal(ordinal int) bool {
+	return ordinal%8 >= 5
 }
 
 func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) []byte {
@@ -158,14 +167,17 @@ type previewReferenceIndex struct {
 	reachable map[string]bool
 }
 
+// Inbound returns preview objects that reference target.
 func (i *previewReferenceIndex) Inbound(target cas.Digest) []cas.Digest {
 	return append([]cas.Digest(nil), i.inbound[target.String()]...)
 }
 
+// Outbound returns preview objects referenced by source.
 func (i *previewReferenceIndex) Outbound(source cas.Digest) []cas.Digest {
 	return append([]cas.Digest(nil), i.outbound[source.String()]...)
 }
 
+// IsReachable reports whether digest belongs to a preview root-reachable segment.
 func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 	return i.reachable[digest.String()]
 }

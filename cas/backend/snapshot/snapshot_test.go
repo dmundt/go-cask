@@ -106,6 +106,17 @@ func TestImportRejectsMalformedArchiveWithoutWritingInvalidRecord(t *testing.T) 
 	}
 }
 
+func TestImportRejectsLargeDeclaredCountWithoutPreallocating(t *testing.T) {
+	data := make([]byte, headerSize)
+	copy(data[:8], magic[:])
+	binary.BigEndian.PutUint16(data[8:10], version)
+	binary.BigEndian.PutUint64(data[10:], uint64(maxInt()))
+
+	if err := Import(context.Background(), membackend.New(), bytes.NewReader(data)); err == nil {
+		t.Fatal("Import with missing records must fail")
+	}
+}
+
 func TestImportRejectsDuplicateDigest(t *testing.T) {
 	ctx := context.Background()
 	source := membackend.New()

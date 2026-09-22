@@ -377,6 +377,9 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 		{"count too large", func(data []byte) {
 			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt())+1)
 		}},
+		{"large count with missing records", func(data []byte) {
+			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt()))
+		}},
 		{"declared total too large", func(data []byte) {
 			binary.BigEndian.PutUint64(data[18:26], uint64(maxInt())+1)
 		}},
@@ -458,6 +461,24 @@ func TestMemoryBackendRestoreValidatesLimitsAndDuplicates(t *testing.T) {
 	duplicate = append(duplicate, snapshot.Bytes()[snapshotHeaderSize:]...)
 	if err := New().Restore(ctx, bytes.NewReader(duplicate)); err == nil {
 		t.Fatal("Restore with duplicate digest must fail")
+	}
+}
+
+func TestMemoryBackendRestoreRejectsTrailingData(t *testing.T) {
+	ctx := context.Background()
+	source := New()
+	digest := sha256.Of([]byte("value"))
+	if err := source.Put(ctx, digest, strings.NewReader("value")); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(ctx, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	data := append(snapshot.Bytes(), 0xff)
+	if err := New().Restore(ctx, bytes.NewReader(data)); err == nil {
+		t.Fatal("Restore with trailing data must fail")
 	}
 }
 

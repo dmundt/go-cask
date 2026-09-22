@@ -47,6 +47,8 @@ type objectRow struct {
 	IntegrityLabel string
 	// Orphaned reports that no configured root reaches this object.
 	Orphaned bool
+	// Detached reports that an orphaned object has no inbound references.
+	Detached bool
 	// ReachabilityKnown reports whether Orphaned was computed at all. The
 	// reference column is a row-level decision because the row template only
 	// ever sees the row.
@@ -67,74 +69,127 @@ type objectRow struct {
 // --- objects list ---
 
 type objectBrowserData struct {
-	State           objectBrowserState
-	RefreshURL      string
+	// State is the parsed browser request state.
+	State objectBrowserState
+	// RefreshURL reloads the current browser result.
+	RefreshURL string
+	// HasReachability reports whether reachability filtering is available.
 	HasReachability bool
-	StatusOptions   []filterOption
-	LimitOptions    []filterOption
-	Objects         []objectRow
-	Types           []filterOption
-	HasAny          bool
-	Total           int
-	Matched         int
-	TotalSize       int64
-	RangeStart      int
-	RangeEnd        int
-	CurrentPage     int
-	PageCount       int
-	FirstURL        string
-	PreviousURL     string
-	NextURL         string
-	LastURL         string
+	// HasDetached reports whether detached-object filtering is available.
+	HasDetached bool
+	// StatusOptions contains integrity filter choices.
+	StatusOptions []filterOption
+	// LimitOptions contains page-size choices.
+	LimitOptions []filterOption
+	// Objects contains rows visible on the current page.
+	Objects []objectRow
+	// Types contains available type filter choices.
+	Types []filterOption
+	// HasAny reports whether the store contains any objects.
+	HasAny bool
+	// Total is the number of indexed objects.
+	Total int
+	// Matched is the number of objects matching current filters.
+	Matched int
+	// TotalSize is the aggregate size of matching objects.
+	TotalSize int64
+	// RangeStart is the one-based first visible row number.
+	RangeStart int
+	// RangeEnd is the one-based last visible row number.
+	RangeEnd int
+	// CurrentPage is the one-based page number.
+	CurrentPage int
+	// PageCount is the number of result pages.
+	PageCount int
+	// FirstURL navigates to the first page.
+	FirstURL string
+	// PreviousURL navigates to the preceding page.
+	PreviousURL string
+	// NextURL navigates to the following page.
+	NextURL string
+	// LastURL navigates to the final page.
+	LastURL string
 	// SortColumns is the table header: one entry per rendered column, already
 	// resolved into the link, the arrow, and the accessible name it needs.
 	SortColumns []sortColumn
+	// HasPrevious reports whether a preceding page exists.
 	HasPrevious bool
-	HasNext     bool
-	Inspector   *browserInspector
-	CSRF        string
-	Role        string
+	// HasNext reports whether a following page exists.
+	HasNext bool
+	// Inspector contains selected-object details.
+	Inspector *browserInspector
+	// CSRF is the session's CSRF token.
+	CSRF string
+	// Role is the current session role.
+	Role string
 }
 
 type filterOption struct {
-	Value    string
-	Label    string
+	// Value is the query-string value.
+	Value string
+	// Label is the visible choice text.
+	Label string
+	// Selected reports whether this choice is active.
 	Selected bool
 }
 
 type browserInspector struct {
-	Digest         string
-	HashAlgorithm  string
-	Type           string
-	Size           int64
-	Integrity      string
+	// Digest is the selected object's printable digest.
+	Digest string
+	// HashAlgorithm identifies the configured hash algorithm.
+	HashAlgorithm string
+	// Type is the selected object's envelope type.
+	Type string
+	// Size is the selected object's stored byte count.
+	Size int64
+	// Integrity is the selected object's integrity state.
+	Integrity string
+	// IntegrityLabel is the human-readable integrity state.
 	IntegrityLabel string
 	// Report is the finding of the last check of this object in this session,
 	// replayed so the inspector states the outcome and its age on every visit
 	// rather than only in the response to the click that produced it. It is nil
 	// when the object has not been checked.
-	Report              *actionOutcome
-	Orphaned            bool
-	WrittenLabel        string
-	InboundReferences   int
+	Report *actionOutcome
+	// Orphaned reports whether the object is unreachable.
+	Orphaned bool
+	// Detached reports whether the object is orphaned with no inbound references.
+	Detached bool
+	// WrittenLabel is the formatted backend modification time.
+	WrittenLabel string
+	// InboundReferences counts inbound graph edges.
+	InboundReferences int
+	// ReferencesAvailable reports whether graph data is available.
 	ReferencesAvailable bool
-	Inbound             []referenceRow
-	Outbound            []referenceRow
-	Timestamp           string
-	DumpURL             string
-	MetadataURL         string
-	BytesURL            string
-	ReferencesURL       string
+	// Inbound contains objects that refer to this object.
+	Inbound []referenceRow
+	// Outbound contains objects referred to by this object.
+	Outbound []referenceRow
+	// Timestamp is the formatted stored timestamp.
+	Timestamp string
+	// DumpURL opens the byte dump.
+	DumpURL string
+	// MetadataURL opens the metadata tab.
+	MetadataURL string
+	// BytesURL opens the bytes tab.
+	BytesURL string
+	// ReferencesURL opens the references tab.
+	ReferencesURL string
 	// PrevURL and NextURL step through the objects this session already
 	// inspected; an empty one disables that control.
 	PrevURL string
+	// NextURL advances through the session inspection trail.
 	NextURL string
 }
 
 type referenceRow struct {
-	Digest    string
-	Short     string
-	Type      string
+	// Digest is the referenced object's printable digest.
+	Digest string
+	// Short is the abbreviated digest display.
+	Short string
+	// Type is the referenced object's envelope type.
+	Type string
+	// SelectURL opens the referenced object.
 	SelectURL string
 }
 
@@ -149,6 +204,10 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 	}
 	if state.Reach != "" && s.cfg.Reachability == nil {
 		http.Error(w, "reachability filter unavailable", http.StatusBadRequest)
+		return
+	}
+	if state.Reach == "detached" && s.cfg.References == nil {
+		http.Error(w, "detached filter unavailable", http.StatusBadRequest)
 		return
 	}
 	id := sessionID(r)
@@ -189,6 +248,7 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		State:           state,
 		RefreshURL:      refreshURL,
 		HasReachability: s.cfg.Reachability != nil,
+		HasDetached:     s.cfg.Reachability != nil && s.cfg.References != nil,
 		StatusOptions:   statusOptions(state.Status),
 		LimitOptions:    limitOptions(state.Limit),
 		Types:           typeOptions(types, state.Type),
@@ -322,6 +382,7 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 		row.References = len(s.cfg.References.Inbound(h))
 		row.ReferencesAvailable = true
 	}
+	row.Detached = row.Orphaned && row.ReferencesAvailable && row.References == 0
 	return row
 }
 
@@ -354,9 +415,12 @@ func (row *objectRow) digestString() string {
 // objectPage is the slice of rows one page shows, and where that slice sits in
 // the full result.
 type objectPage struct {
-	Rows       []objectRow
+	// Rows contains the current page's object rows.
+	Rows []objectRow
+	// RangeStart is the zero-based start index in the full result.
 	RangeStart int
-	RangeEnd   int
+	// RangeEnd is the exclusive end index in the full result.
+	RangeEnd int
 	// Selected indexes the inspected row within the full result, -1 when the
 	// inspector stays empty.
 	Selected int
@@ -476,6 +540,7 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		IntegrityLabel:      row.IntegrityLabel,
 		Report:              storedReport(s.sessions, id, row.Digest),
 		Orphaned:            row.Orphaned,
+		Detached:            row.Detached,
 		WrittenLabel:        row.WrittenLabel,
 		ReferencesAvailable: s.cfg.References != nil,
 		Timestamp:           formatTimestamp(row.Written),

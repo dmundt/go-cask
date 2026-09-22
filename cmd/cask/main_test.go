@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -150,6 +151,16 @@ func TestSeedPreview(t *testing.T) {
 	} {
 		if got := len(references.Inbound(test.digest)); got != test.want {
 			t.Fatalf("preview inbound %s = %d, want %d", test.digest, got, test.want)
+		}
+	}
+	for ordinal, want := range map[int]bool{
+		4: false,
+		5: true,
+		6: true,
+		7: true,
+	} {
+		if got := previewDetachedOrdinal(ordinal); got != want {
+			t.Fatalf("previewDetachedOrdinal(%d) = %v, want %v", ordinal, got, want)
 		}
 	}
 	for _, test := range []struct {
@@ -514,7 +525,9 @@ func TestVersionAndWebHelpers(t *testing.T) {
 			<-time.After(150 * time.Millisecond)
 			cancel()
 		}()
-		runWeb(ctx, modeFlags{store: t.TempDir()}, []string{"-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"})
+		if code := runWeb(ctx, modeFlags{store: t.TempDir()}, []string{"-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"}); code != 0 {
+			t.Fatalf("runWeb exit = %d, want 0", code)
+		}
 	})
 }
 
@@ -540,6 +553,52 @@ func TestPruneRequiresRoot(t *testing.T) {
 	mf := localMF(t)
 	if _, code := run(t, mf, "prune"); code != 2 {
 		t.Fatalf("prune without root: exit %d, want 2 (usage)", code)
+	}
+}
+
+func TestMaintenanceRejectsNegativeMinAge(t *testing.T) {
+	mf := localMF(t)
+	for _, command := range []string{"gc", "prune", "clean"} {
+		args := []string{"--min-age", "-1s"}
+		if command != "clean" {
+			args = append(args, "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+		}
+		if _, code := run(t, mf, command, args...); code != 2 {
+			t.Errorf("%s negative min-age: exit %d, want 2", command, code)
+		}
+	}
+}
+
+func TestVerifyRejectsExtraArguments(t *testing.T) {
+	mf := localMF(t)
+	for _, args := range [][]string{
+		{"--all", "extra"},
+		{"sha256:0000000000000000000000000000000000000000000000000000000000000000", "extra"},
+	} {
+		if _, code := run(t, mf, "verify", args...); code != 2 {
+			t.Errorf("verify %v: exit %d, want 2", args, code)
+		}
+	}
+}
+
+func TestWebRejectsInvalidFlags(t *testing.T) {
+	if code := runWeb(context.Background(), modeFlags{store: t.TempDir()}, []string{"-unknown"}); code != 2 {
+		t.Fatalf("runWeb invalid flag exit = %d, want 2", code)
+	}
+}
+
+func TestWebReportsListenFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	if code := runWeb(context.Background(), modeFlags{store: t.TempDir()}, []string{
+		"-bind", listener.Addr().String(),
+		"-no-open",
+	}); code != 1 {
+		t.Fatalf("runWeb occupied bind exit = %d, want 1", code)
 	}
 }
 

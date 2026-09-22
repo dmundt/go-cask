@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -30,8 +31,8 @@ import (
 // (viewer-security §3); binding to a non-loopback address requires explicit
 // confirmation (viewer-security §4). The store defaults to the global -store
 // flag when the subcommand's own -store is not given.
-func runWeb(ctx context.Context, mf modeFlags, args []string) {
-	fs := flag.NewFlagSet("web", flag.ExitOnError)
+func runWeb(ctx context.Context, mf modeFlags, args []string) int {
+	fs := flag.NewFlagSet("web", flag.ContinueOnError)
 	storeDefault := mf.store
 	if storeDefault == "" {
 		storeDefault = "./objects"
@@ -42,7 +43,9 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	tokens := fs.String("tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	allowInsecure := fs.Bool("allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	noOpen := fs.Bool("no-open", false, "do not open the default browser")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -50,7 +53,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	if !isLoopbackBind(*bind) {
 		if !*allowInsecure {
 			slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
-			os.Exit(1)
+			return 1
 		}
 		// The session cookie is always Secure (viewer-security §7) and callers
 		// cannot disable that, so a browser reaching this bind over plain
@@ -65,17 +68,17 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	raw, err := fsbackend.New(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
-		os.Exit(1)
+		return 1
 	}
 	hasher, err := viewerHasher(*hashAlgorithm)
 	if err != nil {
 		slog.Error("invalid viewer hash algorithm", "algorithm", *hashAlgorithm, "err", err)
-		os.Exit(2)
+		return 2
 	}
 	references, err := previewReferences(ctx, raw)
 	if err != nil {
 		slog.Error("build preview references", "err", err)
-		os.Exit(1)
+		return 1
 	}
 	// The viewer does not hold the store lock: its mutations are in-process
 	// on its own store instance, and writers/reads are lock-free across
@@ -94,17 +97,20 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 
 	token := randomToken()
 	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
-	webSrv, err := web.New(raw, web.Config{
+	viewerConfig := web.Config{
 		Hasher:        hasher,
 		HashAlgorithm: *hashAlgorithm,
 		StartupToken:  token,
 		RoleTokens:    roleTokens,
-		References:    references,
-		Reachability:  references,
-	})
+	}
+	if references != nil {
+		viewerConfig.References = references
+		viewerConfig.Reachability = references
+	}
+	webSrv, err := web.New(raw, viewerConfig)
 	if err != nil {
 		slog.Error("viewer setup", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
 	root := http.NewServeMux()
@@ -112,30 +118,45 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) {
 	root.Handle("/viewer", webSrv.Handler())
 
 	httpSrv := &http.Server{
-		Addr:              *bind,
 		Handler:           root,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	listener, err := net.Listen("tcp", *bind)
+	if err != nil {
+		slog.Error("listen", "addr", *bind, "err", err)
+		return 1
+	}
+	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("cask web listening (viewer)", "addr", *bind, "store", *store)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Info("cask web listening (viewer)", "addr", listener.Addr(), "store", *store)
+		if err := httpSrv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("serve", "err", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	url := fmt.Sprintf("http://%s/viewer/?token=%s", *bind, token)
+	url := fmt.Sprintf("http://%s/viewer/?token=%s", listener.Addr(), token)
 	fmt.Fprintf(os.Stderr, "cask web: %s\n", url)
 	if !*noOpen {
 		openBrowser(url)
 	}
 
-	<-ctx.Done()
+	exitCode := 0
+	select {
+	case <-ctx.Done():
+	case <-serverErr:
+		exitCode = 1
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown", "err", err)
+		if closeErr := httpSrv.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			slog.Error("force close", "err", closeErr)
+		}
+		return 1
 	}
+	return exitCode
 }
 
 func viewerHasher(name string) (cas.Hasher, error) {
