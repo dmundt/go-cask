@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v54
+version: v55
 ---
 
 # CAS Core — go-cask
@@ -463,7 +463,7 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error
 
 - `visit` receives every reached object as the concrete `T`; reads via `Store[T].Get`.
 - Traversal is **iterative with an explicit stack and a visited set** keyed by `d.String()`: each digest is visited at most once, a shared subgraph is visited once rather than once per path, and a very deep graph terminates instead of exhausting the goroutine stack. A cycle is not constructible through the public API — an object's address is derived from the bytes that would have to contain it.
-- Mixed-type traversal is the app's job (`gitlike` resolver, §4.12).
+- Mixed-type traversal is a supported package now, not just the app's job: `cas/repo.Registry`/`Walk`/`Reachable` generalize the `gitlike` resolver pattern (§4.12) to any number of caller-defined types (go-cask#136).
 
 ### 4.10 Caching and lazy loading
 
@@ -545,7 +545,7 @@ type ResolvedObject struct {
 
 - `ResolveAny` reads the raw bytes, determines the type via its `parseType` on the TLV envelope (§8 d1), then dispatches to the matching `Resolve*`; an unknown type returns `ErrUnknownType`.
 - `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. The tag branch renders `Tag.Target` with `cas.Digest.Prefix(8)` — the core's total display helper (`""` when absent, a short digest whole) — and shows `<absent>` for a target that does not exist yet.
-- **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic alternative: `Walker[T]`, §4.9). It visits each digest **at most once** and uses an explicit stack, exactly like `Walker[T]`: a diamond-shaped history costs one visit per object instead of one per path (a 12-level diamond is 13 visits, not 2¹³−1), and a store this library did not write — the `Backend` stores bytes without re-verifying their digest — cannot make the walk loop.
+- **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic, several-type alternative: `cas/repo.Walk`, which follows the same at-most-once/explicit-stack rule over a caller-registered `Registry` instead of gitlike's fixed four types). It visits each digest **at most once** and uses an explicit stack, exactly like `Walker[T]`: a diamond-shaped history costs one visit per object instead of one per path (a 12-level diamond is 13 visits, not 2¹³−1), and a store this library did not write — the `Backend` stores bytes without re-verifying their digest — cannot make the walk loop.
 - **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob` serve from the caches, while `ResolveAny` reads through the shared resolver (raw bytes + per-type stores) and is therefore *not* cache-served.
 - **`Preloader`** — background worker pool on a `chan cas.Digest`, running `Commits.PreloadRecursive(ctx, d, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.
 
@@ -554,7 +554,7 @@ type ResolvedObject struct {
 - **Write path:** `codec.Encode(obj)` → TLV envelope (built by `Store.Put`) → `d, err := hasher.Digest(reader)` (the injected client hasher) → `raw.Put(ctx, d, reader)` (atomic fs, idempotent) → return `d`. Optional `PutDedup`: check `raw.Exists(d)` first, skip the write.
 - **Typed read path:** `raw.Get(ctx, d)` → `io.ReadAll` → envelope parse → `codec.Decode(payload)` → `T`; decoded `Type()` matches stored type. A key that is absent or the wrong width for the hasher never reaches the backend (`ErrInvalidDigest`).
 - **Lazy/cached read path:** `CachedStore.Proxy(ctx, d)` → not-yet-loaded `*CachedObject[T]`; on first access `Load(ctx)` → `store.Get` → memoize `(obj, err)`; later access returns the memoized value (double-checked locking).
-- **Cross-type resolution path (gitlike):** `ResolveAny(ctx, d)` → raw bytes → `parseType(data)` → dispatch to `ResolveBlob`/`ResolveTree`/`ResolveCommit`/`ResolveTag` → `ResolvedObject{...}`. The generic core has no equivalent.
+- **Cross-type resolution path (gitlike):** `ResolveAny(ctx, d)` → raw bytes → `parseType(data)` → dispatch to `ResolveBlob`/`ResolveTree`/`ResolveCommit`/`ResolveTag` → `ResolvedObject{...}`. `cas/repo.Registry.Resolve` is the generalized, supported equivalent: `EnvelopeType` on a bounded header prefix → registered `Decoder` lookup by type name → the concrete `Object`, or an `*UnknownTypeError` for a type nothing registered.
 
 ## 6. Concurrency model
 

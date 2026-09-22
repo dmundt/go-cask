@@ -34,6 +34,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [hash](./hash/README.md) — client-owned algorithm choices: [sha256](./hash/sha256/README.md), [sha512](./hash/sha512/README.md), [sha512_256](./hash/sha512_256/README.md)
 - [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
 - [refs](./refs/README.md) — mutable named pointers ("refs") to a `cas.Digest`, with atomic writes and an append-only reflog
+- [repo](./repo/README.md) — typed, cross-type object registry (`Registry`, `Walk`, `Reachable`) promoted from gitlike's example pattern
 - [verify](./verify/README.md) — optional integrity/checksum helpers layered above the store: [crc32](./verify/crc32/README.md)
 - [backend/packfs](./backend/packfs/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 

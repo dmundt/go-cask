@@ -120,6 +120,7 @@ coverage_targets=(
   "90|./cas"
   "90|./cas/backend/fs"
   "90|./cas/backend/mem"
+  "90|./cas/repo"
   "80|./cas/cache/mem"
   "80|./cas/cache/lru"
   "80|./cas/cache/prefetch"
