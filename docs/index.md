@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v13
+version: v14
 ---
 
 # go-cask Rules Index
@@ -22,6 +22,7 @@ version: v13
 | `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
 | `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
+| `cas/repo/` (typed cross-type registry, Walk, Reachable) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) |

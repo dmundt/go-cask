@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas/repo` promotes gitlike's example-only `Codecs`/`Repository`/`Resolver`/
+  `WalkGraph` pattern into a supported package: a `Registry` resolves a
+  `cas.Digest` to its typed object across however many caller-registered
+  types, `Walk` visits every reachable object exactly once regardless of type
+  and reports an unregistered type to the caller instead of aborting, and
+  `Reachable` is the cross-type root-set builder `Backend.GC`/`Backend.Prune`
+  require for a multi-type object graph.
 - `cas/refs` adds named, mutable pointers to a `cas.Digest` ("refs"): atomic
   `Set`/`Delete`, `Get`/`List`/`Resolve` (with ambiguous-prefix detection),
   an append-only reflog per name (`Log`/`Previous`), and `Roots` — the ready

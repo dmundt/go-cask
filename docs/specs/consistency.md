@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v11
+version: v12
 ---
 
 # Consistency — go-cask
@@ -39,8 +39,8 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 
 **Model = Git's + IPFS's:** objects are kept while reachable from **roots**; the rest is reclaimable garbage.
 
-- **Roots** are application-supplied pinned hashes (Git refs/branches, IPFS pins, Docker manifest digests; in `gitlike`, typically commit/tag hashes). `cas/refs.Store.Roots` is the concrete, library-provided source: every ref's current digest, ready to hand to `cas.Reachable` for expansion (library-design.md).
-- **Algorithm** (`GC(ctx, reachable map[string]bool)`, cas-core §4.11): **(1) Mark** — walk `References()` from every root (BFS/DFS with a visited set, robust even against cycles), collect the reachable set (via an app-side `Walker[T]`/`WalkGraph`); **(2) Sweep** — delete every object whose `h.String()` is not in the reachable set.
+- **Roots** are application-supplied pinned hashes (Git refs/branches, IPFS pins, Docker manifest digests; in `gitlike`, typically commit/tag hashes). `cas/refs.Store.Roots` is the concrete, library-provided source: every ref's current digest, ready to hand to `cas.Reachable` (single-type) or `cas/repo.Reachable` (cross-type, via a `Registry`) for expansion (library-design.md).
+- **Algorithm** (`GC(ctx, reachable map[string]bool)`, cas-core §4.11): **(1) Mark** — walk `References()` from every root (BFS/DFS with a visited set, robust even against cycles), collect the reachable set (via `cas.Reachable`/`Walker[T]` for one type, or `cas/repo.Walk`/`Reachable` across several registered types); **(2) Sweep** — delete every object whose `h.String()` is not in the reachable set.
 - **When:** explicit only — `POST /gc` (admin), CLI, or scheduled job. Never automatic by default (a store with no roots must not silently delete itself).
 - **Concurrency:** sweeping unlinks files; a concurrent `Put` of a swept hash just re-creates it (idempotent, lock-free-safe); a reader holding an open FD keeps the bytes (POSIX). No GC-vs-write coordination within one process. Across OS processes, the **grace model** applies (cas-core §6): a sweep that MAY race a live writer MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h), so fresh writes survive. A forced `--min-age 0` sweep is the dangerous variant — safe only when no other process writes. Maintenance sweeps never run concurrently with each other (`cask` serializes via `.cask.lock`, cli §2).
 - **Why not reference counting:** refcounts need a persisted, updated counter on every write — complexity and a drift source. Mark-and-sweep is stateless, correct by construction, cheap enough for a write-dominated store. (Git and restic both trace, not refcount.)
@@ -50,7 +50,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 Removes **unreachable** objects older than a threshold (restic-retention/S3-lifecycle style).
 
 - **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration.
-- **Operation:** `Prune(ctx, reachable map[string]bool, minAge time.Duration, dryRun bool)`: `reachable` MUST already be the complete, transitively-closed set of live digests, computed by the caller (e.g. `cas.Reachable`, an app-side `Walker[T]`/`WalkGraph`) — Prune never expands references itself, exactly like `GC` (§4); delete objects absent from `reachable` AND older than `minAge`; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
+- **Operation:** `Prune(ctx, reachable map[string]bool, minAge time.Duration, dryRun bool)`: `reachable` MUST already be the complete, transitively-closed set of live digests, computed by the caller (`cas.Reachable`/`Walker[T]` for one type, or `cas/repo.Walk`/`Reachable` across several registered types) — Prune never expands references itself, exactly like `GC` (§4); delete objects absent from `reachable` AND older than `minAge`; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag).
 - **Grace period is the point:** unreachable-young objects are kept, giving a recovery window after a bad unpin/delete (restic "keep recent even if unreachable"; S3 noncurrent-version expiration).
 - **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL objects older than T regardless of reachability — removes history and can break references. Exists for legal/temp-data eviction; the one op that can destroy reachable data.
 - **Surface:** `cask` CLI `prune --min-age <dur> <roots...> [--dry-run]` (cli §2) — the CLI has no typed object model, so `<roots...>` is treated as the complete reachable set already (the CLI cannot expand a root into what it references; cli §2). The viewer exposes verify/GC admin actions (viewer-design §6); prune stays CLI-only — dry-run semantics and root-based interface don't fit the hypermedia surface. No HTTP surface (backend-architecture §1).
