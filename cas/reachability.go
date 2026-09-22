@@ -5,21 +5,21 @@ import (
 	"fmt"
 )
 
-// ReferenceLister reports the direct references of the object stored at d,
+// RefLister reports the direct references of the object stored at d,
 // letting a reachability walk run over an otherwise opaque byte store without
 // the core needing to know a concrete object model. A typed layer that can
 // list an object's References() (Object[T], a per-type Store[T], or a
 // multi-type registry/resolver) satisfies this trivially; Reachable stays
 // entirely at the Digest level so it has no dependency on any single type.
-type ReferenceLister interface {
+type RefLister interface {
 	References(ctx context.Context, d Digest) ([]Digest, error)
 }
 
-// ReferenceListerFunc adapts a plain function to a ReferenceLister.
-type ReferenceListerFunc func(ctx context.Context, d Digest) ([]Digest, error)
+// RefListerFunc adapts a plain function to a RefLister.
+type RefListerFunc func(ctx context.Context, d Digest) ([]Digest, error)
 
 // References calls f.
-func (f ReferenceListerFunc) References(ctx context.Context, d Digest) ([]Digest, error) {
+func (f RefListerFunc) References(ctx context.Context, d Digest) ([]Digest, error) {
 	return f(ctx, d)
 }
 
@@ -35,7 +35,7 @@ func (f ReferenceListerFunc) References(ctx context.Context, d Digest) ([]Digest
 // reachable set and never follow references themselves. Passing only
 // entry-point roots to GC/Prune without first calling Reachable (or an
 // equivalent typed walk) silently deletes anything those roots reference.
-func Reachable(ctx context.Context, refs ReferenceLister, roots []Digest) (map[string]bool, error) {
+func Reachable(ctx context.Context, refs RefLister, roots []Digest) (map[string]bool, error) {
 	reachable := make(map[string]bool, len(roots))
 	queue := make([]Digest, 0, len(roots))
 	for _, r := range roots {

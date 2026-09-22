@@ -12,7 +12,7 @@ import (
 	"github.com/dmundt/go-cask/internal/test"
 )
 
-// nodeLister adapts a Store[test.Node] to cas.ReferenceLister, the shape a
+// nodeLister adapts a Store[test.Node] to cas.RefLister, the shape a
 // typed layer needs to satisfy so cas.Reachable can expand roots without
 // knowing the concrete object model.
 type nodeLister struct{ store *cas.Store[test.Node] }
@@ -81,7 +81,7 @@ func TestReachableVisitsSharedDigestOnce(t *testing.T) {
 	}
 
 	calls := 0
-	counting := cas.ReferenceListerFunc(func(ctx context.Context, d cas.Digest) ([]cas.Digest, error) {
+	counting := cas.RefListerFunc(func(ctx context.Context, d cas.Digest) ([]cas.Digest, error) {
 		calls++
 		return nodeLister{s}.References(ctx, d)
 	})
@@ -116,7 +116,7 @@ func TestReachableIgnoresAbsentReferences(t *testing.T) {
 func TestReachablePropagatesExpansionError(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("boom")
-	failing := cas.ReferenceListerFunc(func(context.Context, cas.Digest) ([]cas.Digest, error) {
+	failing := cas.RefListerFunc(func(context.Context, cas.Digest) ([]cas.Digest, error) {
 		return nil, wantErr
 	})
 	root := test.DigestData([]byte("root"))
@@ -129,7 +129,7 @@ func TestReachableRespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	root := test.DigestData([]byte("root"))
-	lister := cas.ReferenceListerFunc(func(context.Context, cas.Digest) ([]cas.Digest, error) {
+	lister := cas.RefListerFunc(func(context.Context, cas.Digest) ([]cas.Digest, error) {
 		return nil, nil
 	})
 	if _, err := cas.Reachable(ctx, lister, []cas.Digest{root}); !errors.Is(err, context.Canceled) {
