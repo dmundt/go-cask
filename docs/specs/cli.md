@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v19
+version: v20
 ---
 
 # CLI — go-cask
@@ -44,7 +44,9 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - Every operation calls the library in-process.
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges, and
-  alternating root-reachable graph segments.
+  alternating root-reachable graph segments. Each eight-object graph block
+  includes an orphan with inbound edges and Detached orphan entries with no
+  inbound edges, so the viewer can demonstrate all reference states.
   Consecutive objects cycle through zero, one, two, and three outgoing
   references, producing varied inbound counts too. It is idempotent for a
   given `-count`: rerunning reports deduplicated objects instead of writing

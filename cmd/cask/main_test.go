@@ -153,6 +153,16 @@ func TestSeedPreview(t *testing.T) {
 			t.Fatalf("preview inbound %s = %d, want %d", test.digest, got, test.want)
 		}
 	}
+	for ordinal, want := range map[int]bool{
+		4: false,
+		5: true,
+		6: true,
+		7: true,
+	} {
+		if got := previewDetachedOrdinal(ordinal); got != want {
+			t.Fatalf("previewDetachedOrdinal(%d) = %v, want %v", ordinal, got, want)
+		}
+	}
 	for _, test := range []struct {
 		digest cas.Digest
 		want   bool

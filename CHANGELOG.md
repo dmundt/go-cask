@@ -8,6 +8,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.6.4] - 2026-09-22
+
+### Added
+
+- Viewer reference state now identifies **Detached** objects: orphaned objects
+  with no inbound references, shown with a distinct violet pill and filter.
+
+### Changed
+
+- Viewer status pills use semibold weight and darker per-state text colors
+  for improved contrast against their tinted backgrounds.
+- Viewer type scale increased roughly 10% (UI text, labels, monospace data,
+  brand text, and search icon) for improved legibility.
+
 ### Fixed
 
 - Opening the viewer on an empty store no longer fails while preview graph

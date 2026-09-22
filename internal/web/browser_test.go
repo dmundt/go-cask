@@ -191,6 +191,62 @@ func TestOrphanedObjectStateRequiresReachability(t *testing.T) {
 	}
 }
 
+func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
+	ctx := context.Background()
+	raw, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := sha256.Of([]byte("resolved"))
+	orphaned := sha256.Of([]byte("orphaned-with-inbound"))
+	detached := sha256.Of([]byte("detached"))
+	for _, digest := range []cas.Digest{resolved, orphaned, detached} {
+		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	references := newTestReferenceIndex()
+	references.Record(resolved, []cas.Digest{orphaned})
+	srv, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		References:   references,
+		Reachability: testReachabilityIndex{resolved.String(): true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	viewer := login(t, ts, testStartupToken)
+
+	page := getBody(t, viewer, ts.URL+"/viewer/objects?reach=detached")
+	if !strings.Contains(page, shortDigest(detached)) ||
+		strings.Contains(page, shortDigest(orphaned)) ||
+		strings.Contains(page, shortDigest(resolved)) ||
+		!strings.Contains(page, `viewer-status-detached">Detached`) {
+		t.Fatalf("detached filter = %.900q", page)
+	}
+
+	page = getBody(t, viewer, ts.URL+"/viewer/objects?selected="+url.QueryEscape(detached.String()))
+	if !strings.Contains(page, `viewer-status-detached">Detached`) {
+		t.Fatalf("detached inspector state = %.900q", page)
+	}
+
+	withoutReferences, err := New(raw, Config{
+		StartupToken: testStartupToken,
+		Reachability: testReachabilityIndex{resolved.String(): true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutReferencesServer := httptest.NewTLSServer(withoutReferences.Handler())
+	t.Cleanup(withoutReferencesServer.Close)
+	withoutReferencesViewer := login(t, withoutReferencesServer, testStartupToken)
+	if code := statusCode(t, withoutReferencesViewer, withoutReferencesServer.URL+"/viewer/objects?reach=detached"); code != http.StatusBadRequest {
+		t.Fatalf("detached filter without references = %d, want 400", code)
+	}
+}
+
 func TestEmptyObjectListKeepsInspectorEmpty(t *testing.T) {
 	raw, err := fs.New(t.TempDir())
 	if err != nil {
