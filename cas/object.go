@@ -34,5 +34,6 @@ type Object[T any] interface {
 // Validate MUST be deterministic and pure, and SHOULD be cheap: it runs on
 // every Put and every Get (not on GetRaw, which does not decode).
 type Validator interface {
+	// Validate reports whether the object satisfies its own invariants.
 	Validate() error
 }

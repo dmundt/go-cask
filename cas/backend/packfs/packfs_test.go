@@ -34,6 +34,7 @@ func TestPackBackendRoundTripAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer reader.Close()
 	got, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +105,62 @@ func TestPackBackendRejectsTruncatedPackPayload(t *testing.T) {
 	}
 }
 
+func TestPackBackendIgnoresUntrustedManifestRecords(t *testing.T) {
+	ctx := context.Background()
+	base := filepath.Join(t.TempDir(), "untrusted-manifest")
+	external := filepath.Join(t.TempDir(), "external.pack")
+	if err := os.WriteFile(external, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest := cas.NewDigest([]byte("untrusted-manifest"))
+	manifestData, err := json.Marshal(manifest{Entries: map[string]packRecord{
+		string(digest): {Pack: external, Offset: 0, Size: 6},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "packs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "packs", "index.json"), manifestData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := New(base, WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if _, ok := b.index[string(digest)]; ok {
+		t.Fatal("manifest record outside pack directory must be ignored")
+	}
+	if _, err := b.Get(ctx, digest); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Get() = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPackBackendRejectsInvalidIndexRecord(t *testing.T) {
+	ctx := context.Background()
+	b, err := New(filepath.Join(t.TempDir(), "invalid-index"), WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	digest := cas.NewDigest([]byte("invalid-index"))
+	if err := b.Put(ctx, digest, bytesReader([]byte("payload"))); err != nil {
+		t.Fatal(err)
+	}
+	b.index[string(digest)] = packRecord{
+		Pack:   filepath.Join(b.packDir, "current.pack"),
+		Offset: -1,
+		Size:   7,
+	}
+	if _, err := b.Get(ctx, digest); err == nil {
+		t.Fatal("Get() = nil, want invalid pack record error")
+	}
+}
+
 func TestPackBackendDisabledMatchesLoose(t *testing.T) {
 	ctx := context.Background()
 	base := filepath.Join(t.TempDir(), "plain")
@@ -159,6 +216,7 @@ func TestPackBackendPersistsIndexAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer reader.Close()
 	payload, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
@@ -414,10 +472,18 @@ func TestPackBackendAppendAndCloseEdgeCases(t *testing.T) {
 	if b.packFile != nil {
 		t.Fatal("closed backend should have no active pack file")
 	}
-	if _, err := b.Get(ctx, first); err != nil {
+	firstReader, err := b.Get(ctx, first)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Get(ctx, second); err != nil {
+	if err := firstReader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondReader, err := b.Get(ctx, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secondReader.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := b.Exists(ctx, first); err != nil || !got {

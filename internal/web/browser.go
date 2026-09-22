@@ -22,19 +22,29 @@ const (
 )
 
 type objectBrowserState struct {
-	Query     string
-	Type      string
-	Size      string
-	Status    string
-	Reach     string
-	Sort      string
+	// Query filters rows by digest or type text.
+	Query string
+	// Type filters rows by envelope type.
+	Type string
+	// Size filters rows by stored size.
+	Size string
+	// Status filters rows by integrity state.
+	Status string
+	// Reach filters rows by reachability state.
+	Reach string
+	// Sort selects the result ordering column.
+	Sort string
+	// Direction selects ascending or descending order.
 	Direction string
-	Limit     int
-	Offset    int
+	// Limit is the maximum number of rows per page.
+	Limit int
+	// Offset is the first row of the current page.
+	Offset int
 	// OffsetSet records an explicitly requested page. Without it the browser
 	// is free to page to whichever rows the selection lives on.
 	OffsetSet bool
-	Selected  string
+	// Selected is the digest shown in the inspector.
+	Selected string
 	// Deselected records an explicitly empty selection: the operator clicked
 	// the selected row again. It is distinct from an absent one, which still
 	// auto-selects the first visible row.
@@ -43,6 +53,7 @@ type objectBrowserState struct {
 	// what happens to the session trail. It describes a single click, so it
 	// is never carried by url(): only navURL emits it.
 	Nav string
+	// Tab is the inspector tab to render.
 	Tab string
 }
 
@@ -195,8 +206,11 @@ var objectSortColumns = []struct {
 // sortColumn is one rendered table header. Every decision the markup would
 // otherwise make is resolved here, so the template carries no per-column logic.
 type sortColumn struct {
+	// Label is the visible header text.
 	Label string
-	Name  string
+	// Name is the accessible column name.
+	Name string
+	// Class adds column-specific presentation styling.
 	Class string
 	// URL sorts by this column: it flips the direction when the column already
 	// owns the sort and starts ascending otherwise.

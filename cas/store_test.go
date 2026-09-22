@@ -38,6 +38,19 @@ func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	}
 }
 
+func TestStoreGetRawReportsBackendCloseFailure(t *testing.T) {
+	digest := sha256.Of([]byte("payload"))
+	want := errors.New("close failed")
+	s := cas.New(
+		closeErrorBackend{reader: failingCloseReader{Reader: bytes.NewReader([]byte("payload")), err: want}},
+		jsoncodec.New[untypedObj](),
+		sha256.New(),
+	)
+	if _, err := s.GetRaw(context.Background(), digest); !errors.Is(err, want) {
+		t.Fatalf("GetRaw(close error) = %v, want %v", err, want)
+	}
+}
+
 func fsFactory(t *testing.T) cas.Backend {
 	s, err := fs.New(t.TempDir())
 	if err != nil {

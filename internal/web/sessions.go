@@ -42,7 +42,9 @@ type Session struct {
 	// backs the inspector's Prev/Next controls, which walk only objects this
 	// session already visited — browser history would also replay filter and
 	// sort changes, which are not object navigation.
-	Trail    []string
+	// Trail is the ordered digest history for inspector navigation.
+	Trail []string
+	// TrailPos is the current index within Trail.
 	TrailPos int
 }
 

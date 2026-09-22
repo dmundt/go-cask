@@ -122,7 +122,7 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 		return errors.New("snapshot: object count is too large")
 	}
 
-	seen := make(map[string]struct{}, int(count))
+	seen := make(map[string]struct{})
 	var lengths [recordHeaderSize]byte
 	for i := uint64(0); i < count; i++ {
 		if err := ctx.Err(); err != nil {

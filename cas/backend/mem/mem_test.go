@@ -377,6 +377,9 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 		{"count too large", func(data []byte) {
 			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt())+1)
 		}},
+		{"large count with missing records", func(data []byte) {
+			binary.BigEndian.PutUint64(data[10:18], uint64(maxInt()))
+		}},
 		{"declared total too large", func(data []byte) {
 			binary.BigEndian.PutUint64(data[18:26], uint64(maxInt())+1)
 		}},

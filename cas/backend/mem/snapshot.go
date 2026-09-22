@@ -109,7 +109,7 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("mem: snapshot exceeds max size %d bytes", m.maxBytes)
 	}
 
-	objects := make(map[string][]byte, int(count))
+	objects := make(map[string][]byte)
 	var total uint64
 	var lengths [16]byte
 	for i := uint64(0); i < count; i++ {

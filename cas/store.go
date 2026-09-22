@@ -232,10 +232,13 @@ func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close()
 	data, err := io.ReadAll(rc)
 	if err != nil {
+		_ = rc.Close()
 		return nil, fmt.Errorf("cas: read object: %w", err)
+	}
+	if err := rc.Close(); err != nil {
+		return nil, fmt.Errorf("cas: close object: %w", err)
 	}
 	return data, nil
 }

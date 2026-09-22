@@ -37,6 +37,7 @@ func FuzzPackRoundTrip(f *testing.F) {
 		if err != nil {
 			t.Fatalf("Get() = %v, want nil", err)
 		}
+		defer reader.Close()
 		got, err := io.ReadAll(reader)
 		if err != nil {
 			t.Fatalf("ReadAll() = %v, want nil", err)

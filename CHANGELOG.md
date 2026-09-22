@@ -15,6 +15,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pack storage now supports digest widths beyond SHA-256 and rejects truncated
   payload records instead of returning zero-padded data.
 - In-memory snapshot restore now rejects trailing data.
+- Pack manifests reject unsafe file locations and malformed record bounds.
+- Long filesystem maintenance scans respond promptly to context cancellation.
+- Typed reads and integrity verification report backend close failures.
+- Snapshot imports avoid attacker-controlled up-front map allocation.
+- CLI maintenance commands reject negative retention ages, `verify` rejects
+  extra operands, and viewer startup errors return documented exit codes.
 
 ## [v1.6.3] - 2026-09-22
 

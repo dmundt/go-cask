@@ -50,10 +50,16 @@ import (
 // This keeps the backend contract stable while allowing codecs, envelopes,
 // caches, object models and hash algorithms to evolve independently.
 type Backend interface {
+	// Put stores bytes from r under d.
 	Put(ctx context.Context, d Digest, r io.Reader) error
+	// Get returns a reader for bytes stored under d.
 	Get(ctx context.Context, d Digest) (io.ReadCloser, error)
+	// Exists reports whether d is stored.
 	Exists(ctx context.Context, d Digest) (bool, error)
+	// Delete removes d when it exists.
 	Delete(ctx context.Context, d Digest) error
+	// List returns every stored digest.
 	List(ctx context.Context) ([]Digest, error)
+	// Stats returns stored object and byte totals.
 	Stats(ctx context.Context) (*Stats, error)
 }

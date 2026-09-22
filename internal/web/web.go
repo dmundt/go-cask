@@ -68,13 +68,16 @@ type Config struct {
 // viewer never infers references from opaque CAS payloads and never mutates
 // this source; the host owns its lifecycle and completeness.
 type ReferenceIndex interface {
+	// Inbound returns objects that reference the given digest.
 	Inbound(cas.Digest) []cas.Digest
+	// Outbound returns objects referenced by the given digest.
 	Outbound(cas.Digest) []cas.Digest
 }
 
 // ReachabilityIndex reports whether an object is reachable from host-owned
 // roots. The viewer never derives reachability from inbound-reference counts.
 type ReachabilityIndex interface {
+	// IsReachable reports whether the given digest is reachable from roots.
 	IsReachable(cas.Digest) bool
 }
 
@@ -254,7 +257,9 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 }
 
 type shellData struct {
+	// View names the content template rendered by the shell.
 	View string
+	// Data is the view-specific template data.
 	Data any
 }
 

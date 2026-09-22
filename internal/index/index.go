@@ -82,25 +82,36 @@ func envelopeType(data []byte) (string, error) {
 // result of one store walk together avoids re-opening and re-statting every
 // object for each filter, sort, or pagination request.
 type Entry struct {
-	Digest     cas.Digest
-	Type       string
-	Size       int64
-	Written    time.Time
+	// Digest identifies the object.
+	Digest cas.Digest
+	// Type is the decoded envelope type.
+	Type string
+	// Size is the object's stored byte count.
+	Size int64
+	// Written is the object's backend modification time.
+	Written time.Time
+	// Unreadable reports whether metadata could not be read.
 	Unreadable bool
 }
 
 // Snapshot is a point-in-time metadata index. Callers must treat Entries as
 // read-only; a new snapshot is built when the backing store changes.
 type Snapshot struct {
+	// Entries contains metadata for every indexed object.
 	Entries []Entry
-	Types   []string
-	Total   int
-	Bytes   int64
+	// Types lists discovered object types.
+	Types []string
+	// Total is the number of indexed objects.
+	Total int
+	// Bytes is the total stored size of indexed objects.
+	Bytes int64
 }
 
 type metadataSource interface {
 	cas.Backend
+	// Size returns the stored byte count for a digest.
 	Size(context.Context, cas.Digest) (int64, error)
+	// ModTime returns the backend modification time for a digest.
 	ModTime(context.Context, cas.Digest) (time.Time, error)
 }
 

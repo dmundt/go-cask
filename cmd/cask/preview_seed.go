@@ -158,14 +158,17 @@ type previewReferenceIndex struct {
 	reachable map[string]bool
 }
 
+// Inbound returns preview objects that reference target.
 func (i *previewReferenceIndex) Inbound(target cas.Digest) []cas.Digest {
 	return append([]cas.Digest(nil), i.inbound[target.String()]...)
 }
 
+// Outbound returns preview objects referenced by source.
 func (i *previewReferenceIndex) Outbound(source cas.Digest) []cas.Digest {
 	return append([]cas.Digest(nil), i.outbound[source.String()]...)
 }
 
+// IsReachable reports whether digest belongs to a preview root-reachable segment.
 func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 	return i.reachable[digest.String()]
 }

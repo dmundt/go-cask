@@ -27,6 +27,24 @@ func (b getErrorBackend) Delete(context.Context, cas.Digest) error         { ret
 func (b getErrorBackend) List(context.Context) ([]cas.Digest, error)       { return nil, nil }
 func (b getErrorBackend) Stats(context.Context) (*cas.Stats, error)        { return &cas.Stats{}, nil }
 
+type closeErrorBackend struct{ reader io.ReadCloser }
+
+func (b closeErrorBackend) Put(context.Context, cas.Digest, io.Reader) error { return nil }
+func (b closeErrorBackend) Get(context.Context, cas.Digest) (io.ReadCloser, error) {
+	return b.reader, nil
+}
+func (b closeErrorBackend) Exists(context.Context, cas.Digest) (bool, error) { return true, nil }
+func (b closeErrorBackend) Delete(context.Context, cas.Digest) error         { return nil }
+func (b closeErrorBackend) List(context.Context) ([]cas.Digest, error)       { return nil, nil }
+func (b closeErrorBackend) Stats(context.Context) (*cas.Stats, error)        { return &cas.Stats{}, nil }
+
+type failingCloseReader struct {
+	io.Reader
+	err error
+}
+
+func (r failingCloseReader) Close() error { return r.err }
+
 type validateErrorHasher struct{}
 
 func (validateErrorHasher) Digest(io.Reader) (cas.Digest, error) { return nil, nil }
@@ -113,5 +131,16 @@ func TestVerifyReportsBackendReadFailure(t *testing.T) {
 	want := errors.New("get failed")
 	if err := cas.Verify(ctx, getErrorBackend{err: want}, d, sha256.New()); !errors.Is(err, want) {
 		t.Fatalf("Verify(get error) = %v, want %v", err, want)
+	}
+}
+
+func TestVerifyReportsBackendCloseFailure(t *testing.T) {
+	digest := sha256.Of([]byte("hello"))
+	want := errors.New("close failed")
+	raw := closeErrorBackend{
+		reader: failingCloseReader{Reader: bytes.NewReader([]byte("hello")), err: want},
+	}
+	if err := cas.Verify(context.Background(), raw, digest, sha256.New()); !errors.Is(err, want) {
+		t.Fatalf("Verify(close error) = %v, want %v", err, want)
 	}
 }
