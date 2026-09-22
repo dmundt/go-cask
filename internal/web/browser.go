@@ -5,6 +5,7 @@
 package web
 
 import (
+	"bytes"
 	"cmp"
 	"fmt"
 	"net/url"
@@ -368,8 +369,8 @@ func trailURL(state objectBrowserState, digest string) string {
 	return state.navURL(navTrail)
 }
 
-func matchesObjectRow(row objectRow, state objectBrowserState) bool {
-	if state.Query != "" && !strings.Contains(row.Digest, state.Query) && !strings.Contains(strings.ToLower(row.Type), state.Query) {
+func matchesObjectRow(row *objectRow, state objectBrowserState) bool {
+	if state.Query != "" && !strings.Contains(row.digestString(), state.Query) && !strings.Contains(strings.ToLower(row.Type), state.Query) {
 		return false
 	}
 	if state.Type != "" && row.Type != state.Type {
@@ -423,16 +424,23 @@ func sortObjectRows(rows []objectRow, state objectBrowserState) {
 		case "written":
 			comparison = left.Written.Compare(right.Written)
 		default:
-			comparison = strings.Compare(left.Digest, right.Digest)
+			comparison = compareObjectRowDigest(left, right)
 		}
 		if comparison == 0 {
-			comparison = strings.Compare(left.Digest, right.Digest)
+			comparison = compareObjectRowDigest(left, right)
 		}
 		if state.Direction == "desc" {
 			return -comparison
 		}
 		return comparison
 	})
+}
+
+func compareObjectRowDigest(left, right objectRow) int {
+	if len(left.hash) != 0 && len(right.hash) != 0 {
+		return bytes.Compare(left.hash, right.hash)
+	}
+	return strings.Compare(left.Digest, right.Digest)
 }
 
 // integrityOrder ranks an integrity key so an ascending sort reads from sound

@@ -122,6 +122,13 @@ func (s *sessions) verification(id, digest string) string {
 	return record
 }
 
+func (s *sessions) hasVerifications(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.byID[id]
+	return ok && len(sess.Verifications) != 0
+}
+
 // verificationRecord reports the recorded result and when it was checked. The
 // zero time means the object has not been checked in this session.
 func (s *sessions) verificationRecord(id, digest string) (string, time.Time) {

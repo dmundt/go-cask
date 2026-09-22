@@ -34,6 +34,7 @@ The suite is split by subsystem so each family keeps a coherent ownership bounda
 | [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard benchmarks |
 | [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, and concurrency checks |
 | [`scale_bench_test.go`](./scale_bench_test.go) | On-demand state-scaling probes |
+| [`viewer_bench_test.go`](./viewer_bench_test.go) | On-demand authenticated viewer object-browser rendering at 100–100,000 stored objects |
 | `internal/index/index_bench_test.go` | Viewer metadata snapshot scan at 100/1,000 objects |
 
 All files live in `benchmarks/` and use standard `go test -bench`. Every timed benchmark reports allocations. `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput is reported only where one payload of known size defines each operation; benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
@@ -275,6 +276,7 @@ Each runs as `Memory` and `FS` sub-benchmarks (`fs.New` writes to an auto-cleane
 | `BenchmarkScaleList` | Full `List` scan — materializes every hash; **O(N) memory/op, keep N modest** |
 | `BenchmarkScaleStats` | `Stats` summary (counts, bytes) on both backends |
 | `BenchmarkScaleStoreEconomics` | FS on-disk layout cost at N: object-file count, dirs, leaf-dir spread (min/avg/max), object bytes — for `(2,1)` vs `(4,1)` (needs `-v`) |
+| `BenchmarkViewerObjectsScale` | Authenticated `/viewer/objects` rendering on filesystem storage at 100, 1,000, 10,000, and 100,000 objects; uses the normal post-load metadata-snapshot cache |
 
 The N-object prefill happens before the timed loop (can take minutes at large N) and is **not** part of the per-op numbers.
 
@@ -290,6 +292,15 @@ go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
 
 ```bash
 CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./benchmarks/
+```
+
+To run every viewer scale case, use the largest supported count. Prefilling
+100,000 filesystem objects can consume substantial time and temporary disk
+space, so start with `100` or `1000` when validating the harness:
+
+```bash
+CASK_SCALE_OBJECTS=100000 go test ./benchmarks/ -run=^$ \
+  -bench='^BenchmarkViewerObjectsScale$' -benchmem -benchtime=10x -timeout 0
 ```
 
 Notes: `-v` is required for the `[scale]` projection lines; `-benchtime=NNx` is recommended (exact counts, bounded runs); without it Go's `1s` calibration re-runs each bench (wasteful at large N); add `-timeout 0` when the prefill nears minutes.
