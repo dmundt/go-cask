@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v30
+version: v31
 ---
 
 # Library Design — go-cask
@@ -12,7 +12,7 @@ The `cas` package must be small, obvious, and hard to misuse. Related: `cas-core
 ## 1. Lean-core budget
 
 - `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 LOC and ≤ ~40 exported identifiers (re-baselined 2026-09 to the frozen surface after the pre-v1.0.0 audit). Every exported name must earn its place; if it can live in a subpackage or an example, it does. Advisory ceiling for additions, not a shrinking target.
-- **Stable core surface** (the API docs promise — cas-core §7.1): `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` (the client's algorithm seam), `Backend` (byte interface), `Stats`, `Codec[T]` (interface), `Object`, `Validator` (the optional object-invariant contract the store enforces), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `Reachable`, `RefLister`, `RefListerFunc` (the reachable-set expansion `Backend.GC`/`Backend.Prune` require before either is called), `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, and the five sentinel `Err*` values — all in `package cas`.
+- **Stable core surface** (the API docs promise — cas-core §7.1): `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` (the client's algorithm seam), `Backend` (byte interface), `Stats`, `Codec[T]` (interface), `Object`, `Validator` (the optional object-invariant contract the store enforces), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `Reachable`, `RefLister`, `RefListerFunc` (the reachable-set expansion `Backend.GC`/`Backend.Prune` require before either is called), `Verify`, `Verifier`/`NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter` (the generic, backend-agnostic maintenance layer — go-cask#137), `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, and the six sentinel `Err*` values — all in `package cas`.
 - Byte backends, typed codecs, the shipped hasher and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); the client hasher `sha256.New()` / `sha256.Of` / `sha256.Parse` / `sha256.Format` (`cas/hash/sha256` — the default go-cask's own clients wire in, and nothing in `cas` imports it; a short display form is `cas.Digest.Prefix(n)`, not a client helper); codecs `json.New[T]()`, `gob.NewRaw[T]()` / `gob.New[T](next)` and `binary.New[T](marshal, unmarshal)` (there is no `JSONCodec`/`GobCodec`/`BinaryCodec` type) — objects declare plain `cas.Digest` reference fields, which render themselves through `encoding.TextMarshaler` (`MarshalText`/`UnmarshalText`), so no hash JSON code lives anywhere; caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
 - Optional machinery stays out of the core: prefetch-on-access and cache-monitor recipes are demonstrated by `examples/notes` and `examples/artifacts` — never part of `package cas`; record the decision in `AGENTS.md` when made.
 - The mutable half of the store — named, atomically-written pointers to a `cas.Digest`, with a reflog — lives in `cas/refs` (`refs.Open(dir, opts...)`; `refs.WithClock`), never in `package cas`: `Store.Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`, the `Ref`/`Entry` types, `ValidateName`, and the sentinels `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName`.
@@ -30,6 +30,7 @@ var (
     ErrInvalidDigest  = errors.New("cas: invalid digest")
     ErrUnknownType    = errors.New("cas: unknown object type or version")
     ErrCorrupt        = errors.New("cas: corrupt object")
+    ErrUnsupported    = errors.New("cas: operation not supported by backend")
 )
 ```
 
@@ -38,6 +39,7 @@ var (
 - `ParseDigest` / `Digest.UnmarshalText` return `ErrInvalidDigest`, wrapped with the offending input in the message — a legacy `"sha256:hexdigest"` reference is rejected, not reinterpreted.
 - `Store.Get` returns `ErrCorrupt` when the stored payload cannot be decoded by the store codec.
 - Deserializers return `ErrUnknownType` for an unregistered type name or major version.
+- `Sweep` returns `ErrUnsupported` when `SweepOptions.MinAge > 0` is requested against a backend that does not implement `Statter`.
 - Never compare error strings; always `errors.Is` / `errors.As`. Doc comments state which errors each method can return.
 
 ## 3. No mutable global state

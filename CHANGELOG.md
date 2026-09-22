@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas.CapabilitiesOf` reports which optional maintenance operations a backend
+  supports (`Cleaner`, `Statter`), and the new `cas.VerifyAll`/`cas.Sweep`
+  functions give every backend — including `packfs`, which has no
+  backend-native GC of its own — a working integrity-check and
+  mark-and-sweep reclamation path using only the minimal `Backend` interface.
+  `fs.Backend`'s existing `Verify`/`GC`/`Prune` remain the faster,
+  backend-native path where available.
 - `cas/repo` promotes gitlike's example-only `Codecs`/`Repository`/`Resolver`/
   `WalkGraph` pattern into a supported package: a `Registry` resolves a
   `cas.Digest` to its typed object across however many caller-registered

@@ -29,4 +29,8 @@ var (
 	ErrUnknownType = errors.New("cas: unknown object type or version")
 	// ErrCorrupt reports invalid stored object data.
 	ErrCorrupt = errors.New("cas: corrupt object")
+	// ErrUnsupported reports that a maintenance operation was requested that
+	// the given backend cannot perform (e.g. age-based Sweep against a
+	// backend that does not implement Statter). See Capabilities/CapabilitiesOf.
+	ErrUnsupported = errors.New("cas: operation not supported by backend")
 )

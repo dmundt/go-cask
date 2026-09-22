@@ -8,6 +8,7 @@
 - `Hasher` is the caller-supplied algorithm seam.
 - `Codec[T]`, `Store[T]`, and `Object[T]` define the typed layer.
 - `Walker[T]` and the cache wrappers add traversal and read optimization.
+- `VerifyAll`/`Sweep`/`Capabilities` are the generic, backend-agnostic maintenance layer — they work against any `Backend`, not just `fs`.
 
 ## Default policy
 
