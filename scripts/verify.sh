@@ -433,6 +433,14 @@ if [[ "$fail_doc" -ne 0 ]]; then
   exit 1
 fi
 
+echo "== website footer =="
+# The published footer is one line, composed by website/macros.py from the
+# checked-out revision; nothing else in the gate evaluates it. The module's own
+# self-test composes that line for fixed inputs and exits non-zero on a changed
+# rendered text, a returning zone label or second line, a config that lost the
+# line, or a date that was guessed instead of omitted.
+python3 website/macros.py --selftest
+
 echo "== website examples =="
 # Every Go fence on the site is a complete unit (website/AGENT.md, "Examples
 # and links"): the extraction below writes each one into its own package under

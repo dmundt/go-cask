@@ -122,13 +122,6 @@ html .md-footer-meta.md-typeset .md-copyright__highlight a:hover {
   text-decoration: underline;
 }
 
-/* Build provenance line: the deployed revision's date and short hash. */
-.md-footer-meta .md-copyright__site-build {
-  color: var(--text-soft);
-  font-size: 0.72rem;
-  margin-top: 0.2rem;
-}
-
 .md-header {
   background: var(--header-surface);
   color: var(--md-default-fg-color);

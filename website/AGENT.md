@@ -75,49 +75,26 @@ MkDocs' search index, so local search is not a valid file-preview check.
 
 ## Build provenance in the footer
 
-The footer partial (`website/overrides/partials/copyright.html`, loaded through
-`theme.custom_dir` in `mkdocs.yml`) shows the date and short revision of the
-revision the site was built from, and derives the copyright year from that same
-date instead of keeping a literal. `website/macros.py` publishes both values.
+The footer is one line, and `website/macros.py` is the only thing that completes
+it: the hook reads the checked-out revision with one call — `git log -1
+--format=%h %cs` — and writes the result back to `env.conf["copyright"]`, the
+value the theme's own footer partial renders, so the site needs no theme
+override and no provenance environment variable. The two values are that
+revision's short form and its own date as `YYYY-MM-DD`: they are
+revision-derived and never wall-clock, so two builds of one revision render the
+same footer, and the date carries no zone label because at day granularity no
+zone is more correct than the offset the commit records. The `©` year comes
+from that same date instead of a literal. The line degrades rather than
+guesses: with no readable revision the footer renders the `copyright` value
+`mkdocs.yml` declares — no fragment and no year — and the build still succeeds.
+`website/privacy.md`'s final line is the privacy policy's own revision date, not
+the site's; keep that wording so the two cannot be read as one.
 
-- `SITE_BUILD_DATE` — the deployed revision's committer date, ISO 8601. The
-  hook renders the `YYYY-MM-DD` date the timestamp names, with no zone
-  conversion and no zone label: determinism comes from sourcing the value in
-  the deployed revision, not from normalizing its offset, and at day
-  granularity no zone is more correct than the one the commit records. The
-  deploy workflow passes `github.event.head_commit.timestamp` on push and
-  falls back to `git log -1 --format=%cI` when a workflow dispatch has no
-  commit payload.
-- `SITE_REVISION` — the deployed revision, short form, passed from
-  `github.event.head_commit.id` with `github.sha` as the fallback.
-
-Both start as empty strings in `mkdocs.yml`'s `extra` block; the hook overwrites
-them before any page or template renders. They are sourced from the revision,
-never from wall-clock time, so two builds of one revision produce the same
-footer. Check that after a change to the footer or the hook: the built
-`site/index.html` must contain one `md-copyright__site-build` line naming the
-value of `SITE_REVISION` it was given, and repeating the build with the same
-values must reproduce that line byte for byte.
-
-`go test ./internal/website` pins that line without needing MkDocs: the test
-evaluates the partial's build-provenance block as an `html/template` against
-the values `website/macros.py` publishes and asserts the exact rendered text
-for a CI build, for a revision with no date, for a date with no revision, and
-for neither. The footer must not carry a zone label, and the hook must not
-convert the date between zones; the test fails when either returns.
-
-Unlike `IMPRESSUM`, neither is required: a local build without the environment
-variables falls back to the checkout's own `git log` and `git rev-parse`, and
-when even that is unavailable the value stays empty. The footer then omits the
-build line, or drops the year, rather than rendering an empty or stale label.
-`mkdocs build --strict` and `mkdocs serve` must both keep succeeding with no new
-environment variable set. The build-provenance markup lives in the HTML partial
-only: raw HTML stays forbidden in every `*.md` file, and the doc-integrity pass
-in `scripts/verify.sh` enforces that.
-
-`website/privacy.md`'s final line is the privacy policy's own revision date
-("Privacy policy revision: …"), not the site's build date; keep that wording so
-the two dates cannot be read as one.
+`python3 website/macros.py --selftest` pins the rendered line, the `©` year and
+the omitted fragment for fixed inputs, and `scripts/verify.sh` runs it in the
+gate; `go test ./internal/website` checks the same text and the shipped
+artifacts (the config line, the deleted override, the absent plumbing) without
+MkDocs, and re-runs the module self-test when a Python interpreter is available.
 
 ## Signed pull-request workflow
 
