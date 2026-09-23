@@ -15,16 +15,16 @@ import (
 // cache.
 func TestObjectMetaIsCached(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	env := tlvEnvelope("blob@1", []byte("cached"))
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestObjectMetaIsCached(t *testing.T) {
 	if first.Type != "blob@1" || first.Size != int64(len(env)) || first.Unreadable {
 		t.Fatalf("objectMetaFor() = %#v, want a readable blob@1 of %d bytes", first, len(env))
 	}
-	if err := raw.Delete(ctx, h); err != nil {
+	if err := backend.Delete(ctx, h); err != nil {
 		t.Fatal(err)
 	}
 	if second := srv.objectMetaFor(ctx, h); second != first {
@@ -45,11 +45,11 @@ func TestObjectMetaIsCached(t *testing.T) {
 // sticking: an object that becomes readable must stop reporting as unreadable.
 func TestObjectMetaDoesNotCacheFailures(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestObjectMetaDoesNotCacheFailures(t *testing.T) {
 		t.Fatalf("objectMetaFor(absent) = %#v, want unreadable", missing)
 	}
 	env := tlvEnvelope("tree@1", []byte("now here"))
-	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
 	if meta := srv.objectMetaFor(ctx, h); meta.Unreadable || meta.Type != "tree@1" {

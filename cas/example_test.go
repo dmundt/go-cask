@@ -61,12 +61,12 @@ func ExampleCodec() {
 		return
 	}
 	defer os.RemoveAll(dir)
-	raw, err := fs.New(dir)
+	backend, err := fs.New(dir)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
 	}
-	onDisk := cas.New(raw, codec, sha256.New())
+	onDisk := cas.New(backend, codec, sha256.New())
 
 	memDigest, err := inMemory.Put(ctx, note{Body: "hi"})
 	if err != nil {

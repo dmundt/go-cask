@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v27
+version: v28
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -57,6 +57,16 @@ resulting head commit with `git verify-commit`, and push with
 `./scripts/verify.sh` and confirm all configured coverage thresholds pass.
 Enable auto-merge or merge only after signature verification, required checks,
 and coverage checks pass.
+
+On Windows, run `./scripts/verify.sh` under WSL with a Linux Go toolchain: the
+race and coverage gate needs cgo and a C compiler, which the Windows toolchain
+cannot take from WSL's `gcc`, and coverage measured on Windows does not predict
+the gate. Never duplicate the gate's steps in PowerShell. The rootless WSL setup
+and the exact command are in [`scripts/AGENT.md`](scripts/AGENT.md), section
+"Running the scripts on Windows".
+
+On any platform, a gate run is green only when it ends with `verification
+passed`; a run that stops earlier failed even if nothing was echoed about it.
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
@@ -386,8 +396,8 @@ func main() {
     // 1. Filesystem backend + git-like example repository on top. gitlike names
     //    neither the algorithm nor the wire format, so the client supplies both:
     //    the sha256 hasher and one JSON codec per object type.
-    raw, _ := fs.New("./repo")
-    repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+    backend, _ := fs.New("./repo")
+    repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
         Blob:   jsoncodec.New[*gitlike.Blob](),
         Tree:   jsoncodec.New[*gitlike.Tree](),
         Commit: jsoncodec.New[*gitlike.Commit](),
@@ -439,7 +449,7 @@ unchanged:
 ```go
 import mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
 
-raw := mem.New() // in-memory: fast, deterministic, not persistent
+backend := mem.New() // in-memory: fast, deterministic, not persistent
 ```
 
 ---
@@ -459,7 +469,7 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    codec's job, not the object's.
 2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()`
    (package `cas/codec/json`) and the client's hasher —
-   `cas.New(raw, json.New[Document](), sha256.New())`.
+   `cas.New(backend, json.New[Document](), sha256.New())`.
 3. Reference other objects with plain `cas.Digest` fields — the field IS the
    address on the wire (one hex string, no codec wrapper). Tag a field
    `json:"…,omitzero"` when an absent reference should be left out of the

@@ -91,7 +91,7 @@ func opSeedPreview(ctx context.Context, t *target, args []string) error {
 		return usagef("count must be between 1 and %d, got %d", maxPreviewCount, a.count)
 	}
 
-	added, deduplicated, err := seedPreview(ctx, t.raw, a.count)
+	added, deduplicated, err := seedPreview(ctx, t.backend, a.count)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func opSeedPreview(ctx context.Context, t *target, args []string) error {
 	return err
 }
 
-func seedPreview(ctx context.Context, raw *fs.Backend, count int) (int, int, error) {
+func seedPreview(ctx context.Context, backend *fs.Backend, count int) (int, int, error) {
 	added, deduplicated := 0, 0
 	digests := make([]cas.Digest, 0, count)
 	for ordinal := range count {
@@ -107,14 +107,14 @@ func seedPreview(ctx context.Context, raw *fs.Backend, count int) (int, int, err
 		if previewCorruptOrdinal(ordinal) {
 			// Store bytes that do not hash to their own address, so Verify
 			// genuinely fails instead of the viewer faking a corrupt status.
-			exists, err := raw.Exists(ctx, object.digest)
+			exists, err := backend.Exists(ctx, object.digest)
 			if err != nil {
 				return 0, 0, fmt.Errorf("check preview object %d: %w", object.ordinal, err)
 			}
 			if exists {
 				deduplicated++
 			} else {
-				if err := raw.Put(ctx, object.digest, bytes.NewReader(previewTamper(object.data))); err != nil {
+				if err := backend.Put(ctx, object.digest, bytes.NewReader(previewTamper(object.data))); err != nil {
 					return 0, 0, fmt.Errorf("seed corrupt preview object %d: %w", object.ordinal, err)
 				}
 				added++
@@ -123,7 +123,7 @@ func seedPreview(ctx context.Context, raw *fs.Backend, count int) (int, int, err
 			continue
 		}
 		data := object.data
-		_, exists, err := localPut(ctx, raw, bytes.NewReader(data))
+		_, exists, err := localPut(ctx, backend, bytes.NewReader(data))
 		if err != nil {
 			return 0, 0, fmt.Errorf("seed preview object %d: %w", object.ordinal, err)
 		}
@@ -255,7 +255,7 @@ func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 // objects the store holds. It returns errNoPreviewGraph when the store holds
 // none of them, so a caller reads "an ordinary store" from the error instead of
 // having to treat a nil index as a non-error signal.
-func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceIndex, error) {
+func previewReferences(ctx context.Context, backend *fs.Backend) (*previewReferenceIndex, error) {
 	index := &previewReferenceIndex{
 		inbound:   make(map[string][]cas.Digest),
 		outbound:  make(map[string][]cas.Digest),
@@ -264,7 +264,7 @@ func previewReferences(ctx context.Context, raw *fs.Backend) (*previewReferenceI
 	digests := make([]cas.Digest, 0, maxPreviewCount)
 	for ordinal := range maxPreviewCount {
 		object := previewObjectFor(ordinal, digests)
-		exists, err := raw.Exists(ctx, object.digest)
+		exists, err := backend.Exists(ctx, object.digest)
 		if err != nil {
 			return nil, fmt.Errorf("check preview object %d: %w", object.ordinal, err)
 		}

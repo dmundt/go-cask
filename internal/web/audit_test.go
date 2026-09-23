@@ -38,15 +38,15 @@ func TestSessionHandleNeverLeaksTheCookie(t *testing.T) {
 // without recording the cookie that identifies them.
 func TestAuditLogNamesTheSession(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, strings.NewReader("audit me")); err != nil {
+	if err := backend.Put(ctx, h, strings.NewReader("audit me")); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestAuditLogNamesTheSession(t *testing.T) {
 	}
 	for _, sess := range srv.sessions.byID {
 		if strings.Contains(lines, sess.ID) {
-			t.Fatal("audit log contains a raw session id")
+			t.Fatal("audit log contains a backend session id")
 		}
 		if strings.Contains(lines, sess.CSRF) {
 			t.Fatal("audit log contains a CSRF token")

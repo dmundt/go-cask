@@ -85,7 +85,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session")
 	}
 
-	raw, err := fsbackend.New(a.store)
+	backend, err := fsbackend.New(a.store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		return 1
@@ -95,7 +95,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		slog.Error("invalid viewer hash algorithm", "algorithm", a.hashAlgorithm, "err", err)
 		return 2
 	}
-	references, err := previewReferences(ctx, raw)
+	references, err := previewReferences(ctx, backend)
 	if err != nil && !errors.Is(err, errNoPreviewGraph) {
 		slog.Error("build preview references", "err", err)
 		return 1
@@ -137,7 +137,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		viewerConfig.References = references
 		viewerConfig.Reachability = references
 	}
-	webSrv, err := web.New(raw, viewerConfig)
+	webSrv, err := web.New(backend, viewerConfig)
 	if err != nil {
 		slog.Error("viewer setup", "err", err)
 		return 1

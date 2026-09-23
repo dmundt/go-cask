@@ -31,13 +31,13 @@ func BenchmarkViewerObjectsScale(b *testing.B) {
 			continue
 		}
 		b.Run(fmt.Sprintf("objects=%d", count), func(b *testing.B) {
-			raw, err := fs.New(b.TempDir())
+			backend, err := fs.New(b.TempDir())
 			if err != nil {
 				b.Fatal(err)
 			}
-			fillViewerObjects(b, raw, count)
+			fillViewerObjects(b, backend, count)
 
-			server, err := web.New(raw, web.Config{
+			server, err := web.New(backend, web.Config{
 				RoleTokens: map[string]string{"benchmark-token": web.RoleViewer},
 			})
 			if err != nil {
@@ -58,7 +58,7 @@ func BenchmarkViewerObjectsScale(b *testing.B) {
 
 var viewerScaleCases = [...]int{100, 1_000, 10_000, 100_000}
 
-func fillViewerObjects(b *testing.B, raw *fs.Backend, count int) {
+func fillViewerObjects(b *testing.B, backend *fs.Backend, count int) {
 	b.Helper()
 	ctx := context.Background()
 	payload := make([]byte, 64)
@@ -68,7 +68,7 @@ func fillViewerObjects(b *testing.B, raw *fs.Backend, count int) {
 			payload[j] = byte(i*(j+1) + j)
 		}
 		object := viewerEnvelope(payload)
-		if err := raw.Put(ctx, sha256.Of(object), bytes.NewReader(object)); err != nil {
+		if err := backend.Put(ctx, sha256.Of(object), bytes.NewReader(object)); err != nil {
 			b.Fatal(err)
 		}
 	}

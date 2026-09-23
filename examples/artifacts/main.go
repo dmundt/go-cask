@@ -79,7 +79,7 @@ func (m *Manifest) References() []cas.Digest {
 
 // app bundles the store, typed stores, and the LRU cache.
 type app struct {
-	raw       *fs.Backend
+	backend   *fs.Backend
 	artifacts *cas.Store[*Artifact]
 	manifests *cas.Store[*Manifest]
 	cache     *lru.Cache[*Artifact]
@@ -87,19 +87,19 @@ type app struct {
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := fs.New(dir)
+	backend, err := fs.New(dir)
 	if err != nil {
 		return nil, err
 	}
 	// The composition is explicit at the call site: the JSON codec serializes,
 	// the gzip codec wraps it (cas-core §7.2).
-	artifacts := cas.New(raw, newGzipCodec[*Artifact](jsoncodec.New[*Artifact]()), sha256.New())
-	manifests := cas.New(raw, newGzipCodec[*Manifest](jsoncodec.New[*Manifest]()), sha256.New())
+	artifacts := cas.New(backend, newGzipCodec[*Artifact](jsoncodec.New[*Artifact]()), sha256.New())
+	manifests := cas.New(backend, newGzipCodec[*Manifest](jsoncodec.New[*Manifest]()), sha256.New())
 	cache, err := lru.New(artifacts, 100)
 	if err != nil {
 		return nil, err
 	}
-	a := &app{raw: raw, artifacts: artifacts, manifests: manifests, cache: cache}
+	a := &app{backend: backend, artifacts: artifacts, manifests: manifests, cache: cache}
 	a.monitor = NewCacheMonitor(cache.CachedStore(), 2*time.Second, func(s CacheSnapshot) {
 		fmt.Printf("cache: hits=%d misses=%d hit-rate=%.2f size=%d\n", s.Hits, s.Misses, s.HitRate, s.Size)
 	})
@@ -126,7 +126,7 @@ func (a *app) put(ctx context.Context, name, file string) (cas.Digest, bool, err
 		return nil, false, err
 	}
 	for _, ph := range prev {
-		if err := a.raw.Delete(ctx, ph); err != nil {
+		if err := a.backend.Delete(ctx, ph); err != nil {
 			return nil, false, err
 		}
 	}
@@ -138,7 +138,7 @@ func (a *app) put(ctx context.Context, name, file string) (cas.Digest, bool, err
 
 // manifestsNamed returns the stored manifest digests for name.
 func (a *app) manifestsNamed(ctx context.Context, name string) ([]cas.Digest, error) {
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (a *app) get(ctx context.Context, d cas.Digest) (*Artifact, error) {
 // gc deletes every object not reachable from the manifests: manifest digests
 // plus the artifacts they reference.
 func (a *app) gc(ctx context.Context) (int, error) {
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -179,7 +179,7 @@ func (a *app) gc(ctx context.Context) (int, error) {
 		}
 	}
 	before := len(digests)
-	if err := a.raw.GC(ctx, reachable); err != nil {
+	if err := a.backend.GC(ctx, reachable); err != nil {
 		return 0, err
 	}
 	return before - len(reachable), nil
@@ -254,7 +254,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "gc: deleted %d unreachable objects\n", n)
 	case "stats":
-		st, err := a.raw.Stats(ctx)
+		st, err := a.backend.Stats(ctx)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1

@@ -56,11 +56,11 @@ func (i testReachabilityIndex) IsReachable(digest cas.Digest) bool {
 
 func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	t.Helper()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		RoleTokens: map[string]string{
 			"viewer-tok":   RoleViewer,

@@ -37,17 +37,17 @@ func TestRemovedGCPostReturnsNotFound(t *testing.T) {
 
 func TestVerifyAndDeleteRemoved(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, strings.NewReader("view me")); err != nil {
+	if err := backend.Put(ctx, h, strings.NewReader("view me")); err != nil {
 		t.Fatal(err)
 	}
 	references := newTestReferenceIndex()
 	references.Record(h, []cas.Digest{mustParse(t, "sha256:"+strings.Repeat("cd", 32))})
-	srv, err := New(raw, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}, References: references})
+	srv, err := New(backend, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}, References: references})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,27 +90,27 @@ func TestVerifyAndDeleteRemoved(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("delete = %d, want 404", resp.StatusCode)
 	}
-	rc, err := raw.Get(ctx, h)
+	rc, err := backend.Get(ctx, h)
 	if err != nil {
 		t.Fatalf("object must survive a delete attempt: %v", err)
 	}
 	rc.Close()
 }
 
-// A corrupt result must name both digests instead of leaking a raw Go error,
+// A corrupt result must name both digests instead of leaking a backend Go error,
 // because "digest mismatch: <one hash>" does not say which side that hash is.
 func TestCorruptVerifyResultNamesBothDigests(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := sha256.Of([]byte("intended-content"))
 	stored := tlvEnvelope("blob@1", []byte("tampered"))
-	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestCorruptVerifyResultNamesBothDigests(t *testing.T) {
 	result := string(body)
 
 	if strings.Contains(result, "cas: digest mismatch") {
-		t.Fatalf("raw sentinel error must not reach the UI: %.400q", result)
+		t.Fatalf("backend sentinel error must not reach the UI: %.400q", result)
 	}
 	for _, want := range []string{"Corrupt", "Expected", "Actual", h.String(), sha256.Of(stored).String()} {
 		if !strings.Contains(result, want) {
@@ -143,20 +143,20 @@ func TestCorruptVerifyResultNamesBothDigests(t *testing.T) {
 // counts, so an operator does not click through objects one at a time.
 func TestVerifyAllUpdatesEveryObject(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	good := tlvEnvelope("blob@1", []byte("sound"))
 	goodDigest := sha256.Of(good)
-	if err := raw.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
+	if err := backend.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
 		t.Fatal(err)
 	}
 	badDigest := sha256.Of([]byte("intended"))
-	if err := raw.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,20 +280,20 @@ func TestVerificationRefreshesObjectList(t *testing.T) {
 // the stored finding, and its age, every time the object is selected again.
 func TestInspectorReplaysStoredVerificationResult(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	good := tlvEnvelope("blob@1", []byte("sound"))
 	goodDigest := sha256.Of(good)
-	if err := raw.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
+	if err := backend.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
 		t.Fatal(err)
 	}
 	badDigest := sha256.Of([]byte("intended"))
-	if err := raw.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,16 +357,16 @@ func TestInspectorReplaysStoredVerificationResult(t *testing.T) {
 // inspector, so the inspector has to re-render like the object table does.
 func TestSweepRefreshesTheOpenInspector(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	data := tlvEnvelope("blob@1", []byte("sound"))
 	digest := sha256.Of(data)
-	if err := raw.Put(ctx, digest, bytes.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, digest, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}

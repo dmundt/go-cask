@@ -14,7 +14,7 @@ It stores object bytes under a digest-addressed path, with configurable fan-out 
 ## Typical use
 
 ```go
-raw, err := fs.New("./store")
+backend, err := fs.New("./store")
 ```
 
 Use `WithFanOut` and `WithFanLevels` to tune the directory layout when the store grows large.

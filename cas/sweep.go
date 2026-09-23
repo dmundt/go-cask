@@ -30,19 +30,19 @@ type SweepOptions struct {
 // always true). A concrete backend may still expose faster backend-native
 // GC/Prune methods; Sweep is the documented way to reclaim space against a
 // backend, such as packfs, that does not.
-func Sweep(ctx context.Context, raw Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error) {
-	if raw == nil {
+func Sweep(ctx context.Context, backend Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error) {
+	if backend == nil {
 		return nil, fmt.Errorf("cas: sweep: nil backend")
 	}
 	var statter Statter
 	if opts.MinAge > 0 {
-		s, ok := raw.(Statter)
+		s, ok := backend.(Statter)
 		if !ok {
 			return nil, fmt.Errorf("%w: age-based sweep requires Statter", ErrUnsupported)
 		}
 		statter = s
 	}
-	digests, err := raw.List(ctx)
+	digests, err := backend.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func Sweep(ctx context.Context, raw Backend, reachable map[string]bool, opts Swe
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			if err := raw.Delete(ctx, d); err != nil {
+			if err := backend.Delete(ctx, d); err != nil {
 				return nil, err
 			}
 		}

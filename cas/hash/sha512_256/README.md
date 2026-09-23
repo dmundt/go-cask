@@ -14,7 +14,7 @@ It keeps the same design as the SHA-256 package: the core remains hash-agnostic,
 
 ```go
 h := sha512_256.New()
-store := cas.New(raw, codec, h)
+store := cas.New(backend, codec, h)
 ```
 
 Use this when you want a modern, fast secure option with 256-bit output and a standard-library implementation.

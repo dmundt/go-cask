@@ -34,6 +34,11 @@ PR creation or update, run `./scripts/verify.sh` and confirm all configured
 coverage thresholds pass. Enable auto-merge or merge only after signature
 verification, required checks, and coverage checks pass.
 
+On Windows, run that gate under WSL as described in
+[`scripts/AGENT.md`](../scripts/AGENT.md): the race and coverage gate needs cgo
+and a C compiler, which the Windows toolchain cannot take from WSL's `gcc`, and
+coverage measured on Windows does not predict the gate.
+
 ## Merge and security settings
 
 - Allow squash merges only. Keep merge commits and rebase merges disabled.

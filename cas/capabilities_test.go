@@ -13,17 +13,17 @@ import (
 // maintenance interface: it exposes Clean, Size and ModTime with the exact
 // signatures Cleaner/Statter require.
 func TestCapabilitiesOfFS(t *testing.T) {
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := cas.CapabilitiesOf(raw)
+	got := cas.CapabilitiesOf(backend)
 	want := cas.Capabilities{Verify: true, Sweep: true, Clean: true, Stat: true}
 	if got != want {
 		t.Fatalf("CapabilitiesOf(fs) = %+v, want %+v", got, want)
 	}
-	var _ cas.Cleaner = raw
-	var _ cas.Statter = raw
+	var _ cas.Cleaner = backend
+	var _ cas.Statter = backend
 }
 
 // TestCapabilitiesOfMem pins mem.Backend as the minimal-interface reference:
@@ -41,16 +41,16 @@ func TestCapabilitiesOfMem(t *testing.T) {
 // maintenance interfaces: it keeps scratch state in the pack directory and can
 // report pack-file metadata for age-based sweep retention.
 func TestCapabilitiesOfPackfs(t *testing.T) {
-	raw, err := packfs.New(t.TempDir(), packfs.WithEnabled())
+	backend, err := packfs.New(t.TempDir(), packfs.WithEnabled())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer raw.Close()
-	got := cas.CapabilitiesOf(raw)
+	defer backend.Close()
+	got := cas.CapabilitiesOf(backend)
 	want := cas.Capabilities{Verify: true, Sweep: true, Clean: true, Stat: true}
 	if got != want {
 		t.Fatalf("CapabilitiesOf(packfs) = %+v, want %+v", got, want)
 	}
-	var _ cas.Cleaner = raw
-	var _ cas.Statter = raw
+	var _ cas.Cleaner = backend
+	var _ cas.Statter = backend
 }

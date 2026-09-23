@@ -13,7 +13,7 @@ import (
 
 func TestBloomExample(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	custom := func(data []byte, i int) uint64 {
 		var h uint64
 		for _, b := range data {
@@ -29,7 +29,7 @@ func TestBloomExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,11 +137,11 @@ func BenchmarkStoreGetMixed(b *testing.B) {
 
 func BenchmarkStoreBaselineJSONSHA256(b *testing.B) {
 	ctx := context.Background()
-	raw, err := fs.New(b.TempDir())
+	backend, err := fs.New(b.TempDir())
 	if err != nil {
 		b.Fatal(err)
 	}
-	s := cas.New(raw, jsoncodec.New[testNote](), sha256.New())
+	s := cas.New(backend, jsoncodec.New[testNote](), sha256.New())
 	note := benchNoteWithSeed(1024, 0)
 	b.SetBytes(1024)
 	b.ReportAllocs()
@@ -154,7 +154,7 @@ func BenchmarkStoreBaselineJSONSHA256(b *testing.B) {
 		if _, err := s.Get(ctx, h); err != nil {
 			b.Fatal(err)
 		}
-		if err := raw.Verify(ctx, h, sha256.New()); err != nil {
+		if err := backend.Verify(ctx, h, sha256.New()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -165,11 +165,11 @@ func BenchmarkStoreWorkflowWriteReadVerify(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-workflow/steady-state/write-read-verify/%s", sz.name), func(b *testing.B) {
 			ctx := context.Background()
-			raw, err := fs.New(b.TempDir())
+			backend, err := fs.New(b.TempDir())
 			if err != nil {
 				b.Fatal(err)
 			}
-			s := cas.New(raw, jsoncodec.New[testNote](), sha256.New())
+			s := cas.New(backend, jsoncodec.New[testNote](), sha256.New())
 			hot := make([]cas.Digest, benchmarkHotSetSize)
 			for i := range hot {
 				h, err := s.Put(ctx, benchNoteWithSeed(sz.size, i))
@@ -189,7 +189,7 @@ func BenchmarkStoreWorkflowWriteReadVerify(b *testing.B) {
 				if _, err := s.Get(ctx, h); err != nil {
 					b.Fatal(err)
 				}
-				if err := raw.Verify(ctx, h, sha256.New()); err != nil {
+				if err := backend.Verify(ctx, h, sha256.New()); err != nil {
 					b.Fatal(err)
 				}
 			})
@@ -203,7 +203,7 @@ func BenchmarkStoreWorkflowWriteReadVerify(b *testing.B) {
 				if _, err := s.Get(ctx, h); err != nil {
 					b.Fatal(err)
 				}
-				if err := raw.Verify(ctx, h, sha256.New()); err != nil {
+				if err := backend.Verify(ctx, h, sha256.New()); err != nil {
 					b.Fatal(err)
 				}
 				if i%benchmarkMixedColdRatio == 0 {
@@ -221,8 +221,8 @@ func BenchmarkStoreGraphTraversal(b *testing.B) {
 	ctx := context.Background()
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-graph/steady-state/%s", sz.name), func(b *testing.B) {
-			raw := mem.New()
-			repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+			backend := mem.New()
+			repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
 				Blob:   jsoncodec.New[*gitlike.Blob](),
 				Tree:   jsoncodec.New[*gitlike.Tree](),
 				Commit: jsoncodec.New[*gitlike.Commit](),

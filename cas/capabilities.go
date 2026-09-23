@@ -34,10 +34,10 @@ type Capabilities struct {
 	Stat bool
 }
 
-// CapabilitiesOf reports which optional maintenance operations raw supports.
-func CapabilitiesOf(raw Backend) Capabilities {
-	_, clean := raw.(Cleaner)
-	_, stat := raw.(Statter)
+// CapabilitiesOf reports which optional maintenance operations the backend supports.
+func CapabilitiesOf(backend Backend) Capabilities {
+	_, clean := backend.(Cleaner)
+	_, stat := backend.(Statter)
 	return Capabilities{
 		Verify: true,
 		Sweep:  true,

@@ -59,79 +59,79 @@ func (b *statMemBackend) ModTime(ctx context.Context, d cas.Digest) (time.Time, 
 
 func TestSweepUnconditionalOverMinimalBackend(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New() // implements neither Cleaner nor Statter
+	backend := mem.New() // implements neither Cleaner nor Statter
 	live := sha256.Of([]byte("live"))
 	dead := sha256.Of([]byte("dead"))
-	if err := raw.Put(ctx, live, bytes.NewReader([]byte("live"))); err != nil {
+	if err := backend.Put(ctx, live, bytes.NewReader([]byte("live"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := raw.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
+	if err := backend.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
 		t.Fatal(err)
 	}
 
 	reachable := map[string]bool{live.String(): true}
-	doomed, err := cas.Sweep(ctx, raw, reachable, cas.SweepOptions{})
+	doomed, err := cas.Sweep(ctx, backend, reachable, cas.SweepOptions{})
 	if err != nil {
 		t.Fatalf("Sweep() = %v, want nil", err)
 	}
 	if len(doomed) != 1 || !doomed[0].Equal(dead) {
 		t.Fatalf("Sweep() doomed = %v, want [%s]", doomed, dead)
 	}
-	if ok, _ := raw.Exists(ctx, dead); ok {
+	if ok, _ := backend.Exists(ctx, dead); ok {
 		t.Fatal("dead object still present after Sweep")
 	}
-	if ok, _ := raw.Exists(ctx, live); !ok {
+	if ok, _ := backend.Exists(ctx, live); !ok {
 		t.Fatal("live object removed by Sweep")
 	}
 }
 
 func TestSweepDryRunDoesNotDelete(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	dead := sha256.Of([]byte("dead"))
-	if err := raw.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
+	if err := backend.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
 		t.Fatal(err)
 	}
-	doomed, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{DryRun: true})
+	doomed, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{DryRun: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(doomed) != 1 {
 		t.Fatalf("Sweep(dryRun) doomed = %v, want 1 entry", doomed)
 	}
-	if ok, _ := raw.Exists(ctx, dead); !ok {
+	if ok, _ := backend.Exists(ctx, dead); !ok {
 		t.Fatal("Sweep(dryRun) deleted an object")
 	}
 }
 
 func TestSweepRejectsAgeWithoutStatter(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	if _, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{MinAge: time.Hour}); !errors.Is(err, cas.ErrUnsupported) {
+	backend := mem.New()
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour}); !errors.Is(err, cas.ErrUnsupported) {
 		t.Fatalf("Sweep(MinAge, non-Statter) = %v, want ErrUnsupported", err)
 	}
 }
 
 func TestSweepAgeBasedRetentionOverStatter(t *testing.T) {
 	ctx := context.Background()
-	raw := newStatMemBackend()
+	backend := newStatMemBackend()
 	old := sha256.Of([]byte("old"))
 	fresh := sha256.Of([]byte("fresh"))
-	if err := raw.putAt(ctx, old, []byte("old"), time.Now().Add(-2*time.Hour)); err != nil {
+	if err := backend.putAt(ctx, old, []byte("old"), time.Now().Add(-2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := raw.putAt(ctx, fresh, []byte("fresh"), time.Now()); err != nil {
+	if err := backend.putAt(ctx, fresh, []byte("fresh"), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 
-	doomed, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{MinAge: time.Hour})
+	doomed, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(doomed) != 1 || !doomed[0].Equal(old) {
 		t.Fatalf("Sweep(MinAge) doomed = %v, want [%s]", doomed, old)
 	}
-	if ok, _ := raw.Exists(ctx, fresh); !ok {
+	if ok, _ := backend.Exists(ctx, fresh); !ok {
 		t.Fatal("fresh object removed by age-based Sweep")
 	}
 }
@@ -145,8 +145,8 @@ func TestSweepRejectsNilBackend(t *testing.T) {
 func TestSweepRespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	raw := mem.New()
-	if _, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{}); !errors.Is(err, context.Canceled) {
+	backend := mem.New()
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Sweep(canceled ctx) = %v, want context.Canceled", err)
 	}
 }
@@ -168,23 +168,23 @@ func TestSweepPropagatesDeleteError(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := errors.New("delete failed")
-	raw := deleteErrorBackend{Backend: inner, err: want}
-	if _, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{}); !errors.Is(err, want) {
+	backend := deleteErrorBackend{Backend: inner, err: want}
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, want) {
 		t.Fatalf("Sweep(delete error) = %v, want %v", err, want)
 	}
 }
 
 func TestSweepSkipsConcurrentlyDeletedDuringAgeCheck(t *testing.T) {
 	ctx := context.Background()
-	raw := newStatMemBackend()
+	backend := newStatMemBackend()
 	// Put directly on the underlying mem.Backend so List reports the digest,
 	// but never register a mod time for it: ModTime then reports
 	// cas.ErrNotFound, simulating a concurrent delete racing the age check.
 	gone := sha256.Of([]byte("gone"))
-	if err := raw.Backend.Put(ctx, gone, bytes.NewReader([]byte("gone"))); err != nil {
+	if err := backend.Backend.Put(ctx, gone, bytes.NewReader([]byte("gone"))); err != nil {
 		t.Fatal(err)
 	}
-	doomed, err := cas.Sweep(ctx, raw, nil, cas.SweepOptions{MinAge: time.Hour})
+	doomed, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour})
 	if err != nil {
 		t.Fatalf("Sweep() = %v, want nil", err)
 	}

@@ -115,6 +115,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   index and no longer panics when collecting stats fails.
 - CLI runtime store failures exit with code 1 instead of being reported as usage
   errors (exit code 2).
+- `Store.Close` is idempotent, tolerates a nil receiver or a store with no
+  backend, and returns the backend's close error to every caller instead of
+  reporting a different result per call.
+- `fs.Backend.Stats` no longer fails when an object vanishes mid-walk — a
+  concurrent `Delete` — so a report gathered while objects are being removed
+  returns what was there instead of an `lstat` error; `List` already tolerated
+  the same race.
 
 ## [v1.6.5] - 2026-09-22
 

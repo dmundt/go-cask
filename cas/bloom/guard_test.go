@@ -17,13 +17,13 @@ var _ cas.Backend = (*bloom.Guard)(nil)
 
 func TestGuardPutAddsDigestToFilter(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	filter, err := stdfilter.New(256, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,13 +42,13 @@ func TestGuardPutAddsDigestToFilter(t *testing.T) {
 
 func TestGuardExistsShortCircuitsOnNegativeBloomResult(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	filter, err := stdfilter.New(256, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,9 +81,9 @@ func (f *countingLikeFilter) Remove(d cas.Digest) {
 
 func TestGuardDeleteRemovesFromFilterWhenSupported(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	filter := &countingLikeFilter{present: map[string]bool{}}
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		t.Fatal(err)
 	}

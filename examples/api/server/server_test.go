@@ -26,11 +26,11 @@ type testClient struct {
 
 func newTestServer(t *testing.T, rlCfg RateLimitConfig) (*testClient, *httptest.Server) {
 	t.Helper()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(raw, map[string]string{
+	srv := New(backend, map[string]string{
 		"viewer-tok": "viewer",
 		"op-tok":     "operator",
 		"admin-tok":  "admin",
@@ -187,8 +187,8 @@ func TestLargePayload(t *testing.T) {
 
 func TestRoleMatrix(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := fs.New(t.TempDir())
-	srv := New(raw, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit())
+	backend, _ := fs.New(t.TempDir())
+	srv := New(backend, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
@@ -281,8 +281,8 @@ func TestMetaVerifyListStats(t *testing.T) {
 
 func TestGCAndOpenAPI(t *testing.T) {
 	ctx := context.Background()
-	raw, _ := fs.New(t.TempDir())
-	srv := New(raw, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	backend, _ := fs.New(t.TempDir())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}

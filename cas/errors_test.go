@@ -44,20 +44,20 @@ func TestBackendCancelledContext(t *testing.T) {
 		{"memory", memFactory},
 	} {
 		t.Run(bf.name, func(t *testing.T) {
-			raw := bf.fn(t)
-			if err := raw.Put(ctx, h, strings.NewReader("x")); err == nil {
+			backend := bf.fn(t)
+			if err := backend.Put(ctx, h, strings.NewReader("x")); err == nil {
 				t.Error("Put on cancelled ctx must error")
 			}
-			if _, err := raw.Get(ctx, h); err == nil {
+			if _, err := backend.Get(ctx, h); err == nil {
 				t.Error("Get on cancelled ctx must error")
 			}
-			if _, err := raw.Exists(ctx, h); err == nil {
+			if _, err := backend.Exists(ctx, h); err == nil {
 				t.Error("Exists on cancelled ctx must error")
 			}
-			if err := raw.Delete(ctx, h); err == nil {
+			if err := backend.Delete(ctx, h); err == nil {
 				t.Error("Delete on cancelled ctx must error")
 			}
-			if _, err := raw.List(ctx); err == nil {
+			if _, err := backend.List(ctx); err == nil {
 				t.Error("List on cancelled ctx must error")
 			}
 		})
@@ -88,8 +88,8 @@ func TestStorePutDedupCancelled(t *testing.T) {
 // codec cannot decode surfaces as ErrCorrupt from Get.
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	store := cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
+	backend := mem.New()
+	store := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	// TLV envelope: [version][uvarint typeLen][type][uvarint payloadLen][payload].
 	// A payload that is not valid JSON for test.Note will cause the codec
 	// Decode to fail, surfacing as ErrCorrupt.
@@ -105,7 +105,7 @@ func TestGetCorruptPayload(t *testing.T) {
 	buf.Write(payload)
 	stored := buf.Bytes()
 	h := test.DigestData(stored)
-	if err := raw.Put(ctx, h, bytes.NewReader(stored)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Get(ctx, h); !errors.Is(err, cas.ErrCorrupt) {
@@ -115,8 +115,8 @@ func TestGetCorruptPayload(t *testing.T) {
 
 func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	s := newTestStore(t, raw)
+	backend := mem.New()
+	s := newTestStore(t, backend)
 	// Every case must fail Get with ErrUnknownType: version byte is not 1,
 	// empty bytes, or truncated.
 	for _, garbage := range []string{
@@ -126,7 +126,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 		"note@1",          // version byte is 'n' (0x6E) ≠ 1
 	} {
 		h := test.DigestData([]byte(garbage))
-		if err := raw.Put(ctx, h, strings.NewReader(garbage)); err != nil {
+		if err := backend.Put(ctx, h, strings.NewReader(garbage)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.Get(ctx, h); !errors.Is(err, cas.ErrUnknownType) {

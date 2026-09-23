@@ -52,27 +52,27 @@ commands:
 
 // app bundles the store, repository and the small ref files (HEAD/INDEX).
 type app struct {
-	raw   *fs.Backend
-	repo  *gitlike.Repository
-	dir   string
-	index string // path of the INDEX file (current tree)
-	head  string // path of the HEAD file (current commit)
+	backend *fs.Backend
+	repo    *gitlike.Repository
+	dir     string
+	index   string // path of the INDEX file (current tree)
+	head    string // path of the HEAD file (current commit)
 }
 
 func newApp(dir string) (*app, error) {
-	raw, err := fs.New(dir)
+	backend, err := fs.New(dir)
 	if err != nil {
 		return nil, err
 	}
 	// gitlike names neither the hash algorithm nor the wire format, so the
 	// example supplies both: the sha256 hasher and one JSON codec per type.
-	repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+	repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
 		Blob:   jsoncodec.New[*gitlike.Blob](),
 		Tree:   jsoncodec.New[*gitlike.Tree](),
 		Commit: jsoncodec.New[*gitlike.Commit](),
 		Tag:    jsoncodec.New[*gitlike.Tag](),
 	})
-	return &app{raw: raw, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
+	return &app{backend: backend, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
 }
 
 // readRef reads a ref file: the printable "sha256:hexdigest" form (or bare
@@ -120,7 +120,7 @@ func (a *app) sidecarPath(d cas.Digest) string {
 }
 
 func (a *app) writeCRC32Sidecar(ctx context.Context, d cas.Digest) error {
-	r, err := a.raw.Get(ctx, d)
+	r, err := a.backend.Get(ctx, d)
 	if err != nil {
 		return fmt.Errorf("read %s for crc32 sidecar: %w", d, err)
 	}
@@ -137,7 +137,7 @@ func (a *app) writeCRC32Sidecar(ctx context.Context, d cas.Digest) error {
 }
 
 func (a *app) verifyCRC32Sidecar(ctx context.Context, d cas.Digest) error {
-	r, err := a.raw.Get(ctx, d)
+	r, err := a.backend.Get(ctx, d)
 	if err != nil {
 		return fmt.Errorf("load object %s for crc32 check: %w", d, err)
 	}
@@ -162,7 +162,7 @@ func (a *app) verifyCRC32Sidecar(ctx context.Context, d cas.Digest) error {
 }
 
 func (a *app) verifyOne(ctx context.Context, d cas.Digest) error {
-	if err := cas.NewVerifier(a.raw, sha256.New()).Verify(ctx, d); err != nil {
+	if err := cas.NewVerifier(a.backend, sha256.New()).Verify(ctx, d); err != nil {
 		return err
 	}
 	return a.verifyCRC32Sidecar(ctx, d)
@@ -264,7 +264,7 @@ func (a *app) cat(ctx context.Context, d cas.Digest, out io.Writer) error {
 
 // verify recomputes every stored digest and reports any corruption.
 func (a *app) verify(ctx context.Context) error {
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	case "stats":
-		st, err := a.raw.Stats(ctx)
+		st, err := a.backend.Stats(ctx)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1

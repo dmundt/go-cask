@@ -95,7 +95,7 @@ func TestDedup(t *testing.T) {
 	if _, err := a.add(ctx, []string{f2}); err != nil {
 		t.Fatal(err)
 	}
-	st, err := a.raw.Stats(ctx)
+	st, err := a.backend.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestAuditStates(t *testing.T) {
 	}
 
 	// Corrupt a reachable object on disk: audit reports it corrupt.
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestVerify(t *testing.T) {
 	}
 
 	// Corrupt one stored object on disk.
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
 	}
 
 	// Positive: the stored sidecar matches the object's bytes.
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

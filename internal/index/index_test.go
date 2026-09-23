@@ -57,7 +57,7 @@ func tlvEnvelope(typeName string, payload []byte) []byte {
 
 // TestEnvelopeType pins the best-effort envelope sniffing contract against
 // the TLV envelope: the versioned type name is returned when the bytes are a
-// TLV envelope; "" otherwise (raw objects, or any non-TLV bytes, have no
+// TLV envelope; "" otherwise (backend objects, or any non-TLV bytes, have no
 // type). A legacy unversioned type name reads back as "@1".
 func TestEnvelopeType(t *testing.T) {
 	cases := []struct {
@@ -116,21 +116,21 @@ func (s *snapshotSource) ModTime(context.Context, cas.Digest) (time.Time, error)
 
 func TestBuildSnapshot(t *testing.T) {
 	ctx := context.Background()
-	raw := &snapshotSource{Backend: memory.New(), modTime: time.Unix(42, 0)}
+	backend := &snapshotSource{Backend: memory.New(), modTime: time.Unix(42, 0)}
 	typed := tlvEnvelope("blob@1", []byte("payload"))
-	untyped := []byte("raw")
+	untyped := []byte("backend")
 	for _, object := range []struct {
 		data []byte
 	}{
 		{typed},
 		{untyped},
 	} {
-		if err := raw.Put(ctx, sha256.Of(object.data), bytes.NewReader(object.data)); err != nil {
+		if err := backend.Put(ctx, sha256.Of(object.data), bytes.NewReader(object.data)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	snapshot, err := BuildSnapshot(ctx, raw)
+	snapshot, err := BuildSnapshot(ctx, backend)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +141,8 @@ func TestBuildSnapshot(t *testing.T) {
 		t.Fatalf("snapshot = %#v, want two entries and one type", snapshot)
 	}
 	for _, entry := range snapshot.Entries {
-		if entry.Unreadable || !entry.Written.Equal(raw.modTime) {
-			t.Fatalf("entry = %#v, want readable entry at %v", entry, raw.modTime)
+		if entry.Unreadable || !entry.Written.Equal(backend.modTime) {
+			t.Fatalf("entry = %#v, want readable entry at %v", entry, backend.modTime)
 		}
 	}
 }

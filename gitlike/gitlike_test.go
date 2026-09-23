@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,10 +14,44 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
-	gobcodec "github.com/dmundt/go-cask/cas/codec/gob"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
+
+// jsonCodec is a tiny in-package codec to keep the gitlike tests codec-agnostic
+// without depending on cas/codec.
+type jsonCodec[T any] struct{}
+
+func (jsonCodec[T]) Encode(v T) ([]byte, error) { return json.Marshal(v) }
+
+func (jsonCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
+
+// gobCodec is a tiny in-package codec to verify non-JSON storage types remain
+// supported without importing the codec layer.
+type gobCodec[T any] struct{}
+
+func (gobCodec[T]) Encode(v T) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (gobCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
 
 // ref keeps object literals readable: a reference field is a plain cas.Digest
 // now, so this is the identity function (it also documents where a reference
@@ -27,16 +62,16 @@ func ref(d cas.Digest) cas.Digest { return d }
 // no codec, so every construction passes one explicitly.
 func jsonCodecs() Codecs {
 	return Codecs{
-		Blob:   jsoncodec.New[*Blob](),
-		Tree:   jsoncodec.New[*Tree](),
-		Commit: jsoncodec.New[*Commit](),
-		Tag:    jsoncodec.New[*Tag](),
+		Blob:   jsonCodec[*Blob]{},
+		Tree:   jsonCodec[*Tree]{},
+		Commit: jsonCodec[*Commit]{},
+		Tag:    jsonCodec[*Tag]{},
 	}
 }
 
-func newRepo(t *testing.T, raw cas.Backend) *Repository {
+func newRepo(t *testing.T, backend cas.Backend) *Repository {
 	t.Helper()
-	return NewRepository(raw, sha256hash.New(), jsonCodecs())
+	return NewRepository(backend, sha256hash.New(), jsonCodecs())
 }
 
 func putBlob(t *testing.T, repo *Repository, data string) cas.Digest {
@@ -127,12 +162,12 @@ func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
 	h := putBlob(t, repo, "x")
-	raw, err := repo.Blobs.GetRaw(ctx, h)
+	backend, err := repo.Blobs.GetRaw(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// TLV envelope: [version][uvarint typeLen][type][payload].
-	env, err := cas.EnvelopeFromBytes(raw)
+	env, err := cas.EnvelopeFromBytes(backend)
 	if err != nil {
 		t.Fatalf("EnvelopeFromBytes = %v", err)
 	}
@@ -257,7 +292,7 @@ func TestResolveAnyLegacyUnversioned(t *testing.T) {
 	payload := []byte(`{"data":"bGVnYWN5"}`)
 	envelopeBytes := marshalEnvelope("blob", payload)
 	h := sha256hash.Of(envelopeBytes)
-	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
+	if err := repo.backend.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
 	ro, err := res.ResolveAny(ctx, h)
@@ -276,7 +311,7 @@ func TestResolveAnyUnknownType(t *testing.T) {
 	// Store an object with an unknown type name as a TLV envelope.
 	envelopeBytes := marshalEnvelope("mystery@9", []byte(`{}`))
 	h := sha256hash.Of(envelopeBytes)
-	if err := repo.raw.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
+	if err := repo.backend.Put(ctx, h, bytes.NewReader(envelopeBytes)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
@@ -292,15 +327,15 @@ func TestParseType(t *testing.T) {
 	// Stored type+payload bytes directly (no Store.Put) so we can test parseType.
 	env := marshalEnvelope("blob@1", []byte{})
 	h := sha256hash.Of(env)
-	if err := repo.raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := repo.raw.Get(ctx, h)
+	backend, err := repo.backend.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := io.ReadAll(raw)
-	raw.Close()
+	b, _ := io.ReadAll(backend)
+	backend.Close()
 	typ, err := parseType(b)
 	if err != nil {
 		t.Fatalf("parseType = %q, %v", typ, err)
@@ -426,14 +461,14 @@ func TestWalkGraphVisitsSharedSubgraphOnce(t *testing.T) {
 // stop after each digest once instead of looping forever.
 func TestWalkGraphTerminatesOnCycle(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	repo := newRepo(t, raw)
+	backend := mem.New()
+	repo := newRepo(t, backend)
 	dA := mustDigest(t, strings.Repeat("aa", 32))
 	dB := mustDigest(t, strings.Repeat("bb", 32))
 
 	storeEnvelopeAt := func(d cas.Digest, payload string) {
 		t.Helper()
-		if err := raw.Put(ctx, d, bytes.NewReader(marshalEnvelope(TypeTree, []byte(payload)))); err != nil {
+		if err := backend.Put(ctx, d, bytes.NewReader(marshalEnvelope(TypeTree, []byte(payload)))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -652,7 +687,7 @@ func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) 
 	t.Helper()
 	env := marshalEnvelope(typeName, []byte(payloadJSON))
 	h := sha256hash.Of(env)
-	if err := repo.raw.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
+	if err := repo.backend.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -709,8 +744,8 @@ func TestLegacyAlgoPrefixedReferenceFailsLoudly(t *testing.T) {
 }
 
 func TestRepositoryErrorPaths(t *testing.T) {
-	raw := mem.New()
-	repo := NewRepository(raw, sha256hash.New(), jsonCodecs())
+	backend := mem.New()
+	repo := NewRepository(backend, sha256hash.New(), jsonCodecs())
 	if _, err := NewCachedRepository(repo, 0); err == nil {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
 	}
@@ -836,7 +871,7 @@ func TestRepositoryCorruptionRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.raw.Put(ctx, commit, strings.NewReader("tampered commit payload")); err != nil {
+	if err := repo.backend.Put(ctx, commit, strings.NewReader("tampered commit payload")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.Commits.Get(ctx, commit); !errors.Is(err, cas.ErrCorrupt) && !errors.Is(err, cas.ErrUnknownType) {
@@ -934,21 +969,21 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 func TestDigestFieldsMarshalWithoutCustomCode(t *testing.T) {
 	h := mustDigest(t, strings.Repeat("ab", 32))
 
-	raw, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
+	backend, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := `{"name":"f","hash":"` + h.String() + `","mode":"100644"}`
-	if string(raw) != want {
-		t.Fatalf("TreeEntry JSON = %s, want %s", raw, want)
+	if string(backend) != want {
+		t.Fatalf("TreeEntry JSON = %s, want %s", backend, want)
 	}
 
-	raw, err = json.Marshal(TreeEntry{Name: "g", Mode: "100644"}) // absent reference
+	backend, err = json.Marshal(TreeEntry{Name: "g", Mode: "100644"}) // absent reference
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != `{"name":"g","mode":"100644"}` {
-		t.Fatalf("absent-reference TreeEntry JSON = %s", raw)
+	if string(backend) != `{"name":"g","mode":"100644"}` {
+		t.Fatalf("absent-reference TreeEntry JSON = %s", backend)
 	}
 }
 
@@ -1067,10 +1102,10 @@ func TestValidate(t *testing.T) {
 func TestRepositoryWithAnotherCodec(t *testing.T) {
 	ctx := context.Background()
 	repo := NewRepository(mem.New(), sha256hash.New(), Codecs{
-		Blob:   gobcodec.NewRaw[*Blob](),
-		Tree:   gobcodec.NewRaw[*Tree](),
-		Commit: gobcodec.NewRaw[*Commit](),
-		Tag:    gobcodec.NewRaw[*Tag](),
+		Blob:   gobCodec[*Blob]{},
+		Tree:   gobCodec[*Tree]{},
+		Commit: gobCodec[*Commit]{},
+		Tag:    gobCodec[*Tag]{},
 	})
 
 	// The invariant is codec-independent: a gob-backed repository refuses a

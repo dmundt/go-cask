@@ -50,19 +50,19 @@ func TestOfFormatParse(t *testing.T) {
 
 func TestVerifyIntegration(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	data := []byte("hello world")
 	d := crc32.Of(data)
-	if err := raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
-	if err := cas.Verify(ctx, raw, d, crc32.New()); err != nil {
+	if err := cas.Verify(ctx, backend, d, crc32.New()); err != nil {
 		t.Fatalf("Verify(valid) = %v, want nil", err)
 	}
-	if err := raw.Put(ctx, d, strings.NewReader("tampered")); err != nil {
+	if err := backend.Put(ctx, d, strings.NewReader("tampered")); err != nil {
 		t.Fatal(err)
 	}
-	if err := cas.Verify(ctx, raw, d, crc32.New()); !errors.Is(err, cas.ErrDigestMismatch) {
+	if err := cas.Verify(ctx, backend, d, crc32.New()); !errors.Is(err, cas.ErrDigestMismatch) {
 		t.Fatalf("Verify(tampered) = %v, want ErrDigestMismatch", err)
 	}
 }

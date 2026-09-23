@@ -64,18 +64,18 @@ func (m *mockBackend) Stats(_ context.Context) (*cas.Stats, error) {
 
 func TestMockBackendContract(t *testing.T) {
 	ctx := context.Background()
-	raw := &mockBackend{items: map[string][]byte{}}
+	backend := &mockBackend{items: map[string][]byte{}}
 	d := cas.NewDigest([]byte("mock backend"))
 	payload := []byte("mock backend payload")
 
-	if err := raw.Put(ctx, d, bytes.NewReader(payload)); err != nil {
+	if err := backend.Put(ctx, d, bytes.NewReader(payload)); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
-	ok, err := raw.Exists(ctx, d)
+	ok, err := backend.Exists(ctx, d)
 	if err != nil || !ok {
 		t.Fatalf("Exists() = (%v, %v), want (true, nil)", ok, err)
 	}
-	got, err := raw.Get(ctx, d)
+	got, err := backend.Get(ctx, d)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -88,15 +88,15 @@ func TestMockBackendContract(t *testing.T) {
 		t.Fatalf("Get() = %q, want %q", buf, payload)
 	}
 
-	if err := raw.Delete(ctx, d); err != nil {
+	if err := backend.Delete(ctx, d); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
-	ok, err = raw.Exists(ctx, d)
+	ok, err = backend.Exists(ctx, d)
 	if err != nil || ok {
 		t.Fatalf("Exists() after Delete = (%v, %v), want (false, nil)", ok, err)
 	}
 
-	stats, err := raw.Stats(ctx)
+	stats, err := backend.Stats(ctx)
 	if err != nil {
 		t.Fatalf("Stats() error = %v", err)
 	}

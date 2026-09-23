@@ -27,7 +27,7 @@ func customIndexHash(data []byte, i int) uint64 {
 
 func demo() error {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 
 	// We keep the object hash algorithm independent from the Bloom index. The CAS
 	// object identity is still the digest bytes returned by the store's hasher.
@@ -39,7 +39,7 @@ func demo() error {
 	if err != nil {
 		return err
 	}
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		return err
 	}

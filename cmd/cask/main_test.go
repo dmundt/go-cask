@@ -115,18 +115,18 @@ func TestSeedPreview(t *testing.T) {
 	if code != 0 || out != "preview objects: added 16, deduplicated 0\n" {
 		t.Fatalf("first seed-preview = (%q, %d)", out, code)
 	}
-	raw, err := fs.New(mf.store)
+	backend, err := fs.New(mf.store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digests, err := raw.List(context.Background())
+	digests, err := backend.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(digests) != 16 {
 		t.Fatalf("seeded objects = %d, want 16", len(digests))
 	}
-	references, err := previewReferences(context.Background(), raw)
+	references, err := previewReferences(context.Background(), backend)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestSeedPreview(t *testing.T) {
 		}
 	}
 	for _, digest := range digests {
-		rc, err := raw.Get(context.Background(), digest)
+		rc, err := backend.Get(context.Background(), digest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,10 +224,10 @@ func TestSeedPreview(t *testing.T) {
 	if !references.IsReachable(objects[1]) {
 		t.Fatalf("corrupt preview object %s must stay reachable", objects[1])
 	}
-	if err := raw.Verify(context.Background(), objects[1], sha256.New()); err == nil {
+	if err := backend.Verify(context.Background(), objects[1], sha256.New()); err == nil {
 		t.Fatalf("corrupt preview object %s must fail verification", objects[1])
 	}
-	if err := raw.Verify(context.Background(), objects[0], sha256.New()); err != nil {
+	if err := backend.Verify(context.Background(), objects[0], sha256.New()); err != nil {
 		t.Fatalf("intact preview object %s must verify: %v", objects[0], err)
 	}
 
@@ -475,16 +475,16 @@ func TestParseGlobalAndMaintenanceOps(t *testing.T) {
 func TestLocalPutDedupAndDigestParsing(t *testing.T) {
 	mf := localMF(t)
 	t.Run("localPut dedups", func(t *testing.T) {
-		raw, err := fs.New(mf.store)
+		backend, err := fs.New(mf.store)
 		if err != nil {
 			t.Fatal(err)
 		}
 		content := strings.NewReader("same bytes")
-		h1, dup1, err := localPut(context.Background(), raw, content)
+		h1, dup1, err := localPut(context.Background(), backend, content)
 		if err != nil || dup1 {
 			t.Fatalf("first localPut = (%v, %v, %v), want (hash, false, nil)", h1, dup1, err)
 		}
-		h2, dup2, err := localPut(context.Background(), raw, strings.NewReader("same bytes"))
+		h2, dup2, err := localPut(context.Background(), backend, strings.NewReader("same bytes"))
 		if err != nil || !dup2 || h1.String() != h2.String() {
 			t.Fatalf("second localPut = (%v, %v, %v), want equal digest and dedup true", h2, dup2, err)
 		}

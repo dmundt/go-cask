@@ -129,11 +129,11 @@ func TestLoginThrottle(t *testing.T) {
 // TestLoginRejectsEmptyToken pins the fail-closed rule: an empty submitted
 // token never authenticates, even if a role token was misconfigured as "".
 func TestLoginRejectsEmptyToken(t *testing.T) {
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		RoleTokens:   map[string]string{"": RoleAdmin},
 	})
