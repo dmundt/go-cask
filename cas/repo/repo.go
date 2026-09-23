@@ -203,6 +203,11 @@ func readEnvelopeHeader(ctx context.Context, backend cas.Backend, d cas.Digest) 
 // never a nil dereference — so a caller can tell "this digest names a type I
 // don't know" apart from "this digest does not exist" (cas.ErrNotFound) or any
 // other Decoder failure.
+//
+// An envelope that does not parse is not a dispatch miss: the bytes are damaged,
+// so Resolve reports cas.ErrCorrupt (wrapped from cas.EnvelopeType) and no
+// *UnknownTypeError. A caller that treats an unknown type as "skip it" can
+// therefore never skip an object it merely cannot read.
 func (r *Registry) Resolve(ctx context.Context, d cas.Digest) (Object, error) {
 	if err := cas.CheckDigest(d, "cas/repo: resolve"); err != nil {
 		return nil, err
@@ -270,9 +275,12 @@ func (u *UnknownObject) References() []cas.Digest { return nil }
 //     an *UnknownObject, and Walk keeps going with the rest of the queue: an
 //     unknown type does not abort the walk.
 //   - Any other Resolve failure — most commonly cas.ErrNotFound for a
-//     reference that points at nothing — aborts Walk immediately and is
-//     returned wrapped: a broken reference is a named error, not something
-//     the walk silently stops on or skips past.
+//     reference that points at nothing, or cas.ErrCorrupt for a stored
+//     envelope that does not parse — aborts Walk immediately and is returned
+//     wrapped: a broken reference is a named error, not something the walk
+//     silently stops on or skips past. Damage in particular is never reported
+//     as an *UnknownObject: an object Walk cannot read is not a type it merely
+//     does not know.
 //
 // visit may itself return a non-nil error (including for an *UnknownObject) to
 // abort Walk early; that error is returned unwrapped.

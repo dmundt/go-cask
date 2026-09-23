@@ -291,6 +291,39 @@ func TestWalkAbortsOnMissingReference(t *testing.T) {
 	}
 }
 
+// TestWalkAbortsOnCorruptEnvelope keeps damage in the same class as a missing
+// reference: a digest whose stored bytes do not parse is not an unknown type, so
+// Walk must abort with ErrCorrupt instead of reporting it to visit as an
+// *UnknownObject and carrying on. Treating it as "just another type" is what
+// lets a maintenance pass skip — and then delete — an object it cannot read.
+func TestWalkAbortsOnCorruptEnvelope(t *testing.T) {
+	ctx := context.Background()
+	ts := newTestStores(t)
+
+	dCorrupt := mustDigest(t, strings.Repeat("ee", 32))
+	if err := ts.backend.Put(ctx, dCorrupt, bytes.NewReader([]byte{0xff})); err != nil {
+		t.Fatal(err)
+	}
+	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{dCorrupt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var unknownSeen bool
+	err = repo.Walk(ctx, ts.reg, []cas.Digest{hb}, func(_ cas.Digest, obj repo.Object) error {
+		if _, ok := obj.(*repo.UnknownObject); ok {
+			unknownSeen = true
+		}
+		return nil
+	})
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Walk over a corrupt envelope = %v, want wrapping cas.ErrCorrupt", err)
+	}
+	if unknownSeen {
+		t.Fatal("Walk reported a corrupt object as an unknown type instead of aborting")
+	}
+}
+
 // TestReachableBuildsRootSetForGCAcrossTypes exercises Reachable end to end as
 // the documented way to build the GC/Prune argument: everything not in the
 // reachable set from the live root is deleted, and everything reachable
@@ -537,7 +570,10 @@ func TestResolveRejectsInvalidDigest(t *testing.T) {
 }
 
 // TestResolveWrapsMalformedEnvelope pins the path where the stored bytes do
-// not even parse as a TLV envelope.
+// not even parse as a TLV envelope: that is damage, so Resolve reports
+// ErrCorrupt rather than ErrUnknownType — the sentinel a caller uses for "a
+// type I have no decoder for". A caller that classified damage as an unknown
+// type would treat an unreadable object as one it can safely skip.
 func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
@@ -545,8 +581,42 @@ func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 	if err := ts.backend.Put(ctx, d, bytes.NewReader([]byte{0xff})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ts.reg.Resolve(ctx, d); !errors.Is(err, cas.ErrUnknownType) {
-		t.Fatalf("Resolve(malformed envelope) error = %v, want wrapping cas.ErrUnknownType", err)
+	_, err := ts.reg.Resolve(ctx, d)
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Resolve(malformed envelope) error = %v, want wrapping cas.ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Resolve(malformed envelope) error = %v, must not be reported as an unknown type", err)
+	}
+	var ute *repo.UnknownTypeError
+	if errors.As(err, &ute) {
+		t.Fatalf("Resolve(malformed envelope) error = %v, want no *UnknownTypeError", err)
+	}
+}
+
+// TestResolveKeepsUnknownTypeForAnIntactEnvelope is the other half of the
+// contract above, asserted through the same Registry: a well-formed frame that
+// names a type nothing registered is ErrUnknownType (an *UnknownTypeError),
+// never ErrCorrupt.
+func TestResolveKeepsUnknownTypeForAnIntactEnvelope(t *testing.T) {
+	ctx := context.Background()
+	ts := newTestStores(t)
+	d := mustDigest(t, strings.Repeat("23", 32))
+	storeEnvelope(t, ts.backend, d, "mystery@1", map[string]string{"x": "y"})
+
+	_, err := ts.reg.Resolve(ctx, d)
+	if !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Resolve(intact envelope, unregistered type) error = %v, want wrapping cas.ErrUnknownType", err)
+	}
+	if errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Resolve(intact envelope, unregistered type) error = %v, must not report damage", err)
+	}
+	var ute *repo.UnknownTypeError
+	if !errors.As(err, &ute) {
+		t.Fatalf("Resolve error = %v, want an *UnknownTypeError", err)
+	}
+	if ute.TypeName != "mystery@1" {
+		t.Fatalf("UnknownTypeError.TypeName = %q, want mystery@1", ute.TypeName)
 	}
 }
 

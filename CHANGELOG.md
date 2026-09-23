@@ -233,6 +233,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reported phantom digests and `Stats` counted every object twice. The index is
   keyed by the digest's hex form now, and an index written by an older build is
   dropped on load (the loose tree still holds every object).
+- A damaged stored object is no longer reported as an unknown type. A truncated
+  or otherwise unreadable envelope is now `cas.ErrCorrupt` from every reader
+  (`Store.Get`, `EnvelopeFromBytes`/`EnvelopeType`, `PeekType`,
+  `cas/repo.Registry.Resolve`), which is what `Store.Type`/`PeekType` already
+  reported for those bytes; `cas.ErrUnknownType` now means only that an intact
+  object names a type the caller does not handle. Consumers that skip an object
+  with `errors.Is(err, cas.ErrUnknownType)` — "not my type, leave it alone" —
+  can no longer mistake an unreadable object for one they simply do not decode,
+  which in a maintenance path such as a GC sweep meant treating a damaged
+  manifest as a leaf and deleting the objects it referenced.
 
 ### Security
 

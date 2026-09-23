@@ -914,8 +914,8 @@ func TestRepositoryCorruptionRecovery(t *testing.T) {
 	if err := repo.backend.Put(ctx, commit, strings.NewReader("tampered commit payload")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.Commits.Get(ctx, commit); !errors.Is(err, cas.ErrCorrupt) && !errors.Is(err, cas.ErrUnknownType) {
-		t.Fatalf("Get on corrupted commit = %v, want ErrCorrupt or ErrUnknownType", err)
+	if _, err := repo.Commits.Get(ctx, commit); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get on corrupted commit = %v, want ErrCorrupt", err)
 	}
 	if _, err := repo.Commits.Put(ctx, &Commit{Tree: ref(tree), Author: "a", Message: "root"}); err != nil {
 		t.Fatal(err)
@@ -1207,7 +1207,9 @@ func TestPutRejectsCommitWithoutTree(t *testing.T) {
 // --- objectType / ResolveAny error branches ---
 
 // TestObjectTypeRejectsMalformedEnvelope covers objectType's cas.EnvelopeType
-// error return (garbage bytes are not a TLV envelope header).
+// error return: garbage bytes are not a TLV envelope header, and that is damage,
+// so the sentinel is ErrCorrupt — not the ErrUnknownType the resolver uses for
+// an intact envelope naming a type outside its four-type model.
 func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
@@ -1217,8 +1219,48 @@ func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
 	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewResolver(repo).objectType(ctx, h); err == nil {
-		t.Fatal("objectType on a malformed envelope must error")
+	_, err := NewResolver(repo).objectType(ctx, h)
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("objectType on a malformed envelope = %v, want ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("objectType on a malformed envelope = %v, must not be reported as an unknown type", err)
+	}
+}
+
+// TestResolveAnyDistinguishesDamageFromAnUnknownType pins both halves of
+// gitlike's contract through the public resolver: a truncated frame is
+// ErrCorrupt (Resolve, ResolveAny and the WalkGraph built on them all abort),
+// while an intact frame naming a type outside the four-type model is
+// ErrUnknownType (TestResolveAnyUnknownType, TestResolveUnknownMajor).
+func TestResolveAnyDistinguishesDamageFromAnUnknownType(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+	env := []byte{0x02, 0x00} // version 2, empty codec, truncated type length
+	h := sha256hash.Of(env)
+	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := res.ResolveAny(ctx, h)
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("ResolveAny(truncated envelope) = %v, want ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("ResolveAny(truncated envelope) = %v, must not be reported as an unknown type", err)
+	}
+
+	walked := 0
+	err = WalkGraph(ctx, res, h, func(*ResolvedObject) error {
+		walked++
+		return nil
+	})
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("WalkGraph(truncated envelope) = %v, want ErrCorrupt", err)
+	}
+	if walked != 0 {
+		t.Fatalf("WalkGraph visited %d objects for a truncated envelope, want 0", walked)
 	}
 }
 

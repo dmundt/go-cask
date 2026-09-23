@@ -127,36 +127,46 @@ func encodeEnvelope(codec, typ string, payload []byte) []byte {
 //
 // It reads no byte beyond the type, so a truncated object prefix (a caller that
 // read a bounded number of bytes rather than the whole object) still yields the
-// type. Both decodeEnvelope and the exported EnvelopeType are built on it, so
-// there is exactly one implementation of the header layout.
+// type. decodeEnvelope and the exported EnvelopeType resolve the header through
+// it, and PeekType applies the same field rules to a stream, so there is exactly
+// one implementation of the header layout — and one answer for a header that
+// does not parse.
+//
+// Every structural failure it detects — an absent or unreadable version byte, a
+// truncated or oversized codec or type field, an empty type name — is ErrCorrupt,
+// naming the offending field. Those bytes are damaged whatever the caller meant
+// to do with them, so the reader that only wants the type (EnvelopeType,
+// PeekType, Store.Type) and the reader that wants the payload (decodeEnvelope,
+// EnvelopeFromBytes, Store.Get) report the same sentinel. ErrUnknownType is a
+// dispatch answer about an intact envelope, never a parse failure.
 func decodeEnvelopeHeader(data []byte) (codec, typeName string, off int, err error) {
 	if len(data) < 1 {
-		return "", "", 0, fmt.Errorf("%w: truncated envelope version", ErrUnknownType)
+		return "", "", 0, fmt.Errorf("%w: truncated envelope version", ErrCorrupt)
 	}
 	version := data[0]
 	if version != envelopeVersion && version != envelopeVersionV1 {
-		return "", "", 0, fmt.Errorf("%w: unsupported envelope version %d", ErrUnknownType, version)
+		return "", "", 0, fmt.Errorf("%w: unsupported envelope version %d", ErrCorrupt, version)
 	}
 	off = 1
 	if version == envelopeVersion {
 		codecLen, n := binary.Uvarint(data[off:])
 		if n <= 0 {
-			return "", "", 0, fmt.Errorf("%w: truncated codec length", ErrUnknownType)
+			return "", "", 0, fmt.Errorf("%w: truncated codec length", ErrCorrupt)
 		}
 		off += n
 		if codecLen > uint64(len(data)-off) {
-			return "", "", 0, fmt.Errorf("%w: object missing or oversized codec", ErrUnknownType)
+			return "", "", 0, fmt.Errorf("%w: object missing or oversized codec", ErrCorrupt)
 		}
 		codec = string(data[off : off+int(codecLen)])
 		off += int(codecLen)
 	}
 	typeLen, n := binary.Uvarint(data[off:])
 	if n <= 0 {
-		return "", "", 0, fmt.Errorf("%w: truncated type length", ErrUnknownType)
+		return "", "", 0, fmt.Errorf("%w: truncated type length", ErrCorrupt)
 	}
 	off += n
 	if typeLen == 0 || typeLen > uint64(len(data)-off) {
-		return "", "", 0, fmt.Errorf("%w: object missing or oversized type", ErrUnknownType)
+		return "", "", 0, fmt.Errorf("%w: object missing or oversized type", ErrCorrupt)
 	}
 	typeName = string(data[off : off+int(typeLen)])
 	off += int(typeLen)
@@ -172,8 +182,9 @@ func decodeEnvelopeHeader(data []byte) (codec, typeName string, off int, err err
 // payload. The payload is returned as a zero-copy sub-slice of data — the
 // caller must not retain it past data's lifetime (Store.Get, the hot path,
 // decodes it and discards it immediately; EnvelopeFromBytes clones it). It
-// returns ErrUnknownType for a malformed envelope or an unknown envelope
-// version.
+// returns ErrCorrupt, naming the offending field, for a malformed envelope: an
+// unusable version byte, a truncated or oversized header field, or a payload
+// length that does not fit the frame.
 //
 // Bytes after the declared payload are ignored (the field is self-delimiting):
 // readers tolerate a frame extension that appends fields without breaking
@@ -185,11 +196,11 @@ func decodeEnvelope(data []byte) (Envelope, error) {
 	}
 	payloadLen, n := binary.Uvarint(data[off:])
 	if n <= 0 {
-		return Envelope{}, fmt.Errorf("%w: truncated payload length", ErrUnknownType)
+		return Envelope{}, fmt.Errorf("%w: truncated payload length", ErrCorrupt)
 	}
 	off += n
 	if payloadLen > uint64(len(data)-off) {
-		return Envelope{}, fmt.Errorf("%w: payload length exceeds envelope size", ErrUnknownType)
+		return Envelope{}, fmt.Errorf("%w: payload length exceeds envelope size", ErrCorrupt)
 	}
 	return Envelope{Type: typeName, Codec: codec, Data: data[off : off+int(payloadLen)]}, nil
 }
@@ -204,8 +215,11 @@ func decodeEnvelope(data []byte) (Envelope, error) {
 // The codec identity tag is stepped over but not returned; EnvelopeFromBytes
 // reports it for callers that need it.
 //
-// It returns ErrUnknownType when data does not begin with a usable envelope
-// header.
+// It returns ErrCorrupt, naming the offending field, when data does not begin
+// with a usable envelope header — the same answer EnvelopeFromBytes and
+// Store.Get give for the same bytes. Reporting a type is not dispatch: a prefix
+// that parses and names a type nothing has a decoder for is no error here (that
+// is the caller's ErrUnknownType decision).
 func EnvelopeType(data []byte) (string, error) {
 	_, typeName, _, err := decodeEnvelopeHeader(data)
 	if err != nil {
@@ -254,11 +268,11 @@ const maxPeekNameLen = 1 << 12
 // It returns ErrCorrupt when the stream does not begin with a usable header,
 // naming the offending field — an unsupported envelope version, a truncated or
 // oversized codec tag, a truncated type length, an empty type, a declared type
-// longer than maxPeekNameLen, or a truncated type.
-// ErrCorrupt is the header-level counterpart of the payload-level decode
-// failure Store.Get reports; PeekType resolves no type, so ErrUnknownType does
-// not apply to it. A read failure other than end of stream is wrapped with its
-// cause.
+// longer than maxPeekNameLen, or a truncated type. That is the sentinel
+// decodeEnvelope (EnvelopeFromBytes) and Store.Get report for the same bytes:
+// every reader agrees that damaged bytes are damage. ErrUnknownType is reserved
+// for type dispatch and so does not apply here — PeekType resolves no type. A
+// read failure other than end of stream is wrapped with its cause.
 func PeekType(r io.Reader) (string, error) {
 	rd := r
 	br, ok := r.(io.ByteReader)

@@ -266,6 +266,13 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 // payload with the store's codec, and checks the decoded type matches the
 // stored type (a self-describing store refuses to hand back a value of the
 // wrong type).
+//
+// The errors separate "damaged bytes" from "not my type". A stored envelope
+// that does not parse is ErrCorrupt, naming the offending field — the same
+// answer Store.Type and PeekType give for the same header — as is a payload the
+// codec cannot decode, one that decodes to nil, and one that violates its
+// object's Validate. ErrUnknownType means the envelope is intact and names a
+// type this store does not decode; it is never a parse failure.
 func (s *Store[T]) Get(ctx context.Context, d Digest) (T, error) {
 	var zero T
 	data, err := s.GetRaw(ctx, d)
@@ -323,6 +330,12 @@ func (s *Store[T]) checkCodec(env Envelope) error {
 
 // GetRaw returns the raw stored bytes — the self-describing TLV envelope —
 // for inspection and tooling. It buffers the whole object.
+//
+// It does not parse the envelope, so it reports no envelope-level error: a
+// damaged frame comes back as its bytes, and a caller that wants the verdict
+// parses them with EnvelopeFromBytes (or reads the object with Get, which
+// parses the same bytes and reports ErrCorrupt). Only the guards and the
+// backend's own failures — ErrInvalidDigest, ErrNotFound — surface here.
 func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
