@@ -233,6 +233,8 @@ type Backend struct {
 }
 
 var _ cas.Backend = (*Backend)(nil)
+var _ cas.Cleaner = (*Backend)(nil)
+var _ cas.Statter = (*Backend)(nil)
 
 // New creates a pack-backed filesystem backend. It stays opt-in: without
 // WithEnabled, the backend behaves like the regular loose fs backend.
@@ -644,6 +646,125 @@ func (b *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		stats.ObjectCount++
 	}
 	return stats, nil
+}
+
+// Size returns the stored object's size in bytes. Pack-backed objects report the
+// pack payload size; loose-only objects fall back to the fs backend.
+func (b *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := cas.CheckDigest(d, "pack: size"); err != nil {
+		return 0, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if rec, ok := b.index[string(d)]; ok {
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return 0, fmt.Errorf("cas: validate pack record: %w", err)
+		}
+		if !valid {
+			delete(b.index, string(d))
+			if persistErr := b.persistIndex(); persistErr != nil {
+				return 0, persistErr
+			}
+		} else {
+			return rec.Size, nil
+		}
+	}
+	return b.loose.Size(ctx, d)
+}
+
+// ModTime reports the physical modification time of the object. For a pack
+// object this is the active pack file's timestamp; loose-only objects delegate
+// to the fs backend.
+func (b *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	if err := cas.CheckDigest(d, "pack: mod time"); err != nil {
+		return time.Time{}, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if rec, ok := b.index[string(d)]; ok {
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("cas: validate pack record: %w", err)
+		}
+		if !valid {
+			delete(b.index, string(d))
+			if persistErr := b.persistIndex(); persistErr != nil {
+				return time.Time{}, persistErr
+			}
+		} else {
+			fi, err := os.Stat(rec.Pack)
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					return time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
+				}
+				return time.Time{}, fmt.Errorf("cas: stat pack file: %w", err)
+			}
+			return fi.ModTime(), nil
+		}
+	}
+	return b.loose.ModTime(ctx, d)
+}
+
+// Clean removes stale temporary files left by pack writes and loose fs writes.
+func (b *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	removed, err := b.loose.Clean(ctx, olderThan)
+	if err != nil {
+		return removed, err
+	}
+	cutoff := time.Now().Add(-olderThan)
+	err = filepath.WalkDir(b.packDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() || !isTempFile(d.Name()) {
+			return nil
+		}
+		if olderThan > 0 {
+			fi, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if fi.ModTime().After(cutoff) {
+				return nil
+			}
+		}
+		if err := os.Remove(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		removed++
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return removed, nil
+		}
+		return removed, fmt.Errorf("cas: clean pack dir: %w", err)
+	}
+	return removed, nil
+}
+
+func isTempFile(name string) bool {
+	i := strings.Index(name, ".tmp")
+	if i < 0 {
+		return false
+	}
+	return i+4 == len(name) || strings.HasPrefix(name[i+4:], ".")
 }
 
 // Close closes the active pack file.
