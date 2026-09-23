@@ -29,7 +29,9 @@ library, not to the internal maintenance/process files.
 - storage and backend contract expectations
 - compatibility and migration guarantees
 - versioning and release design
-- viewer and security requirements
+- viewer architecture, its reference states, and its security requirements —
+  see the [viewer page](../viewer.md) for the operator-facing explanation and
+  the specs it links for the normative contracts
 
 ## Why the website also includes a summary
 

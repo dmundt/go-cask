@@ -42,7 +42,7 @@ A **single-host content-addressable store**. Each named spec is the normative co
 ## Repository layout
 
 - [cas/](cas/) — the public core library (package `cas`): generic, app-agnostic, stable surface.
-- [internal/](internal/) — implementation details: viewer, index, and local helpers not meant to be imported outside the module.
+- [internal/](internal/) — implementation details: viewer, index, and local helpers not meant to be imported outside the module; the viewer package starts at [internal/web/README.md](internal/web/README.md).
 - [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs.
 - [examples/](examples/) — runnable example programs showing how to use the core and the reference model.
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
@@ -120,12 +120,13 @@ Legacy or compatibility-only hashes should not be used for new content-addressed
 
 ## Viewer reference states
 
-The embedded viewer (`cask web`) renders two independent axes per object when
-a host supplies both a `ReachabilityIndex` and a `ReferenceIndex`: root
+The embedded viewer (`cask web`) is the product's only HTTP surface: a
+server-rendered object browser for inspecting objects, bytes, sizes, and
+integrity. When a host supplies both a `ReachabilityIndex` and a
+`ReferenceIndex`, it also renders two independent axes per object — root
 reachability (is it reachable from a configured root?) and inbound reference
-count (how many other objects point to it?). Crossing those two axes gives
-four reference states, shown as the `References` column and matched by the
-`reach` filter:
+count (how many other objects point to it?) — which cross into four reference
+states, shown as the `References` column and matched by the `reach` filter:
 
 | State | Reachable? | Inbound refs | Pill color | Meaning |
 |---|---|---|---|---|
@@ -136,8 +137,14 @@ four reference states, shown as the `References` column and matched by the
 
 `Root` and `Detached` require both indexes (`reach=root`/`reach=detached`
 return 400 without a `ReferenceIndex`); `Resolved`/`Orphaned` only require a
-`ReachabilityIndex`. See [docs/specs/viewer-design.md](docs/specs/viewer-design.md)
-for the full normative contract.
+`ReachabilityIndex`.
+
+That table is the front-page overview. The [viewer page](website/viewer.md)
+explains the viewer for the person who runs it — starting it, the startup
+token, what the screens show, the object and blob inspection surface, and what
+each state means operationally — while
+[docs/specs/viewer-design.md](docs/specs/viewer-design.md) remains the
+normative contract that defines them.
 
 ## Security note
 
