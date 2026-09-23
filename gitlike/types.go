@@ -7,7 +7,8 @@
 //
 // Every object type is versioned from the start (blob@1, tree@1, commit@1,
 // tag@1); Store.Put stores each object in the core's self-describing TLV
-// envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
+// envelope
+// [version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]
 // (cas-core §8 decision 1) around the codec payload.
 //
 // The package also provides Repository (per-type stores over one Backend),

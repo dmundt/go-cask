@@ -140,3 +140,33 @@ func TestCodecErrorsWhenCallbacksMissing(t *testing.T) {
 		t.Fatal("transform failure should propagate")
 	}
 }
+
+// TestCodecName pins the identity tag: "binary" for a direct codec, and the
+// composed "binary+<inner>" for a stack, because a stack stores transformed
+// inner bytes rather than this package's raw binary payload.
+func TestCodecName(t *testing.T) {
+	raw := NewRaw(
+		func(v sample) ([]byte, error) { return []byte(v.Name), nil },
+		func(data []byte) (sample, error) { return sample{Name: string(data)}, nil },
+	)
+	if got := raw.CodecName(); got != "binary" {
+		t.Fatalf("NewRaw CodecName() = %q, want binary", got)
+	}
+	wrapped := New(jsoncodec.New[sample](), func(data []byte) ([]byte, error) { return data, nil }, func(data []byte) ([]byte, error) { return data, nil })
+	if got := wrapped.CodecName(); got != "binary+json" {
+		t.Fatalf("stacked CodecName() = %q, want binary+json", got)
+	}
+	if got := New(nameless[sample]{}, func(data []byte) ([]byte, error) { return data, nil }, func(data []byte) ([]byte, error) { return data, nil }).CodecName(); got != "" {
+		t.Fatalf("CodecName() over an unnamed codec = %q, want the empty (unspecified) tag", got)
+	}
+}
+
+// nameless is a Codec[T] that declares no identity: it satisfies cas.Codec[T]
+// but not cas.CodecNamer.
+type nameless[T any] struct{}
+
+// Encode encodes with the JSON codec.
+func (nameless[T]) Encode(v T) ([]byte, error) { return jsoncodec.New[T]().Encode(v) }
+
+// Decode decodes with the JSON codec.
+func (nameless[T]) Decode(data []byte) (T, error) { return jsoncodec.New[T]().Decode(data) }

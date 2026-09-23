@@ -36,12 +36,12 @@ func Paginate[T any](items []T, offset, limit int) []T {
 // A legacy unversioned type name reads back with "@1" appended (object-
 // versioning §2).
 //
-// Only the header — [version][uvarint typeLen][type] — is inspected, so a
-// truncated object prefix (the viewer reads a bounded prefix, not the whole
-// object) still yields its type. It delegates the header layout to
-// cas.EnvelopeType, which owns the format, and reports that parser's error as
-// the absent type: an unreadable header is exactly what an untyped object
-// looks like to a best-effort sniff.
+// Only the header — [version][uvarint codecLen][codec][uvarint typeLen][type] —
+// is inspected, so a truncated object prefix (the viewer reads a bounded
+// prefix, not the whole object) still yields its type. It delegates the header
+// layout to cas.EnvelopeType, which owns the format, and reports that parser's
+// error as the absent type: an unreadable header is exactly what an untyped
+// object looks like to a best-effort sniff.
 func EnvelopeType(data []byte) string {
 	typ, err := cas.EnvelopeType(data)
 	if err != nil {

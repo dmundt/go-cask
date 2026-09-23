@@ -3,6 +3,7 @@ package json_test
 import (
 	"testing"
 
+	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/codec/json"
 )
 
@@ -31,5 +32,14 @@ func TestDecodeError(t *testing.T) {
 	c := json.New[obj]()
 	if _, err := c.Decode([]byte("{invalid")); err == nil {
 		t.Fatal("invalid JSON must error")
+	}
+}
+
+// TestCodecName pins the identity tag the store writes into the envelope and
+// compares on read.
+func TestCodecName(t *testing.T) {
+	var namer cas.CodecNamer = json.New[obj]()
+	if got := namer.CodecName(); got != "json" {
+		t.Fatalf("CodecName() = %q, want json", got)
 	}
 }

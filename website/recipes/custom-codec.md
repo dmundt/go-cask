@@ -47,7 +47,12 @@ func (Codec) Decode(data []byte) (*Note, error) {
     return &Note{Text: string(data)}, nil
 }
 
+// CodecName declares the wire format, so the store can report a codec change
+// as cas.ErrCodecMismatch instead of a decode failure (cas.CodecNamer).
+func (Codec) CodecName() string { return "notecodec" }
+
 var _ cas.Codec[*Note] = Codec{}
+var _ cas.CodecNamer = Codec{}
 ```
 
 ## Composing with a compression wrapper
@@ -76,3 +81,11 @@ object envelope — see [object format](../specifications/object-format.md)).
 Changing the codec, or adding/removing a compression wrapper, changes the
 digest of an otherwise-identical value: it is a different stored
 representation, and the store treats it as a different object.
+
+The envelope also records the writing codec's identity tag. A codec that
+implements `cas.CodecNamer` has its tag written into every object it stores,
+and `Store.Get` compares it with its own codec's tag before decoding: reading
+an object written with another codec returns `cas.ErrCodecMismatch` — a
+reported format change, not `ErrCorrupt` — so a codec swap needs no type major
+bump. Leave the interface off and the tag is empty, which means "unspecified"
+and disables the check.

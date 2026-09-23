@@ -12,6 +12,10 @@
 // lowercase-hex string through encoding.TextMarshaler, which encoding/json
 // honors, and `omitzero` drops an absent optional reference (cas-core §4.2,
 // §4.6).
+//
+// The codec names the wire format it produces — "json" (cas.CodecNamer) — so a
+// store can report an object written with a different codec as a format change
+// instead of a decode failure.
 package json
 
 import "encoding/json"
@@ -33,3 +37,8 @@ func (Codec[T]) Decode(data []byte) (T, error) {
 	}
 	return v, nil
 }
+
+// CodecName reports the codec identity tag written into the envelope: "json".
+// It satisfies cas.CodecNamer, so a store built on this codec reports
+// cas.ErrCodecMismatch when it reads an object written with another one.
+func (Codec[T]) CodecName() string { return "json" }

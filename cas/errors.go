@@ -17,7 +17,8 @@ import "errors"
 // via %w; integrity checks return ErrDigestMismatch; parsing a digest returns
 // ErrInvalidDigest; an envelope with an unknown type name or major version
 // returns ErrUnknownType; a stored payload that the store codec cannot decode
-// returns ErrCorrupt. Compare with errors.Is, never by string.
+// returns ErrCorrupt; an object written with a different codec than the one
+// reading it returns ErrCodecMismatch. Compare with errors.Is, never by string.
 var (
 	// ErrNotFound reports that a digest is absent from a backend.
 	ErrNotFound = errors.New("cas: object not found")
@@ -29,6 +30,12 @@ var (
 	ErrUnknownType = errors.New("cas: unknown object type or version")
 	// ErrCorrupt reports invalid stored object data.
 	ErrCorrupt = errors.New("cas: corrupt object")
+	// ErrCodecMismatch reports that an object was written with a different
+	// codec than the one reading it. The stored bytes are intact — the reader
+	// changed — so it is kept distinct from ErrCorrupt (damaged bytes) and
+	// ErrUnknownType (unknown type name or major version), and neither of those
+	// is ever returned for a codec difference.
+	ErrCodecMismatch = errors.New("cas: codec mismatch")
 	// ErrUnsupported reports that a maintenance operation was requested that
 	// the given backend cannot perform (e.g. age-based Sweep against a
 	// backend that does not implement Statter). See Capabilities/CapabilitiesOf.

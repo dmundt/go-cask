@@ -3,6 +3,7 @@ package gob_test
 import (
 	"testing"
 
+	"github.com/dmundt/go-cask/cas"
 	flatecodec "github.com/dmundt/go-cask/cas/codec/flate"
 	"github.com/dmundt/go-cask/cas/codec/gob"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -73,3 +74,34 @@ func TestWrappedDecodeAndErrorBranches(t *testing.T) {
 		t.Fatal("plain gob encode should succeed")
 	}
 }
+
+// TestCodecName pins the identity tag: "gob" for a direct codec, and the
+// composed "gob+<inner>" for a stack, because a stacked codec stores
+// gob-wrapped inner bytes rather than a gob-encoded T — the two must not share
+// a tag.
+func TestCodecName(t *testing.T) {
+	var namer cas.CodecNamer = gob.NewRaw[obj]()
+	if got := namer.CodecName(); got != "gob" {
+		t.Fatalf("NewRaw CodecName() = %q, want gob", got)
+	}
+	if got := gob.New[obj](nil).CodecName(); got != "gob" {
+		t.Fatalf("New(nil) CodecName() = %q, want gob", got)
+	}
+	stacked := gob.New(flatecodec.New(jsoncodec.New[obj]()))
+	if got := stacked.CodecName(); got != "gob+flate+json" {
+		t.Fatalf("stacked CodecName() = %q, want gob+flate+json", got)
+	}
+	if got := gob.New(nameless[obj]{}).CodecName(); got != "" {
+		t.Fatalf("unnamed inner CodecName() = %q, want the empty (unspecified) tag", got)
+	}
+}
+
+// nameless is a Codec[T] that declares no identity: it satisfies cas.Codec[T]
+// but not cas.CodecNamer.
+type nameless[T any] struct{}
+
+// Encode encodes with the JSON codec.
+func (nameless[T]) Encode(v T) ([]byte, error) { return jsoncodec.New[T]().Encode(v) }
+
+// Decode decodes with the JSON codec.
+func (nameless[T]) Decode(data []byte) (T, error) { return jsoncodec.New[T]().Decode(data) }

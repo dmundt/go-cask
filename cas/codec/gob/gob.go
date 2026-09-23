@@ -79,3 +79,32 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 	}
 	return v, nil
 }
+
+// CodecName reports the codec identity tag written into the envelope: "gob" for
+// a direct gob codec, and "gob+<inner tag>" when this codec is stacked over an
+// inner one — the bytes are then gob-wrapped inner bytes, not a gob-encoded T,
+// so the two cannot share a tag. A stacked codec whose inner codec declares no
+// tag reports "" (unspecified), so nesting an unnamed codec never manufactures
+// a tag that later reads as a mismatch. It satisfies cas.CodecNamer.
+func (c Codec[T]) CodecName() string {
+	if c.next == nil {
+		return "gob"
+	}
+	return composeTag("gob", c.next)
+}
+
+// composeTag builds the identity tag of a codec stacked over next:
+// "<name>+<inner tag>". It reports "" when next declares no tag, so an unnamed
+// inner codec leaves the stack unspecified rather than manufacturing a tag that
+// would later read as a mismatch.
+func composeTag[T any](name string, next cas.Codec[T]) string {
+	namer, ok := next.(cas.CodecNamer)
+	if !ok {
+		return ""
+	}
+	inner := namer.CodecName()
+	if inner == "" {
+		return ""
+	}
+	return name + "+" + inner
+}

@@ -18,10 +18,12 @@ import (
 // Store is safe for concurrent use if its Backend is.
 //
 // Stored objects are self-describing: the codec payload is wrapped in the TLV
-// envelope [version u8][uvarint typeLen][type][uvarint payloadLen][payload]
+// envelope
+// [version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]
 // (envelope.go, cas-core §8 decision 1), so the versioned type name (e.g.
-// "commit@1") travels with the bytes without a side registry. The digest covers
-// the whole envelope, so the type is part of the address.
+// "commit@1") and the codec identity tag travel with the bytes without a side
+// registry. The digest covers the whole envelope, so the type is part of the
+// address.
 //
 // The typed layer is constrained: T MUST implement Object[T]. The type
 // system therefore proves that every value a Store handles is an object —
@@ -44,6 +46,7 @@ import (
 type Store[T Object[T]] struct {
 	backend   Backend
 	codec     Codec[T]
+	codecName string
 	hasher    Hasher
 	closeOnce sync.Once
 	closeErr  error
@@ -59,8 +62,26 @@ type Store[T Object[T]] struct {
 // { return New(backend, json.New[*Note](), hasher) } — and a consumer that has
 // several types can register each store once with cas/repo.RegisterStore and
 // read it back typed with cas/repo.LookupStore[T].
+//
+// When codec implements CodecNamer its identity tag is resolved once, here: the
+// tag is written into every envelope this store produces and compared on every
+// Get, so reading an object written with another codec is reported as
+// ErrCodecMismatch rather than as a decode failure. A codec that declares no tag
+// writes an empty tag and reads any tag without complaint.
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
-	return &Store[T]{backend: backend, codec: codec, hasher: hasher}
+	return &Store[T]{backend: backend, codec: codec, codecName: codecNameOf(codec), hasher: hasher}
+}
+
+// codecNameOf resolves a codec's optional identity tag (CodecNamer): a codec
+// that does not implement the interface declares no tag. The assertion runs on
+// the codec value the caller already supplied — no reflection, no any — and its
+// answer is fixed for the store's lifetime, so the tag is resolved once at
+// construction rather than on every read.
+func codecNameOf[T any](codec Codec[T]) string {
+	if namer, ok := codec.(CodecNamer); ok {
+		return namer.CodecName()
+	}
+	return ""
 }
 
 // check applies the guards every store operation shares: the digest must be
@@ -211,9 +232,11 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 }
 
 // marshal builds the stored form of obj: the TLV envelope
-// [version][typeLen][type][codec payload] (see envelope.go). The codec is the
-// single serialization authority — the same codec decodes on read (Get). obj
-// is the concrete T (the Store constraint), so no type assertion is involved.
+// [version][codecLen][codec][typeLen][type][payloadLen][codec payload] (see
+// envelope.go). The codec is the single serialization authority — the same
+// codec decodes on read (Get) — and its identity tag (s.codecName, resolved
+// from CodecNamer at construction) is written into the header. obj is the
+// concrete T (the Store constraint), so no type assertion is involved.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	payload, err := s.codec.Encode(obj)
 	if err != nil {
@@ -233,39 +256,68 @@ func (s *Store[T]) marshal(obj T) ([]byte, error) {
 		// ("legacy"): a write-only object. Reject it at the source instead.
 		return nil, fmt.Errorf("%w: type name %q is not versioned (want \"<type>@<major>\")", ErrUnknownType, typ)
 	}
-	return encodeEnvelope(typ, payload), nil
+	return encodeEnvelope(s.codecName, typ, payload), nil
 }
 
 // Get reads the object at d and returns the concrete T directly — no casts.
-// It decodes the TLV envelope, decodes the payload with the store's codec, and
-// checks the decoded type matches the stored type (a self-describing store
-// refuses to hand back a value of the wrong type).
+// It decodes the TLV envelope, compares the stored codec identity tag with the
+// store's own (ErrCodecMismatch when both are present and differ), decodes the
+// payload with the store's codec, and checks the decoded type matches the
+// stored type (a self-describing store refuses to hand back a value of the
+// wrong type).
 func (s *Store[T]) Get(ctx context.Context, d Digest) (T, error) {
 	var zero T
 	data, err := s.GetRaw(ctx, d)
 	if err != nil {
 		return zero, err
 	}
-	typeName, payload, err := decodeEnvelope(data)
+	env, err := decodeEnvelope(data)
 	if err != nil {
 		return zero, err
 	}
-	v, err := s.codec.Decode(payload)
+	if err := s.checkCodec(env); err != nil {
+		return zero, err
+	}
+	v, err := s.codec.Decode(env.Data)
 	if err != nil {
+		if env.Codec == "" {
+			// The object carries no codec identity (a v1 envelope, or one
+			// written by a codec without CodecNamer), so a difference cannot be
+			// proven: the bytes are indistinguishable from damage and ErrCorrupt
+			// stays the answer. Naming the absent identity puts the diagnosis
+			// one step from ErrCodecMismatch.
+			return zero, fmt.Errorf("cas: %w: %s: object carries no codec identity: %w", ErrCorrupt, env.Type, err)
+		}
 		return zero, fmt.Errorf("cas: %w: payload decode: %w", ErrCorrupt, err)
 	}
 	// A payload that decodes to nil (e.g. JSON `null`) is not an object: reject
 	// it before calling any method on it.
 	if isNilValue(v) {
-		return zero, fmt.Errorf("%w: %s: decoded to nil", ErrCorrupt, typeName)
+		return zero, fmt.Errorf("%w: %s: decoded to nil", ErrCorrupt, env.Type)
 	}
-	if v.Type() != typeName {
-		return zero, fmt.Errorf("%w: stored type %q != decoded type %q", ErrUnknownType, typeName, v.Type())
+	if v.Type() != env.Type {
+		return zero, fmt.Errorf("%w: stored type %q != decoded type %q", ErrUnknownType, env.Type, v.Type())
 	}
-	if err := validateDecoded(v, typeName); err != nil {
+	if err := validateDecoded(v, env.Type); err != nil {
 		return zero, err
 	}
 	return v, nil
+}
+
+// checkCodec compares the codec identity tag recorded in env with the tag of
+// the codec this store reads with, and reports a difference as
+// ErrCodecMismatch. The check applies only when both sides declare a tag: an
+// object with none (a version 1 envelope, or one written by a codec without
+// CodecNamer) and a store whose codec declares none are read exactly as before,
+// which is the documented compatibility rule. It runs after the header is
+// parsed and before the payload is decoded, so a codec difference never
+// surfaces as a decode failure.
+func (s *Store[T]) checkCodec(env Envelope) error {
+	if s.codecName == "" || env.Codec == "" || env.Codec == s.codecName {
+		return nil
+	}
+	return fmt.Errorf("%w: %s: object was written with codec %q, this store reads %q",
+		ErrCodecMismatch, env.Type, env.Codec, s.codecName)
 }
 
 // GetRaw returns the raw stored bytes — the self-describing TLV envelope —

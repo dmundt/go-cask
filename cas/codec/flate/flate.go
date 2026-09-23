@@ -114,3 +114,27 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 		return flate.NewReader(r), nil
 	})
 }
+
+// CodecName reports the codec identity tag written into the envelope:
+// "flate+<inner tag>" — "flate+json" for flate.New(json.New[T]()) — because the
+// stored bytes are flate-compressed inner bytes, not inner bytes. A wrapped
+// codec that declares no tag yields "" (unspecified), so nesting an unnamed
+// codec never manufactures a tag that later reads as a mismatch. It satisfies
+// cas.CodecNamer.
+func (c Codec[T]) CodecName() string { return composeTag("flate", c.next) }
+
+// composeTag builds the identity tag of a codec stacked over next:
+// "<name>+<inner tag>". It reports "" when next declares no tag, so an unnamed
+// inner codec leaves the stack unspecified rather than manufacturing a tag that
+// would later read as a mismatch.
+func composeTag[T any](name string, next cas.Codec[T]) string {
+	namer, ok := next.(cas.CodecNamer)
+	if !ok {
+		return ""
+	}
+	inner := namer.CodecName()
+	if inner == "" {
+		return ""
+	}
+	return name + "+" + inner
+}

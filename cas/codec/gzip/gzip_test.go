@@ -93,3 +93,25 @@ func TestCodecPropagatesWrappedErrorsAndRejectsBadInput(t *testing.T) {
 		t.Fatal("valid gzip encode should succeed")
 	}
 }
+
+// TestCodecName pins the composed identity tag: compressing changes the stored
+// bytes, so the tag names the stack, and an inner codec that declares no tag
+// leaves the stack unspecified rather than manufacturing one.
+func TestCodecName(t *testing.T) {
+	if got := New(jsoncodec.New[sample]()).CodecName(); got != "gzip+json" {
+		t.Fatalf("CodecName() = %q, want gzip+json", got)
+	}
+	if got := New(nameless[sample]{}).CodecName(); got != "" {
+		t.Fatalf("CodecName() over an unnamed codec = %q, want the empty (unspecified) tag", got)
+	}
+}
+
+// nameless is a Codec[T] that declares no identity: it satisfies cas.Codec[T]
+// but not cas.CodecNamer.
+type nameless[T any] struct{}
+
+// Encode encodes with the JSON codec.
+func (nameless[T]) Encode(v T) ([]byte, error) { return jsoncodec.New[T]().Encode(v) }
+
+// Decode decodes with the JSON codec.
+func (nameless[T]) Decode(data []byte) (T, error) { return jsoncodec.New[T]().Decode(data) }
