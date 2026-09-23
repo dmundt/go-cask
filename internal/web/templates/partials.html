@@ -111,7 +111,6 @@
 <p class="viewer-result-head"><span class="viewer-status {{if .OK}}viewer-status-verified{{else if .Integrity}}viewer-status-{{.Integrity}}{{else}}viewer-status-not-verified{{end}}">{{.Headline}}</span></p>
 <p class="viewer-result-summary">{{.Summary}}</p>
 {{if .Actual}}<dl class="viewer-meta viewer-result-meta"><dt>Expected</dt><dd class="viewer-result-digest">{{.Expected}}</dd><dt>Actual</dt><dd class="viewer-result-digest">{{.Actual}}</dd></dl>{{end}}
-{{if .Detail}}<p class="viewer-result-detail">{{.Detail}}</p>{{end}}
 {{if .Checked}}<p class="viewer-result-checked">Checked {{.Checked}}</p>{{end}}
 </div>{{end}}
 

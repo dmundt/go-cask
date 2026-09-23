@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v8
+version: v10
 ---
 
 # API Design — go-cask
@@ -52,14 +52,16 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 | 401 | **empty body** | `{"error":"unauthorized"}` |
 | 403 | **empty body** | `{"error":"forbidden"}` |
 | 404 | minimal error page | `{"error":"not found"}` |
-| 429 | minimal error page | `{"error":"rate limited"}` + `Retry-After` |
+| 429 | **empty body** + `Retry-After` | `{"error":"rate limited"}` + `Retry-After` |
 
 - 401/403 never disclose whether the target exists (all surfaces). Successful mutations with no useful body → 204; creates → 201 + the hash. 429 produced by the shared rate-limit middleware before any handler.
+- `Retry-After` is required on every 429, in whole seconds: it reports the delay the limiter is actually enforcing — the shared rate-limit middleware's window on a JSON surface, the viewer's login-throttle block on `/viewer/login` (viewer-security §5). A caller that is told how long to wait does not retry into the same refusal, and a value that drifted from the enforced wait would be worse than none.
+- A rejected authentication attempt carries no body on any surface, and its status does not soften because a browser form sent it: `POST /viewer/login` with a bad token answers `401` (empty), exactly like a missing or expired session. The login page states the human-readable reason for a caller who returns to it (viewer-design §3), so the refusal itself never has to describe the token or the account.
 
 ## 6. Error contract
 
 - JSON surfaces: every error is `{"error": "<concise message>"}` — no stack traces, internal paths, secrets, or object bytes.
-- Viewer: minimal HTML pages/fragments; 401/403 empty bodies.
+- Viewer: minimal HTML pages/fragments; 401/403 empty bodies. Every body is the viewer's own prose: a failure an operator sees is classified against the `cas` sentinel errors and explained, never rendered as the underlying Go error — a wrapped backend or interpreter message carries whatever the failing layer put in it (an absolute path, a syscall name), and it belongs in the audit line, not in the response (viewer-design §3).
 - Messages actionable but never disclose internals/existence in 401/403.
 - Sentinel errors → statuses (per-surface): `ErrNotFound`→404, `ErrDigestMismatch`→409/500, `ErrInvalidDigest`→400. Exception: `verify` is a query returning `{"valid":true/false}` on 200 (not an error); `ErrDigestMismatch` maps to the error status only on mutation paths.
 
@@ -72,7 +74,8 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 - Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance).
 - CSRF: every viewer mutation is POST + server-validated CSRF token.
 - Audit: every mutation audit-logged; tokens/secrets never logged.
-- Rate limiting: IP-based middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); viewer login throttle fixed at 5 failures/IP/min with backoff (viewer-security).
+- Rate limiting: IP-based middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); viewer login throttle fixed at 5 failures/IP/min with backoff (viewer-security), whose 429 carries the remaining block as `Retry-After`.
+- Caching: a response that reflects a session is not cacheable. The viewer sends `Cache-Control: no-store` on every response and names `Cookie` in `Vary`, so a proxy between the browser and the viewer cannot retain a page or answer a later caller with one rendered for another session (viewer-security §10).
 
 ## 8. Middleware pipeline (shared)
 

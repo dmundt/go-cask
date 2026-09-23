@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,14 +34,24 @@ func TestLoginFlow(t *testing.T) {
 		t.Fatalf("unauthenticated viewer landing = %d, location=%q, want 303 /viewer/login", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
-	// Wrong token → 401.
-	resp, err = ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+	// Wrong token → 401 with no body. The reason lives on the login page, which
+	// a human returns to; the rejection itself says nothing.
+	resp, err = c.PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("bad login = %d, want 401", resp.StatusCode)
+	}
+	if len(body) != 0 {
+		t.Fatalf("rejected login carried a body: %.80q", body)
+	}
+	// The page states the reason for a caller who reaches it after the refusal.
+	page := getBody(t, ts.Client(), ts.URL+"/viewer/login?failed=1")
+	if !strings.Contains(page, "That token was not accepted.") {
+		t.Fatalf("login page after a rejected attempt must state the reason: %.200q", page)
 	}
 
 	// Startup token → 303 + session cookie, then object browser renders.
@@ -49,7 +60,7 @@ func TestLoginFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `<caption class="viewer-sr-only">Objects</caption>`) {
 		t.Fatalf("viewer landing = %d, %.80q", resp.StatusCode, body)
@@ -120,9 +131,24 @@ func TestLoginThrottle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("6th failed login = %d, want 429", resp.StatusCode)
+	}
+	if len(body) != 0 {
+		t.Fatalf("throttled login carried a body: %.80q", body)
+	}
+	// The caller is told how long the block lasts, in whole seconds, and the
+	// advertised delay is the throttle's own remaining window (one minute after
+	// the first exhaustion).
+	retryAfter := resp.Header.Get("Retry-After")
+	seconds, err := strconv.Atoi(retryAfter)
+	if err != nil {
+		t.Fatalf("Retry-After = %q, want an integer number of seconds", retryAfter)
+	}
+	if seconds <= 0 || seconds > 60 {
+		t.Fatalf("Retry-After = %d, want 1..60 seconds of remaining block", seconds)
 	}
 }
 
@@ -147,12 +173,48 @@ func TestLoginRejectsEmptyToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("empty-token login = %d, want 401", resp.StatusCode)
 	}
+	if len(body) != 0 {
+		t.Fatalf("rejected login carried a body: %.80q", body)
+	}
 	if len(resp.Cookies()) != 0 {
 		t.Fatalf("empty-token login set cookies: %v", resp.Cookies())
+	}
+}
+
+// TestThrottleRetryAfterIsTheRemainingBlock pins the Retry-After contract: a
+// refused attempt advertises the block that is actually in force, rounded up to
+// whole seconds, and a cleared record advertises nothing. A header that drifted
+// from the enforced wait would either lie to a caller or invite a retry the
+// throttle then refuses again.
+func TestThrottleRetryAfterIsTheRemainingBlock(t *testing.T) {
+	const window = 90 * time.Second
+	th := newThrottle(2, window)
+	if !th.allow("ip") || !th.allow("ip") {
+		t.Fatal("the first two attempts must be allowed")
+	}
+	if th.allow("ip") {
+		t.Fatal("the third attempt must be refused")
+	}
+	got := th.retryAfter("ip")
+	if got <= 0 || got > window {
+		t.Fatalf("retryAfter in force = %v, want (0, %v]", got, window)
+	}
+	// Whole seconds: the header is expressed in seconds, so a fractional answer
+	// would render as 0 and read as "retry now".
+	if got%time.Second != 0 {
+		t.Fatalf("retryAfter = %v, want a whole number of seconds", got)
+	}
+	if got < time.Second {
+		t.Fatalf("retryAfter = %v, want at least one second", got)
+	}
+	th.reset("ip")
+	if got := th.retryAfter("ip"); got != time.Second {
+		t.Fatalf("retryAfter after a reset = %v, want the one-second floor", got)
 	}
 }
 

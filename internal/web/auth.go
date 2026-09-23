@@ -7,6 +7,8 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 // Roles (viewer-security §8).
@@ -70,8 +72,21 @@ func roleRank(role string) int {
 
 // --- login ---
 
+// loginFailedParam marks the login page reached after a rejected attempt. It
+// carries no detail: the reason a token was rejected is never disclosed, and the
+// page renders one owned sentence either way.
+const loginFailedParam = "failed"
+
+// loginData backs the login page. The rejection itself is answered 401 with an
+// empty body (api-design §5), so the page — not the rejected response — is where
+// the human-readable reason lives.
+type loginData struct {
+	// Failed reports that the page was reached after a rejected attempt.
+	Failed bool
+}
+
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	s.renderPage(w, "login", nil)
+	s.renderPage(w, "login", loginData{Failed: r.URL.Query().Get(loginFailedParam) != ""})
 }
 
 // loginPost validates the submitted token against the startup token (admin)
@@ -81,14 +96,23 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 	ip := callerIP(r)
 	if !s.loginThrottle.allow(ip) {
 		slog.Warn("viewer login throttled", "ip", ip)
-		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+		// A throttled caller is told how long to wait rather than left to guess
+		// (api-design §5). The delay is the throttle's own remaining block, so
+		// the header and the enforced wait cannot drift apart.
+		w.Header().Set("Retry-After", strconv.Itoa(int(s.loginThrottle.retryAfter(ip)/time.Second)))
+		w.WriteHeader(http.StatusTooManyRequests) // empty body
 		return
 	}
 	role, ok := s.resolveToken(token)
 	if !ok {
 		// The attempt was already recorded by allow.
 		slog.Warn("viewer login failed", "ip", ip) // token value never logged
-		http.Error(w, "invalid token", http.StatusUnauthorized)
+		// The rejection is answered without a body: a response about an
+		// authentication decision never carries prose a caller could read as
+		// detail about the token, and a browser form POST is the same response
+		// as any other. The login page states the reason for a human who comes
+		// back to it (api-design §5, viewer-design §3).
+		w.WriteHeader(http.StatusUnauthorized) // empty body
 		return
 	}
 	s.loginThrottle.reset(ip)

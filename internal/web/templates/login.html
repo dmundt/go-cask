@@ -3,7 +3,8 @@
 </main>{{end}}
 
 {{define "login-form"}}<h1>CASK viewer</h1>
-<form method="post" action="/viewer/login">
+{{if .Failed}}<p class="viewer-login-error" role="alert">That token was not accepted. Check the token the viewer printed when it started.</p>
+{{end}}<form method="post" action="/viewer/login">
 <label for="token">Token</label>
 <input id="token" name="token" type="password" autocomplete="current-password" required>
 <button type="submit">Sign in</button>

@@ -8,9 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -191,6 +194,110 @@ func TestCorruptVerifyResultNamesBothDigests(t *testing.T) {
 			t.Fatalf("corrupt result missing %q: %.500q", want, result)
 		}
 	}
+}
+
+// TestUnreadableObjectNeverRendersTheError pins viewer-design §3: a failed
+// action is presented as structured prose, never as a raw Go error string. An
+// unreadable object is the path that used to carry the interpreter's own words
+// into the result, and those words name the storage layer's absolute paths, so
+// the response must state only the viewer's finding while the cause goes to the
+// audit line.
+func TestUnreadableObjectNeverRendersTheError(t *testing.T) {
+	base := t.TempDir()
+	backend, err := fs.New(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	restoreLogs := captureLogs(&logs)
+	defer restoreLogs()
+
+	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	// A directory where the object's file belongs. The bytes of the named object
+	// are what the digest addresses, so this one is unreadable for good: opening
+	// the path succeeds, but reading it never yields the object's bytes and the
+	// error names the absolute path the operator must not see.
+	if err := os.MkdirAll(objectDir(base, h), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(objectDir(base, h), "blocker"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if read, err := backend.Get(context.Background(), h); err != nil {
+		t.Fatalf("the object's path must open, so the failure lands in the read: %v", err)
+	} else {
+		buf := make([]byte, 64)
+		_, err := read.Read(buf)
+		read.Close()
+		if err == nil {
+			t.Fatal("reading a directory as an object must fail")
+		}
+		if !strings.Contains(err.Error(), base) {
+			t.Fatalf("the read error does not name the store root, so this test proves nothing: %v", err)
+		}
+	}
+
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The error the response must not describe names the store root, so the
+	// assertions below are testing something real.
+	if _, err := srv.verifyObject(context.Background(), h); err == nil {
+		t.Fatal("verifying an unreadable object must fail")
+	} else if !strings.Contains(err.Error(), base) {
+		t.Fatalf("the verification error does not name the store root, so this test proves nothing: %v", err)
+	}
+
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	operator := login(t, ts, testStartupToken)
+	csrf := csrfFromPage(getBody(t, operator, ts.URL+"/viewer/objects"))
+
+	resp, err := operator.PostForm(ts.URL+"/viewer/objects/"+h.String()+"/verify", url.Values{"csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verify of an unreadable object = %d, want 200", resp.StatusCode)
+	}
+	got := string(body)
+	if !strings.Contains(got, "Unreadable") {
+		t.Fatalf("unreadable result = %.400q, want the viewer's own headline", got)
+	}
+	if strings.Contains(got, base) {
+		t.Fatalf("result leaked a filesystem path: %.400q", got)
+	}
+	if strings.Contains(got, "cas: get") || strings.Contains(got, "open") && strings.Contains(got, "object") {
+		t.Fatalf("result leaked the storage layer's error text: %.400q", got)
+	}
+	// The cause is not lost: the audit line carries it, where an operator who
+	// needs the interpreter's words reads them (viewer-security §9).
+	audit := logs.String()
+	if !strings.Contains(audit, h.String()) {
+		t.Fatalf("audit line does not name the object:\n%s", audit)
+	}
+	if !strings.Contains(audit, "cas:") {
+		t.Fatalf("audit line does not record why the read failed:\n%s", audit)
+	}
+}
+
+// captureLogs routes the default logger into buf for the duration of a test and
+// returns the restore function. slog serializes writes, so the buffer is safe
+// to read once the requests under test have returned.
+func captureLogs(buf *bytes.Buffer) func() {
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+	return func() { slog.SetDefault(restore) }
+}
+
+// objectDir is the fs backend's default layout (fan-out 2, one level) for one
+// digest: the object's first two hex characters, then the full hex digest.
+func objectDir(base string, h cas.Digest) string {
+	hexDigest := h.String()
+	return filepath.Join(base, hexDigest[:2], hexDigest)
 }
 
 // The top-bar control verifies the whole store in one request and reports the

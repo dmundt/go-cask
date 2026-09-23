@@ -103,6 +103,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   completes the cached getters, and `(*ResolvedObject).References()` reports the
   union's outgoing references so callers stop re-deriving them.
 
+### Security
+
+- The viewer's HTTP responses are hygienic: a throttled login answers `429` with
+  the `Retry-After` delay it is actually enforcing, a rejected token is answered
+  `401` with no body — the reason appears on the login page, never in the
+  refusal — every response is `Cache-Control: no-store` and names `Cookie` in
+  `Vary` so a proxy between the browser and the viewer cannot serve one
+  session's page to another, and a verification failure renders only the
+  viewer's own prose: the underlying error, which can name the store's
+  filesystem paths, now goes to the audit line instead of the operator's screen.
+
 ### Changed
 
 - gitlike resolves an object's type from the **versioned** envelope name
