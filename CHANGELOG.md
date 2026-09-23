@@ -40,6 +40,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   header alone, so callers that only need to know what an object is (the viewer
   index, `gitlike` resolution) read a bounded prefix instead of buffering the
   whole object.
+- `cas.PeekType` and `Store.Type` report an object's versioned type name from the
+  envelope header on a stream: the payload is neither read nor allocated,
+  whatever its size, so enumerating a store by type is `List` plus `Type`
+  instead of a decode per object.
 - `gob.NewRaw[T]()` builds a gob codec with no inner codec; `gob.New[T](next)`
   now takes the inner codec explicitly.
 - `cas/backend` shares `WriteAll`, `ReadAll` and `ReadPayload` between backend

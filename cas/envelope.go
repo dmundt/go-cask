@@ -3,7 +3,9 @@ package cas
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -146,4 +148,95 @@ func EnvelopeFromBytes(data []byte) (Envelope, error) {
 		return Envelope{}, err
 	}
 	return Envelope{Type: typ, Data: bytes.Clone(payload)}, nil
+}
+
+// maxPeekTypeLen bounds the type name PeekType will read. A stored header is
+// untrusted bytes, and the versioned type name is a short string
+// (object-versioning §2), so a declared length beyond this is treated as a
+// corrupt header rather than allocated. It is deliberately far above any real
+// type name: "<type>@<major>" for a name of a few dozen characters.
+const maxPeekTypeLen = 1 << 12
+
+// PeekType reads only the envelope header from r —
+// [version u8][uvarint typeLen][type] — and returns the versioned type name.
+// The payload is never read: the stream is consumed exactly as far as the type
+// field, so the cost is independent of the object's size. An absent major
+// version reads back as "@1" (object-versioning §2).
+//
+// It is the streaming counterpart of EnvelopeType, for callers that enumerate a
+// store and want each object's type without paying for its bytes: a store can
+// report what it holds with List followed by PeekType (or Store.Type) per
+// digest, where Store.Get would decode every payload.
+//
+// It returns ErrCorrupt when the stream does not begin with a usable header,
+// naming the offending field — an unsupported envelope version, a truncated
+// type length, an empty type, a declared type longer than maxPeekTypeLen, or a
+// truncated type. ErrCorrupt is the header-level counterpart of the
+// payload-level decode failure Store.Get reports; PeekType resolves no type, so
+// ErrUnknownType does not apply to it. A read failure other than end of stream
+// is wrapped with its cause.
+func PeekType(r io.Reader) (string, error) {
+	rd := r
+	br, ok := r.(io.ByteReader)
+	if !ok {
+		adapter := byteReader{r: r}
+		br, rd = adapter, adapter
+	}
+	version, err := br.ReadByte()
+	if err != nil {
+		return "", peekError("envelope version", err)
+	}
+	if version != envelopeVersion {
+		return "", fmt.Errorf("%w: peek type: unsupported envelope version %d", ErrCorrupt, version)
+	}
+	typeLen, err := binary.ReadUvarint(br)
+	if err != nil {
+		return "", peekError("type length", err)
+	}
+	if typeLen == 0 {
+		return "", fmt.Errorf("%w: peek type: empty type name", ErrCorrupt)
+	}
+	if typeLen > maxPeekTypeLen {
+		return "", fmt.Errorf("%w: peek type: type length %d exceeds %d", ErrCorrupt, typeLen, maxPeekTypeLen)
+	}
+	name := make([]byte, typeLen)
+	if _, err := io.ReadFull(rd, name); err != nil {
+		return "", peekError("type", err)
+	}
+	typeName := string(name)
+	if !strings.Contains(typeName, "@") {
+		typeName += "@1" // legacy unversioned type name
+	}
+	return typeName, nil
+}
+
+// peekError turns a header read failure into an ErrCorrupt that names the field
+// it happened in. End of stream needs no cause (there is nothing more to say),
+// while any other read error keeps its cause on the chain.
+func peekError(field string, err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("%w: peek type: truncated %s", ErrCorrupt, field)
+	}
+	return fmt.Errorf("%w: peek type: read %s: %w", ErrCorrupt, field, err)
+}
+
+// byteReader adapts an io.Reader to io.ByteReader one byte at a time. PeekType
+// uses it when the caller's reader cannot read single bytes itself: a buffered
+// reader would read ahead into the payload, which is exactly the cost PeekType
+// exists to avoid. It keeps a Read method so the type field can still be filled
+// in one bounded read from the same position.
+type byteReader struct {
+	r io.Reader
+}
+
+// Read reads from the underlying reader.
+func (b byteReader) Read(p []byte) (int, error) { return b.r.Read(p) }
+
+// ReadByte reads exactly one byte from the underlying reader.
+func (b byteReader) ReadByte() (byte, error) {
+	var one [1]byte
+	if _, err := io.ReadFull(b.r, one[:]); err != nil {
+		return 0, err
+	}
+	return one[0], nil
 }
