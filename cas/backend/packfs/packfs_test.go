@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -557,6 +558,20 @@ func TestPackBackendPersistIndexFailure(t *testing.T) {
 	b.index["deadbeef"] = packRecord{Pack: "missing.pack", Offset: 1, Size: 2}
 	if err := b.persistIndex(); err == nil {
 		t.Fatal("persistIndex should fail when parent directory is missing")
+	}
+}
+
+// TestNewRejectsUnusableBase pins that the pack backend validates its base like
+// the loose backend it wraps: the base exclusively owns <base>/loose, <base>/packs
+// and <base>/packs/index.json, so the shapes fs.ValidateBase rejects are refused
+// before anything is created.
+func TestNewRejectsUnusableBase(t *testing.T) {
+	for _, base := range []string{"", ".", "..", "../sibling"} {
+		if _, err := New(base, WithEnabled()); err == nil {
+			t.Errorf("New(%q) = nil error, want rejection", base)
+		} else if !strings.Contains(err.Error(), "cas: ") {
+			t.Errorf("New(%q) = %v, want the fs base error", base, err)
+		}
 	}
 }
 

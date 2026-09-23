@@ -95,6 +95,14 @@ var _ cas.Backend = (*Backend)(nil)
 
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
+//
+// basePath is checked with ValidateBase before anything is created, because the
+// base belongs to exactly this one backend: List/Stats report every digest-named
+// file beneath it at any depth and Clean reclaims every *.tmp beneath it
+// (cas-core §4.4). A path that would make the backend own more than the caller
+// named — "", ".", "..", a parent-traversal path or a volume root — is rejected
+// and nothing is created. A nested directory is a valid base: only the caller
+// knows whether it already belongs to another store.
 func New(basePath string, opts ...Option) (*Backend, error) {
 	cfg := config{fanOut: DefaultFanOut, fanLevels: DefaultFanLevels}
 	for _, o := range opts {
@@ -105,6 +113,9 @@ func New(basePath string, opts ...Option) (*Backend, error) {
 	}
 	if cfg.fanOut*cfg.fanLevels > MaxFanDepth {
 		return nil, fmt.Errorf("cas: fan-out %d×%d exceeds max depth %d", cfg.fanOut, cfg.fanLevels, MaxFanDepth)
+	}
+	if err := ValidateBase(basePath); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create store base: %w", err)

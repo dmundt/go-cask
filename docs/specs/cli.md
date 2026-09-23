@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v23
+version: v24
 ---
 
 # CLI — go-cask
@@ -17,7 +17,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 |---|---|---|---|
 | local | `-store <path>` `-backend fs\|packfs` | library in-process over the selected storage backend (`fs` by default) | none (filesystem trust) |
 
-- `-store` is required for store operations. No remote mode.
+- `-store` is required for store operations. No remote mode. The path must name the store's own directory: both backends reject an empty value, `.`, a filesystem or volume root and a parent-traversal path before creating anything (`fs.ValidateBase`, cas-core §4.4); a store path below the working directory (`-store root/name`) is fine.
 - `-backend` selects the storage backend every store operation runs against:
   `fs` (the default, Git-like fan-out loose objects) or `packfs` (a loose tree
   plus append-only pack files). One shared internal constructor opens the
