@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v3
+version: v4
 ---
 
 # Scripts — go-cask
@@ -21,7 +21,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 | [`bench-baseline.sh`](./bench-baseline.sh) | Captures benchmark output and is the only writer of the canonical `benchmarks/data/baseline.txt` reference dump. |
 | [`bench-compare.sh`](./bench-compare.sh) | Captures a fresh run and diffs it against a reference with `benchstat`; never writes the canonical baseline. |
 | [`test-bench-scripts.sh`](./test-bench-scripts.sh) | Regression test for the benchmark helpers' baseline ownership (stubbed `go`/`benchstat` in throwaway git repositories). |
-| [`run-examples.sh`](./run-examples.sh) | Runs the example programs in one command from the repo root. |
+| [`run-examples.sh`](./run-examples.sh) | Runs the example programs that terminate on their own in one command from the repo root; `--list` also names the manual two-process `api` example. |
 
 ## Rules
 
@@ -38,6 +38,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 - `bench-baseline.sh` owns `benchmarks/data/baseline.txt`: only a deliberate run (without `--capture-only`) rewrites it, and it archives the previous dump first. `bench-compare.sh` captures through `bench-baseline.sh --capture-only`, so comparing can never replace the reference it compares against; `scripts/test-bench-scripts.sh` (run by `verify.sh`) enforces that split.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
+- `run-examples.sh` runs the examples that terminate on their own (`artifacts`, `bloom`, `files`, `notes`, `pack`), each with the subcommand that completes, and `--list` names them together with the manual `api` example.
+- The `api` example is a manual two-process pair, so no script runs it: start the blocking server with `go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080`, then the demo client with `go run ./examples/api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md` in a second terminal (see [`examples/api/README.md`](../examples/api/README.md)).
 - `security.sh` installs the pinned `govulncheck` version so local and CI vulnerability scans are reproducible. Update `GOVULNCHECK_VERSION` deliberately.
 - CI sets `VERIFY_SKIP_SECURITY=true` because its required `security` job runs
   the same pinned scan separately; local `verify.sh` runs it by default.
@@ -53,6 +55,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 ./scripts/verify.sh
 ./scripts/release-notes.sh v1.4.5 v1.4.4
 ./scripts/run-examples.sh
+./scripts/run-examples.sh --list            # automated examples plus the manual api pair
 ./scripts/bench-baseline.sh                 # refresh the canonical reference dump (archives the old one)
 ./scripts/bench-compare.sh                  # diff a fresh run against the committed reference
 ./scripts/test-bench-scripts.sh             # regression test for the two helpers above
