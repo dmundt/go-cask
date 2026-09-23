@@ -35,6 +35,12 @@ import (
 // Stats, and read through it; at the raw byte layer the package-level GetMany
 // (batch.go) does the same for a batch of digests in one call. cas-core §4.13
 // records the prefetch recipe.
+//
+// Closing is the store's only lifecycle step: Close is idempotent and forwards
+// to a backend that implements io.Closer, so when the backend over which one or
+// more stores are built is a closer (a backend that flushes on close, such as
+// cas/backend/packfs), call Close on the store — or the backend — once the
+// stores over it are finished. See Close.
 type Store[T Object[T]] struct {
 	backend   Backend
 	codec     Codec[T]
@@ -47,6 +53,12 @@ type Store[T Object[T]] struct {
 // cannot fail: the core resolves nothing and knows no algorithm (cas-core §4.2),
 // and it names no codec either — the client supplies one, which is what keeps
 // `cas` free of any dependency on a `cas/codec` subpackage (library-design §1).
+// There is deliberately no NewJSON/NewCompressedJSON in the core for the same
+// reason; a consumer that repeats the construction writes its own one-line
+// constructor — func newNoteStore(backend Backend, hasher Hasher) *Store[*Note]
+// { return New(backend, json.New[*Note](), hasher) } — and a consumer that has
+// several types can register each store once with cas/repo.RegisterStore and
+// read it back typed with cas/repo.LookupStore[T].
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
 	return &Store[T]{backend: backend, codec: codec, hasher: hasher}
 }
@@ -153,7 +165,12 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 }
 
 // Close releases any backend resources if the backend implements io.Closer.
-// The call is idempotent and returns the backend's close error once.
+// Call it once the stores over a closer backend are finished — that backend
+// close is the flush, for example packfs's pack index, so a store left open
+// leaves unsaved state behind. The call is idempotent: the backend's Close runs
+// exactly once, a second call is a no-op, and both return that first call's
+// error. A backend that needs no cleanup makes it a no-op, so defer
+// store.Close() is always safe.
 func (s *Store[T]) Close() error {
 	if s == nil {
 		return nil

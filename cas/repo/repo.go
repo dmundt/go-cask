@@ -15,6 +15,15 @@
 // consumer cannot import without pulling in a demo package. Registry
 // generalizes the same pattern to any number of caller-defined types.
 //
+// A store registered with RegisterStore is read back typed with
+// LookupStore[T], so no caller asserts a type or receives a nil store: a name
+// nothing registered is an *UnknownTypeError (Unwrap() == cas.ErrUnknownType),
+// the same typed error Resolve returns for an unknown object type. The stores
+// themselves are built by the caller — package cas ships no NewJSON, because it
+// must not import cas/codec — with a one-line constructor in the consumer's own
+// package (cas.New, cas/store.go) or with the registry form this package shows
+// in its README.
+//
 // See docs/specs/consistency.md §4 for the root-set model this package
 // implements, and docs/specs/library-design.md for the stable-surface
 // contract. Filed and specified as go-cask#136.
@@ -106,7 +115,8 @@ func (r *Registry) Register(typeName string, decode Decoder) error {
 // store.Get. typeName MUST equal the exact string every value store holds
 // returns from Type(): a mismatch means those objects are permanently
 // "unknown type" to this Registry (UnknownTypeError), not a panic. The store
-// itself is also recorded so a later Stores() call can hand it back typed.
+// itself is also recorded so a later LookupStore[T] call can hand it back
+// typed.
 //
 // RegisterStore is a free function, not a Registry method, because Go method
 // type parameters cannot be instantiated per call the way a generic function
@@ -131,20 +141,34 @@ func RegisterStore[T cas.Object[T]](r *Registry, typeName string, store *cas.Sto
 	return nil
 }
 
-// Stores returns a snapshot of every store registered via RegisterStore,
-// keyed by type name. A caller that needs typed access beyond Resolve/Walk
-// (e.g. to Put a new object of a known type) type-asserts the entry back to
-// its concrete *cas.Store[T]: Stores()["blob@1"].(*cas.Store[*gitlike.Blob]).
-// A type registered through the lower-level Register (no store) is absent
-// here — Stores only knows what RegisterStore told it.
-func (r *Registry) Stores() map[string]any {
+// LookupStore returns the *cas.Store[T] that RegisterStore recorded under
+// typeName, so a caller that needs typed operations beyond Resolve/Walk (Put,
+// Get, Delete on a known type) reaches the store it registered without a type
+// assertion. The registry's type-erased map stays private: the only value
+// LookupStore hands back is already the caller's T, and no caller ever
+// receives a nil store or a failed assertion.
+//
+// LookupStore is a free function, not a Registry method, for the same reason
+// RegisterStore is: a method cannot name its own T per call.
+//
+// A typeName nothing registered — including one registered through the
+// lower-level Register, which records no store — returns an *UnknownTypeError
+// (Unwrap() == cas.ErrUnknownType), the same typed error Resolve returns for an
+// unknown type. A typeName registered under a different T returns an error
+// naming both the registered and the requested store type.
+func LookupStore[T cas.Object[T]](r *Registry, typeName string) (*cas.Store[T], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make(map[string]any, len(r.stores))
-	for k, v := range r.stores {
-		out[k] = v
+	registered, ok := r.stores[typeName]
+	if !ok {
+		return nil, &UnknownTypeError{TypeName: typeName}
 	}
-	return out
+	store, ok := registered.(*cas.Store[T])
+	if !ok {
+		var requested *cas.Store[T] // %T of the zero instantiation names the requested type
+		return nil, fmt.Errorf("cas/repo: lookup store %q: registered as %T, requested %T", typeName, registered, requested)
+	}
+	return store, nil
 }
 
 // envelopeHeaderLimit bounds the prefix read to learn an object's type,

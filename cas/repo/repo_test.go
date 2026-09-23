@@ -372,15 +372,81 @@ func TestReachableTreatsUnknownTypeAsReachableLeaf(t *testing.T) {
 	}
 }
 
-func TestRegisterStoreAndStoresTypeAssertion(t *testing.T) {
+// TestLookupStoreReturnsRegisteredStore pins the happy path: the exact
+// *cas.Store[T] RegisterStore recorded comes back, same pointer, no assertion.
+func TestLookupStoreReturnsRegisteredStore(t *testing.T) {
 	ts := newTestStores(t)
-	stores := ts.reg.Stores()
-	got, ok := stores["leaf@1"].(*cas.Store[leaf])
-	if !ok {
-		t.Fatalf("Stores()[%q] type-asserted to %T, want *cas.Store[leaf]", "leaf@1", stores["leaf@1"])
+
+	got, err := repo.LookupStore[leaf](ts.reg, "leaf@1")
+	if err != nil {
+		t.Fatalf("LookupStore(leaf@1) = %v", err)
 	}
 	if got != ts.leaves {
-		t.Fatal("Stores() did not return the exact store RegisterStore recorded")
+		t.Fatal("LookupStore did not return the exact store RegisterStore recorded")
+	}
+}
+
+// TestLookupStoreUnknownTypeReturnsErrUnknownType pins the first failure
+// outcome: a type name nothing registered is the same typed error Resolve
+// returns, never a nil store.
+func TestLookupStoreUnknownTypeReturnsErrUnknownType(t *testing.T) {
+	ts := newTestStores(t)
+
+	got, err := repo.LookupStore[leaf](ts.reg, "mystery@1")
+	if got != nil {
+		t.Fatalf("LookupStore for an unregistered type returned a non-nil store: %v", got)
+	}
+	if !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("LookupStore error = %v, want wrapping cas.ErrUnknownType", err)
+	}
+	var ute *repo.UnknownTypeError
+	if !errors.As(err, &ute) {
+		t.Fatalf("LookupStore error = %v, want an *UnknownTypeError", err)
+	}
+	if ute.Unwrap() != cas.ErrUnknownType {
+		t.Fatalf("UnknownTypeError.Unwrap() = %v, want cas.ErrUnknownType", ute.Unwrap())
+	}
+	if ute.TypeName != "mystery@1" {
+		t.Fatalf("UnknownTypeError.TypeName = %q, want %q", ute.TypeName, "mystery@1")
+	}
+}
+
+// TestLookupStoreRegisterOnlyTypeReturnsErrUnknownType pins the documented
+// boundary: Register records a Decoder but no store, so LookupStore has
+// nothing to hand back and reports the same typed error an unknown name does.
+func TestLookupStoreRegisterOnlyTypeReturnsErrUnknownType(t *testing.T) {
+	reg := repo.NewRegistry(mem.New(), sha256.New())
+	if err := reg.Register("x@1", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.LookupStore[leaf](reg, "x@1")
+	if got != nil || !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("LookupStore for a Register-only type = (%v, %v), want (nil, wrapping cas.ErrUnknownType)", got, err)
+	}
+}
+
+// TestLookupStoreWrongTypeReturnsNamingError pins the second failure outcome:
+// asking for a type name under the wrong T is an error naming both types, not
+// a failed type assertion handed back to the caller.
+func TestLookupStoreWrongTypeReturnsNamingError(t *testing.T) {
+	ts := newTestStores(t)
+
+	got, err := repo.LookupStore[branch](ts.reg, "leaf@1")
+	if got != nil {
+		t.Fatalf("LookupStore with the wrong T returned a non-nil store: %v", got)
+	}
+	if err == nil {
+		t.Fatal("LookupStore with the wrong T = nil error, want an error naming both types")
+	}
+	if errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("LookupStore with the wrong T = %v, want a type-mismatch error, not cas.ErrUnknownType", err)
+	}
+	for _, want := range []string{"leaf@1", "repo_test.leaf", "repo_test.branch"} {
+		if !contains(err.Error(), want) {
+			t.Fatalf("LookupStore error %q does not name %q", err.Error(), want)
+		}
 	}
 }
 
@@ -429,6 +495,11 @@ func TestUnknownTypeErrorMessage(t *testing.T) {
 	}
 	if !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("UnknownTypeError does not unwrap to cas.ErrUnknownType")
+	}
+	// A lookup by type name has no digest: the message names the type only.
+	lookupMsg := (&repo.UnknownTypeError{TypeName: "mystery@1"}).Error()
+	if lookupMsg != `cas/repo: unknown type "mystery@1"` {
+		t.Fatalf("UnknownTypeError.Error() without a digest = %q, want the type name only", lookupMsg)
 	}
 }
 
