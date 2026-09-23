@@ -76,6 +76,16 @@ type Backend struct {
 	fanLevels int
 	dirSync   bool
 
+	// walk traverses the store tree for Clean, List and Stats. It is a
+	// struct-held seam: a nil field means filepath.WalkDir, so a zero-value
+	// Backend stays safe to use, and a test can install a scripted walk to
+	// reach the branches a real scan hits only when an entry vanishes between
+	// the directory read and the stat (a concurrent Delete/Put) — a race no
+	// test can win on purpose. It lives on the struct rather than in a
+	// package-level variable so two backends in one process cannot interfere
+	// (cas/backend/packfs keeps its seams the same way).
+	walk func(root string, fn fs.WalkDirFunc) error
+
 	mu sync.Mutex // Put/Delete only
 }
 
@@ -100,6 +110,17 @@ func New(basePath string, opts ...Option) (*Backend, error) {
 		return nil, fmt.Errorf("cas: create store base: %w", err)
 	}
 	return &Backend{base: basePath, fanOut: cfg.fanOut, fanLevels: cfg.fanLevels, dirSync: cfg.dirSync}, nil
+}
+
+// walkDir walks root, using the installed walk seam when a test set one and
+// filepath.WalkDir otherwise. The nil fallback (rather than a field filled in
+// by New) keeps a Backend a test builds by hand — see FuzzPathRoundTrip — and
+// the zero value safe to walk.
+func (s *Backend) walkDir(root string, fn fs.WalkDirFunc) error {
+	if s.walk == nil {
+		return filepath.WalkDir(root, fn)
+	}
+	return s.walk(root, fn)
 }
 
 // syncParentDir fsyncs the directory containing path.
@@ -379,7 +400,7 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 	}
 	cutoff := time.Now().Add(-olderThan)
 	removed := 0
-	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+	err := s.walkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -439,20 +460,21 @@ func isTempFile(name string) bool {
 
 // List returns every stored digest, sorted. Digests are rebuilt from their
 // on-disk paths; a file whose name is not a hex digest (a foreign file, a temp
-// leftover) is skipped rather than reported. The backend cannot filter by
+// leftover) is skipped rather than reported. A path the walk cannot make
+// relative to the store base is skipped the same way. An entry that vanishes
+// mid-walk (a concurrent Delete) is tolerated, because the list it produced is
+// still a truthful snapshot of what was there; every other walk failure is
+// returned rather than reported as a short list. The backend cannot filter by
 // algorithm: it does not know which one produced a key (cas-core §4.2).
 func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(s.base); err != nil {
-		if isNotExist(err) {
-			return nil, fmt.Errorf("cas: list objects: %w", err)
-		}
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
 	var digests []cas.Digest
-	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+	err := s.walkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -490,21 +512,19 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	return digests, nil
 }
 
-// Stats walks the tree and returns the object count and total size. A file that
-// cannot be stat'ed fails the walk: an error is returned rather than silently
-// undercounting the store.
+// Stats walks the tree and returns the object count and total size. An object
+// that vanishes mid-walk (a concurrent Delete) is skipped, so a racing mutation
+// cannot fail a report of what was there; any other walk or stat failure is
+// returned rather than silently undercounting the store.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(s.base); err != nil {
-		if isNotExist(err) {
-			return nil, fmt.Errorf("cas: stats: %w", err)
-		}
 		return nil, fmt.Errorf("cas: stats: %w", err)
 	}
 	st := &cas.Stats{}
-	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
+	err := s.walkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

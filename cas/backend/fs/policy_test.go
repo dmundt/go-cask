@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -109,5 +110,35 @@ func TestValidateBaseRejectsTraversal(t *testing.T) {
 		if err := CleanupTemp(context.Background(), base); err == nil {
 			t.Fatalf("CleanupTemp(%q) = nil, want rejection", base)
 		}
+	}
+}
+
+// TestCleanupTempReportsRemovalFailure covers CleanupTemp's removal branch: a
+// temp file the sweep may not delete is reported rather than silently left
+// behind, because "no error" would tell an operator the store is tidy when it
+// is not. POSIX permission bits are the only portable way to produce the
+// failure, so the test is skipped on Windows (ACLs, not mode bits) and under a
+// superuser account (permission checks do not apply).
+func TestCleanupTempReportsRemovalFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permission bits and an unprivileged user")
+	}
+	base := t.TempDir()
+	locked := filepath.Join(base, "aa")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "stale.tmp"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Readable and searchable (so the walk reaches the temp file) but not
+	// writable (so the removal fails).
+	if err := os.Chmod(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	if err := CleanupTemp(context.Background(), base); err == nil {
+		t.Fatal("CleanupTemp must report a temp file it cannot remove")
 	}
 }
