@@ -21,9 +21,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `WalkGraph` pattern into a supported package: a `Registry` resolves a
   `cas.Digest` to its typed object across however many caller-registered
   types, `Walk` visits every reachable object exactly once regardless of type
-  and reports an unregistered type to the caller instead of aborting, and
+  and reports an unregistered type to the caller instead of aborting,
   `Reachable` is the cross-type root-set builder `Backend.GC`/`Backend.Prune`
-  require for a multi-type object graph.
+  require for a multi-type object graph, and `LookupStore[T]` hands back the
+  `*cas.Store[T]` registered under a type name — typed rather than `any`, so a
+  lookup returns an `*UnknownTypeError` for a name nothing registered (or an
+  error naming both types for a name registered under another `T`) instead of a
+  nil store or a caller-side type assertion.
 - `cas/refs` adds named, mutable pointers to a `cas.Digest` ("refs"): atomic
   `Set`/`Delete`, `Get`/`List`/`Resolve` (with ambiguous-prefix detection),
   an append-only reflog per name (`Log`/`Previous`), and `Roots` — the ready

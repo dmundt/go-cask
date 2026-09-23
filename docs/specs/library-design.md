@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v32
+version: v33
 ---
 
 # Library Design — go-cask
@@ -16,7 +16,7 @@ The `cas` package must be small, obvious, and hard to misuse. Related: `cas-core
 - Byte backends, typed codecs, the shipped hasher and caches live in subpackages, never in `package cas`: filesystem `fs.Backend` (`fs.New(base, opts...)`; `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`; constants `fs.DefaultFanOut`, `fs.DefaultFanLevels`, `fs.MaxFanDepth`) and in-memory `memory.Backend` (`memory.New(opts...)`; `memory.WithMaxSize`); the client hasher `sha256.New()` / `sha256.Of` / `sha256.Parse` / `sha256.Format` (`cas/hash/sha256` — the default go-cask's own clients wire in, and nothing in `cas` imports it; a short display form is `cas.Digest.Prefix(n)`, not a client helper); codecs `json.New[T]()`, `gob.NewRaw[T]()` / `gob.New[T](next)` and `binary.New[T](marshal, unmarshal)` (there is no `JSONCodec`/`GobCodec`/`BinaryCodec` type) — objects declare plain `cas.Digest` reference fields, which render themselves through `encoding.TextMarshaler` (`MarshalText`/`UnmarshalText`), so no hash JSON code lives anywhere; caches `memory.CachedStore[T]` / `memory.CachedObject[T]` (`memory.New(store)`), `lru.Cache[T]` (`lru.New(store, maxSize)`), and `prefetch.NewSmartCache`.
 - Optional machinery stays out of the core: prefetch-on-access and cache-monitor recipes are demonstrated by `examples/notes` and `examples/artifacts` — never part of `package cas`; record the decision in `AGENTS.md` when made.
 - The mutable half of the store — named, atomically-written pointers to a `cas.Digest`, with a reflog — lives in `cas/refs` (`refs.Open(dir, opts...)`; `refs.WithClock`), never in `package cas`: `Store.Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`, the `Ref`/`Entry` types, `ValidateName`, and the sentinels `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName`.
-- The typed, cross-type registry promoted from gitlike's example `Codecs`/`Repository`/`Resolver`/`WalkGraph` pattern lives in `cas/repo`, never in `package cas`: `Object`, `Decoder`, `Resolver`, `Registry`/`NewRegistry`, `Register`, `RegisterStore[T]`, `Stores`, `Walk`, `Reachable`, `UnknownObject`, and `UnknownTypeError` (`Unwrap() == cas.ErrUnknownType`).
+- The typed, cross-type registry promoted from gitlike's example `Codecs`/`Repository`/`Resolver`/`WalkGraph` pattern lives in `cas/repo`, never in `package cas`: `Object`, `Decoder`, `Resolver`, `Registry`/`NewRegistry`, `Register`, `RegisterStore[T]`, `LookupStore[T]` (the typed, `any`-free way back to a registered store), `Walk`, `Reachable`, `UnknownObject`, and `UnknownTypeError` (`Unwrap() == cas.ErrUnknownType`).
 - The `gitlike` layer is NOT part of `cas`.
 
 ## 2. Error contract

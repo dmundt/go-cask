@@ -48,10 +48,29 @@ err := repo.Walk(ctx, registry, roots, func(d cas.Digest, obj repo.Object) error
 
 ## Typed access beyond Resolve
 
-`RegisterStore` also records the concrete `*cas.Store[T]` it wraps; `Registry.Stores()` hands back a `map[string]any` snapshot for a caller that needs typed operations beyond `Resolve` (e.g. `Put`ting a new object of a known type):
+`RegisterStore` also records the concrete `*cas.Store[T]` it wraps, and `LookupStore[T]` hands it back typed for a caller that needs operations beyond `Resolve` (e.g. `Put`ting a new object of a known type) — no type assertion, and never a nil store:
 
 ```go
-blobStore := registry.Stores()["blob@1"].(*cas.Store[*gitlike.Blob])
+blobStore, err := repo.LookupStore[*gitlike.Blob](registry, "blob@1")
+if err != nil {
+	return err
+}
 ```
+
+`LookupStore` is a free function rather than a `Registry` method for the same reason `RegisterStore` is: Go methods cannot declare a type parameter per call, so `LookupStore[*gitlike.Blob](registry, "blob@1")` names its own `T`. A name nothing registered returns an `*UnknownTypeError` — the same typed error `Resolve` returns, `Unwrap() == cas.ErrUnknownType` — and a name registered under a different `T` returns an error naming both types. The registry's type-erased map therefore stays private and no caller ever asserts a type.
+
+That is this package's answer to "asking a registry for an unregistered type returns a typed error, never a nil codec": the failure is typed at construction and at lookup, so the nil-store state is unrepresentable. `package cas` stays registry-free by design — the registry lives here, not in the core.
+
+## Building the stores
+
+The registry form needs the per-type stores first, and one-line constructors in the consumer's own package are how they are built. `package cas` deliberately ships no `NewJSON`/`NewCompressedJSON`: the core must not import `cas/codec`, and a helper that took a codec argument would save nothing over `cas.New`. The answer is one line in the package that owns the type:
+
+```go
+func newNoteStore(backend cas.Backend, hasher cas.Hasher) *cas.Store[*Note] {
+	return cas.New(backend, json.New[*Note](), hasher)
+}
+```
+
+**Lifecycle.** `Store.Close` is idempotent and returns the backend's error when the backend implements `io.Closer`; a second call is a no-op. If the backend over these stores is a closer — `packfs`, which flushes its pack index on close — close the store (or the backend) once the stores over it are finished, so a swap from `fs` to `packfs` does not silently leave unsaved state.
 
 Use this package instead of gitlike's example `Repository`/`Resolver`/`WalkGraph` when the application has more (or different) object types than gitlike's fixed four, or simply wants a supported library dependency rather than a copied example.
