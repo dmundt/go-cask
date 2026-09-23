@@ -81,9 +81,13 @@ revision the site was built from, and derives the copyright year from that same
 date instead of keeping a literal. `website/macros.py` publishes both values.
 
 - `SITE_BUILD_DATE` — the deployed revision's committer date, ISO 8601. The
-  hook normalizes it to UTC and renders `YYYY-MM-DD`. The deploy workflow
-  passes `github.event.head_commit.timestamp` on push and falls back to
-  `git log -1 --format=%cI` when a workflow dispatch has no commit payload.
+  hook renders the `YYYY-MM-DD` date the timestamp names, with no zone
+  conversion and no zone label: determinism comes from sourcing the value in
+  the deployed revision, not from normalizing its offset, and at day
+  granularity no zone is more correct than the one the commit records. The
+  deploy workflow passes `github.event.head_commit.timestamp` on push and
+  falls back to `git log -1 --format=%cI` when a workflow dispatch has no
+  commit payload.
 - `SITE_REVISION` — the deployed revision, short form, passed from
   `github.event.head_commit.id` with `github.sha` as the fallback.
 
@@ -94,6 +98,13 @@ footer. Check that after a change to the footer or the hook: the built
 `site/index.html` must contain one `md-copyright__site-build` line naming the
 value of `SITE_REVISION` it was given, and repeating the build with the same
 values must reproduce that line byte for byte.
+
+`go test ./internal/website` pins that line without needing MkDocs: the test
+evaluates the partial's build-provenance block as an `html/template` against
+the values `website/macros.py` publishes and asserts the exact rendered text
+for a CI build, for a revision with no date, for a date with no revision, and
+for neither. The footer must not carry a zone label, and the hook must not
+convert the date between zones; the test fails when either returns.
 
 Unlike `IMPRESSUM`, neither is required: a local build without the environment
 variables falls back to the checkout's own `git log` and `git rev-parse`, and
