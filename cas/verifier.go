@@ -24,14 +24,14 @@ type Report struct {
 // methods of its own. A concrete backend may still expose a faster
 // backend-native Verify; VerifyAll is the portable fallback every backend
 // supports (see Capabilities.Verify, which is always true).
-func VerifyAll(ctx context.Context, raw Backend, hasher Hasher) (*Report, error) {
-	if raw == nil {
+func VerifyAll(ctx context.Context, backend Backend, hasher Hasher) (*Report, error) {
+	if backend == nil {
 		return nil, fmt.Errorf("cas: verify all: nil backend")
 	}
 	if hasher == nil {
 		return nil, fmt.Errorf("cas: verify all: nil hasher")
 	}
-	digests, err := raw.List(ctx)
+	digests, err := backend.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func VerifyAll(ctx context.Context, raw Backend, hasher Hasher) (*Report, error)
 			return report, err
 		}
 		report.Checked++
-		if err := Verify(ctx, raw, d, hasher); err != nil {
+		if err := Verify(ctx, backend, d, hasher); err != nil {
 			if errors.Is(err, ErrDigestMismatch) {
 				report.Bad = append(report.Bad, d)
 				continue
@@ -56,13 +56,13 @@ func VerifyAll(ctx context.Context, raw Backend, hasher Hasher) (*Report, error)
 // Hasher. The storage model remains unchanged: identity and byte storage stay in
 // Digest/Backend, while integrity validation is a separate maintenance layer.
 type Verifier struct {
-	raw    Backend
-	hasher Hasher
+	backend Backend
+	hasher  Hasher
 }
 
-// NewVerifier creates a Verifier for raw and hasher.
-func NewVerifier(raw Backend, hasher Hasher) *Verifier {
-	return &Verifier{raw: raw, hasher: hasher}
+// NewVerifier creates a Verifier for backend and hasher.
+func NewVerifier(backend Backend, hasher Hasher) *Verifier {
+	return &Verifier{backend: backend, hasher: hasher}
 }
 
 // Verify re-reads the object at d and recomputes its digest with the verifier's
@@ -70,17 +70,17 @@ func NewVerifier(raw Backend, hasher Hasher) *Verifier {
 // value, so a nil receiver is a programming error rather than a runtime state
 // this method needs to report.
 func (v *Verifier) Verify(ctx context.Context, d Digest) error {
-	return Verify(ctx, v.raw, d, v.hasher)
+	return Verify(ctx, v.backend, d, v.hasher)
 }
 
 // Verify re-reads the object at d and recomputes its digest with the supplied
-// hasher. The backend does not own integrity checking; it stores raw bytes and
-// exposes them to an explicit verification layer.
-func Verify(ctx context.Context, raw Backend, d Digest, hasher Hasher) error {
+// hasher. The backend does not own integrity checking; it stores backend bytes
+// and exposes them to an explicit verification layer.
+func Verify(ctx context.Context, backend Backend, d Digest, hasher Hasher) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if raw == nil {
+	if backend == nil {
 		return fmt.Errorf("cas: verify: nil backend")
 	}
 	if err := CheckDigest(d, "cas: verify"); err != nil {
@@ -92,7 +92,7 @@ func Verify(ctx context.Context, raw Backend, d Digest, hasher Hasher) error {
 	if err := hasher.Validate(d); err != nil {
 		return err
 	}
-	rc, err := raw.Get(ctx, d)
+	rc, err := backend.Get(ctx, d)
 	if err != nil {
 		return err
 	}

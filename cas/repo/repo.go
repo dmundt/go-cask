@@ -45,9 +45,9 @@ type Object interface {
 
 // Decoder resolves the object stored at d into its concrete Object. A typical
 // Decoder is a thin closure over an existing *cas.Store[T] (see RegisterStore);
-// raw is passed in for a Decoder that needs to read the backend directly, but
-// most Decoders ignore it and use their own closed-over Store instead.
-type Decoder func(ctx context.Context, raw cas.Backend, d cas.Digest) (Object, error)
+// backend is passed in for a Decoder that needs to read the backend directly,
+// but most Decoders ignore it and use their own closed-over Store instead.
+type Decoder func(ctx context.Context, backend cas.Backend, d cas.Digest) (Object, error)
 
 // Resolver resolves a digest to its typed Object. Walk and Reachable depend on
 // this interface rather than the concrete *Registry, so a test double can
@@ -61,21 +61,21 @@ type Resolver interface {
 // knowing its type in advance — the promotion of gitlike's Resolver.ResolveAny
 // to any number of caller-defined types. Registry is safe for concurrent use.
 type Registry struct {
-	raw    cas.Backend
-	hasher cas.Hasher
+	backend cas.Backend
+	hasher  cas.Hasher
 
 	mu       sync.RWMutex
 	decoders map[string]Decoder
 	stores   map[string]any
 }
 
-// NewRegistry creates an empty Registry over raw, validating every digest it
+// NewRegistry creates an empty Registry over backend, validating every digest it
 // is asked to resolve against hasher before touching the backend. Register (or
 // RegisterStore) one Decoder per type name before calling Resolve/Walk/
 // Reachable.
-func NewRegistry(raw cas.Backend, hasher cas.Hasher) *Registry {
+func NewRegistry(backend cas.Backend, hasher cas.Hasher) *Registry {
 	return &Registry{
-		raw:      raw,
+		backend:  backend,
 		hasher:   hasher,
 		decoders: make(map[string]Decoder),
 		stores:   make(map[string]any),
@@ -185,7 +185,7 @@ func (r *Registry) Resolve(ctx context.Context, d cas.Digest) (Object, error) {
 	if err := r.hasher.Validate(d); err != nil {
 		return nil, fmt.Errorf("cas/repo: resolve: %w", err)
 	}
-	prefix, err := readEnvelopeHeader(ctx, r.raw, d)
+	prefix, err := readEnvelopeHeader(ctx, r.backend, d)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (r *Registry) Resolve(ctx context.Context, d cas.Digest) (Object, error) {
 	if !ok {
 		return nil, &UnknownTypeError{Digest: d, TypeName: typeName}
 	}
-	obj, err := decode(ctx, r.raw, d)
+	obj, err := decode(ctx, r.backend, d)
 	if err != nil {
 		return nil, fmt.Errorf("cas/repo: resolve %s (%s): %w", d, typeName, err)
 	}

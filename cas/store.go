@@ -27,15 +27,15 @@ import (
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
 // type assertions exist anywhere in the typed layer.
 type Store[T Object[T]] struct {
-	raw    Backend
-	codec  Codec[T]
-	hasher Hasher
+	backend Backend
+	codec   Codec[T]
+	hasher  Hasher
 }
 
-// New creates a Store[T] over raw with codec, hashing through hasher. It cannot
-// fail: the core resolves nothing and knows no algorithm (cas-core §4.2).
-func New[T Object[T]](raw Backend, codec Codec[T], hasher Hasher) *Store[T] {
-	return &Store[T]{raw: raw, codec: codec, hasher: hasher}
+// New creates a Store[T] over backend with codec, hashing through hasher. It
+// cannot fail: the core resolves nothing and knows no algorithm (cas-core §4.2).
+func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
+	return &Store[T]{backend: backend, codec: codec, hasher: hasher}
 }
 
 // check applies the guards every store operation shares: the digest must be
@@ -133,10 +133,22 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := s.backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
 		return nil, err
 	}
 	return d, nil
+}
+
+// Close releases any backend resources if the backend implements io.Closer.
+// The call is idempotent and returns the backend's close error once.
+func (s *Store[T]) Close() error {
+	if s == nil || s.backend == nil {
+		return nil
+	}
+	if closer, ok := s.backend.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 // PutDedup is Put that first checks whether the content already exists; it
@@ -150,14 +162,14 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	exists, err := s.raw.Exists(ctx, d)
+	exists, err := s.backend.Exists(ctx, d)
 	if err != nil {
 		return nil, false, err
 	}
 	if exists {
 		return d, true, nil
 	}
-	if err := s.raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := s.backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
 		return nil, false, err
 	}
 	return d, false, nil
@@ -230,7 +242,7 @@ func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
 	if err := s.check(d, "store: get"); err != nil {
 		return nil, err
 	}
-	rc, err := s.raw.Get(ctx, d)
+	rc, err := s.backend.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +262,7 @@ func (s *Store[T]) Exists(ctx context.Context, d Digest) (bool, error) {
 	if err := s.check(d, "store: exists"); err != nil {
 		return false, err
 	}
-	return s.raw.Exists(ctx, d)
+	return s.backend.Exists(ctx, d)
 }
 
 // Delete removes the object. A missing object is a no-op. Delegates to the
@@ -259,5 +271,5 @@ func (s *Store[T]) Delete(ctx context.Context, d Digest) error {
 	if err := s.check(d, "store: delete"); err != nil {
 		return err
 	}
-	return s.raw.Delete(ctx, d)
+	return s.backend.Delete(ctx, d)
 }
