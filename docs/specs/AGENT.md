@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v24
+version: v25
 tags: [go-cask]
 status: stable
 ---
@@ -118,7 +118,7 @@ Fix the **more specific** document to match the more general one, unless the spe
 - Mermaid for relationships/flow: `classDiagram` for object models, `flowchart` for flows; one diagram per concept next to what it visualizes.
 - **Mermaid blocks MUST be balanced** (every ```mermaid opener has a matching closer; unbalanced fences break rendering and swallow the rest of the file). The only exception is an explicitly stated illustrative fragment, labeled in the surrounding text. Never leave one unbalanced without that statement.
 - ASCII allowed alongside mermaid (raw/terminal) but box-aligned; prefer mermaid when both exist.
-- Code fences always tagged (`go`, `yaml`, `text`, `json`, `html`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced.
+- Code fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced. `html`, `xml` and `svg` fences are forbidden (the Markdown policy bans raw HTML; `scripts/verify.sh` enforces it).
 
 ## 10. Editing and maintenance checklist
 

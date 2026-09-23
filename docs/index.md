@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v16
+version: v17
 ---
 
 # go-cask Rules Index
@@ -15,9 +15,9 @@ version: v16
 | `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` / `cas/backend/snapshot` / `cas/backend/stream.go` / `cas/backend/context.go` / `cas/backend/options.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 (`packfs` is a shipped backend, not a deferred extension) + architecture boundary rule: backends stay storage-only; the shared `cas/backend` contract (options, context, stream helpers) is what every backend builds on; helper packages must not become implicit backends |
 | `cas/hash/` (the hasher helpers), `cas/hash/sha256/`, `cas/hash/sha512/`, `cas/hash/sha512_256/` (the shipped client hashers) | [`cas-core.md`](specs/cas-core.md) §4.2 + [`defaults.md`](specs/defaults.md) (the shipped default is `sha256`; the core names no algorithm) |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
-| `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification/sweep are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
+| `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11, §4.13 + architecture boundary rule: verification/sweep/reachability are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
 | `cas/verify/*` / `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification helpers are maintenance-only and must not redefine the storage model |
-| `cas/store.go`, `codec.go`, `object.go`, `walker.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.12 |
+| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go` (`GetMany`/`BatchGetter`), `cas/envelope.go` (TLV readers incl. `PeekVersion`) | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 (stable surface) + [`defaults.md`](specs/defaults.md) (`flate` is the default compression wrapper; `MaxDecodedBytes` binds the decompressing wrappers) |
 | `cas/cache/validate.go` (the shared cache validation layer), `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/pack/` (app-facing manifest/helper layer) | [`cas-core.md`](specs/cas-core.md) §7 + architecture boundary rule: helper/manifest logic stays out of the core and is not a backend |
@@ -36,6 +36,7 @@ version: v16
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
 | `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |
 | `examples/api/` | [`examples.md`](specs/examples.md) §3.4 + [`api-design.md`](specs/api-design.md) |
+| `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3 + [`performance.md`](specs/performance.md) §5.1 (bloom) |
 | `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
 | any package under `cas/**` (coverage tier, `scripts/verify.sh` `coverage_targets` / `coverage_exempt`) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |

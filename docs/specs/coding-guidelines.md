@@ -2,7 +2,7 @@
 type: Specification
 title: Go Coding Guidelines — go-cask
 description: Idiomatic Go with a minimal dependency policy, scoped viewer CSS, no viewer script beyond vendored htmx, html/template + htmx, raw HTML, doc-comment rules, Go 1.24+ baseline (generics, enhanced routing, `omitzero`) and the latest generics (toolchain 1.27).
-version: v22
+version: v23
 ---
 
 # Go Coding Guidelines — go-cask
@@ -113,7 +113,7 @@ Consequences: the LRU cache SHALL be in-tree std-lib (`container/list`+`sync.Mut
 ## 11. Pre-commit checklist
 
 - [x] `gofmt -l .` clean; `go vet` and `go test` pass
-- [x] `go.mod` declares `go 1.24` + `toolchain go1.27.1`; zero external deps, or each justified and vendored
+- [x] `go.mod` declares `go 1.24` + `toolchain go1.27.1`; no external dependency beyond the approved exception (§3: `golang.org/x/sys` for `cas/bloom/persistent`), each justified in the PR; vendoring is optional unless an offline build requires it
 - [x] No CSS, no hand-written JS, no style or script elements — htmx only
 - [x] HTML via `html/template` only, using the latest feature set (`ParseFS`, composition, `break`/`continue` in `{{range}}`, `FuncMap`); no HTML string concatenation in Go
 - [x] Every exported identifier documented (name-first doc comments)

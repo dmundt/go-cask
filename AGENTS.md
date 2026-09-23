@@ -86,12 +86,19 @@ passed`; a run that stops earlier failed even if nothing was echoed about it.
 > enters context a few lines later by reading that spec file. This ensures
 > you never miss a rule that applies to your change.
 >
-> **Before every commit and before every push, complete the repo preflight checklist.**
+> **Before the first push of a branch, and again after any change to its tree, complete the repo preflight checklist.**
 > Keep the repo in a releasable state and match the actual CI gates in
 > `.github/workflows/ci.yml`: update `CHANGELOG.md` for any user-visible change,
-> run `./scripts/verify.sh` before each commit and before each push, and do not
-> commit or push until it passes. Ensure the GitHub Actions `CI` workflow remains
-> green after pushing. Before every GitHub release,
+> run `./scripts/verify.sh` and do not
+> push until it passes — one green run covers every commit it contains, so a
+> multi-commit branch needs the gate re-run after each change to the tree, not
+> once per commit. `main` is protected and changes only through a pull request,
+> whose required checks (`verify`, `security`, `platforms`, CodeQL) are the
+> merge gate: the `CI` workflow runs on `pull_request` and `workflow_dispatch`,
+> so a merge to `main` does not re-run it. Merge a green PR with `--squash`
+> (linear history is required); GitHub signs the squash commit, while the key
+> that signed the branch head is verified locally with `git verify-commit`.
+> Before every GitHub release,
 > mirror the user-facing `CHANGELOG.md` entries into the release notes by
 > running `./scripts/release-notes.sh <new-tag> <previous-tag>`, include the
 > full changelog link used by prior releases (`Full Changelog:` + compare URL),
