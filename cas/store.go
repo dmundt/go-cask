@@ -9,8 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Store is the generic, type-safe content-addressable store for objects of
@@ -38,23 +36,11 @@ type Store[T Object[T]] struct {
 }
 
 // New creates a Store[T] over backend with codec, hashing through hasher. It
-// cannot fail: the core resolves nothing and knows no algorithm (cas-core §4.2).
+// cannot fail: the core resolves nothing and knows no algorithm (cas-core §4.2),
+// and it names no codec either — the client supplies one, which is what keeps
+// `cas` free of any dependency on a `cas/codec` subpackage (library-design §1).
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
 	return &Store[T]{backend: backend, codec: codec, hasher: hasher}
-}
-
-// NewJSON creates a Store[T] using the standard JSON codec for T.
-func NewJSON[T Object[T]](backend Backend, hasher Hasher) *Store[T] {
-	return New(backend, jsoncodec.New[T](), hasher)
-}
-
-// NewCompressedJSON creates a Store[T] using a caller-supplied codec, which is
-// the normal way to add a compression or transformation layer over JSON.
-func NewCompressedJSON[T Object[T]](backend Backend, hasher Hasher, codec Codec[T]) *Store[T] {
-	if codec == nil {
-		codec = jsoncodec.New[T]()
-	}
-	return New(backend, codec, hasher)
 }
 
 // check applies the guards every store operation shares: the digest must be

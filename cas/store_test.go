@@ -39,17 +39,34 @@ func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	}
 }
 
-func TestStoreNewJSONConstructors(t *testing.T) {
+// TestStoreWithJSONCodecStack covers the documented way to build a store: the
+// core names no codec, so the client passes one to cas.New — plain JSON, or a
+// compression wrapper stacked over JSON (cas-core §4.6, §7.2).
+func TestStoreWithJSONCodecStack(t *testing.T) {
 	ctx := context.Background()
 	backend := mem.New()
-	jsonStore := cas.NewJSON[test.Note](backend, sha256.New())
-	if _, err := jsonStore.Put(ctx, test.Note{Title: "json"}); err != nil {
-		t.Fatalf("NewJSON Put = %v", err)
+
+	jsonStore := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
+	jsonDigest, err := jsonStore.Put(ctx, test.Note{Title: "json"})
+	if err != nil {
+		t.Fatalf("Put through the JSON codec = %v", err)
 	}
 
-	gzipStore := cas.NewCompressedJSON[test.Note](backend, sha256.New(), gzipcodec.New(jsoncodec.New[test.Note]()))
-	if _, err := gzipStore.Put(ctx, test.Note{Title: "gzip"}); err != nil {
-		t.Fatalf("NewCompressedJSON Put = %v", err)
+	gzipStore := cas.New(backend, gzipcodec.New(jsoncodec.New[test.Note]()), sha256.New())
+	gzipDigest, err := gzipStore.Put(ctx, test.Note{Title: "gzip"})
+	if err != nil {
+		t.Fatalf("Put through the gzip-over-JSON stack = %v", err)
+	}
+	if jsonDigest.Equal(gzipDigest) {
+		t.Fatal("the same value through a different codec stack must not share an address")
+	}
+
+	got, err := gzipStore.Get(ctx, gzipDigest)
+	if err != nil {
+		t.Fatalf("Get through the gzip stack = %v", err)
+	}
+	if got.Title != "gzip" {
+		t.Fatalf("Get through the gzip stack = %+v, want Title %q", got, "gzip")
 	}
 }
 
