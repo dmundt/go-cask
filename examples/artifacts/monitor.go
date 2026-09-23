@@ -21,9 +21,9 @@ type CacheMonitor[T cas.Object[T]] struct {
 	interval   time.Duration
 	onSnapshot func(CacheSnapshot)
 
-	stop chan struct{}
-	done chan struct{}
-	once sync.Once
+	stop     chan struct{}
+	done     chan struct{}
+	stopOnce func()
 }
 
 // NewCacheMonitor starts monitoring store: every interval, onSnapshot is
@@ -37,6 +37,10 @@ func NewCacheMonitor[T cas.Object[T]](store *cachemem.CachedStore[T], interval t
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 	}
+	m.stopOnce = sync.OnceFunc(func() {
+		close(m.stop)
+		<-m.done
+	})
 	go m.run()
 	return m
 }
@@ -44,10 +48,10 @@ func NewCacheMonitor[T cas.Object[T]](store *cachemem.CachedStore[T], interval t
 // Stop ends monitoring and waits for the monitor goroutine to exit. Calling
 // Stop more than once is safe (subsequent calls return immediately).
 func (m *CacheMonitor[T]) Stop() {
-	m.once.Do(func() {
-		close(m.stop)
-		<-m.done
-	})
+	if m.stopOnce == nil {
+		return
+	}
+	m.stopOnce()
 }
 
 func (m *CacheMonitor[T]) run() {
