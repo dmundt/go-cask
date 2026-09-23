@@ -447,7 +447,7 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	}
 	if _, err := os.Stat(s.base); err != nil {
 		if isNotExist(err) {
-			return nil, nil
+			return nil, fmt.Errorf("cas: list objects: %w", err)
 		}
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
@@ -499,7 +499,7 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	}
 	if _, err := os.Stat(s.base); err != nil {
 		if isNotExist(err) {
-			return &cas.Stats{}, nil
+			return nil, fmt.Errorf("cas: stats: %w", err)
 		}
 		return nil, fmt.Errorf("cas: stats: %w", err)
 	}

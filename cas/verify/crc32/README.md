@@ -9,11 +9,11 @@ The storage model stays boring and stable: object identity remains a `cas.Digest
 ## Typical use
 
 ```go
-raw := mem.New()
+backend := mem.New()
 // object identity still uses the caller's stronger hash
 // e.g. sha256.New() when storing a blob
 
-verifier := cas.NewVerifier(raw, crc32.New())
+verifier := cas.NewVerifier(backend, crc32.New())
 _ = verifier.Verify(ctx, d)
 ```
 

@@ -46,7 +46,7 @@ type auditReport struct {
 // noVerify skips the integrity pass (a fast orphan scan without reading
 // every object's bytes).
 func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
-	digests, err := a.raw.List(ctx)
+	digests, err := a.backend.List(ctx)
 	if err != nil {
 		return nil, err
 	}

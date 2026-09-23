@@ -139,10 +139,10 @@ func TestGC(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("gc deleted %d objects, want >= 1", n)
 	}
-	if ok, _ := a.raw.Exists(ctx, h1); ok {
+	if ok, _ := a.backend.Exists(ctx, h1); ok {
 		t.Fatal("unreferenced artifact survived gc")
 	}
-	if ok, _ := a.raw.Exists(ctx, h2); !ok {
+	if ok, _ := a.backend.Exists(ctx, h2); !ok {
 		t.Fatal("manifest-referenced artifact was deleted")
 	}
 }
