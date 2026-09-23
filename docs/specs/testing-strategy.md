@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v21
+version: v22
 ---
 
 # Testing Strategy — go-cask
@@ -75,7 +75,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 
 - Co-located `*_test.go`; `Example` tests as documentation.
 - CI: `go test -race ./...`; fuzz smoke; `benchstat` gate (performance §5).
-- **Tiered coverage gates:** foundational storage and integrity packages are held to ≥ **90%** statement coverage (excluding generated): `cas`, `cas/backend/fs`, and `cas/backend/mem`. Supporting caches, codecs, hash clients, `gitlike`, `internal/index`, and the `cmd/cask` command are held to ≥ **80%**; the viewer `internal/web`, which serves an authenticated surface, is gated at ≥ **85%**. Extension packages and `cas/backend/packfs` are measured but have no numeric gate until their coverage justifies promotion. Every exported identifier must still be exercised and any untested branch needs a comment why. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
+- **Tiered coverage gates:** foundational storage and reference packages are held to ≥ **90%** statement coverage (excluding generated): `cas`, `cas/backend/fs`, `cas/backend/mem`, `cas/repo`, and `cas/refs` — a reference package carries a store's durability, so it sits in the top tier with the object backends. Every other gated package is held to ≥ **80%**: the caches `cas/cache/mem`, `cas/cache/lru` and `cas/cache/prefetch`, the codecs `cas/codec/json` and `cas/codec/gob`, the hash clients `cas/hash/sha256` and `cas/hash/sha512_256`, `gitlike`, `internal/index`, the viewer `internal/web` (an authenticated surface, and the next candidate for promotion), and the `cmd/cask` command. That is exactly the package/threshold list in `scripts/verify.sh`. Extension packages and `cas/backend/packfs` are measured but have no numeric gate until their coverage justifies promotion. Every exported identifier must still be exercised and any untested branch needs a comment why — error branches no filesystem state can produce are listed with their reason in the package's own tests. HTTP: every route via `httptest`. Viewer: every named template rendered in ≥ one test.
 - CI runs `go test -race -cover` per gated package (the package and threshold list lives in `scripts/verify.sh`) and fails below that package's tier; report attached to core PRs. Package-scoped fuzz corpora live in `testdata/fuzz` and are reviewed with every target change; the smoke pass runs the named targets in CI.
 
 ## 6. Checklist

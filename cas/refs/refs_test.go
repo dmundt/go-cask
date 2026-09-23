@@ -347,6 +347,7 @@ func TestValidateNameRejectsUnsafeNames(t *testing.T) {
 		"..",
 		"a/../b",
 		"a/./b",
+		"a//b",
 		".hidden",
 		"a/.hidden",
 		"foo.lock",
