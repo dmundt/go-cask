@@ -139,7 +139,7 @@ func (f *Filter) Add(d cas.Digest) {
 	hash := f.hash
 	m := f.m
 	k := f.k
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		bits[idx>>3] |= byte(1) << (idx & 7)
 	}
@@ -162,7 +162,7 @@ func (f *Filter) Contains(d cas.Digest) bool {
 	hash := f.hash
 	m := f.m
 	k := f.k
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		if bits[idx>>3]&(byte(1)<<(idx&7)) == 0 {
 			return false

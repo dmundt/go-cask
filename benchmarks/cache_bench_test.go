@@ -17,7 +17,7 @@ func BenchmarkCacheMemoryGet(b *testing.B) {
 	store := cas.New(membackend.New(), jsoncodec.New[testNote](), sha256.New())
 	count := 256
 	digests := make([]cas.Digest, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		d, err := store.Put(ctx, testNote{Title: benchTitle("cache-", i)})
 		if err != nil {
 			b.Fatal(err)
@@ -58,7 +58,7 @@ func BenchmarkCacheLRUGet(b *testing.B) {
 	store := cas.New(membackend.New(), jsoncodec.New[testNote](), sha256.New())
 	count := 256
 	digests := make([]cas.Digest, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		d, err := store.Put(ctx, testNote{Title: benchTitle("lru-", i)})
 		if err != nil {
 			b.Fatal(err)

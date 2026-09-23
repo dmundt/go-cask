@@ -115,7 +115,7 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 	objects := make(map[string][]byte)
 	var total uint64
 	var lengths [16]byte
-	for i := uint64(0); i < count; i++ {
+	for range count {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

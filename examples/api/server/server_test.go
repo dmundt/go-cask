@@ -229,7 +229,7 @@ func TestRateLimit(t *testing.T) {
 
 	ok := 0
 	limited := 0
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		status, _, _ := c.put(ctx, "x")
 		switch status {
 		case http.StatusCreated:

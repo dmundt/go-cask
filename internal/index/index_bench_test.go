@@ -18,7 +18,7 @@ func BenchmarkBuildSnapshotScale(b *testing.B) {
 				b.Fatal(err)
 			}
 			ctx := context.Background()
-			for i := 0; i < count; i++ {
+			for i := range count {
 				payload := []byte(fmt.Sprintf("%06d", i))
 				envelope := append([]byte{1, byte(6)}, payload...)
 				digest := sha256.Of(envelope)

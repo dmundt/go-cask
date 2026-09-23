@@ -60,7 +60,7 @@ func (f *Filter) Add(d cas.Digest) {
 	k := f.k
 
 	f.mu.Lock()
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		bits[idx>>6] |= uint64(1) << (idx & 63)
 	}
@@ -80,7 +80,7 @@ func (f *Filter) Contains(d cas.Digest) bool {
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		if bits[idx>>6]&(uint64(1)<<(idx&63)) == 0 {
 			return false

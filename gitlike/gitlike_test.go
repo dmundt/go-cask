@@ -439,7 +439,7 @@ func TestWalkGraphVisitsSharedSubgraphOnce(t *testing.T) {
 	repo := newRepo(t, mem.New())
 
 	d := putBlob(t, repo, "shared leaf")
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{
 			{Name: "a", Hash: ref(d), Mode: "m"},
 			{Name: "b", Hash: ref(d), Mode: "m"},

@@ -375,7 +375,7 @@ func TestPutIdempotent(t *testing.T) {
 	ctx := context.Background()
 	content := []byte("idempotent content bytes")
 	h := digestOf(content)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 			t.Fatalf("Put pass %d: %v", i, err)
 		}
@@ -748,11 +748,11 @@ func TestConcurrentPutGetDelete(t *testing.T) {
 	const workers, perWorker = 8, 25
 	errs := make(chan error, workers*perWorker)
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < perWorker; i++ {
+			for i := range perWorker {
 				// Concurrent writers of the same content (idempotent Put).
 				if err := s.Put(ctx, sharedDigest, bytes.NewReader(shared)); err != nil {
 					errs <- err
@@ -1209,7 +1209,7 @@ func TestPutCreateTempExhausted(t *testing.T) {
 	// Pre-create <path>.tmp and <path>.tmp.1 .. <path>.tmp.9999 so every
 	// candidate name in createTempExcl's retry loop already exists.
 	base := s.digestPath(h) + ".tmp"
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		name := base
 		if i > 0 {
 			name = fmt.Sprintf("%s.%d", base, i)

@@ -69,7 +69,7 @@ func (f *Filter) Add(d cas.Digest) {
 	k := f.k
 
 	f.mu.Lock()
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		if counts[idx] < mask {
 			counts[idx]++
@@ -90,7 +90,7 @@ func (f *Filter) Remove(d cas.Digest) {
 	k := f.k
 
 	f.mu.Lock()
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		if counts[idx] > 0 {
 			counts[idx]--
@@ -112,7 +112,7 @@ func (f *Filter) Contains(d cas.Digest) bool {
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	for i := 0; i < k; i++ {
+	for i := range k {
 		idx := hash(data, i) % m
 		if counts[idx] == 0 {
 			return false

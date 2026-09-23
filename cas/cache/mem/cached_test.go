@@ -134,7 +134,7 @@ func TestCachedObjectConcurrentLoad(t *testing.T) {
 	c := cachemem.New(s)
 	h := put(t, s, "concurrent")
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -184,7 +184,7 @@ func TestCachedStorePreload(t *testing.T) {
 	s := newStore(t)
 	c := cachemem.New(s)
 	var hs []cas.Digest
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
 	}
 	if err := c.Preload(ctx, hs); err != nil {
@@ -291,15 +291,15 @@ func TestCachedStoreConcurrent(t *testing.T) {
 	s := newStore(t)
 	c := cachemem.New(s)
 	var hs []cas.Digest
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 50; j++ {
+			for j := range 50 {
 				if _, err := c.Get(ctx, hs[j%len(hs)]); err != nil {
 					t.Error(err)
 				}
@@ -512,7 +512,7 @@ func TestCachedStorePreloadCanceledReportsOnce(t *testing.T) {
 	s := newStore(t)
 	c := cachemem.New(s)
 	var hs []cas.Digest
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		hs = append(hs, put(t, s, string(rune('a'+i))))
 	}
 	cancel()

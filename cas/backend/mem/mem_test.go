@@ -519,7 +519,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	chunk := min(len(p), c.n-c.read)
-	for i := 0; i < chunk; i++ {
+	for i := range chunk {
 		p[i] = 'x'
 	}
 	c.read += chunk
@@ -614,7 +614,7 @@ func TestMemoryBackendUnboundedDefault(t *testing.T) {
 	ctx := context.Background()
 	b := New() // 0 = unbounded
 	var h cas.Digest
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		payload := strings.Repeat("x", 1024)
 		nh := sha256.Of([]byte(payload))
 		if err := b.Put(ctx, nh, strings.NewReader(payload)); err != nil {

@@ -77,7 +77,7 @@ func TestPrefetchIsDroppedWhenSaturated(t *testing.T) {
 	parent, _ := s.Put(ctx, internalObject{Name: "parent", Refs: []cas.Digest{leaf}})
 
 	sc := NewSmartCache(cs, 2)
-	for i := 0; i < prefetchConcurrency; i++ {
+	for range prefetchConcurrency {
 		sc.sem <- struct{}{} // occupy every prefetch slot
 	}
 

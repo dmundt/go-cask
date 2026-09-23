@@ -297,7 +297,7 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, error) {
 	const attempts = 20
 	var err error
-	for i := 0; i < attempts; i++ {
+	for range attempts {
 		var f *os.File
 		f, err = open(path)
 		if err == nil {

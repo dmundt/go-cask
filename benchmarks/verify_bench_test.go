@@ -158,7 +158,7 @@ func BenchmarkParallelPutGet(b *testing.B) {
 	// Hot set: 16 items kept hot in cache; cold path: every 10th op creates a new
 	// object and reads it once to model a realistic mixed access pattern.
 	var digests []cas.Digest
-	for i := 0; i < objects; i++ {
+	for i := range objects {
 		h, err := store.Put(ctx, testNote{Title: benchTitle("obj-", i)})
 		if err != nil {
 			b.Fatal(err)

@@ -732,7 +732,7 @@ func TestTabSelectionSurvivesPickingAnotherRow(t *testing.T) {
 func TestObjectBrowserQueryState(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		typeName := "blob@1"
 		if i == 0 {
 			typeName = "note@1"
