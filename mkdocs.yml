@@ -23,6 +23,7 @@ nav:
       - Custom codecs: recipes/custom-codec.md
   - Reference:
       - Architecture: architecture.md
+      - Viewer (cask web): viewer.md
       - Object envelope: specifications/object-format.md
       - Design specifications: specifications/index.md
       - Specification index: specs.md
