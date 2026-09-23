@@ -8,6 +8,9 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync"
+
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Store is the generic, type-safe content-addressable store for objects of
@@ -27,15 +30,31 @@ import (
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
 // type assertions exist anywhere in the typed layer.
 type Store[T Object[T]] struct {
-	backend Backend
-	codec   Codec[T]
-	hasher  Hasher
+	backend   Backend
+	codec     Codec[T]
+	hasher    Hasher
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // New creates a Store[T] over backend with codec, hashing through hasher. It
 // cannot fail: the core resolves nothing and knows no algorithm (cas-core §4.2).
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
 	return &Store[T]{backend: backend, codec: codec, hasher: hasher}
+}
+
+// NewJSON creates a Store[T] using the standard JSON codec for T.
+func NewJSON[T Object[T]](backend Backend, hasher Hasher) *Store[T] {
+	return New(backend, jsoncodec.New[T](), hasher)
+}
+
+// NewCompressedJSON creates a Store[T] using a caller-supplied codec, which is
+// the normal way to add a compression or transformation layer over JSON.
+func NewCompressedJSON[T Object[T]](backend Backend, hasher Hasher, codec Codec[T]) *Store[T] {
+	if codec == nil {
+		codec = jsoncodec.New[T]()
+	}
+	return New(backend, codec, hasher)
 }
 
 // check applies the guards every store operation shares: the digest must be
@@ -142,13 +161,18 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 // Close releases any backend resources if the backend implements io.Closer.
 // The call is idempotent and returns the backend's close error once.
 func (s *Store[T]) Close() error {
-	if s == nil || s.backend == nil {
+	if s == nil {
 		return nil
 	}
-	if closer, ok := s.backend.(io.Closer); ok {
-		return closer.Close()
-	}
-	return nil
+	s.closeOnce.Do(func() {
+		if s.backend == nil {
+			return
+		}
+		if closer, ok := s.backend.(io.Closer); ok {
+			s.closeErr = closer.Close()
+		}
+	})
+	return s.closeErr
 }
 
 // PutDedup is Put that first checks whether the content already exists; it

@@ -12,6 +12,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
@@ -35,6 +36,36 @@ func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	}
 	if _, _, err := s.PutDedup(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("PutDedup(empty type) = %v, want ErrUnknownType", err)
+	}
+}
+
+func TestStoreNewJSONConstructors(t *testing.T) {
+	ctx := context.Background()
+	raw := mem.New()
+	jsonStore := cas.NewJSON[test.Note](raw, sha256.New())
+	if _, err := jsonStore.Put(ctx, test.Note{Title: "json"}); err != nil {
+		t.Fatalf("NewJSON Put = %v", err)
+	}
+
+	gzipStore := cas.NewCompressedJSON[test.Note](raw, sha256.New(), gzipcodec.New(jsoncodec.New[test.Note]()))
+	if _, err := gzipStore.Put(ctx, test.Note{Title: "gzip"}); err != nil {
+		t.Fatalf("NewCompressedJSON Put = %v", err)
+	}
+}
+
+func TestStoreCloseIsIdempotent(t *testing.T) {
+	wantErr := errors.New("close failed")
+	base := &closeTrackingBackend{Backend: mem.New(), closeErr: wantErr}
+	st := cas.New(base, jsoncodec.New[test.Note](), sha256.New())
+
+	if err := st.Close(); !errors.Is(err, wantErr) {
+		t.Fatalf("Close() = %v, want %v", err, wantErr)
+	}
+	if err := st.Close(); !errors.Is(err, wantErr) {
+		t.Fatalf("Close() second call = %v, want %v", err, wantErr)
+	}
+	if base.closeCalls != 1 {
+		t.Fatalf("closeCalls = %d, want 1", base.closeCalls)
 	}
 }
 

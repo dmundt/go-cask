@@ -498,6 +498,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		}
 		info, err := d.Info()
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // file vanished during concurrent Delete/Put; treat as transient
+			}
 			return err
 		}
 		st.TotalSize += info.Size()

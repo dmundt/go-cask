@@ -29,6 +29,17 @@ func (b getErrorBackend) Stats(context.Context) (*cas.Stats, error)        { ret
 
 type closeErrorBackend struct{ reader io.ReadCloser }
 
+type closeTrackingBackend struct {
+	cas.Backend
+	closeErr   error
+	closeCalls int
+}
+
+func (b *closeTrackingBackend) Close() error {
+	b.closeCalls++
+	return b.closeErr
+}
+
 func (b closeErrorBackend) Put(context.Context, cas.Digest, io.Reader) error { return nil }
 func (b closeErrorBackend) Get(context.Context, cas.Digest) (io.ReadCloser, error) {
 	return b.reader, nil
