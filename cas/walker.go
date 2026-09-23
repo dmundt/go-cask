@@ -1,5 +1,7 @@
 package cas
 
+import "slices"
+
 import "context"
 
 // Walker traverses a single-type object graph via References() — the generic
@@ -52,8 +54,8 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error {
 			return err
 		}
 		refs := obj.References()
-		for i := len(refs) - 1; i >= 0; i-- { // push reversed: keep reference order
-			stack = append(stack, refs[i])
+		for _, ref := range slices.Backward(refs) { // push reversed: keep reference order
+			stack = append(stack, ref)
 		}
 	}
 	return nil

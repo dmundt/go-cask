@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -324,12 +325,12 @@ func (b *batchGetterBackend) GetMany(_ context.Context, digests []cas.Digest, fn
 	b.requests = digests
 	// Deliberately serve in reverse: GetMany documents that the order is the
 	// backend's choice, and this proves the documented dispatch happened.
-	for i := len(digests) - 1; i >= 0; i-- {
-		reader, err := b.Get(context.Background(), digests[i])
+	for _, digest := range slices.Backward(digests) {
+		reader, err := b.Get(context.Background(), digest)
 		if err != nil {
 			return err
 		}
-		if err := fn(digests[i], reader); err != nil {
+		if err := fn(digest, reader); err != nil {
 			_ = reader.Close()
 			return err
 		}

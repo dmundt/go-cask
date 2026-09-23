@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 )
@@ -214,8 +215,8 @@ func WalkGraph(ctx context.Context, resolver *Resolver, d cas.Digest, visit func
 			return err
 		}
 		refs := referencesOf(ro)
-		for i := len(refs) - 1; i >= 0; i-- { // push reversed: keep reference order
-			stack = append(stack, refs[i])
+		for _, ref := range slices.Backward(refs) { // push reversed: keep reference order
+			stack = append(stack, ref)
 		}
 	}
 	return nil

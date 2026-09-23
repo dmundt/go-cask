@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
@@ -313,8 +314,8 @@ func Walk(ctx context.Context, res Resolver, roots []cas.Digest, visit func(d ca
 			return err
 		}
 		refs := obj.References()
-		for i := len(refs) - 1; i >= 0; i-- { // push reversed: keep reference order
-			if ref := refs[i]; !ref.IsZero() && !visited[ref.String()] {
+		for _, ref := range slices.Backward(refs) { // push reversed: keep reference order
+			if !ref.IsZero() && !visited[ref.String()] {
 				stack = append(stack, ref)
 			}
 		}
