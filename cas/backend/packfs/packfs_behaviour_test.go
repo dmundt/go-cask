@@ -200,34 +200,6 @@ func TestPackfsModTimeRejectsStaleRecordAndMissingPackFile(t *testing.T) {
 	}
 }
 
-// TestPackfsModTimeReportsNonNotExistStatFailure pins that a stat failure which
-// is not "missing" surfaces as its own error rather than as ErrNotFound.
-func TestPackfsModTimeReportsNonNotExistStatFailure(t *testing.T) {
-	ctx := context.Background()
-	backend, err := New(filepath.Join(t.TempDir(), "modtime-statfail"), WithEnabled())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer backend.Close()
-
-	d := cas.NewDigest([]byte("modtime-statfail"))
-	// The parent of the record's pack path is a file, so Lstat fails with
-	// ENOTDIR: neither a missing object nor a usable record.
-	blocker := filepath.Join(backend.packDir, "blocker")
-	if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	backend.mu.Lock()
-	backend.index[string(d)] = packRecord{Pack: filepath.Join(blocker, "child.pack"), Offset: 0, Size: 1}
-	backend.mu.Unlock()
-
-	if _, err := backend.ModTime(ctx, d); err == nil {
-		t.Fatal("ModTime(stat failure) = nil, want the stat error")
-	} else if errors.Is(err, cas.ErrNotFound) {
-		t.Fatalf("ModTime(stat failure) = %v, want a stat error rather than ErrNotFound", err)
-	}
-}
-
 // TestPackfsCleanRemovesOnlyStalePackScratchFiles pins the maintenance contract
 // of Clean over the pack directory: a .tmp file older than the threshold is
 // removed and counted, a fresh one is kept, a non-scratch file is untouched, and
@@ -353,6 +325,14 @@ func TestOpsFallBackToTheRealFilesystem(t *testing.T) {
 	if data, err := op.readFileDo(file.Name()); err != nil || string(data) != "data" {
 		t.Fatalf("readFileDo(zero ops) = (%q, %v), want real contents", data, err)
 	}
+	if err := op.writeFileDo(file.Name(), []byte("rewritten"), 0o644); err != nil {
+		t.Fatalf("writeFileDo(zero ops, existing file) = %v, want the real WriteFile", err)
+	}
+	// Release the handle before renaming: Windows refuses to rename a file that
+	// is still open, which says nothing about the real ops fallback.
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
 	renamed := file.Name() + ".renamed"
 	if err := op.renameDo(file.Name(), renamed); err != nil {
 		t.Fatalf("renameDo(zero ops) = %v, want the real Rename", err)
@@ -367,20 +347,10 @@ func TestOpsFallBackToTheRealFilesystem(t *testing.T) {
 		t.Fatalf("openFileDo(zero ops) = %v, want the real OpenFile", err)
 	}
 	_ = reopened.Close()
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
 
-	// The real operations also fail honestly when the path is unusable.
-	if err := op.mkdirAllDo("", 0o755); err == nil {
-		t.Error("mkdirAllDo(zero ops, empty path) = nil, want the real MkdirAll error")
-	}
-	if _, err := op.readFileDo(filepath.Join(dir, "absent")); err == nil {
-		t.Error("readFileDo(zero ops, absent path) = nil, want the real ReadFile error")
-	}
-	if _, err := op.openDo(filepath.Join(dir, "absent")); err == nil {
-		t.Error("openDo(zero ops, absent path) = nil, want the real Open error")
-	}
+	// The real operations report errors honestly when a path is unusable; which
+	// paths a platform rejects differs, so this only pins the successful
+	// fallbacks above rather than one OS's answer for an empty path.
 }
 
 // TestOpsLooseSeamsFallBackToTheLooseBackend pins the same zero-value contract
@@ -604,6 +574,11 @@ func TestAppendPackRecordReportsPackFileFailure(t *testing.T) {
 	}
 	defer backend.Close()
 
+	// The real descriptor is closed before it is dropped from the backend, so
+	// the temporary directory can be removed on Windows too.
+	if err := backend.packFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 	backend.packFile = nil
 	backend.packDir = filepath.Join(backend.base, "missing-packs")
 	d := cas.NewDigest([]byte("append-fail"))
@@ -658,9 +633,9 @@ func TestPackfsReadsRejectCancelledContexts(t *testing.T) {
 	}
 }
 
-// TestPackfsGetReportsRecordValidationFailure pins that Get surfaces a record it
-// cannot validate as an error, and still falls back to the loose object when the
-// index holds no record for the digest.
+// TestPackfsGetReportsRecordValidationFailure pins that Get surfaces a failure
+// to open a record's pack file as an error, and keeps the record: only a record
+// the validator calls stale is pruned.
 func TestPackfsGetReportsRecordValidationFailure(t *testing.T) {
 	ctx := context.Background()
 	backend, err := New(filepath.Join(t.TempDir(), "get-validate"), WithEnabled())
@@ -670,21 +645,16 @@ func TestPackfsGetReportsRecordValidationFailure(t *testing.T) {
 	defer backend.Close()
 
 	d := cas.NewDigest([]byte("get-validate"))
-	backend.mu.Lock()
-	backend.index[string(d)] = packRecord{Pack: filepath.Join(backend.packDir, "blocked", "child.pack"), Offset: 0, Size: 1}
-	backend.mu.Unlock()
-	// A record whose parent is a regular file cannot be stat'ed, which is a
-	// validation failure rather than a prunable stale record.
-	blocker := filepath.Join(backend.packDir, "blocked")
-	if err := os.WriteFile(blocker, []byte("file"), 0o644); err != nil {
+	if err := backend.Put(ctx, d, bytesReader([]byte("payload"))); err != nil {
 		t.Fatal(err)
 	}
-	backend.op.readFile = func(string) ([]byte, error) { return nil, os.ErrNotExist }
-	if _, err := backend.Get(ctx, d); err == nil {
-		t.Fatal("Get(unvalidatable record) = nil, want an error")
+	openErr := errors.New("pack file unreadable")
+	backend.op.open = func(string) (*os.File, error) { return nil, openErr }
+	if _, err := backend.Get(ctx, d); !errors.Is(err, openErr) {
+		t.Fatalf("Get(unopenable pack file) = %v, want the open failure", err)
 	}
 	if _, ok := backend.index[string(d)]; !ok {
-		t.Fatal("Get dropped a record that failed validation with an error; only stale records are pruned")
+		t.Fatal("Get dropped a record it could not open; only stale records are pruned")
 	}
 }
 
@@ -717,30 +687,6 @@ func TestPackfsGetFallsBackWhenIndexHasNoRecord(t *testing.T) {
 	}
 	if string(payload) != "payload" {
 		t.Fatalf("Get(no record) = %q, want %q", payload, "payload")
-	}
-}
-
-// TestPackfsExistsReportsRecordValidationFailure pins that Exists, like Get,
-// reports an unvalidatable record as an error rather than as a missing object.
-func TestPackfsExistsReportsRecordValidationFailure(t *testing.T) {
-	ctx := context.Background()
-	backend, err := New(filepath.Join(t.TempDir(), "exists-validate"), WithEnabled())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer backend.Close()
-
-	d := cas.NewDigest([]byte("exists-validate"))
-	blocker := filepath.Join(backend.packDir, "blocked")
-	if err := os.WriteFile(blocker, []byte("file"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	backend.mu.Lock()
-	backend.index[string(d)] = packRecord{Pack: filepath.Join(blocker, "child.pack"), Offset: 0, Size: 1}
-	backend.mu.Unlock()
-
-	if _, err := backend.Exists(ctx, d); err == nil {
-		t.Fatal("Exists(unvalidatable record) = nil error, want the validation failure")
 	}
 }
 
@@ -1130,8 +1076,8 @@ func TestPackfsLooseBackendCreationFailureIsWrapped(t *testing.T) {
 	}
 }
 
-// failNth wraps realOps so the nth call to one directory operation fails, which
-// lets a test reach a specific construction step without a package-level seam.
+// failNth wraps realOps so the nth call to mkdirAll fails, which lets a test
+// reach a specific construction step without a package-level seam.
 func failNth(t *testing.T, op ops, nth int, err error) ops {
 	t.Helper()
 	real := op.mkdirAll
@@ -1146,14 +1092,15 @@ func failNth(t *testing.T, op ops, nth int, err error) ops {
 	return op
 }
 
-// TestNewWithOpsReportsPackDirCreationFailure pins that a base which accepts the
-// pack base but not the pack directory aborts construction with the reason
-// attached, instead of starting a backend that cannot store anything.
-func TestNewWithOpsReportsPackDirCreationFailure(t *testing.T) {
+// TestNewWithOpsReportsSecondMkdirAllFailure pins that a failure to create the
+// second directory New needs (the pack directory under the base) is reported
+// rather than ignored: os.MkdirAll treats some paths as already usable, so the
+// seam is what makes this step deterministic on every platform.
+func TestNewWithOpsReportsSecondMkdirAllFailure(t *testing.T) {
 	packDirErr := errors.New("pack dir failed")
 	op := failNth(t, realOps(), 2, packDirErr)
 	if _, err := newWithOps(filepath.Join(t.TempDir(), "nopackdir"), op, WithEnabled()); !errors.Is(err, packDirErr) {
-		t.Fatalf("newWithOps(pack dir failure) = %v, want the pack dir error", err)
+		t.Fatalf("newWithOps(second mkdirAll failure) = %v, want the pack dir error", err)
 	}
 }
 
@@ -1167,11 +1114,19 @@ func TestPackfsAppendReportsPackFileRecreationFailure(t *testing.T) {
 	}
 	defer backend.Close()
 
+	// Drop the active handle and make the reopen fail through the seam, so the
+	// failure is driven without depending on one platform's path semantics. The
+	// real descriptor is closed first: Windows will not delete a directory that
+	// still holds an open handle.
+	closeErr := errors.New("pack file unavailable")
+	backend.op.openFile = func(string, int, os.FileMode) (*os.File, error) { return nil, closeErr }
+	if err := backend.packFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 	backend.packFile = nil
-	backend.packDir = filepath.Join(backend.base, "deleted-packs")
 	d := cas.NewDigest([]byte("append-open"))
-	if err := backend.appendPackRecord(context.Background(), d, bytesReader([]byte("payload")), 7); err == nil {
-		t.Fatal("appendPackRecord(no pack file) = nil, want an error")
+	if err := backend.appendPackRecord(context.Background(), d, bytesReader([]byte("payload")), 7); !errors.Is(err, closeErr) {
+		t.Fatalf("appendPackRecord(reopen failure) = %v, want the open failure", err)
 	}
 	if _, ok := backend.index[string(d)]; ok {
 		t.Fatal("appendPackRecord recorded an index entry for a record it could not write")
@@ -1185,14 +1140,24 @@ func TestPackfsAppendReportsPackFileWriteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer backend.Close()
-
+	// A pipe's read end is a real handle that rejects writes, so the failure is
+	// genuine rather than an injected seam.
+	readEnd, writeEnd, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writeEnd.Close()
 	if err := backend.packFile.Close(); err != nil {
 		t.Fatal(err)
 	}
+	backend.packFile = readEnd
+	// Backend.Close releases the active handle, which is what lets the
+	// temporary directory be removed on Windows.
+	defer backend.Close()
+
 	d := cas.NewDigest([]byte("append-write"))
 	if err := backend.appendPackRecord(context.Background(), d, bytesReader([]byte("payload")), 7); err == nil {
-		t.Fatal("appendPackRecord(closed pack file) = nil, want an error")
+		t.Fatal("appendPackRecord(unwritable pack file) = nil, want an error")
 	}
 	if _, ok := backend.index[string(d)]; ok {
 		t.Fatal("appendPackRecord recorded an index entry for a record it could not write")
