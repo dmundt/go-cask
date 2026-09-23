@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v18
+version: v19
 ---
 
 # Backend Architecture — go-cask
@@ -18,6 +18,7 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 ## 2. Process and binary layout
 
 - `cmd/cask` is the only binary and a **thin main**: all viewer logic lives in `internal/` (`web` handlers+templates over `/viewer/*`, `index` listing/meta helpers); `cask web` wires the internal packages. `internal/` MUST NOT be imported outside the module (Go-enforced).
+- `internal/store` is the CLI's backend-selection seam: it opens the backend `-backend` names and reports that backend's `cas.Capabilities`, so a subcommand never reaches for a concrete backend type (cli §1).
 - `cas/` is the public surface (embedded library + `gitlike/`); everything else is private. Non-`web` `cmd/cask` subcommands are a thin CLI over the same library — the library is the single source of behavior.
 - No `internal/api`, no bearer-token `internal/auth`, no `client/` SDK — the network JSON API was removed to keep the kit single-host (§1); HTTP-exposure patterns live in `examples/api`.
 - **No product → example imports:** `cas/`, `internal/`, `cmd/` MUST NOT import `examples/` (downstream consumers, never upstream deps).
@@ -44,6 +45,9 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 ## 5. Storage backend selection
 
 - Config selects the backend: `fs` (Git-like fan-out) or `memory` (tests/ephemeral) — cas-core §4.4–4.5.
+- The `cask` CLI selects the backend per invocation with `-backend fs` (default) or `-backend packfs` (a loose tree plus append-only pack files, `cas/backend/packfs`). One shared internal constructor (`internal/store`) opens the selected backend and returns it together with its `cas.Capabilities`, so every subcommand is backend-agnostic: `put`/`get`/`list`/`meta`/`stats` use the minimal `Backend` contract, `verify` runs through `cas.Verify`/`cas.VerifyAll`, `gc`/`prune` use the backend's native `Prune` when it has one and `cas.Sweep` otherwise, and `clean` uses `cas.Cleaner`. An operation a backend cannot perform fails with `cas.ErrUnsupported` naming the operation and the backend (cli §2).
+- The viewer is the one exception: `internal/web.New` reads per-object physical metadata through the concrete `*fs.Backend`, so `cask web -backend packfs` is refused with the same `cas.ErrUnsupported` error instead of being served from a different directory than `-store` named.
+- Every CLI command opens and closes its store. A backend that holds a write handle open (packfs keeps its active pack file for appends and persists its index through it) therefore releases it before the command returns; nothing depends on a separate flush step.
 - Optional advisory bloom front ends MAY wrap a backend or a custom store implementation for hot-path member checks, but they do not replace the backend's authoritative `Exists` semantics. The backend remains the only correctness authority; the bloom layer is a performance aid for front-end lookup reduction.
 - The viewer and CLI talk to the library **in-process only** — no remote backend, no client SDK. Serving to other machines is an app concern (copy the `examples/api` pattern; run as that app's server). The product ships no such server.
 - **One store directory ↔ one writer process, grace for sweeps.** `cas` concurrency safety is per-process: any number of goroutines/HTTP clients may share one store within a process. Across OS processes, writes/reads are safe by construction (atomic rename, unique temps). A maintenance sweep racing another process's writes needs care: the `cask` CLI uses the grace model — writers and `web` run lock-free; `gc`/`prune`/`clean` take the exclusive `.cask.lock` (one sweep at a time) and reclaim only objects older than `--min-age` (default 1h); a forced `--min-age 0` sweep is the dangerous variant (cli §2, cas-core §6). Scale by serving more clients from one process or sharding store directories; embedding apps provide equivalent coordination.
@@ -89,6 +93,7 @@ All product shapes share the config contract and the viewer security model; an a
 - [x] One mux; every route under `/viewer`; no data-API surface
 - [x] Middleware order fixed: sessions → role → CSRF → handler
 - [x] Handlers thin; logic in the library; backend selection via config
+- [x] CLI backend selection via `-backend` through one shared constructor, with capabilities; unsupported operations named
 - [x] Raw object views stream; no full buffering
 - [x] Errors per api-design §5/§6; 401/403 empty bodies
 - [x] Config per §6; startup/shutdown lifecycle implemented

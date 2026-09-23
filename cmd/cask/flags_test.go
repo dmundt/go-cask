@@ -56,7 +56,7 @@ func TestUsageListsEveryCommand(t *testing.T) {
 			t.Errorf("usage does not describe %q", c.synopsis())
 		}
 	}
-	if webUsage := commandUsage(webFlags(new(webArgs), "")); !strings.Contains(webUsage, "-hash-algo") {
+	if webUsage := commandUsage(webFlags(new(webArgs), "", "")); !strings.Contains(webUsage, "-hash-algo") {
 		t.Errorf("web usage does not document -hash-algo:\n%s", webUsage)
 	}
 }

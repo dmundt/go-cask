@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v21
+version: v22
 ---
 
 # CLI — go-cask
@@ -15,9 +15,15 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 | Mode | Flag | Talks to | Auth |
 |---|---|---|---|
-| local | `-store <path>` | library in-process over the filesystem backend (`fs`) | none (filesystem trust) |
+| local | `-store <path>` `-backend fs\|packfs` | library in-process over the selected storage backend (`fs` by default) | none (filesystem trust) |
 
 - `-store` is required for store operations. No remote mode.
+- `-backend` selects the storage backend every store operation runs against:
+  `fs` (the default, Git-like fan-out loose objects) or `packfs` (a loose tree
+  plus append-only pack files). One shared internal constructor opens the
+  selected backend and reports its `cas.Capabilities`, so `put`/`get`/`list`/
+  `meta`/`stats`/`verify`/`gc`/`prune`/`clean` work over either backend
+  (backend-architecture §5). Without the flag the CLI behaves exactly as before.
 - The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). There is no `-algo` flag — the core names no algorithm (cas-core §4.2).
 - `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). A config file is deferred.
 
@@ -35,13 +41,29 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
 | `seed-preview [-count <n>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
-| `web [-store <dir>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).
 - `gc`/`prune` are destructive and **grace-gated**: they reclaim only objects absent from `<roots...>` AND older than `--min-age` (default 1h), so a concurrent writer's fresh objects survive (cas-core §6). `<roots...>` is the complete reachable set at the byte layer, not just entry points — the CLI cannot interpret references (it has no typed object model), so it never expands a root into what it points to; pass every digest that must survive, or the sweep deletes anything a root references (cas-core §4.11, `cas.Reachable` for library callers that do have a typed graph to expand first). `prune` defaults to `--dry-run`; `gc` prints the count deleted (consistency §4–§5). A forced sweep (`--min-age 0`) prints a warning and is safe only when no other process writes the store.
 - **Store lock:** maintenance sweeps (`gc`/`prune`/`clean`) take the store's exclusive cross-process lock (a `.cask.lock` file at the store root holding the PID) so two sweeps never overlap. A second holder → exit 1 naming the holder's PID (and telling the operator to remove a stale lock file when no such process runs). Writers (`put`) and the viewer (`web`) never lock — object writes are cross-process safe by construction and the grace period protects fresh objects (cas-core §6). Read-only commands (`get`/`list`/`meta`/`stats`/`verify`) never lock. The library has no inter-process locking; this lock only keeps maintenance sweeps from racing.
 - Every operation calls the library in-process.
+- **Backend-agnostic maintenance.** `verify` runs through `cas.Verify`/
+  `cas.VerifyAll`, so a backend with no backend-native `Verify` is checked
+  identically; `gc`/`prune` use the backend's native `Prune` when it has one
+  (`fs`) and the portable `cas.Sweep` otherwise (`packfs`); `clean` uses the
+  backend's `cas.Cleaner`. An operation the selected backend cannot perform
+  fails with an error naming the operation and the backend and wrapping
+  `cas.ErrUnsupported` (exit 1) — never a silent success or a partial sweep.
+- The store is opened and closed per command, including on the path that
+  writes: `packfs` keeps its active pack file open for appends, and the CLI
+  releases it (and reports a close failure) before the command returns. Nothing
+  buffers a pack index in memory waiting for a separate flush.
+- `web` requires the `fs` backend: the viewer reads per-object physical
+  metadata through the concrete filesystem backend, so `web -backend packfs` is
+  refused with the same `cas.ErrUnsupported` error (exit 1) instead of reading
+  a different directory than `-store` named. The viewer's own `-backend`
+  defaults to the global flag (cli.md §1).
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges, and
   alternating root-reachable graph segments. Each eight-object graph block
@@ -78,7 +100,8 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- `-backend` accepts `fs` (default) or `packfs`; anything else is a usage error (exit 2). An absent flag is not the same as an unknown one: it selects the documented default without passing through validation.
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
 - No secrets in output: tokens are never echoed; errors never include the token.
 - Std-lib only (`flag` package); documented per coding-guidelines §7.
@@ -92,6 +115,9 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - [x] `gc`/`prune` grace-gated by `--min-age` (default 1h); forced `--min-age 0` warns
 - [x] All subcommands map to core operations or the viewer server composition — no new CLI logic
 - [x] Hash arguments parsed with `sha256.Parse` (exit 2 on malformed)
+- [x] `-backend fs|packfs` selects the storage backend; every store operation runs over either
+- [x] `verify`/`gc`/`prune`/`clean` work over a packed store, or fail with `cas.ErrUnsupported` naming the operation and the backend
+- [x] The store is closed on the write path; `web` requires the `fs` backend
 - [x] Plain text by default, `-json` on request; errors on stderr
 - [x] Exit codes 0/1/2 per §3
 - [x] Streaming for large objects; no token leakage

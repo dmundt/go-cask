@@ -19,16 +19,17 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
 	sha512256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
+	"github.com/dmundt/go-cask/internal/store"
 	"github.com/dmundt/go-cask/internal/web"
 )
 
 // webArgs holds the viewer's flag values.
 type webArgs struct {
 	store         string
+	backend       string
 	bind          string
 	hashAlgorithm string
 	tokens        string
@@ -37,12 +38,13 @@ type webArgs struct {
 }
 
 // webFlags registers the viewer's flags over a, defaulting -store to
-// storeDefault (the global -store flag; cli.md §1). runWeb and the command
-// table both use it, so the accepted and the documented flags are one set
-// (cli.md §2, §4).
-func webFlags(a *webArgs, storeDefault string) *flag.FlagSet {
+// storeDefault and -backend to backendDefault (the global flags; cli.md §1).
+// runWeb and the command table both use it, so the accepted and the documented
+// flags are one set (cli.md §2, §4).
+func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags := newFlagSet("web")
 	flags.StringVar(&a.store, "store", storeDefault, "filesystem store directory")
+	flags.StringVar(&a.backend, "backend", backendDefault, "storage backend: fs (the viewer needs the filesystem backend)")
 	flags.StringVar(&a.bind, "bind", "127.0.0.1:8080", "listen address")
 	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
 	flags.StringVar(&a.tokens, "tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
@@ -55,14 +57,15 @@ func webFlags(a *webArgs, storeDefault string) *flag.FlagSet {
 // (backend-architecture §3). Invoking `cask web` IS the explicit enablement
 // (viewer-security §3); binding to a non-loopback address requires explicit
 // confirmation (viewer-security §4). The store defaults to the global -store
-// flag when the subcommand's own -store is not given.
+// flag when the subcommand's own -store is not given, and the backend to the
+// global -backend for the same reason.
 func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	storeDefault := mf.store
 	if storeDefault == "" {
 		storeDefault = "./objects"
 	}
 	var a webArgs
-	flags := webFlags(&a, storeDefault)
+	flags := webFlags(&a, storeDefault, mf.backend)
 	if err := parseFlags(flags, args); err != nil {
 		return reportError(err)
 	}
@@ -85,9 +88,18 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session")
 	}
 
-	backend, err := fsbackend.New(a.store)
+	kind, err := store.ParseKind(a.backend)
 	if err != nil {
-		slog.Error("open store", "err", err)
+		slog.Error("invalid viewer backend", "backend", a.backend, "err", err)
+		return 2
+	}
+	// The viewer needs the concrete filesystem backend (it reads per-object
+	// physical metadata), so a backend with no filesystem view is refused with
+	// an error naming the operation and the backend — never by silently
+	// reading a different directory than -store named (cli.md §2).
+	backend, err := store.OpenViewer(ctx, store.Options{Kind: kind, Path: a.store})
+	if err != nil {
+		slog.Error("open store", "backend", kind, "err", err)
 		return 1
 	}
 	hasher, err := viewerHasher(a.hashAlgorithm)

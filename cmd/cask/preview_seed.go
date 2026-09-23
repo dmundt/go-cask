@@ -10,8 +10,8 @@ import (
 	"os"
 
 	"github.com/dmundt/go-cask/cas"
-	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/store"
 )
 
 const defaultPreviewObjectCount = 500
@@ -78,7 +78,7 @@ func seedPreviewFlags(a *seedPreviewArgs) *flag.FlagSet {
 
 // opSeedPreview writes deterministic, valid envelope objects suitable for
 // exercising the object browser's filtering, sorting, and pagination.
-func opSeedPreview(ctx context.Context, t *target, args []string) error {
+func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 	var a seedPreviewArgs
 	flags := seedPreviewFlags(&a)
 	if err := parseFlags(flags, args); err != nil {
@@ -91,7 +91,7 @@ func opSeedPreview(ctx context.Context, t *target, args []string) error {
 		return usagef("count must be between 1 and %d, got %d", maxPreviewCount, a.count)
 	}
 
-	added, deduplicated, err := seedPreview(ctx, t.backend, a.count)
+	added, deduplicated, err := seedPreview(ctx, t, a.count)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func opSeedPreview(ctx context.Context, t *target, args []string) error {
 	return err
 }
 
-func seedPreview(ctx context.Context, backend *fs.Backend, count int) (int, int, error) {
+func seedPreview(ctx context.Context, backend cas.Backend, count int) (int, int, error) {
 	added, deduplicated := 0, 0
 	digests := make([]cas.Digest, 0, count)
 	for ordinal := range count {
@@ -254,8 +254,9 @@ func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 // previewReferences rebuilds the known deterministic preview graph over the
 // objects the store holds. It returns errNoPreviewGraph when the store holds
 // none of them, so a caller reads "an ordinary store" from the error instead of
-// having to treat a nil index as a non-error signal.
-func previewReferences(ctx context.Context, backend *fs.Backend) (*previewReferenceIndex, error) {
+// having to treat a nil index as a non-error signal. It takes the minimal
+// Backend contract, so the preview graph can be read from any backend.
+func previewReferences(ctx context.Context, backend cas.Backend) (*previewReferenceIndex, error) {
 	index := &previewReferenceIndex{
 		inbound:   make(map[string][]cas.Digest),
 		outbound:  make(map[string][]cas.Digest),

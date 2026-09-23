@@ -62,6 +62,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   docs and cas-core §4.13 record the contract and the prefetch recipe for the
   typed or parallel path (`lru.Cache`/`prefetch.SmartCache`, sized from
   `Stats`, fed by `Reachable`).
+- `cask -backend fs|packfs` (default `fs`) selects the storage backend for every
+  store subcommand, so `verify`, `gc`, `prune` and `clean` maintain a packed
+  store as well as a loose one: a backend without a native implementation runs
+  through the portable `cas.VerifyAll`/`cas.Sweep`/`cas.Cleaner` layer, and an
+  operation a backend cannot perform fails with an error naming the operation
+  and the backend (`cas.ErrUnsupported`) instead of reporting success. Every
+  command closes the store it opened, so a writer releases the backend's
+  resources; `cask web` requires the `fs` backend and refuses `packfs` the same
+  way.
 
 ### Changed
 
@@ -135,6 +144,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   concurrent `Delete` — so a report gathered while objects are being removed
   returns what was there instead of an `lstat` error; `List` already tolerated
   the same race.
+- The `packfs` pack index survives a restart again: manifest keys were raw
+  digest bytes, and `encoding/json` replaces invalid UTF-8 in a map key with
+  U+FFFD, so reopening a packed store came back with corrupted keys — `List`
+  reported phantom digests and `Stats` counted every object twice. The index is
+  keyed by the digest's hex form now, and an index written by an older build is
+  dropped on load (the loose tree still holds every object).
 
 ## [v1.6.5] - 2026-09-22
 
