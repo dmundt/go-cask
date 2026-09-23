@@ -90,10 +90,7 @@ func (rl *rateLimiter) allow(ip string) (ok bool, retryAfter int, remaining int)
 		b.tokens--
 		return true, 0, int(b.tokens)
 	}
-	retry := int((1 - b.tokens) / rl.cfg.RequestsPerSecond)
-	if retry < 1 {
-		retry = 1
-	}
+	retry := max(int((1-b.tokens)/rl.cfg.RequestsPerSecond), 1)
 	return false, retry, int(b.tokens)
 }
 

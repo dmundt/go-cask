@@ -29,10 +29,7 @@ func Split(data []byte, size int) [][]byte {
 	count := (len(data) + size - 1) / size
 	out := make([][]byte, 0, count)
 	for i := 0; i < len(data); i += size {
-		end := i + size
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(i+size, len(data))
 		out = append(out, append([]byte(nil), data[i:end]...))
 	}
 	return out
