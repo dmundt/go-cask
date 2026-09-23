@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -33,9 +34,14 @@ type webArgs struct {
 	bind          string
 	hashAlgorithm string
 	tokens        string
+	tokenFile     string
 	allowInsecure bool
 	noOpen        bool
 }
+
+// viewerTokenEnv supplies the viewer's startup admin token to an unattended
+// deployment, so a service never needs the token printed (viewer-security §11).
+const viewerTokenEnv = "CASK_VIEWER_TOKEN"
 
 // webFlags registers the viewer's flags over a, defaulting -store to
 // storeDefault and -backend to backendDefault (the global flags; cli.md §1).
@@ -48,6 +54,7 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags.StringVar(&a.bind, "bind", "127.0.0.1:8080", "listen address")
 	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
 	flags.StringVar(&a.tokens, "tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
+	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
 	flags.BoolVar(&a.allowInsecure, "allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	flags.BoolVar(&a.noOpen, "no-open", false, "do not open the default browser")
 	return flags
@@ -131,12 +138,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		roleTokens[tok] = strings.TrimSpace(role)
 	}
 
-	token, err := randomToken()
+	token, generated, err := resolveStartupToken(a)
 	if err != nil {
-		slog.Error("generate startup token", "err", err)
+		slog.Error("viewer startup token", "err", err)
 		return 1
 	}
-	slog.Warn("viewer startup token", "admin_token", token) // printed once, never stored
 	viewerConfig := web.Config{
 		Hasher:        hasher,
 		HashAlgorithm: a.hashAlgorithm,
@@ -177,10 +183,10 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		}
 	}()
 
-	url := fmt.Sprintf("http://%s/viewer/?token=%s", listener.Addr(), token)
-	fmt.Fprintf(os.Stderr, "cask web: %s\n", url)
+	baseURL := "http://" + listener.Addr().String()
+	announceLogin(os.Stderr, baseURL, token, generated, stderrIsTerminal())
 	if !a.noOpen {
-		openBrowser(url)
+		openBrowser(loginURL(baseURL, token))
 	}
 
 	exitCode := 0
@@ -199,6 +205,71 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		return 1
 	}
 	return exitCode
+}
+
+// loginURL is the documented direct-token login deep link (viewer-security
+// §5.1). It is the only URL that carries the token, and it is never logged.
+func loginURL(baseURL, token string) string {
+	return baseURL + "/viewer/?token=" + token
+}
+
+// resolveStartupToken returns the viewer's startup admin token and reports
+// whether this run generated it. An operator-supplied token — `-token-file`
+// first, then CASK_VIEWER_TOKEN — is used as given and is never displayed, so
+// an unattended deployment never needs the token printed; only a token
+// generated here may be shown, and only on an interactive terminal
+// (viewer-security §5.1, §11). A returned error names the flag or the file, not
+// the token.
+func resolveStartupToken(a webArgs) (string, bool, error) {
+	if a.tokenFile != "" {
+		b, err := os.ReadFile(a.tokenFile)
+		if err != nil {
+			return "", false, fmt.Errorf("read -token-file: %w", err)
+		}
+		token := strings.TrimSpace(string(b))
+		if token == "" {
+			return "", false, fmt.Errorf("-token-file %s holds no token", a.tokenFile)
+		}
+		return token, false, nil
+	}
+	if token := strings.TrimSpace(os.Getenv(viewerTokenEnv)); token != "" {
+		return token, false, nil
+	}
+	token, err := randomToken()
+	if err != nil {
+		return "", false, fmt.Errorf("generate startup token: %w", err)
+	}
+	return token, true, nil
+}
+
+// stderrIsTerminal reports whether stderr is an interactive terminal — the only
+// place a generated startup token may be shown. os.ModeCharDevice is the
+// standard library's terminal test on every platform, so the viewer needs no
+// terminal dependency (coding-guidelines §3).
+func stderrIsTerminal() bool {
+	info, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// announceLogin performs the viewer's one-time login announcement. The token is
+// written to w only when this run generated it AND w belongs to an interactive
+// terminal; an operator-supplied token is not repeated, and when a generated
+// token cannot be shown the remedy is logged instead of the token. The token
+// never reaches a slog handler at any level (viewer-security §5.1, §9, §11), and
+// the tests assert exactly that.
+func announceLogin(w io.Writer, baseURL, token string, generated, interactive bool) {
+	if generated && interactive {
+		fmt.Fprintf(w, "cask web: log in once at %s (shown here only; the startup token is never logged)\n", loginURL(baseURL, token))
+		return
+	}
+	fmt.Fprintf(w, "cask web: viewer at %s/viewer/ — the startup token is never logged or echoed\n", baseURL)
+	if generated {
+		slog.Warn("viewer startup token was generated but not shown: stderr is not an interactive terminal",
+			"remedy", "restart with -token-file <path> or "+viewerTokenEnv+" to supply the token instead")
+	}
 }
 
 func viewerHasher(name string) (cas.Hasher, error) {

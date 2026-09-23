@@ -136,8 +136,8 @@ func init() {
 		},
 		{
 			name:     "web",
-			operands: "[-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]",
-			summary:  "start the embedded viewer; prints a one-time startup token and the token URL",
+			operands: "[-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-token-file <path>] [-allow-insecure-bind] [-no-open]",
+			summary:  "start the embedded viewer; the startup token is never logged (shown once on a terminal, or supplied with -token-file/" + viewerTokenEnv + ")",
 			flags:    func() *flag.FlagSet { return webFlags(new(webArgs), "", "") },
 			run:      runWeb,
 		},

@@ -234,6 +234,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keyed by the digest's hex form now, and an index written by an older build is
   dropped on load (the loose tree still holds every object).
 
+### Security
+
+- The viewer's startup token is no longer written to the process log: `cask web`
+  emitted it with `slog.Warn("viewer startup token", "admin_token", …)`, so
+  under systemd/journald, Docker, or a log shipper the admin credential was
+  retained and indexed for readers who are not operators. No log level carries
+  the token now. An interactive `cask web` still shows the one-time login deep
+  link on its terminal; an unattended deployment supplies the token instead with
+  the new `-token-file <path>` flag or the `CASK_VIEWER_TOKEN` environment
+  variable, and a generated token that cannot be shown is reported as such
+  without its value (cli.md §4, viewer-security §5.1, §9, §11).
+
 ## [v1.6.5] - 2026-09-22
 
 ### Added
