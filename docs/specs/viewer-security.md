@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v9
+version: v10
 ---
 
 # Viewer Security — go-cask
@@ -30,11 +30,30 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 ## 5. Authentication
 
 - The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or performs a direct `?token=` login (§5.1) — neither exposes store data.
-- Login attempts MUST be rate limited (max 5 failures/IP/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value.
+- Login attempts MUST be rate limited (max 5 failures/caller-address/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value. The address the throttle keys on is the **caller address** defined in §5.2, not necessarily the direct peer.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
 - Startup token characteristics: cryptographically secure random; supplied out of band with `-token-file`/`CASK_VIEWER_TOKEN` or displayed once, and only when stderr is an interactive terminal — never through the logging package, at any level (cli.md §4, §9, §11); not stored in plaintext config; regenerated on every restart unless the operator supplied it.
 - A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie.
-- **Direct `?token=` login (MUST):** the token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs; the server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`; login still honors the throttle and audit-logs the action **without** the token value; after the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
+
+### 5.1 Direct `?token=` login
+
+- The token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs.
+- The server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`.
+- Login still honors the throttle and audit-logs the action **without** the token value.
+- After the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
+
+### 5.2 Caller address (proxy deployments)
+
+The login throttle is per caller address. That address is the direct TCP peer unless the peer is a **configured trusted proxy** and the request carries a client address forwarded on that client's behalf (`internal/web/proxy.go`).
+
+- The default configuration trusts **no** proxy, so the throttle keys on `RemoteAddr` alone. A forwarded header is then ignored in full, and the viewer MUST behave exactly as it did before this rule existed.
+- `cask web -trusted-proxy <ip|cidr,...>` — and the `TrustedProxies` viewer config field behind it — names the peers whose forwarded address may be believed: CIDR blocks (`10.0.0.0/8`) or single IPs (`127.0.0.1`, `::1`, or an `ip:port` whose port is ignored). An entry that is none of these MUST fail viewer startup; silently trusting nothing would restore the shared-bucket lockout below.
+- Only when the direct peer matches that list may the forwarded address be used, taken from `X-Forwarded-For`, or from `Forwarded` (RFC 7239, its first `for=`) when `X-Forwarded-For` is absent. The value chosen is the **rightmost address in the chain that is not itself a trusted proxy**; when every hop is trusted, the leftmost entry is the caller. Text to the left of that hop is discarded, so a client cannot select its own throttle bucket by writing the header.
+- A hop that is not a bare IP is taken verbatim, not normalized: an unusual bucket over-throttles only the value that was presented, whereas normalizing text into an IP could hand a caller another client's bucket.
+- With a forwarded address present and the peer trusted, the throttle MUST key on that address; with no forwarded address, on the peer address — so the two cases cannot share a bucket. The session and the audit log record the same caller address the throttle used.
+- Trusting a peer is a delegation of the caller identity: the proxy MUST overwrite the forwarded header rather than append to a client-supplied one, and MUST NOT be a peer that arbitrary clients can reach directly. Trusting a CIDR broader than the actual proxy network weakens the throttle exactly as much as trusting the header unconditionally.
+
+If `cask web` has no trusted proxy configured and sits behind a reverse proxy, **every client shares the peer's bucket**: five failed logins from anyone block all operators for up to 30 minutes. The remedies are to configure `-trusted-proxy` for that proxy, to rate-limit at the proxy as well, or to bind the viewer directly (§4, §12).
 
 ## 6. Session management
 
@@ -106,6 +125,13 @@ Secrets must never be hardcoded, committed to source control, written to logs, o
 
 If remote access is required, the preferred architecture is **VPN + reverse proxy + OIDC/SSO + viewer** (e.g. Microsoft Entra ID, Keycloak, Authentik, OAuth2 Proxy). Do not expose the viewer directly to the public internet. Behind an OIDC/SSO proxy the backend MUST derive the role from a configurable claim (default `groups`), mapping configured group names to viewer/operator/admin, and MUST deny access when no mapping matches.
 
+A reverse proxy is also the deployment the login throttle must be told about (§5.2). Because the proxy is the direct peer for every client:
+
+- Configure `cask web -trusted-proxy` with that proxy's address, so the throttle keys on the forwarded client address and one attacker cannot exhaust the shared bucket. An unconfigured viewer behind a proxy locks out every operator the same way (§5.2).
+- Trust only the proxy's own addresses, never a broad range. A trusted-proxy entry is a delegation of caller identity: the proxy MUST overwrite `X-Forwarded-For` (not append to a client-supplied value) and MUST NOT be reachable directly by untrusted clients.
+- Rate-limiting at the proxy remains worthwhile as defence in depth, but it is not a substitute: the viewer's own throttle is the only limit that survives a proxy already being passed.
+- If neither is possible, bind the viewer directly (§4) instead of leaving it behind a proxy whose clients share one bucket.
+
 ## 13. Defensive programming
 
 - Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The viewer landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
@@ -117,7 +143,8 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 ## 15. Compliance checklist
 
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
-- [x] Auth required; login throttled (5/IP/min, backoff, audit-logged without the token) (§5)
+- [x] Auth required; login throttled (5/caller-address/min, backoff, audit-logged without the token) (§5)
+- [x] A forwarded client address is believed only from a configured trusted proxy; with none configured the peer address keys the throttle and the header is ignored (§5.2)
 - [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on an interactive terminal only, or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
 - [x] Cookies always use `HttpOnly` + `SameSite=Strict` + `Secure`; no sensitive data in cookies (§7)

@@ -90,10 +90,12 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // loginPost validates the submitted token against the startup token (admin)
-// or the configured per-role tokens, throttles failures per IP (5/min with
-// backoff, viewer-security §5), and issues a session cookie.
+// or the configured per-role tokens, throttles failures per caller address
+// (5/min with backoff, viewer-security §5), and issues a session cookie. The
+// caller address is the direct peer unless a configured trusted proxy
+// forwarded one (§5.2, proxy.go).
 func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string) {
-	ip := callerIP(r)
+	ip := s.callerIP(r)
 	if !s.loginThrottle.allow(ip) {
 		slog.Warn("viewer login throttled", "ip", ip)
 		// A throttled caller is told how long to wait rather than left to guess
