@@ -293,8 +293,8 @@ func TestStoreRecoveryAfterCorruption(t *testing.T) {
 	if err := backend.Put(ctx, d, strings.NewReader("corrupted envelope")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrUnknownType) && !errors.Is(err, cas.ErrCorrupt) {
-		t.Fatalf("Get(corrupted envelope) = %v, want a corruption error", err)
+	if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(corrupted envelope) = %v, want ErrCorrupt", err)
 	}
 
 	if _, err := s.Put(ctx, obj); err != nil {
@@ -712,8 +712,12 @@ func TestStoreVersionReportsTheStoredVersion(t *testing.T) {
 	if version != 0xff {
 		t.Fatalf("Version(unknown version) = %d, want 0xff", version)
 	}
-	if _, err := s.Get(ctx, futureDigest); !errors.Is(err, cas.ErrUnknownType) {
-		t.Fatalf("Get(unknown version) = %v, want ErrUnknownType", err)
+	// Version reports the unfamiliar byte as data, and Get — which has to parse
+	// the frame to answer — reports the header it cannot read as damage. The
+	// "newer format or damaged?" question is answered by the Version byte, not
+	// by string-matching Get's error.
+	if _, err := s.Get(ctx, futureDigest); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(unknown version) = %v, want ErrCorrupt", err)
 	}
 }
 

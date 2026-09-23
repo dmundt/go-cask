@@ -106,9 +106,34 @@ func TestEnvelopeEmptyPayload(t *testing.T) {
 	}
 }
 
+// TestEnvelopeUnknownTypeIsNotAParseFailure pins the line between parsing and
+// dispatch: the envelope readers report a structural failure as ErrCorrupt,
+// while a well-formed frame naming a type nothing has a decoder for parses
+// without error and simply hands the name back. Deciding what to do with that
+// name is the caller's job (cas/repo.UnknownTypeError, gitlike's fixed model),
+// not the parser's.
+func TestEnvelopeUnknownTypeIsNotAParseFailure(t *testing.T) {
+	data := encodeEnvelope("json", "nothing-registered@7", []byte("{}"))
+
+	env, err := EnvelopeFromBytes(data)
+	if err != nil {
+		t.Fatalf("EnvelopeFromBytes(unregistered type) = %v, want no error", err)
+	}
+	if env.Type != "nothing-registered@7" {
+		t.Fatalf("type = %q, want nothing-registered@7", env.Type)
+	}
+	typ, err := EnvelopeType(data)
+	if err != nil {
+		t.Fatalf("EnvelopeType(unregistered type) = %v, want no error", err)
+	}
+	if typ != "nothing-registered@7" {
+		t.Fatalf("EnvelopeType = %q, want nothing-registered@7", typ)
+	}
+}
+
 func TestEnvelopeTruncatedVersion(t *testing.T) {
-	if _, err := EnvelopeFromBytes(nil); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("nil data = %v, want ErrUnknownType", err)
+	if _, err := EnvelopeFromBytes(nil); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("nil data = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -116,8 +141,8 @@ func TestEnvelopeUnknownVersion(t *testing.T) {
 	for _, version := range []byte{0x00, 0x03, 0xff} {
 		// Version, codecLen 1, codec "a": only 1 and 2 are readable formats.
 		data := []byte{version, 0x01, 0x61}
-		if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrUnknownType) {
-			t.Fatalf("version %d = %v, want ErrUnknownType", version, err)
+		if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("version %d = %v, want ErrCorrupt", version, err)
 		}
 	}
 }
@@ -125,8 +150,8 @@ func TestEnvelopeUnknownVersion(t *testing.T) {
 func TestEnvelopeTruncatedCodecLen(t *testing.T) {
 	data := []byte{envelopeVersion} // version only, no codecLen
 	_, err := EnvelopeFromBytes(data)
-	if !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("truncated codecLen = %v, want ErrUnknownType", err)
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("truncated codecLen = %v, want ErrCorrupt", err)
 	}
 	if !strings.Contains(err.Error(), "codec length") {
 		t.Fatalf("error %q does not name the codec length field", err)
@@ -140,8 +165,8 @@ func TestEnvelopeOversizedCodec(t *testing.T) {
 	// codecLen = 100 but no codec bytes follow.
 	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], 100)])
 	_, err := EnvelopeFromBytes(buf.Bytes())
-	if !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("oversized codec = %v, want ErrUnknownType", err)
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("oversized codec = %v, want ErrCorrupt", err)
 	}
 	if !strings.Contains(err.Error(), "codec") {
 		t.Fatalf("error %q does not name the codec field", err)
@@ -150,8 +175,8 @@ func TestEnvelopeOversizedCodec(t *testing.T) {
 
 func TestEnvelopeTruncatedTypeLen(t *testing.T) {
 	data := []byte{envelopeVersion, 0x00} // version, empty codec, no typeLen
-	if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("truncated typeLen = %v", err)
+	if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("truncated typeLen = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -163,8 +188,8 @@ func TestEnvelopeTruncatedType(t *testing.T) {
 	n := binary.PutUvarint(lenBuf[:], 100)
 	buf.Write(lenBuf[:n])
 	// typeLen = 100 but no type bytes follow
-	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("truncated type = %v", err)
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("truncated type = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -176,14 +201,15 @@ func TestEnvelopeEmptyType(t *testing.T) {
 	n := binary.PutUvarint(lenBuf[:], 0)
 	buf.Write(lenBuf[:n])
 	// typeLen = 0 → empty type name
-	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("empty type = %v", err)
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("empty type = %v, want ErrCorrupt", err)
 	}
 }
 
 // TestEnvelopeVersion1TruncatedHeader pins the v1 branch's own failure paths:
 // a version 1 envelope has no codec field, so the type length follows the
-// version byte directly.
+// version byte directly. They are ErrCorrupt like every other structural
+// failure, so the byte-slice reader and the streaming peek agree.
 func TestEnvelopeVersion1TruncatedHeader(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -194,8 +220,8 @@ func TestEnvelopeVersion1TruncatedHeader(t *testing.T) {
 		{"truncated payload length", v1Envelope("note@1", nil)[:8]},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := EnvelopeFromBytes(tc.data); !errors.Is(err, ErrUnknownType) {
-				t.Fatalf("EnvelopeFromBytes(%v) = %v, want ErrUnknownType", tc.data, err)
+			if _, err := EnvelopeFromBytes(tc.data); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("EnvelopeFromBytes(%v) = %v, want ErrCorrupt", tc.data, err)
 			}
 		})
 	}
@@ -313,8 +339,8 @@ func TestEnvelopeTruncatedPayloadLen(t *testing.T) {
 	buf.Write(lenBuf[:n])
 	buf.WriteString("note@1")
 	// No payloadLen follows -> truncated payload length error.
-	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("truncated payloadLen = %v", err)
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("truncated payloadLen = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -330,8 +356,8 @@ func TestEnvelopePayloadLenExceeds(t *testing.T) {
 	n = binary.PutUvarint(lenBuf[:], 100)
 	buf.Write(lenBuf[:n])
 	buf.WriteString("xy")
-	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("oversized payloadLen = %v", err)
+	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("oversized payloadLen = %v, want ErrCorrupt", err)
 	}
 }
 

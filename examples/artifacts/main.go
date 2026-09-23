@@ -239,10 +239,12 @@ func (a *app) get(ctx context.Context, d cas.Digest) (*Artifact, error) {
 // is present and undecodable still references its artifacts; treating it as a
 // leaf is exactly how those artifacts used to be swept away.
 //
-// Store.Get's ErrUnknownType cannot make that call on its own: Get returns the
-// same sentinel both for "stored type is not manifest@1" and for a malformed
-// envelope (cas/store.go, cas/envelope.go decodeEnvelopeHeader), so deciding
-// "leaf" from it would let a truncated manifest be mistaken for an artifact.
+// Asking for the stored type is also the honest question: it names what the
+// object is, where a failed read only says the read failed. Since go-cask#202
+// the sentinels no longer overlap — a malformed envelope is ErrCorrupt from
+// every reader, and ErrUnknownType means only "a type this caller does not
+// decode" — but the rule stays "decode every manifest@1, abort on anything
+// else", so a truncated manifest can never be classified as a leaf.
 func (a *app) gc(ctx context.Context) (int, error) {
 	roots, err := a.refs.Roots(ctx)
 	if err != nil {

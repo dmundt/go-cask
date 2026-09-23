@@ -256,10 +256,10 @@ func damageManifest(t *testing.T, a *app, d cas.Digest, damage func(raw []byte, 
 // A name whose manifest cannot be read aborts gc instead of being mistaken for
 // a leaf: the artifacts that manifest references must survive a sweep that never
 // runs. Both damage shapes matter — the second one is why gc asks for the stored
-// type instead of reading a failed Store.Get as "not a manifest": Get reports a
-// malformed envelope with cas.ErrUnknownType, the very sentinel it uses for a
-// stored type that is not manifest@1, so a truncated manifest would otherwise be
-// classified as a leaf and its artifacts deleted.
+// type instead of reading a failed Store.Get as "not a manifest": a truncated
+// manifest is damage (cas.ErrCorrupt), not an artifact, and anything that is not
+// manifest@1 is a leaf, so a damaged manifest read that way would drop out of
+// the reachable set and its artifacts would be deleted.
 func TestGCAbortsOnCorruptManifest(t *testing.T) {
 	damages := []manifestDamage{
 		{

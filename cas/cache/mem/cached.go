@@ -260,7 +260,10 @@ func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) erro
 // pointing at a tree, which is another store's type — and a missing one are
 // skipped rather than aborting the walk: a per-type cache must not fail because
 // its objects reference other types. Context errors and every other failure
-// still propagate.
+// still propagate — including cas.ErrCorrupt for a reference whose stored bytes
+// are damaged, which is deliberately not in the tolerated set: "not my type" is
+// an expected shape of a shared store, while "cannot be read" is not, and the
+// preload must not report success over a graph it could not actually warm.
 func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, depth int) error {
 	obj, err := c.Get(ctx, d)
 	if err != nil {

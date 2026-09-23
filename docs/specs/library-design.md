@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v35
+version: v36
 ---
 
 # Library Design — go-cask
@@ -38,12 +38,12 @@ var (
 - Backends map their "not found" (`os.IsNotExist`) to `ErrNotFound` via `%w`.
 - `Verify` (and integrity checks on read) return `ErrDigestMismatch`.
 - `ParseDigest` / `Digest.UnmarshalText` return `ErrInvalidDigest`, wrapped with the offending input in the message — a legacy `"sha256:hexdigest"` reference is rejected, not reinterpreted.
-- `Store.Get` returns `ErrCorrupt` when the stored payload cannot be decoded by the store codec.
+- `Store.Get` returns `ErrCorrupt` when the stored bytes are not readable data: an envelope that does not parse (a truncated or oversized header field, an empty type name, a frame version this build cannot read, a payload length that does not fit the frame) or a payload the store codec cannot decode, that decodes to nil, or whose object fails `Validate`. A structural failure is `ErrCorrupt` in **every** envelope reader — `Store.Get`, `EnvelopeFromBytes`, `EnvelopeType`, `PeekType`, `cas/repo.Registry.Resolve` — which is the answer `Store.Type` and `PeekType` already gave for those bytes.
 - `Store.Get` returns `ErrCodecMismatch` when the envelope's codec identity tag and the reading codec's own tag are both present and differ — the bytes are intact and the type is known, so it is deliberately distinct from `ErrCorrupt` and `ErrUnknownType`. A tagless object (a version 1 envelope, or a codec without `CodecNamer`) is never reported as a mismatch: there is no identity to compare, and `ErrCorrupt` stays the answer if the payload then fails to decode.
-- Deserializers return `ErrUnknownType` for an unregistered type name or major version.
+- `ErrUnknownType` is a dispatch answer about **intact** bytes, never a parse failure: an envelope naming a type nothing registered (`cas/repo.UnknownTypeError`), one outside a caller's fixed model (`gitlike`), or a value the store's own codec decoded under a different `Type()` than the envelope records. A consumer that skips unknown types with `errors.Is(err, cas.ErrUnknownType)` therefore cannot skip a damaged object by accident — go-cask#202.
 - `Sweep` returns `ErrUnsupported` when `SweepOptions.MinAge > 0` is requested against a backend that does not implement `Statter`.
 - Never compare error strings; always `errors.Is` / `errors.As`. Doc comments state which errors each method can return.
-- **A sentinel is added only when the distinction it names is not better carried by a value.** An unknown *envelope version* deliberately has none: `PeekVersion`/`Store.Version` return the byte verbatim, so a caller compares it against `EnvelopeVersion` — the answer is data, not an error, and `ErrCorrupt` stays reserved for a frame that has no usable leading byte at all. Collapsing "written by a newer format" into `ErrCorrupt` would be the bug; adding an eighth sentinel to undo that collapse would then be redundant surface.
+- **A sentinel is added only when the distinction it names is not better carried by a value.** An unknown *envelope version* deliberately has none: `PeekVersion`/`Store.Version` return the byte verbatim, so a caller compares it against `EnvelopeVersion` — the answer is data, not an error. A reader that has to parse the whole frame cannot proceed on a version it does not know and reports `ErrCorrupt` like any other unusable header (`Store.Get`); the verbatim byte is what keeps "written by a newer format" distinguishable from "damaged bytes" there, so no caller matches an error string and an eighth sentinel to undo that collapse would be redundant surface.
 
 ## 3. No mutable global state
 

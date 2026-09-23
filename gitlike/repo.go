@@ -126,7 +126,10 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 //
 // An object whose stored type this repository does not know is reported as
 // cas.ErrUnknownType (the versioned name is compared, so a future "blob@2" is
-// unknown rather than decoded as a blob).
+// unknown rather than decoded as a blob). A stored envelope that does not parse
+// is a different answer: it is damage, so it surfaces as cas.ErrCorrupt, never
+// as an unknown type — a walk must not treat an object it cannot read as one it
+// can safely skip.
 func (r *Resolver) Resolve(ctx context.Context, d cas.Digest) (casrepo.Object, error) {
 	typ, err := r.objectType(ctx, d)
 	if err != nil {

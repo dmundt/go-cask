@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -99,6 +100,34 @@ func TestPreloadRecursiveSkipsForeignAndMissingRefs(t *testing.T) {
 	}
 	if _, err := c.Get(ctx, root); err != nil {
 		t.Fatalf("the root itself must still be cached: %v", err)
+	}
+}
+
+// TestPreloadRecursiveReportsCorruptReference pins the deliberate difference
+// between the two tolerated cases above and damage: a reference this store does
+// not decode (another type) and a dangling one are expected shapes of a shared
+// store, so they are skipped, but a reference whose stored bytes do not parse is
+// returned as cas.ErrCorrupt. Before the sentinel split that case arrived as
+// ErrUnknownType and was swallowed here, so a preload reported success over a
+// graph it could not read.
+func TestPreloadRecursiveReportsCorruptReference(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	s := cas.New(backend, jsoncodec.New[testObject](), sha256.New())
+
+	damaged := []byte{0x02, 0x00} // version 2, empty codec, truncated type length
+	corrupt := sha256.Of(damaged)
+	if err := backend.Put(ctx, corrupt, bytes.NewReader(damaged)); err != nil {
+		t.Fatal(err)
+	}
+	root := put(t, s, "root", corrupt)
+
+	err := cachemem.New(s).PreloadRecursive(ctx, root, 1)
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("PreloadRecursive over a corrupt reference = %v, want ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("PreloadRecursive over a corrupt reference = %v, must not report an unknown type", err)
 	}
 }
 
