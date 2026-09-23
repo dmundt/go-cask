@@ -81,8 +81,9 @@ Rules from the specs that always apply:
 3. Add tests: unit + the relevant CAS laws; run `-race`.
 4. Commit with Conventional Commits (`feat:`, `fix:`, …; `BREAKING CHANGE:`
    footer for breaking changes) — `versioning` §4.
-5. Open a PR into `main`; the CI gates (`gofmt`, `go vet`, `go test -race`,
-   benchstat) must pass.
+5. Open a PR into `main`; the CI gates (`gofmt`, `go vet`, `go test -race` with
+   the coverage thresholds, fuzz smoke — all via `./scripts/verify.sh`) must
+   pass. Benchmarks are not a CI gate (performance §5).
 6. Delete the branch after merge.
 
 ### Changing a spec

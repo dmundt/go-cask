@@ -1,4 +1,4 @@
-# Benchmark evaluation — `BenchmarkStoreCodecHashRoundTrip`
+# Benchmark evaluation — `BenchmarkCodecPackageRoundTrip`
 
 ## Table of contents
 
@@ -19,7 +19,7 @@ This note summarizes the canonical benchmark matrix in [`store-codec-hash-roundt
 
 | Item | Value |
 |---|---|
-| Benchmark | `BenchmarkStoreCodecHashRoundTrip` |
+| Benchmark | `BenchmarkCodecPackageRoundTrip` |
 | Data source | [`store-codec-hash-roundtrip.json`](./store-codec-hash-roundtrip.json) |
 | Payload sizes | 64B, 256B, 1KiB, 4KiB, 16KiB, 64KiB, 256KiB, 1MiB |
 | Codecs | JSON, gzip, zlib, flate, gob, binary, cbor |
