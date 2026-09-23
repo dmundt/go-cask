@@ -124,6 +124,7 @@ coverage_targets=(
   "80|./cas/cache/mem"
   "80|./cas/cache/lru"
   "80|./cas/cache/prefetch"
+  "80|./cas/refs"
   "80|./cas/codec/json"
   "80|./cas/codec/gob"
   "80|./cas/hash/sha256"
