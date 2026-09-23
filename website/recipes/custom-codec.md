@@ -14,10 +14,22 @@ storage contract.
 ## The contract
 
 ```go
+package codec
+
+import "github.com/dmundt/go-cask/cas"
+
+// Codec is the two-method serialization contract a custom codec implements.
 type Codec[T any] interface {
     Encode(v T) ([]byte, error)
     Decode(data []byte) (T, error)
 }
+
+// The contract above and the shipped cas.Codec accept exactly each other's
+// implementations, so this listing cannot drift from the real interface.
+var (
+    _ cas.Codec[string] = Codec[string](nil)
+    _ Codec[string]     = cas.Codec[string](nil)
+)
 ```
 
 `Decode(Encode(v))` must equal `v` for every storable value.
@@ -58,14 +70,30 @@ var _ cas.CodecNamer = Codec{}
 ## Composing with a compression wrapper
 
 `cas/codec/gzip`, `cas/codec/zlib`, and `cas/codec/flate` each wrap an inner
-`Codec[T]`: they run the inner codec first, then compress the result.
+`Codec[T]`: they run the inner codec first, then compress the result. Swap
+`jsoncodec` below for the `notecodec` package above to compress that format
+instead of JSON:
 
 ```go
-inner := notecodec.New()
-compressed := gzip.New[*Note](inner)
+package example
 
-data, _ := compressed.Encode(&Note{Text: "hello world"})
-note, _ := compressed.Decode(data)
+import (
+    "fmt"
+
+    "github.com/dmundt/go-cask/cas/codec/gzip"
+    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+)
+
+type Note struct {
+    Text string `json:"text"`
+}
+
+func wrap() {
+    compressed := gzip.New(jsoncodec.New[*Note]())
+    data, _ := compressed.Encode(&Note{Text: "hello world"})
+    note, _ := compressed.Decode(data)
+    fmt.Println(note.Text, len(data))
+}
 ```
 
 ## Why this helps

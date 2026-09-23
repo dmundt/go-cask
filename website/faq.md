@@ -50,6 +50,10 @@ when read-open cost dominates, not to save disk space or inodes, which it does
 not. Any other storage engine works if it implements the six-method
 `Backend` interface (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`).
 
+To move stored objects between two backends, `cas/backend/snapshot` provides a
+portable `Export`/`Import` archive that works over any `Backend`; it is a
+migration and diagnostics helper, not a storage engine of its own.
+
 ## Is go-cask a replacement for files?
 
 No. It is a layer for stable object identity and integrity-aware storage.
