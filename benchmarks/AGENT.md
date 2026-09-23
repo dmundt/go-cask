@@ -22,7 +22,7 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 - Measure filesystem behavior only in explicit `FSBackend` cases using
   `b.TempDir()`.
 - Keep scale probes disabled unless `CASK_SCALE_OBJECTS` is a positive integer.
-- Do not add benchmark execution to CI or introduce a committed timing baseline.
+- Do not add benchmark execution to CI and do not add a scheduled/nightly benchmark job. The subtree keeps one committed, machine-specific reference dump (`data/baseline.txt`) that a maintainer refreshes by hand with `../scripts/bench-baseline.sh`; it is a comparison point, never a threshold or a gate (performance §5).
 
 ## Measurement rules
 
@@ -48,7 +48,7 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 
 ## Codec and hash matrix
 
-- `BenchmarkStoreCodecHashRoundTrip` is the canonical codec/hash comparison.
+- `BenchmarkCodecPackageRoundTrip` is the canonical codec/hash comparison.
 - Keep supported payload codecs represented: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`, and `cbor`.
 - Keep supported hashers represented: `sha256`, `sha512`, and `sha512_256`.
 - Use the same `testNote`, payload sizes, memory backend, and Put+Get operation
@@ -68,7 +68,7 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 ## Benchmark workflow
 
 - Validate benchmark logic with the smallest relevant scope: run the exact bench family
-  before broad sweeps. For the matrix, use `go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=5`.
+  before broad sweeps. For the matrix, use `go test ./benchmarks/ -run=^$ -bench='^BenchmarkCodecPackageRoundTrip$' -benchmem -count=5`.
 - After a benchmark run, check the JSON file parses cleanly (`python -m json.tool` or
   equivalent) before publishing it as the canonical result.
 - Preserve runner metadata in the JSON (`go version`, OS/arch, CPU, timestamp,

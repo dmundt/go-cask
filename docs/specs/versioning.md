@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v18
+version: v19
 ---
 
 # Versioning — go-cask
@@ -49,7 +49,7 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 ## 5. Release process
 
 1. Decide the bump from commits since the last tag (§4): any `BREAKING CHANGE` → MAJOR; new features → MINOR; fixes only → PATCH. Pre-releases use the version of the release they precede (`v0.1.0-alpha.1`, `v0.1.0-beta.1`, …).
-2. Verify on `main`: `gofmt -l .` clean, `go vet ./...`, `go test -race ./...`, and the benchmark suite reviewed against performance §5/§11 (there is deliberately **no** committed baseline and **no** CI gate — performance §4; do not expect a "benchstat gate").
+2. Verify on `main`: `gofmt -l .` clean, `go vet ./...`, `go test -race ./...`, and the benchmark suite reviewed against performance §5/§11 (there is deliberately **no** CI gate and no `benchstat` gate — performance §5; `benchmarks/data/baseline.txt` is a committed, machine-specific reference dump refreshed by hand, not a threshold).
 3. Update CHANGELOG.md (move `Unreleased` → the new version).
 4. Tag `git tag -a vX.Y.Z -m "vX.Y.Z"` on the module root commit; push branch + tag.
 5. (v2+ only) update the module path to `…/v2`, publish the `cas/v2/` subtree, tag `v2.X.Y`.

@@ -41,7 +41,7 @@ Serialize once: `Store.Put` marshals the envelope into one buffer, digests that 
 
 ## 5. Benchmark suite
 
-Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut`/`BenchmarkStoreGet` (64 B, 1 KiB, 1 MiB); memory- and `fs`-backend Put/Get; `BenchmarkStoreCodecHashRoundTrip` (`json`/`gzip`/`zlib`/`flate`/`gob`/`binary`/`cbor` × `sha256`/`sha512`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; optional `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut` (steady-state + cold-start, 64 B–1 MiB) and the read patterns `BenchmarkStoreGetHot`/`BenchmarkStoreGetCold`/`BenchmarkStoreGetMixed`; the raw byte path `BenchmarkBackendWriteRead` (`mem`/`fs` × steady-state/cold-start); the codec/hash matrix `BenchmarkCodecPackageRoundTrip` (`json`/`gzip`/`zlib`/`flate`/`gob`/`binary`/`cbor` × `sha256`/`sha512`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules; `benchmarks/README.md` is the run-and-read guide.
 
 ### 5.1 Optional Bloom acceleration
 
@@ -58,7 +58,7 @@ This rule keeps the optional optimization layer outside the core invariants whil
 - Benchmarks call `b.SetBytes()` only when one operation processes one payload of known size; operations such as `Exists`, `Delete`, `List`, `Stats`, digest parsing, and mixed concurrent workloads MUST NOT invent a byte count.
 - Store-logic benchmarks run against the in-memory `memory` backend (deterministic, no disk noise); disk behavior is covered by the `fs`-backend cases.
 - The codec/hash matrix MUST apply identical objects, sizes, backend, and Put+Get work to every combination. It is a comparative end-to-end benchmark, not a standalone codec or hash microbenchmark.
-- No committed baseline and **no CI gate** (shared CI runners are too noisy; allocation regressions are caught by P-03 and review). No other document may promise a "benchstat gate" — `nightly.yml` only records `-bench` output. Run on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
+- **No CI gate and no scheduled run.** CI runs no `-bench` (`ci.yml` has no benchmark job), and the repository has no nightly workflow at all — benchmark results are never a required check (shared CI runners are too noisy; allocation regressions are caught by P-03 and review). No other document may promise a "benchstat gate" or a nightly benchmark job. What exists instead is one committed, machine-specific reference dump — `benchmarks/data/baseline.txt` — plus two manual scripts: `scripts/bench-baseline.sh` re-captures the suite (`-count=1`), archives the raw output as `benchmarks/data/archive/baseline-<UTC-stamp>.txt`, and refreshes the canonical copy unless `--capture-only` is given; `scripts/bench-compare.sh` picks the baseline first, captures through `bench-baseline.sh --capture-only` into `benchmarks/data/current.txt`, never writes the canonical reference itself, and prints a `benchstat` diff when `benchstat` is installed (exit code 2 when it is not). A maintainer refreshes the reference by hand, on demand, on a quiet machine — never on a schedule and never per PR — and the dump is a comparison point, not a threshold. Run the suite on demand: `go test ./benchmarks/ -bench=. -benchmem -count=5` (the suite lives in `benchmarks/`; see `benchmarks/README.md`).
 - **State-scaling probes** (`BenchmarkScalePut/Get/Exists/List/Delete/Stats`) prefill a store to N, time the op at that size, and log a projection for 10^10 objects. Not part of CI twice over (CI runs no `-bench`, and each skips unless `CASK_SCALE_OBJECTS` is set), e.g. `CASK_SCALE_OBJECTS=1000000 go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v`.
 - The lock-free claim is exercised by `-race` tests and `BenchmarkParallelPutGet`.
 
@@ -143,7 +143,7 @@ Rolling-hash chunking for very large blobs (dedup at chunk granularity). Design 
 
 ## 11. Performance-test requirements
 
-Go benchmarks (with `-benchmem`) are the unit level. Scenario tests prove end-to-end scale; run every material core change (CI smoke: subset) and fully in nightly.
+Go benchmarks (with `-benchmem`) are the unit level. The scenario suite below is **aspirational**: no `cmd/perftest` harness, no `-tags=perftest` build tag, and no scenario runner exists in the repository, so T-01…T-08 do not run anywhere today. The scaled measurements that do exist are the opt-in `BenchmarkScale*` and `BenchmarkViewerObjectsScale` probes (§5 and `benchmarks/README.md` §4), which are manual and gated by `CASK_SCALE_OBJECTS`. CI runs neither benchmarks nor scenarios. The scenario suite is recorded in the deferred catalog (`extensions.md` §3) and is built only when a real need appears.
 
 ### 11.1 Scenarios
 
@@ -162,7 +162,7 @@ Go benchmarks (with `-benchmem`) are the unit level. Scenario tests prove end-to
 
 Throughput (objects/s, MiB/s), latency p50/p95/p99, allocs/op, peak RSS, disk usage, inode count, open FDs, mutex contention (`-mutexprofile`).
 
-### 11.3 Reference thresholds (defaults; calibrate on CI hardware)
+### 11.3 Reference thresholds (defaults; aspirational — nothing enforces them)
 
 | Metric | Target |
 |---|---|
@@ -174,7 +174,7 @@ Throughput (objects/s, MiB/s), latency p50/p95/p99, allocs/op, peak RSS, disk us
 
 ### 11.4 Report and environment
 
-Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× and take the median. Run Go benchmarks with `-benchmem`; review allocs/op deltas by hand (no committed baseline/CI gate, §5). Scenario tests run via a dedicated `cmd/perftest` harness or `-tags=perftest`, printing a `scenario / metric / target / result` table. Attach the table to PRs touching the core; nightly compares against the previous baseline and flags regressions.
+Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× and take the median. Run Go benchmarks with `-benchmem`; review allocs/op deltas by hand — there is no CI gate, and the committed `benchmarks/data/baseline.txt` is a manual reference, not a threshold (§5). There is no `cmd/perftest` harness and no `-tags=perftest` build tag: the `scenario / metric / target / result` table belongs to the aspirational suite above (deferred catalog, `extensions.md` §3), and no nightly job exists to compare runs against a previous baseline. When a measurement matters, attach it to the PR touching the core.
 
 ## 12. Checklist
 
@@ -185,5 +185,5 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 - [x] no reflection/`unsafe`/external speed dependencies
 - [x] profiling workflow documented and reproducible
 - [x] fan-out layout chosen per expected object count (§8.1)
-- [x] scenario tests T-01…T-08 exist and pass their thresholds
+- [ ] scenario tests T-01…T-08 do **not** exist — aspirational, deferred (`extensions.md` §3); only the env-gated `BenchmarkScale*` probes run today
 - [x] packfs ships behind the same `Backend` contract; its measured win (batched read opens) is benchmarked, and the unclaimed pieces (pack-level GC, space reclamation, O(packs) listing, inode reduction) are documented as not implemented rather than promised (§9, cas-core §4.14)

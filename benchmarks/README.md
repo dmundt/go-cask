@@ -2,12 +2,12 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v13
+version: v14
 ---
 
 # Benchmarks — go-cask
 
-The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; this file is the operator's run-and-read guide.
+The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` and there is no nightly workflow, so a benchmark result is never a required check (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; this file is the operator's run-and-read guide.
 
 ## Table of contents
 
@@ -54,13 +54,39 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `-timeout <dur>` | Whole-run timeout (default 10 min); `-timeout 0` for long prefills |
 | `CASK_BENCH_SUMMARY=1` | Emits the extra summary logs used for manual comparison and diagnosis; default output stays standard Go benchmark output |
 
-To capture a baseline artifact for a machine or branch, run:
+To refresh the reference dump for a machine or branch, run:
 
 ```bash
 ./scripts/bench-baseline.sh
 ```
 
-The script writes the raw benchmark output to `benchmarks/baseline.txt`. Keep that artifact alongside the machine details and compare future runs against it with `benchstat` or a similar diff tool.
+It runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1` and writes the capture to
+`benchmarks/data/archive/baseline-<UTC-stamp>.txt` (or to the path given as its first argument).
+Only a deliberate run **without** `--capture-only` refreshes the committed reference
+`benchmarks/data/baseline.txt`, and it archives the previous canonical dump under
+`benchmarks/data/archive/` first; `--capture-only` leaves the reference untouched. `-h`/`--help`
+prints usage, and an unknown option exits 2. That dump is one machine's raw `go test` output
+(currently a Windows amd64 `i7-13800H` run, 2026-09), so it is a comparison point, **not** a
+threshold and **not** a gate.
+
+To compare a fresh run against it, use:
+
+```bash
+./scripts/bench-compare.sh
+```
+
+It picks the baseline **before** capturing — the committed `benchmarks/data/baseline.txt`, else the
+newest file in `benchmarks/data/archive/` — then captures through `bench-baseline.sh --capture-only`
+(into `benchmarks/data/current.txt` by default) and never writes the canonical reference itself, so a
+comparison cannot overwrite what it compares against. Pass a baseline path, or a baseline and a
+current path, to compare other files. It exits 1 when no baseline exists or when baseline and current
+resolve to the same file, warns when the two captures are byte-identical, and exits 2 with the manual
+`diff -u` hint when `benchstat` is absent. Nothing is scheduled: a maintainer refreshes the reference
+by hand, on demand, on a quiet machine. Because the capture uses `-count=1`, treat the `benchstat`
+output as a coarse smoke comparison and use `-count=5` or more (§5) for a real conclusion.
+
+The scripts' ownership split is asserted by a stub-based regression test that `./scripts/verify.sh`
+runs as its `== helper script behaviour ==` step; it executes no real benchmark.
 
 ## 3. Regular perf suite
 
@@ -146,7 +172,7 @@ Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark
 The JSON file also records runner metadata and the `winner` list used below so future analyses can be repeated without re-editing the README by hand.
 
 ```powershell
-go test ./benchmarks/ -run=^$ -bench='^BenchmarkStoreCodecHashRoundTrip$' -benchmem -count=1
+go test ./benchmarks/ -run=^$ -bench='^BenchmarkCodecPackageRoundTrip$' -benchmem -count=1
 ```
 
 The canonical JSON in this repo is a fresh local snapshot, not a universal cross-machine truth. Use `-count=5` or more when you need a medians-based comparison on a stable machine.

@@ -207,8 +207,8 @@ Related specs that also constrain work in this repo:
   semver: versioned type names (`type@major`), coexisting model versions in
   one store, compatibility rules and migration.
 - `docs/specs/performance.md` — lock-free reads,
-  one-pass streaming hashing, allocation budgets, benchmark suite + CI
-  gates, profiling workflow.
+  one-pass streaming hashing, allocation budgets, benchmark suite (manual; no
+  CI gate) and profiling workflow.
 - `docs/specs/library-design.md` — lean-core contract:
   exported-surface budget, sentinel errors, no mutable globals, API shape,
   compatibility policy.
