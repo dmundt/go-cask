@@ -9,9 +9,17 @@ The module also resolves the site's build provenance and publishes it as
 (website/overrides/partials/copyright.html):
 
 - `SITE_BUILD_DATE` environment variable — the deployed revision's
-  committer date, ISO 8601. Normalized to UTC and rendered as `YYYY-MM-DD`,
-  so two builds of the same revision produce byte-identical footers.
+  committer date, ISO 8601. Rendered as the `YYYY-MM-DD` date that
+  timestamp names, with no zone conversion and no zone label: at day
+  granularity no zone is more correct than the offset the commit carries,
+  and a zone would only have to be named if a time were shown.
 - `SITE_REVISION` environment variable — the deployed revision, short form.
+
+Determinism comes from the source, not from the zone. `.github/workflows/
+website.yml` supplies the deployed commit's own timestamp (the offset is
+recorded inside the commit object), so every machine reads the same date
+out of one revision and two builds of that revision produce byte-identical
+footers — with or without any normalization.
 
 Neither is required: when one is absent the module falls back to the
 checkout's own `git log -1 --format=%cI` / `git rev-parse --short HEAD`, and
@@ -28,7 +36,14 @@ import subprocess
 
 
 def _parse_date(raw):
-    """Return a UTC `datetime.date` from an ISO 8601 timestamp, or None."""
+    """Return the `datetime.date` an ISO 8601 timestamp names, or None.
+
+    The date is taken exactly as written, offset and all. A timestamp
+    without an offset is still accepted; it needs no zone assumption here
+    because reading its date does not depend on one. Nothing is converted
+    between zones, so a commit made at `00:30 +02:00` on the 24th reports
+    the 24th, the same day the commit page and any changelog entry show.
+    """
     value = raw.strip()
     if not value:
         return None
@@ -38,9 +53,7 @@ def _parse_date(raw):
         parsed = datetime.datetime.fromisoformat(value)
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
-    return parsed.astimezone(datetime.timezone.utc).date()
+    return parsed.date()
 
 
 def _git(*args):
@@ -58,7 +71,7 @@ def _git(*args):
 
 
 def _build_date():
-    """The deployed revision's date in UTC as `YYYY-MM-DD`, or an empty string."""
+    """The deployed revision's date as `YYYY-MM-DD`, or an empty string."""
     parsed = _parse_date(os.environ.get("SITE_BUILD_DATE", ""))
     if parsed is None:
         parsed = _parse_date(_git("log", "-1", "--format=%cI"))
