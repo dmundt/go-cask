@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v4
+version: v5
 ---
 
 # Agent instructions — `scripts/`
@@ -25,6 +25,10 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
 - Keep docs and workflow references in sync when script behavior changes.
 - Do not add noisy background jobs or non-deterministic automation to the helper layer.
 - Prefer explicit, easy-to-read output over hidden side effects.
+- A script that owns a committed artifact must own it exclusively: when two
+  helpers can write the same file, one of them gains a mode that never touches
+  it, and a test in `verify.sh` pins the split (`test-bench-scripts.sh` is the
+  reference for `bench-baseline.sh` versus `bench-compare.sh`).
 
 ## Dependencies and scope
 
