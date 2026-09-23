@@ -16,6 +16,12 @@ import (
 // a parent-traversal path ("..", "../x", "a/../.."), and a volume root such as
 // "C:\" or "C:". A nested relative or absolute directory below that root is
 // accepted. It performs no I/O, so it needs no context.
+//
+// New runs it before creating anything, so a caller that goes through the
+// constructor never needs it. It stays exported for the caller that owns the
+// base path itself — a CLI flag, a config value, a path built from user input —
+// and wants to reject it before opening a backend (or before creating the
+// directory a non-fs backend needs).
 func ValidateBase(base string) error {
 	if strings.TrimSpace(base) == "" {
 		return fmt.Errorf("cas: empty store base")
@@ -38,6 +44,11 @@ func ValidateBase(base string) error {
 // EnsureBase creates the root directory for a store when it is missing. It
 // honors ctx: cancellation is checked before the base is validated and again
 // while the directory tree is created.
+//
+// New already validates and creates the base, so a caller that opens an
+// fs.Backend does not need this. It is the caller-facing pre-flight for a base
+// another backend receives directly, or for creating the directory before an
+// operation that needs it to exist.
 func EnsureBase(ctx context.Context, base string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -56,6 +67,13 @@ func EnsureBase(ctx context.Context, base string) error {
 // otherwise valid store; ctx is honored before each entry so a large sweep can
 // be canceled. A file that disappears during the sweep (a concurrent sweep, a
 // crash cleanup) is not an error.
+//
+// It is the same sweep Backend.Clean runs, for a caller that holds only the base
+// path — a maintenance step that reclaims crash leftovers before a store is
+// opened, or after a process died mid-write. It removes every matching file
+// beneath base, so base MUST be the caller's own store directory (ValidateBase
+// is applied first for that reason); Backend.Clean is the same sweep through an
+// already-open backend.
 func CleanupTemp(ctx context.Context, base string) error {
 	if err := ctx.Err(); err != nil {
 		return err

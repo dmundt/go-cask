@@ -161,6 +161,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `lru.Cache` no longer embeds `memory.CachedStore`: it exposes the methods it
   owns rather than the wrapped type's entire method set, and reaches the wrapped
   store only through `CachedStore()`.
+- `fs.New` and `packfs.New` validate the store directory before creating
+  anything: a base that is empty or whitespace, `.`, the filesystem root, a
+  volume root (`C:`), or a parent-traversal path (`..`, `../store`) is rejected,
+  where it previously opened a backend that owned the caller's whole working
+  directory or drive. A nested directory is still a valid base — only the caller
+  can tell whether it already belongs to another store — so
+  `fs.New(filepath.Join(root, name))` and `packfs`'s own loose sub-store are
+  unaffected.
 - `gitlike.NewPreloader` and `fs.EnsureBase`/`fs.CleanupTemp` take a
   `context.Context`, so background preloading and large temporary-file sweeps
   honour the caller's cancellation.

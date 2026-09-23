@@ -43,6 +43,52 @@ func TestValidateBase(t *testing.T) {
 	}
 }
 
+// TestNewRejectsUnusableBases pins the constructor's half of the base policy:
+// New validates the base before it creates anything, so the shapes ValidateBase
+// rejects never reach MkdirAll. Each rejected path is cleaned to "."/"/" or a
+// parent of the working directory, so a permissive New would have created a
+// store base there; the test runs from an empty directory and asserts it stayed
+// empty.
+func TestNewRejectsUnusableBases(t *testing.T) {
+	work := t.TempDir()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(os.TempDir()) })
+
+	rejected := []string{"", "   ", ".", string(filepath.Separator), "..", "../x", filepath.Join("a", "..", "..")}
+	if vol := filepath.VolumeName(filepath.Clean(os.TempDir())); vol != "" {
+		// "C:" and "C:\" are volume roots, not store directories.
+		rejected = append(rejected, vol, vol+string(filepath.Separator))
+	}
+	for _, base := range rejected {
+		if _, err := New(base); err == nil {
+			t.Errorf("New(%q) = nil error, want rejection", base)
+		}
+		entries, err := os.ReadDir(work)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("New(%q) created %v, want nothing created", base, entries)
+		}
+	}
+}
+
+// TestNewAcceptsNestedBase pins the other half: a directory nested below the
+// filesystem root is a valid base, however deep, because only the caller can say
+// whether it already belongs to another store. packfs relies on it — its loose
+// sub-store is an fs.Backend at <base>/loose.
+func TestNewAcceptsNestedBase(t *testing.T) {
+	nested := filepath.Join(t.TempDir(), "nested", "store")
+	if _, err := New(nested); err != nil {
+		t.Fatalf("New(%q) = %v, want nil", nested, err)
+	}
+	if fi, err := os.Stat(nested); err != nil || !fi.IsDir() {
+		t.Fatalf("New must create the nested base: stat err = %v", err)
+	}
+}
+
 func TestEnsureBaseAndCleanupTemp(t *testing.T) {
 	ctx := context.Background()
 	base := filepath.Join(t.TempDir(), "store")

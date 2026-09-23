@@ -12,6 +12,7 @@ The project’s canonical distinction is: `cas/backend/fs` is the filesystem bac
 - The backend remains opt-in and app-selected.
 - The default path stays loose-object `fs` storage for normal workloads.
 - A pack layout still uses `cas.Digest` as the object identity; the pack file only changes the on-disk layout.
+- The base directory belongs to exactly one store: it holds the loose tree (`<base>/loose`), the pack directory (`<base>/packs`) and the pack index. `packfs.New` validates it with `fs.ValidateBase` before creating anything — an empty path, `.`, a filesystem or volume root, or a parent-traversal path is rejected; a nested directory is accepted.
 - This is a storage backend, not the chunk/manifest helper package in [../pack](../../pack/README.md). The helper package is for payload splitting and metadata; the backend is for durable append-only object storage.
 
 ## Typical use

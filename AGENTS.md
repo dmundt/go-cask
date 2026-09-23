@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v30
+version: v31
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -556,7 +556,13 @@ gofmt -l .
   files there — the examples' `HEAD`/`INDEX` refs are safe only because they are
   neither digest-named nor `.tmp`. Several stores under one root are separate
   base directories, `fs.New(filepath.Join(root, name))`; there is no
-  `fs.WithNamespace` option (extensions §3).
+  `fs.WithNamespace` option (extensions §3). `fs.New` (and `packfs.New`) runs
+  `fs.ValidateBase` before creating the base, so an empty path, `.`, a
+  filesystem or volume root, or a parent-traversal path is rejected up front;
+  the check is pure path arithmetic and does no I/O, so the nesting half of the
+  rule is still the caller's to keep. `fs.ValidateBase`, `fs.EnsureBase` and
+  `fs.CleanupTemp` are the exported pre-flight for a caller that owns the base
+  path before a backend exists (cas-core §4.4).
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
   (cas-core §8 decision 1, `cas/envelope.go`), enabling type-directed resolution

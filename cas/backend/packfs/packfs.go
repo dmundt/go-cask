@@ -248,6 +248,12 @@ var _ cas.BatchGetter = (*Backend)(nil)
 
 // New creates a pack-backed filesystem backend. It stays opt-in: without
 // WithEnabled, the backend behaves like the regular loose fs backend.
+//
+// Like the loose backend it wraps, and before it creates anything, it checks
+// basePath with fs.ValidateBase: the base owns its loose tree, its pack
+// directory and its index exclusively (fs.List/Stats/Clean work beneath it), so
+// an empty path, ".", "..", a parent-traversal path or a volume root is
+// rejected.
 func New(basePath string, opts ...Option) (*Backend, error) {
 	return newWithOps(basePath, realOps(), opts...)
 }
@@ -258,6 +264,9 @@ func newWithOps(basePath string, op ops, opts ...Option) (*Backend, error) {
 	cfg := config{packMaxBytes: 64 << 20, packMaxEntries: 10000}
 	for _, o := range opts {
 		o(&cfg)
+	}
+	if err := fsbackend.ValidateBase(basePath); err != nil {
+		return nil, err
 	}
 	if err := op.mkdirAllDo(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack base: %w", err)
