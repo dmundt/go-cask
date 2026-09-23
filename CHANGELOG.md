@@ -48,6 +48,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   envelope header on a stream: the payload is neither read nor allocated,
   whatever its size, so enumerating a store by type is `List` plus `Type`
   instead of a decode per object.
+- `cas.EnvelopeVersion` is the envelope format version the current build writes,
+  and `cas.PeekVersion`/`Store.Version` report a stored frame's version from its
+  leading byte alone — one byte, whatever the payload size, returned **verbatim
+  even when this build does not know that version**. A store holding objects of
+  more than one envelope layout is therefore navigable without string-matching an
+  error: compare the byte with `cas.EnvelopeVersion` to tell "written by a newer
+  format" from "damaged bytes".
 - `cas.CodecNamer` lets a codec declare the wire format it produces (`json`,
   `gzip+json`, `""` for none), and `cas.ErrCodecMismatch` reports reading an
   object that was written with a different codec. The store resolves the tag

@@ -23,7 +23,8 @@ import (
 // (envelope.go, cas-core §8 decision 1), so the versioned type name (e.g.
 // "commit@1") and the codec identity tag travel with the bytes without a side
 // registry. The digest covers the whole envelope, so the type is part of the
-// address.
+// address. The type name and the frame's format version are each readable on
+// their own — Type and Version — so neither costs a payload read.
 //
 // The typed layer is constrained: T MUST implement Object[T]. The type
 // system therefore proves that every value a Store handles is an object —
@@ -374,6 +375,40 @@ func (s *Store[T]) Type(ctx context.Context, d Digest) (string, error) {
 		return "", fmt.Errorf("cas: close object: %w", err)
 	}
 	return typeName, nil
+}
+
+// Version reports the envelope format version stored at d without decoding the
+// payload or reading it. It opens the object, reads the frame's leading byte
+// (PeekVersion) and closes the reader, so a large object costs a single-byte
+// read rather than a full read and allocation.
+//
+// It reports the version as stored, whether or not this build knows it: a store
+// legitimately holds frames of more than one envelope layout, and the version
+// byte is the only thing that says which. A caller compares it against
+// EnvelopeVersion to tell "written by a newer format" from "corrupt bytes"
+// without matching an error message. An absent object returns the backend's
+// ErrNotFound, and a stream with no byte at all returns ErrCorrupt naming the
+// field.
+func (s *Store[T]) Version(ctx context.Context, d Digest) (byte, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := s.check(d, "store: version"); err != nil {
+		return 0, err
+	}
+	rc, err := s.backend.Get(ctx, d)
+	if err != nil {
+		return 0, err
+	}
+	version, err := PeekVersion(rc)
+	if err != nil {
+		_ = rc.Close() // the header error is the one worth reporting
+		return 0, err
+	}
+	if err := rc.Close(); err != nil {
+		return 0, fmt.Errorf("cas: close object: %w", err)
+	}
+	return version, nil
 }
 
 // Exists reports whether the object is stored. Delegates to the backend.
