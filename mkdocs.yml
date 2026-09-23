@@ -1,7 +1,6 @@
 site_name: go-cask
 site_description: Content-addressable storage for Go
 site_url: https://go-cask.dev/
-copyright: © 2026 Daniel Mundt · <a href="/impressum/">Impressum</a> · <a href="/privacy/">Privacy</a> · <a href="https://github.com/dmundt/go-cask">GitHub</a>
 
 docs_dir: website
 site_dir: site
@@ -33,6 +32,7 @@ nav:
 
 theme:
   name: material
+  custom_dir: website/overrides
   font: false
   features:
     - navigation.sections
@@ -78,3 +78,10 @@ extra_css:
 
 extra:
   generator: false
+  # Filled in by website/macros.py before any page or template renders, from
+  # the SITE_BUILD_DATE and SITE_REVISION environment variables with a git
+  # fallback; empty here so `mkdocs build --strict` accepts a configuration
+  # that has not been through the hook yet. The footer partial overrides this
+  # pair and omits whichever value is empty.
+  SITE_BUILD_DATE: ''
+  SITE_REVISION: ''
