@@ -37,9 +37,9 @@ func TestCapabilitiesOfMem(t *testing.T) {
 	}
 }
 
-// TestCapabilitiesOfPackfs pins packfs.Backend the same way as mem: it packs
-// several objects into one append-only file, so it has no per-object temp
-// scratch state to clean and no per-object mtime to report.
+// TestCapabilitiesOfPackfs pins packfs.Backend as implementing the optional
+// maintenance interfaces: it keeps scratch state in the pack directory and can
+// report pack-file metadata for age-based sweep retention.
 func TestCapabilitiesOfPackfs(t *testing.T) {
 	raw, err := packfs.New(t.TempDir(), packfs.WithEnabled())
 	if err != nil {
@@ -47,8 +47,10 @@ func TestCapabilitiesOfPackfs(t *testing.T) {
 	}
 	defer raw.Close()
 	got := cas.CapabilitiesOf(raw)
-	want := cas.Capabilities{Verify: true, Sweep: true, Clean: false, Stat: false}
+	want := cas.Capabilities{Verify: true, Sweep: true, Clean: true, Stat: true}
 	if got != want {
 		t.Fatalf("CapabilitiesOf(packfs) = %+v, want %+v", got, want)
 	}
+	var _ cas.Cleaner = raw
+	var _ cas.Statter = raw
 }
