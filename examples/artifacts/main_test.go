@@ -172,7 +172,7 @@ func TestRunCommands(t *testing.T) {
 	if !strings.Contains(stdout.String(), "deduplicated: false") {
 		t.Fatalf("put out=%q", stdout.String())
 	}
-	hash := strings.Split(stdout.String(), " ")[0]
+	hash, _, _ := strings.Cut(stdout.String(), " ")
 	stdout.Reset()
 	stderr.Reset()
 

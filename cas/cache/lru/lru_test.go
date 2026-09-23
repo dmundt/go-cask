@@ -40,7 +40,7 @@ func TestCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	var hs []cas.Digest
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}
 	for _, h := range hs {
@@ -74,7 +74,7 @@ func TestCacheBoundViaAllAccessors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var hs []cas.Digest
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}
 	for _, h := range hs {
@@ -167,7 +167,7 @@ func TestRepeatedGetOfMRUSurvivesEvictions(t *testing.T) {
 		}
 	}
 	// Repeatedly access a so it is always most-recently used.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if _, err := c.Get(ctx, hA); err != nil {
 			t.Fatal(err)
 		}
@@ -202,7 +202,7 @@ func TestCacheBoundViaWarmupPreload(t *testing.T) {
 		t.Fatal(err)
 	}
 	var hs []cas.Digest
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		hs = append(hs, putItem(t, s, string(rune('a'+i))))
 	}
 

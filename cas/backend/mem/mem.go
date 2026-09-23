@@ -85,10 +85,7 @@ func (m *Backend) budget(key string) (int64, bool) {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	b := m.maxBytes - (m.usedBytes - int64(len(m.objects[key])))
-	if b < 0 {
-		b = 0
-	}
+	b := max(m.maxBytes-(m.usedBytes-int64(len(m.objects[key]))), 0)
 	return b, true
 }
 

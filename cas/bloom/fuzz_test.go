@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -51,7 +52,7 @@ func FuzzGuardRoundTrip(f *testing.F) {
 			t.Fatalf("NewGuard() error = %v", err)
 		}
 		d := cas.NewDigest(in)
-		payload := append([]byte(nil), in...)
+		payload := slices.Clone(in)
 
 		if err := guard.Put(ctx, d, io.NopCloser(bytes.NewReader(payload))); err != nil {
 			t.Fatalf("Put() error = %v", err)

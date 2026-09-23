@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -402,7 +403,7 @@ func TestMemoryBackendRestoreRejectsMalformedMetadata(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			data := append([]byte(nil), snapshot.Bytes()...)
+			data := slices.Clone(snapshot.Bytes())
 			tc.edit(data)
 			if err := New().Restore(ctx, bytes.NewReader(data)); err == nil {
 				t.Fatal("Restore must reject malformed metadata")
@@ -426,7 +427,7 @@ func TestMemoryBackendRestoreDoesNotAllocateDeclaredPayloadSize(t *testing.T) {
 	if err := source.Snapshot(ctx, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	data := append([]byte(nil), snapshot.Bytes()...)
+	data := slices.Clone(snapshot.Bytes())
 	binary.BigEndian.PutUint64(data[18:26], 1<<40) // declared total
 	binary.BigEndian.PutUint64(data[34:42], 1<<40) // payload size
 
@@ -448,7 +449,7 @@ func TestMemoryBackendRestoreIsAtomicOnInvalidSnapshot(t *testing.T) {
 	if err := New().Snapshot(ctx, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	corrupt := append([]byte(nil), snapshot.Bytes()...)
+	corrupt := slices.Clone(snapshot.Bytes())
 	corrupt[0] ^= 0xff
 	if err := b.Restore(ctx, bytes.NewReader(corrupt)); err == nil {
 		t.Fatal("Restore with invalid magic must fail")
@@ -479,7 +480,7 @@ func TestMemoryBackendRestoreValidatesLimitsAndDuplicates(t *testing.T) {
 		t.Fatal("Restore over max size must fail")
 	}
 
-	duplicate := append([]byte(nil), snapshot.Bytes()...)
+	duplicate := slices.Clone(snapshot.Bytes())
 	count := binary.BigEndian.Uint64(duplicate[10:18])
 	binary.BigEndian.PutUint64(duplicate[10:18], count+1)
 	total := binary.BigEndian.Uint64(duplicate[18:26])
@@ -519,7 +520,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	chunk := min(len(p), c.n-c.read)
-	for i := 0; i < chunk; i++ {
+	for i := range chunk {
 		p[i] = 'x'
 	}
 	c.read += chunk
@@ -614,7 +615,7 @@ func TestMemoryBackendUnboundedDefault(t *testing.T) {
 	ctx := context.Background()
 	b := New() // 0 = unbounded
 	var h cas.Digest
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		payload := strings.Repeat("x", 1024)
 		nh := sha256.Of([]byte(payload))
 		if err := b.Put(ctx, nh, strings.NewReader(payload)); err != nil {

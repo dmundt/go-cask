@@ -62,7 +62,7 @@ func fillViewerObjects(b *testing.B, backend *fs.Backend, count int) {
 	b.Helper()
 	ctx := context.Background()
 	payload := make([]byte, 64)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		binary.BigEndian.PutUint64(payload, uint64(i))
 		for j := 8; j < len(payload); j++ {
 			payload[j] = byte(i*(j+1) + j)

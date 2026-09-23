@@ -128,7 +128,7 @@ func Import(ctx context.Context, dst cas.Backend, r io.Reader) error {
 
 	seen := make(map[string]struct{})
 	var lengths [recordHeaderSize]byte
-	for i := uint64(0); i < count; i++ {
+	for range count {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

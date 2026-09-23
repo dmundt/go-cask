@@ -9,10 +9,11 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/gitlike"
@@ -74,11 +75,11 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		rep.counts[state]++
 	}
 	rep.total = len(digests)
-	sort.Slice(rep.rows, func(i, j int) bool {
-		if rep.rows[i].state != rep.rows[j].state {
-			return rep.rows[i].state < rep.rows[j].state
+	slices.SortFunc(rep.rows, func(a, b auditRow) int {
+		if c := cmp.Compare(a.state, b.state); c != 0 {
+			return c
 		}
-		return rep.rows[i].digest < rep.rows[j].digest
+		return cmp.Compare(a.digest, b.digest)
 	})
 	return rep, nil
 }

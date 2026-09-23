@@ -21,10 +21,7 @@ func formatWrittenAt(written, now time.Time) string {
 	if written.IsZero() {
 		return ""
 	}
-	age := now.Sub(written)
-	if age < 0 {
-		age = 0
-	}
+	age := max(now.Sub(written), 0)
 	minutes := int(age / time.Minute)
 	if minutes < 60 {
 		return fmt.Sprintf("%dm ago", minutes)

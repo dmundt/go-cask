@@ -115,7 +115,7 @@ func scaleFill(b *testing.B, ctx context.Context, backend cas.Backend, n int, of
 	b.Helper()
 	hs := make([]cas.Digest, n)
 	p := make([]byte, scaleObjSize)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		scalePayload(p, i)
 		h := of(p)
 		hs[i] = h

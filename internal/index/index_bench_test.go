@@ -18,8 +18,8 @@ func BenchmarkBuildSnapshotScale(b *testing.B) {
 				b.Fatal(err)
 			}
 			ctx := context.Background()
-			for i := 0; i < count; i++ {
-				payload := []byte(fmt.Sprintf("%06d", i))
+			for i := range count {
+				payload := fmt.Appendf(nil, "%06d", i)
 				envelope := append([]byte{1, byte(6)}, payload...)
 				digest := sha256.Of(envelope)
 				if err := backend.Put(ctx, digest, bytes.NewReader(envelope)); err != nil {

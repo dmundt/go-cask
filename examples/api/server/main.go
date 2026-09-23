@@ -38,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 	tokenMap := map[string]string{}
-	for _, pair := range strings.Split(*tokens, ",") {
+	for pair := range strings.SplitSeq(*tokens, ",") {
 		role, tok, ok := strings.Cut(pair, "=")
 		if ok {
 			tokenMap[strings.TrimSpace(tok)] = strings.TrimSpace(role)

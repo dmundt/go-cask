@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -138,11 +139,9 @@ func (s *server) requireRole(roles []string, next http.HandlerFunc) http.Handler
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
-		for _, want := range roles {
-			if role == want {
-				next(w, r)
-				return
-			}
+		if slices.Contains(roles, role) {
+			next(w, r)
+			return
 		}
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 	}

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -148,7 +149,7 @@ func previewCorruptOrdinal(ordinal int) bool {
 // previewTamper flips a payload byte, leaving the envelope header intact so the
 // object still reports its type while failing hash verification.
 func previewTamper(data []byte) []byte {
-	tampered := append([]byte(nil), data...)
+	tampered := slices.Clone(data)
 	tampered[len(tampered)-1] ^= 0xff
 	return tampered
 }

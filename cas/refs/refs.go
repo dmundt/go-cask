@@ -16,6 +16,7 @@
 package refs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -143,7 +144,7 @@ func ValidateName(name string) error {
 	if strings.HasPrefix(clean, "/") || filepath.IsAbs(name) {
 		return fmt.Errorf("%w: %q is an absolute path", ErrInvalidName, name)
 	}
-	for _, part := range strings.Split(clean, "/") {
+	for part := range strings.SplitSeq(clean, "/") {
 		switch {
 		case part == "":
 			return fmt.Errorf("%w: %q has an empty path segment", ErrInvalidName, name)
@@ -279,7 +280,7 @@ func (s *Store) List(ctx context.Context) ([]Ref, error) {
 		if rel == "." {
 			return nil
 		}
-		top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+		top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
 		if top == logSubdir {
 			if de.IsDir() {
 				return filepath.SkipDir
@@ -300,7 +301,7 @@ func (s *Store) List(ctx context.Context) ([]Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b Ref) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 

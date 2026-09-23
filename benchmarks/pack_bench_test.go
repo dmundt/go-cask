@@ -55,13 +55,6 @@ func BenchmarkPackManifestRoundTrip(b *testing.B) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func BenchmarkPackManifestSaveLoadFile(b *testing.B) {
 	payload := pack.Data{"kind": "artifact", "owner": "team-a", "note": benchText(4*1024, 9)}
 	b.ReportAllocs()

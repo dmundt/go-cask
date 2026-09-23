@@ -185,7 +185,7 @@ const (
 )
 
 func benchmarkWarmup(fn func()) {
-	for i := 0; i < benchmarkWarmupOps; i++ {
+	for range benchmarkWarmupOps {
 		fn()
 	}
 }

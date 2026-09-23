@@ -297,7 +297,7 @@ func (s *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, error) {
 	const attempts = 20
 	var err error
-	for i := 0; i < attempts; i++ {
+	for range attempts {
 		var f *os.File
 		f, err = open(path)
 		if err == nil {
@@ -443,11 +443,11 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 // isTempFile reports whether name is an object temp file: "<hex>.tmp" or a
 // collision fallback "<hex>.tmp.<n>" (createTempExcl).
 func isTempFile(name string) bool {
-	i := strings.Index(name, ".tmp")
-	if i < 0 {
+	_, after, ok := strings.Cut(name, ".tmp")
+	if !ok {
 		return false
 	}
-	rest := name[i+len(".tmp"):]
+	rest := after
 	if rest == "" {
 		return true
 	}

@@ -115,7 +115,7 @@ func TestSetAppendsReflogEntry(t *testing.T) {
 func TestLogRespectsLimit(t *testing.T) {
 	ctx := context.Background()
 	s := mustOpen(t)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if err := s.Set(ctx, "main", digest(string(rune('a'+i)))); err != nil {
 			t.Fatal(err)
 		}

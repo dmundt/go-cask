@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas/hash/sha256"
@@ -53,7 +54,7 @@ func FuzzVerify(f *testing.F) {
 			t.Fatalf("intact object must verify: %v", err)
 		}
 		// Simulate bit rot: overwrite the stored file with different bytes.
-		corrupt := append([]byte(nil), content...)
+		corrupt := slices.Clone(content)
 		if len(corrupt) == 0 {
 			corrupt = []byte{0}
 		} else {

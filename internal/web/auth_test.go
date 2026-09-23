@@ -109,7 +109,7 @@ func TestDirectTokenLogin(t *testing.T) {
 
 func TestLoginThrottle(t *testing.T) {
 	ts, _ := newTestServer(t)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 		if err != nil {
 			t.Fatal(err)
@@ -161,7 +161,7 @@ func TestLoginRejectsEmptyToken(t *testing.T) {
 func TestThrottleExponentialBackoff(t *testing.T) {
 	const window = 50 * time.Millisecond
 	th := newThrottle(2, window)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if !th.allow("ip") {
 			t.Fatalf("attempt %d blocked before the budget was spent", i+1)
 		}
@@ -194,7 +194,7 @@ func TestThrottleConcurrentBudget(t *testing.T) {
 	th := newThrottle(5, time.Minute)
 	var allowed atomic.Int64
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

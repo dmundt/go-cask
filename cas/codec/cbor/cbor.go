@@ -361,7 +361,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 		}
 		items := make([]any, 0)
 		cursor := payloadStart
-		for i := uint64(0); i < length; i++ {
+		for range length {
 			item, rest, err := decodeOne(data[cursor:])
 			if err != nil {
 				return nil, nil, err
@@ -378,7 +378,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 		}
 		m := make(map[string]any)
 		cursor := payloadStart
-		for i := uint64(0); i < length; i++ {
+		for range length {
 			key, rest, err := decodeOne(data[cursor:])
 			if err != nil {
 				return nil, nil, err

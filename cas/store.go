@@ -49,8 +49,7 @@ type Store[T Object[T]] struct {
 	codec     Codec[T]
 	codecName string
 	hasher    Hasher
-	closeOnce sync.Once
-	closeErr  error
+	closeFn   func() error
 }
 
 // New creates a Store[T] over backend with codec, hashing through hasher. It
@@ -70,7 +69,16 @@ type Store[T Object[T]] struct {
 // ErrCodecMismatch rather than as a decode failure. A codec that declares no tag
 // writes an empty tag and reads any tag without complaint.
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T] {
-	return &Store[T]{backend: backend, codec: codec, codecName: codecNameOf(codec), hasher: hasher}
+	s := &Store[T]{backend: backend, codec: codec, codecName: codecNameOf(codec), hasher: hasher}
+	// The close result is memoised, so the backend is closed exactly once and
+	// every caller observes the first error (sync.OnceValue, not OnceFunc).
+	s.closeFn = sync.OnceValue(func() error {
+		if closer, ok := backend.(io.Closer); ok {
+			return closer.Close()
+		}
+		return nil
+	})
+	return s
 }
 
 // codecNameOf resolves a codec's optional identity tag (CodecNamer): a codec
@@ -194,18 +202,10 @@ func (s *Store[T]) Put(ctx context.Context, obj T) (Digest, error) {
 // error. A backend that needs no cleanup makes it a no-op, so defer
 // store.Close() is always safe.
 func (s *Store[T]) Close() error {
-	if s == nil {
+	if s == nil || s.closeFn == nil {
 		return nil
 	}
-	s.closeOnce.Do(func() {
-		if s.backend == nil {
-			return
-		}
-		if closer, ok := s.backend.(io.Closer); ok {
-			s.closeErr = closer.Close()
-		}
-	})
-	return s.closeErr
+	return s.closeFn()
 }
 
 // PutDedup is Put that first checks whether the content already exists; it

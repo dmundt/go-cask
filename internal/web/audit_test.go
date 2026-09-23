@@ -81,7 +81,7 @@ func TestAuditLogNamesTheSession(t *testing.T) {
 			t.Fatalf("audit log missing %q:\n%s", want, lines)
 		}
 	}
-	for _, line := range strings.Split(strings.TrimSpace(lines), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(lines), "\n") {
 		if !strings.Contains(line, "viewer login") && !strings.Contains(line, "viewer audit") {
 			continue
 		}
