@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v26
+version: v27
 ---
 
 # CLI — go-cask
@@ -25,7 +25,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
   `meta`/`stats`/`verify`/`gc`/`prune`/`clean` work over either backend
   (backend-architecture §5). Without the flag the CLI behaves exactly as before.
 - The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). There is no `-algo` flag — the core names no algorithm (cas-core §4.2).
-- `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). The startup admin token is generated and shown once on stderr **only when stderr is an interactive terminal**, or supplied by the operator with `-token-file`/`CASK_VIEWER_TOKEN`; it is never logged at any level (§4, viewer-security §5.1, §9, §11). A config file is deferred.
+- `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). The startup admin token is generated and shown once on **stdout** — on an interactive stdout, or in any run that asks for it with `-show-token` — or supplied by the operator with `-token-file`/`CASK_VIEWER_TOKEN`; it is never logged at any level (§4, viewer-security §5.1, §9, §11). A non-loopback bind prints no login link, because the session cookie is always `Secure` (viewer-security §7); the notice names the bind and the `https://` expectation instead. A config file is deferred.
 
 ## 2. Subcommands
 
@@ -41,7 +41,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
 | `seed-preview [-count <n>] [-hash-algo <name>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
-| `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-token-file <path>] [-trusted-proxy <ip\|cidr,...>] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3) — what the browser then shows is explained on the [viewer page](../../website/viewer.md); the startup admin token is **never logged** at any level; a generated token is shown once on stderr only when stderr is an interactive terminal, and an unattended deployment supplies its own with `-token-file <path>` or `CASK_VIEWER_TOKEN` (`-token-file` wins) without it ever being echoed; then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; `-trusted-proxy` lists the reverse proxies whose forwarded client address the login throttle may believe (viewer-security §5.2) — empty, the default, believes none and keys the throttle on the direct peer, an entry is an IP, an `ip:port`, or a CIDR block, and a malformed entry fails startup (exit 1); refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-token-file <path>] [-trusted-proxy <ip\|cidr,...>] [-allow-insecure-bind] [-show-token] [-no-open]` | start the embedded viewer (backend-architecture §3) — what the browser then shows is explained on the [viewer page](../../website/viewer.md); the startup admin token is **never logged** at any level; a generated token is shown once on **stdout**, on an interactive stdout or in any run that passes `-show-token`, while `-show-token=false` suppresses the display and an absent flag keeps the terminal heuristic, and an unattended deployment supplies its own with `-token-file <path>` or `CASK_VIEWER_TOKEN` (`-token-file` wins) without it ever being echoed; then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; `-trusted-proxy` lists the reverse proxies whose forwarded client address the login throttle may believe (viewer-security §5.2) — empty, the default, believes none and keys the throttle on the direct peer, an entry is an IP, an `ip:port`, or a CIDR block, and a malformed entry fails startup (exit 1); refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold, and the notice prints the bind and that `https://` expectation instead of a login link that could not log anyone in; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).
@@ -97,7 +97,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 - Default output is plain text: one hash per line for `put`/`list`; human-readable summaries for `stats`/`meta`/`verify`/`gc`/`prune`.
 - `-json` switches to machine-readable JSON: `put` → `{"hash": "sha256:hexdigest", "deduplicated": bool}`; `list` → `{"total": n, "objects": [{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n}, …]}`; `meta` → `{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n, "type": "…"}`. `"algorithm"` is the client's constant, not something the core reports.
-- Errors go to stderr, never stdout.
+- Errors go to stderr, never stdout. The viewer's one-time login notice (§1, §2) is deliberate command output, so it goes to stdout.
 
 | Exit | Meaning |
 |---|---|
@@ -107,15 +107,16 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-token-file`, `-trusted-proxy`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-token-file`, `-trusted-proxy`, `-allow-insecure-bind`, `-show-token` (viewer: display the generated token's one-time login hint even without a terminal; `-show-token=false` never shows it), `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
 - `-backend` accepts `fs` (default) or `packfs`; anything else is a usage error (exit 2). An absent flag is not the same as an unknown one: it selects the documented default without passing through validation.
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
-- No secrets in output: the startup token is never logged at any level and never echoed; the one place it is displayed is the one-time interactive-terminal login hint, and `-token-file`/`CASK_VIEWER_TOKEN` supply it unattended. Errors name the flag or the file, never the token (viewer-security §5.1, §9, §11).
-- No secrets in output: tokens are never echoed; errors never include the token.
+- No secrets in output: the startup token is never logged at any level and never echoed; the one place it is displayed is the one-time login hint on **stdout** — on an interactive stdout, or in any run that passes `-show-token` — and `-token-file`/`CASK_VIEWER_TOKEN` supply it unattended. Errors name the flag or the file, never the token (viewer-security §5.1, §9, §11).
 - The viewer's token URL is an acceptance contract, not a display one: it signs in
   only from the viewer's own origin — the URL the browser opens, or a same-origin
   form or link — and a cross-site request bearing it is refused with 403 and an
-  empty body (viewer-security §5.1).
+  empty body (viewer-security §5.1). It is printed only for a loopback bind: the
+  session cookie is always `Secure` (viewer-security §7), so a non-loopback bind
+  prints the bind and the `https://` expectation instead.
 - Std-lib only (`flag` package); documented per coding-guidelines §7.
 
 ## 5. Checklist
@@ -130,7 +131,8 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - [x] `-backend fs|packfs` selects the storage backend; every store operation runs over either
 - [x] `verify`/`gc`/`prune`/`clean` work over a packed store, or fail with `cas.ErrUnsupported` naming the operation and the backend
 - [x] The store is closed on the write path; `web` requires the `fs` backend
-- [x] Plain text by default, `-json` on request; errors on stderr
+- [x] Plain text by default, `-json` on request; errors on stderr; the viewer's login notice on stdout
 - [x] Exit codes 0/1/2 per §3
 - [x] Streaming for large objects; no token leakage
-- [x] The startup token is never logged at any level; shown once on an interactive terminal, or supplied via `-token-file`/`CASK_VIEWER_TOKEN` (viewer-security §5.1, §9, §11)
+- [x] The startup token is never logged at any level; shown once on stdout — an interactive terminal, or any run that passes `-show-token`, with `-show-token=false` suppressing it — or supplied via `-token-file`/`CASK_VIEWER_TOKEN` (viewer-security §5.1, §9, §11)
+- [x] A non-loopback bind prints the bind and the `https://` expectation instead of a login link that could not hold a session (viewer-security §7)

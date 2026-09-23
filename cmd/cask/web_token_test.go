@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -69,33 +70,290 @@ func installRecorder(t *testing.T) *recordingHandler {
 
 // TestAnnounceLoginNeverLogsToken is the regression guard for issue #179: the
 // startup token may reach the operator's terminal, but no slog handler may ever
-// see it, at any level. It fails if any log call in the announcement carries
-// the token — the code before this fix did exactly that with
+// see it, at any level — and neither may it see the login link that carries the
+// token. It fails if any log call in the announcement carries either — the code
+// before the #179 fix did exactly that with
 // slog.Warn("viewer startup token", "admin_token", token).
 func TestAnnounceLoginNeverLogsToken(t *testing.T) {
 	const token = "AAAA-BBBB-CCCC"
+	baseURL := "http://127.0.0.1:8080"
 	for _, tc := range []struct {
-		name        string
-		generated   bool
-		interactive bool
-		wantShown   bool
+		name      string
+		generated bool
+		display   displayChoice
+		wantShown bool
 	}{
-		{"generated, interactive terminal", true, true, true},
-		{"generated, no terminal", true, false, false},
-		{"supplied, interactive terminal", false, true, false},
-		{"supplied, no terminal", false, false, false},
+		{"generated, display chosen", true, displayShown, true},
+		{"generated, hidden by default", true, displayHidden, false},
+		{"generated, suppressed by the operator", true, displaySuppressed, false},
+		{"supplied, display chosen", false, displayShown, false},
+		{"supplied, hidden", false, displayHidden, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := installRecorder(t)
 			var out strings.Builder
-			announceLogin(&out, "http://127.0.0.1:8080", token, tc.generated, tc.interactive)
-			if logged := logs.String(); strings.Contains(logged, token) {
+			announceLogin(&out, loginNotice{
+				bind:      "127.0.0.1:8080",
+				baseURL:   baseURL,
+				token:     token,
+				generated: tc.generated,
+				display:   tc.display,
+			})
+			logged := logs.String()
+			if strings.Contains(logged, token) {
 				t.Fatalf("the process log contains the startup token:\n%s", logged)
+			}
+			if strings.Contains(logged, loginURL(baseURL, token)) {
+				t.Fatalf("the process log contains the login link:\n%s", logged)
 			}
 			if shown := strings.Contains(out.String(), token); shown != tc.wantShown {
 				t.Fatalf("token shown = %v, want %v (output %q)", shown, tc.wantShown, out.String())
 			}
 		})
+	}
+}
+
+// TestTokenDisplayResolve pins the -show-token tri-state: an absent flag keeps
+// the terminal heuristic — the behavior before the flag existed — an explicit
+// true forces the one-time hint in a run without a terminal, and an explicit
+// false suppresses it even on one (cli.md §2).
+func TestTokenDisplayResolve(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		display     tokenDisplay
+		interactive bool
+		want        displayChoice
+	}{
+		{"unset on a terminal", tokenDisplay{}, true, displayShown},
+		{"unset without a terminal", tokenDisplay{}, false, displayHidden},
+		{"forced without a terminal", tokenDisplay{set: true, value: true}, false, displayShown},
+		{"forced on a terminal", tokenDisplay{set: true, value: true}, true, displayShown},
+		{"suppressed on a terminal", tokenDisplay{set: true, value: false}, true, displaySuppressed},
+		{"suppressed without a terminal", tokenDisplay{set: true, value: false}, false, displaySuppressed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.display.resolve(tc.interactive); got != tc.want {
+				t.Fatalf("resolve(%v) = %v, want %v", tc.interactive, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestShowTokenFlagForms pins the flag grammar: the bare form means true, both
+// =-forms are accepted, and any other value is a usage error rather than a
+// silently ignored flag (cli.md §2, §4).
+func TestShowTokenFlagForms(t *testing.T) {
+	for _, tc := range []struct {
+		args  []string
+		want  tokenDisplay
+		usage bool
+	}{
+		{args: nil, want: tokenDisplay{}},
+		{args: []string{"-show-token"}, want: tokenDisplay{set: true, value: true}},
+		{args: []string{"-show-token=true"}, want: tokenDisplay{set: true, value: true}},
+		{args: []string{"-show-token=false"}, want: tokenDisplay{set: true, value: false}},
+		{args: []string{"--show-token=false"}, want: tokenDisplay{set: true, value: false}},
+		{args: []string{"-show-token=maybe"}, usage: true},
+	} {
+		var a webArgs
+		err := webFlags(&a, "", "").Parse(tc.args)
+		if tc.usage {
+			if err == nil {
+				t.Errorf("web -show-token=maybe accepted, want a usage error")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("web %v: %v", tc.args, err)
+		}
+		if a.showToken != tc.want {
+			t.Errorf("web %v parsed -show-token as %+v, want %+v", tc.args, a.showToken, tc.want)
+		}
+	}
+}
+
+// TestNoticeOrigin pins which binds may receive a printed login link: only a
+// loopback bind, whose plain http:// origin can hold the always-Secure session
+// cookie (viewer-security §7).
+func TestNoticeOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		addr string
+		want string
+	}{
+		{"127.0.0.1:8080", "http://127.0.0.1:8080"},
+		{"[::1]:8080", "http://[::1]:8080"},
+		{"localhost:8080", "http://localhost:8080"},
+		{"0.0.0.0:8080", ""},
+		{"192.0.2.10:8080", ""},
+		{":8080", ""},
+	} {
+		if got := noticeOrigin(tc.addr); got != tc.want {
+			t.Errorf("noticeOrigin(%q) = %q, want %q", tc.addr, got, tc.want)
+		}
+	}
+}
+
+// TestAnnounceLoginNonLoopbackPrintsNoLink is the non-loopback half of the
+// printing rule: a bind whose plain http:// origin cannot hold a session gets no
+// login link at all, and the notice names the bind and the https:// expectation
+// instead (cli.md §2, viewer-security §7).
+func TestAnnounceLoginNonLoopbackPrintsNoLink(t *testing.T) {
+	const (
+		bind  = "0.0.0.0:8080"
+		token = "AAAA-BBBB-CCCC"
+	)
+	for _, tc := range []struct {
+		name      string
+		generated bool
+		display   displayChoice
+		wantToken bool
+	}{
+		{"generated, display chosen", true, displayShown, true},
+		{"generated, hidden", true, displayHidden, false},
+		{"supplied, display chosen", false, displayShown, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := installRecorder(t)
+			var out strings.Builder
+			announceLogin(&out, loginNotice{
+				bind:      bind,
+				baseURL:   noticeOrigin(bind),
+				token:     token,
+				generated: tc.generated,
+				display:   tc.display,
+			})
+			got := out.String()
+			if strings.Contains(got, "/viewer/") || strings.Contains(got, "?token=") || strings.Contains(got, "http://"+bind) {
+				t.Errorf("non-loopback notice printed a login link: %q", got)
+			}
+			if !strings.Contains(got, bind) {
+				t.Errorf("non-loopback notice does not name the bind %q: %q", bind, got)
+			}
+			if !strings.Contains(got, "https://") {
+				t.Errorf("non-loopback notice does not state the https:// expectation: %q", got)
+			}
+			if shown := strings.Contains(got, token); shown != tc.wantToken {
+				t.Errorf("token shown = %v, want %v (output %q)", shown, tc.wantToken, got)
+			}
+			logged := logs.String()
+			if strings.Contains(logged, token) || strings.Contains(logged, "?token=") {
+				t.Fatalf("the process log contains the token or the login link:\n%s", logged)
+			}
+		})
+	}
+}
+
+// captureStreams swaps os.Stdout and os.Stderr for pipes around fn and returns
+// what each received: the login notice may be written to only one of them, so
+// pinning the stream requires capturing both.
+func captureStreams(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevOut, prevErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outW, errW
+	fn()
+	os.Stdout, os.Stderr = prevOut, prevErr
+	outW.Close()
+	errW.Close()
+	outBytes, err := io.ReadAll(outR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errBytes, err := io.ReadAll(errR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outBytes), string(errBytes)
+}
+
+// runWebNotice runs the real `cask web` startup path with args and returns what
+// it printed on stdout and stderr together with everything it logged.
+func runWebNotice(t *testing.T, args ...string) (stdout, stderr, logged string) {
+	t.Helper()
+	t.Setenv(viewerTokenEnv, "")
+	logs := installRecorder(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-time.After(150 * time.Millisecond)
+		cancel()
+	}()
+	var code int
+	stdout, stderr = captureStreams(t, func() {
+		code = runWeb(ctx, modeFlags{store: t.TempDir()}, append(args, "-bind", "127.0.0.1:0", "-no-open"))
+	})
+	if code != 0 {
+		t.Fatalf("runWeb exit = %d, want 0 (stdout %q, log %q)", code, stdout, logs.String())
+	}
+	return stdout, stderr, logs.String()
+}
+
+// TestRunWebNoticeGoesToStdout is the stream contract of issue #212: the
+// one-time login hint is command output, so it lands on stdout and never on
+// stderr, which cli.md §3 reserves for errors and which supervisors retain.
+func TestRunWebNoticeGoesToStdout(t *testing.T) {
+	stdout, stderr, logged := runWebNotice(t, "-show-token")
+	if !strings.Contains(stdout, "cask web: log in once at http://127.0.0.1:") {
+		t.Fatalf("stdout does not carry the login notice: %q", stdout)
+	}
+	if !strings.Contains(stdout, "/viewer/?token=") {
+		t.Fatalf("stdout does not carry the login deep link: %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr carries output, want the notice on stdout only: %q", stderr)
+	}
+	if strings.Contains(logged, "/viewer/?token=") {
+		t.Fatalf("the process log contains the login link:\n%s", logged)
+	}
+}
+
+// TestRunWebShowTokenControlsTheDisplay covers both directions of the flag on
+// the real startup path, where stdout is not a terminal (the test binary's
+// stdout is a pipe): -show-token displays the one-time hint anyway, while an
+// absent flag keeps the terminal heuristic and -show-token=false suppresses it
+// even where the heuristic would have shown it.
+func TestRunWebShowTokenControlsTheDisplay(t *testing.T) {
+	t.Run("hidden by default without a terminal", func(t *testing.T) {
+		stdout, _, logged := runWebNotice(t)
+		if strings.Contains(stdout, "?token=") {
+			t.Fatalf("the default run displayed the login link: %q", stdout)
+		}
+		if !strings.Contains(stdout, "cask web: viewer at http://127.0.0.1:") {
+			t.Fatalf("the hidden notice does not name the viewer: %q", stdout)
+		}
+		if !strings.Contains(logged, "startup token was generated but not shown") {
+			t.Fatalf("the hidden token logged no remedy:\n%s", logged)
+		}
+	})
+	t.Run("forced without a terminal", func(t *testing.T) {
+		stdout, _, _ := runWebNotice(t, "-show-token")
+		if !strings.Contains(stdout, "?token=") {
+			t.Fatalf("-show-token did not display the login link: %q", stdout)
+		}
+	})
+	t.Run("suppressed", func(t *testing.T) {
+		stdout, _, logged := runWebNotice(t, "-show-token=false")
+		if strings.Contains(stdout, "?token=") {
+			t.Fatalf("-show-token=false still displayed the login link: %q", stdout)
+		}
+		if strings.Contains(logged, "startup token was generated but not shown") {
+			t.Fatalf("-show-token=false is the operator's choice and needs no remedy:\n%s", logged)
+		}
+	})
+}
+
+// TestRunWebRejectsInvalidShowToken: a value that is neither a bool nor absent
+// is a usage error naming the flag, not a silently ignored flag (cli.md §3).
+func TestRunWebRejectsInvalidShowToken(t *testing.T) {
+	if code := runWeb(context.Background(), modeFlags{store: t.TempDir()}, []string{"-show-token=maybe", "-no-open"}); code != 2 {
+		t.Fatalf("runWeb -show-token=maybe exit = %d, want 2 (usage)", code)
 	}
 }
 

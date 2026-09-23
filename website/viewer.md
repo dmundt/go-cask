@@ -37,6 +37,7 @@ cask web -store ./objects \
 | `-token-file <path>` | A file holding the startup admin token. Its trimmed contents become the token; an empty file is a startup error. The value is never echoed. |
 | `-trusted-proxy <ip\|cidr,…>` | Reverse proxies whose forwarded client address the login throttle may believe. Empty — the default — believes none, so the throttle keys on the direct peer. A malformed entry fails startup. |
 | `-allow-insecure-bind` | Permits a non-loopback bind. Without it, `cask web` refuses to start on a non-loopback address. |
+| `-show-token` | Show the generated startup token's one-time login hint even when stdout is not an interactive terminal. A bare `-show-token` forces the display, `-show-token=false` never shows it, and an absent flag keeps the terminal heuristic. |
 | `-no-open` | Do not launch the default browser. |
 
 There is no config file: flags only. `cask web` is also the only way to enable
@@ -55,12 +56,15 @@ startup token grants the `admin` role, and it is resolved in this order:
    unless the operator supplied one.
 
 An operator-supplied token is never displayed. A generated token is shown once
-on stderr — never through the logging package at any level — and only when
-stderr is an interactive terminal. When a generated token cannot be shown, the
-viewer logs the remedy instead of the token: supply one with `-token-file` or
-`CASK_VIEWER_TOKEN`. That is the shape an unattended deployment wants, because
-under systemd, Docker, or a log shipper, anything sent to the logger is
-retained and indexed beyond the operator.
+on stdout — never through the logging package at any level — when stdout is an
+interactive terminal, and in any run that asks for it with `-show-token`; that
+is how an operator under a supervisor, a redirected pipeline, or `docker logs`
+gets the hint, while `-show-token=false` suppresses it. When a generated token
+cannot be shown, the viewer logs the remedy instead of the token: pass
+`-show-token`, or supply one with `-token-file` or `CASK_VIEWER_TOKEN`. That is
+the shape an unattended deployment wants, because under systemd, Docker, or a
+log shipper, anything sent to the logger is retained and indexed beyond the
+operator.
 
 Sign in one of two ways:
 
@@ -72,6 +76,11 @@ Both accept a token only from the viewer's own origin; a cross-site request
 carrying a valid token is refused with `403` and an empty body. The token URL
 is one-time: after login the session cookie carries the session, and neither
 the token nor any secret reaches markup or logs.
+
+A link is printed only for a loopback bind. `Secure` session cookies mean a
+non-loopback bind can only be logged into over `https://` through a
+TLS-terminating proxy, so `cask web` prints that bind and the `https://`
+expectation instead of a link that could not hold a session.
 
 ### Sessions, roles, and exposure
 
