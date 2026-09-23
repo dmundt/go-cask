@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v3
+version: v4
 ---
 
 # Agent instructions — `scripts/`
@@ -78,6 +78,22 @@ earlier failed: the gate reports each unmet coverage threshold and every other
 failure as it proceeds, then exits non-zero after the race suite. Judge the
 result by the script's own output and exit status, not by a wrapper's echoed
 status.
+
+### Worktrees created from WSL
+
+`git worktree add` run from WSL records an absolute WSL path in the new
+worktree's `.git` file (`gitdir: /mnt/d/.../.git/worktrees/<name>`). The gate's
+final doc-integrity step runs the Windows CPython shim, so the `git ls-files`
+it starts is the *Windows* git, which cannot resolve `/mnt/d/...`: the step
+fails with `fatal: not a git repository` and the gate exits non-zero without
+ever printing `verification passed`, even though the Go, coverage, race and
+fuzz sections all passed. Either create the worktree with the Windows toolchain
+instead, or rewrite `<worktree>/.git` to the relative form, which both
+toolchains resolve:
+
+```text
+gitdir: ../../.git/worktrees/<name>
+```
 
 ## Validation
 
