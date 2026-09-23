@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v10
+version: v11
 ---
 
 # API Design — go-cask
@@ -57,6 +57,7 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 - 401/403 never disclose whether the target exists (all surfaces). Successful mutations with no useful body → 204; creates → 201 + the hash. 429 produced by the shared rate-limit middleware before any handler.
 - `Retry-After` is required on every 429, in whole seconds: it reports the delay the limiter is actually enforcing — the shared rate-limit middleware's window on a JSON surface, the viewer's login-throttle block on `/viewer/login` (viewer-security §5). A caller that is told how long to wait does not retry into the same refusal, and a value that drifted from the enforced wait would be worse than none.
 - A rejected authentication attempt carries no body on any surface, and its status does not soften because a browser form sent it: `POST /viewer/login` with a bad token answers `401` (empty), exactly like a missing or expired session. The login page states the human-readable reason for a caller who returns to it (viewer-design §3), so the refusal itself never has to describe the token or the account.
+- 403 also answers a token-bearing login that is not same-origin (`POST /viewer/login`, `GET /viewer/?token=`): the credential is refused before any session exists, with an empty body, so the response never reveals whether the presented token was valid (viewer-security §5.1).
 
 ## 6. Error contract
 
@@ -68,11 +69,13 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
 ## 7. Authn/authz
 
 - Viewer: session cookie (always `HttpOnly`, `SameSite=Strict`, and `Secure`);
-  the startup token is accepted **only** by `POST /viewer/login`; every other
-  endpoint requires a valid session.
+  the startup token is accepted **only** by `POST /viewer/login` and the
+  token-bearing `GET /viewer/?token=` deep link, both of which must be
+  same-origin (viewer-security §5.1); every other endpoint requires a valid
+  session.
 - Example JSON surfaces: `Authorization: Bearer <token>`, configured per-role tokens.
 - Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance).
-- CSRF: every viewer mutation is POST + server-validated CSRF token.
+- CSRF: every viewer mutation is POST + server-validated CSRF token, carried in the request body or the `X-CSRF-Token` header; a `?_csrf=` query value is never accepted (viewer-security §5).
 - Audit: every mutation audit-logged; tokens/secrets never logged.
 - Rate limiting: IP-based middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); viewer login throttle fixed at 5 failures/IP/min with backoff (viewer-security), whose 429 carries the remaining block as `Retry-After`.
 - Caching: a response that reflects a session is not cacheable. The viewer sends `Cache-Control: no-store` on every response and names `Cookie` in `Vary`, so a proxy between the browser and the viewer cannot retain a page or answer a later caller with one rendered for another session (viewer-security §10).
@@ -86,6 +89,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 - Every `{hash}`: `sha256.Parse` first (it accepts `sha256:hexdigest` and bare hex) → 400 on malformed.
 - Query params: reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0.
 - Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible).
+- Credentials ride in the documented carrier only: a login token must be presented same-origin (viewer-security §5.1), and the viewer's CSRF token comes from the POST body or the `X-CSRF-Token` header — a query value is never accepted, because URLs are captured by logs, bookmarks, proxies, and `Referer` chains.
 - Never trust client input — header, query, and body all validated (viewer-security).
 
 ## 10. Pagination and filtering

@@ -101,3 +101,58 @@ func TestAuditLogNamesTheSession(t *testing.T) {
 		t.Fatal("audit log contains the startup token")
 	}
 }
+
+// TestCrossSiteLoginRejectionIsAudited pins the audit half of the same-origin
+// rule (viewer-security §5.1/§9): a refused credential-bearing login records
+// the action, the resource, the session handle, and the result, and the
+// presented token never reaches the log.
+func TestCrossSiteLoginRejectionIsAudited(t *testing.T) {
+	backend, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	var log bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
+	t.Cleanup(func() { slog.SetDefault(restore) })
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/?token="+testStartupToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site token GET = %d, want 403", resp.StatusCode)
+	}
+
+	lines := log.String()
+	for _, want := range []string{"viewer login rejected", "path=/viewer/", "result=forbidden"} {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("audit log missing %q:\n%s", want, lines)
+		}
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(lines), "\n") {
+		if !strings.Contains(line, "viewer login rejected") {
+			continue
+		}
+		if !strings.Contains(line, "session=") {
+			t.Fatalf("audited rejection does not name the session: %s", line)
+		}
+	}
+	if strings.Contains(lines, testStartupToken) {
+		t.Fatal("audit log contains the presented startup token")
+	}
+}

@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v10
+version: v11
 ---
 
 # Viewer Security — go-cask
@@ -29,18 +29,24 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 
 ## 5. Authentication
 
-- The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or performs a direct `?token=` login (§5.1) — neither exposes store data.
+- The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or completes the same-origin `?token=` deep link (§5.1) — neither exposes store data.
 - Login attempts MUST be rate limited (max 5 failures/caller-address/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value. The address the throttle keys on is the **caller address** defined in §5.2, not necessarily the direct peer.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
 - Startup token characteristics: cryptographically secure random; supplied out of band with `-token-file`/`CASK_VIEWER_TOKEN` or displayed once, and only when stderr is an interactive terminal — never through the logging package, at any level (cli.md §4, §9, §11); not stored in plaintext config; regenerated on every restart unless the operator supplied it.
-- A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie.
+- A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie. Both token-accepting endpoints admit a token only from the viewer's own origin (§5.1).
+- **CSRF sourcing (MUST):** every viewer mutation is POST plus a per-session CSRF token compared in constant time. The token MUST be read from the request body (the form's hidden field) or the `X-CSRF-Token` header, never from the query string: a URL-borne token is captured by access logs, bookmarks, proxies, and `Referer` chains. A `?csrf=<token>` value MUST NOT validate.
 
-### 5.1 Direct `?token=` login
+### 5.1 Direct `?token=` deep link (acceptance)
 
-- The token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs.
-- The server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`.
-- Login still honors the throttle and audit-logs the action **without** the token value.
-- After the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
+The deep link is the `cask web` "open viewer" URL, `GET /viewer/?token=<token>`. `SameSite=Strict` (§7) governs whether the session cookie is *sent* on a later cross-site request; it does not govern the login *response*, which sets the cookie. A cross-site `<img>`, `<link>`, or navigation carrying a valid token would therefore pin the victim's browser into the presenter's session. Both endpoints that accept a token — `POST /viewer/login` and the token-bearing `GET /viewer/` — MUST first establish that the request comes from the viewer's own origin, and MUST answer `403` with an empty body (§13) plus an audit line (§9) otherwise:
+
+- Same-origin means `Sec-Fetch-Site: same-origin` (a form post, link, or htmx request issued by a viewer page) or `Sec-Fetch-Site: none` (a top-level navigation with no initiator: the address bar, a bookmark, or the browser `cask web` opens). Only a browser sets this header, and a page cannot forge it (it is a forbidden header name).
+- `same-site` and `cross-site` are not the viewer's origin and MUST be refused even when the presented token is valid.
+- When a browser sends no `Sec-Fetch-Site`, an `Origin` header naming the request's own host is the fallback; two missing headers MUST fail closed.
+- A refused request MUST NOT create a session, MUST NOT set a session cookie, and MUST be refused before the login throttle is consulted, so a cross-site flood cannot spend a real caller's login budget.
+- The token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs; the server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`; login still honors the throttle and audit-logs the action **without** the token value; after the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
+
+The URL contract is unchanged for the operator: the opened token URL and a same-origin link or form both still sign in. No session is ever minted from a request the viewer cannot attribute to its own origin.
 
 ### 5.2 Caller address (proxy deployments)
 
@@ -123,7 +129,7 @@ Secrets must never be hardcoded, committed to source control, written to logs, o
 
 ## 12. Production deployments
 
-If remote access is required, the preferred architecture is **VPN + reverse proxy + OIDC/SSO + viewer** (e.g. Microsoft Entra ID, Keycloak, Authentik, OAuth2 Proxy). Do not expose the viewer directly to the public internet. Behind an OIDC/SSO proxy the backend MUST derive the role from a configurable claim (default `groups`), mapping configured group names to viewer/operator/admin, and MUST deny access when no mapping matches.
+If remote access is required, the preferred architecture is **VPN + reverse proxy + OIDC/SSO + viewer** (e.g. Microsoft Entra ID, Keycloak, Authentik, OAuth2 Proxy). Do not expose the viewer directly to the public internet. Behind an OIDC/SSO proxy the backend MUST derive the role from a configurable claim (default `groups`), mapping configured group names to viewer/operator/admin, and MUST deny access when no mapping matches. The same-origin rule (§5.1) reads the browser's `Sec-Fetch-Site` first and falls back to comparing the `Origin` host with the request `Host`; a proxy MUST therefore preserve the `Host` header the browser used. The scheme may differ (a TLS-terminating proxy answers https while forwarding http), which the host-only comparison tolerates.
 
 A reverse proxy is also the deployment the login throttle must be told about (§5.2). Because the proxy is the direct peer for every client:
 
@@ -134,7 +140,7 @@ A reverse proxy is also the deployment the login throttle must be told about (§
 
 ## 13. Defensive programming
 
-- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints; never disclose whether the target bucket/object exists. The viewer landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also accepts the direct `?token=` login (§5).
+- Always validate query parameters, headers, JSON payloads, and object/bucket names — do not trust client input. Fail securely, return minimal error information. Return 401 (empty body) for missing/expired sessions and 403 (empty body) for insufficient role on data endpoints or for a token-bearing login that is not same-origin (§5.1); never disclose whether the target bucket/object exists. The viewer landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` when no session is present, so a browser can reach the login page; it also completes the same-origin direct `?token=` login (§5.1).
 
 ## 14. Security principle
 
@@ -145,7 +151,9 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [x] Auth required; login throttled (5/caller-address/min, backoff, audit-logged without the token) (§5)
 - [x] A forwarded client address is believed only from a configured trusted proxy; with none configured the peer address keys the throttle and the header is ignored (§5.2)
-- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on an interactive terminal only, or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11)
+- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on an interactive terminal only, or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)
+- [x] Both token-accepting endpoints refuse a request that is not same-origin (403, empty body, audit line); no cross-site request mints a session (§5.1)
+- [x] CSRF token accepted from the POST body or the `X-CSRF-Token` header only; `?_csrf=` never validates (§5)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
 - [x] Cookies always use `HttpOnly` + `SameSite=Strict` + `Secure`; no sensitive data in cookies (§7)
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)

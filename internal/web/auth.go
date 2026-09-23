@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -93,9 +94,23 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 // or the configured per-role tokens, throttles failures per caller address
 // (5/min with backoff, viewer-security §5), and issues a session cookie. The
 // caller address is the direct peer unless a configured trusted proxy
-// forwarded one (§5.2, proxy.go).
+// forwarded one (§5.2, proxy.go). It is the only way besides the deep link
+// (§5.1) that a token establishes a session, and both accept a token only from
+// the viewer's own origin.
 func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string) {
 	ip := s.callerIP(r)
+	if !sameOrigin(r) {
+		// A cross-site page can present a token in an <img>, a <link>, or a
+		// navigation, and SameSite=Strict does not stop the login *response*
+		// from setting a session cookie, so the victim would be pinned into
+		// the presenter's session. Reject before the throttle is consulted: a
+		// cross-site flood must not spend a real caller's login budget. The
+		// audit line follows §9 and never carries the token.
+		slog.Warn("viewer login rejected", "path", r.URL.Path, "ip", ip,
+			"session", sessionHandle(sessionID(r)), "result", "forbidden")
+		w.WriteHeader(http.StatusForbidden) // empty body (§13)
+		return
+	}
 	if !s.loginThrottle.allow(ip) {
 		slog.Warn("viewer login throttled", "ip", ip)
 		// A throttled caller is told how long to wait rather than left to guess
@@ -131,6 +146,36 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 
 func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 	s.loginToken(w, r, r.FormValue("token"))
+}
+
+// sameOrigin reports whether a credential-bearing login request provably comes
+// from the viewer's own origin (viewer-security §5.1). The browser describes
+// the relation in Sec-Fetch-Site, which a page cannot forge (it is a forbidden
+// header name): only `same-origin` — a form post, link, or htmx request from a
+// viewer page — and `none` — a top-level navigation with no initiator, such as
+// the address bar, a bookmark, or the browser `cask web` opens — are accepted.
+// `same-site` and `cross-site` are not the viewer's origin, so they are refused
+// even though the token may be valid. When a browser sends no Sec-Fetch-Site,
+// an Origin header naming the request's own host is the fallback. Two missing
+// headers fail closed: only a browser attaches either, and a client that
+// attaches neither is not the victim this check protects.
+func sameOrigin(r *http.Request) bool {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin" || site == "none"
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	// Compare hosts only: behind a TLS-terminating reverse proxy (§12) the
+	// viewer sees plain HTTP while the browser's Origin names https, so the
+	// scheme is not comparable here. The host is what separates the viewer's
+	// own pages from an attacker's.
+	return parsed.Host != "" && parsed.Host == r.Host
 }
 
 // resolveToken matches token against the startup token (admin role) and the

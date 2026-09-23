@@ -284,6 +284,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   variable, and a generated token that cannot be shown is reported as such
   without its value (cli.md §4, viewer-security §5.1, §9, §11).
 
+### Security
+
+- The viewer mints a session only from a request it can attribute to its own
+  origin: a token-bearing login (the `POST /viewer/login` form and the
+  `?token=` deep link) is refused with 403 when the browser reports a
+  cross-site or same-site relation, so a cross-site image, link, or navigation
+  can no longer pin a victim's browser into the presenter's session. The
+  documented token URL, a same-origin form, and a same-origin link still sign
+  in. The CSRF token is accepted from the request body or the `X-CSRF-Token`
+  header only, so a `?csrf=` query value no longer validates and the token can
+  no longer be captured through access logs, bookmarks, proxies, or `Referer`
+  chains.
+
 ## [v1.6.5] - 2026-09-22
 
 ### Added
