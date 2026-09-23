@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v22
+version: v23
 ---
 
 # CLI — go-cask
@@ -25,7 +25,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
   `meta`/`stats`/`verify`/`gc`/`prune`/`clean` work over either backend
   (backend-architecture §5). Without the flag the CLI behaves exactly as before.
 - The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). There is no `-algo` flag — the core names no algorithm (cas-core §4.2).
-- `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). A config file is deferred.
+- `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). The startup admin token is generated and shown once on stderr **only when stderr is an interactive terminal**, or supplied by the operator with `-token-file`/`CASK_VIEWER_TOKEN`; it is never logged at any level (§4, viewer-security §5.1, §9, §11). A config file is deferred.
 
 ## 2. Subcommands
 
@@ -41,7 +41,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
 | `seed-preview [-count <n>] [-hash-algo <name>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
-| `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
+| `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-token-file <path>] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): the startup admin token is **never logged** at any level; a generated token is shown once on stderr only when stderr is an interactive terminal, and an unattended deployment supplies its own with `-token-file <path>` or `CASK_VIEWER_TOKEN` (`-token-file` wins) without it ever being echoed; then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
 - Hash arguments are parsed with `sha256.Parse` (printable `sha256:hexdigest` or bare hex) before use; malformed → usage error (exit 2).
@@ -107,10 +107,10 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-token-file`, `-allow-insecure-bind`, `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
 - `-backend` accepts `fs` (default) or `packfs`; anything else is a usage error (exit 2). An absent flag is not the same as an unknown one: it selects the documented default without passing through validation.
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
-- No secrets in output: tokens are never echoed; errors never include the token.
+- No secrets in output: the startup token is never logged at any level and never echoed; the one place it is displayed is the one-time interactive-terminal login hint, and `-token-file`/`CASK_VIEWER_TOKEN` supply it unattended. Errors name the flag or the file, never the token (viewer-security §5.1, §9, §11).
 - Std-lib only (`flag` package); documented per coding-guidelines §7.
 
 ## 5. Checklist
@@ -128,3 +128,4 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - [x] Plain text by default, `-json` on request; errors on stderr
 - [x] Exit codes 0/1/2 per §3
 - [x] Streaming for large objects; no token leakage
+- [x] The startup token is never logged at any level; shown once on an interactive terminal, or supplied via `-token-file`/`CASK_VIEWER_TOKEN` (viewer-security §5.1, §9, §11)
