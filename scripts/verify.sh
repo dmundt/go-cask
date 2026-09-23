@@ -330,6 +330,133 @@ if [[ "$fail_doc" -ne 0 ]]; then
   exit 1
 fi
 
+echo "== website examples =="
+# Every Go fence on the site is a complete unit (website/AGENT.md, "Examples
+# and links"): the extraction below writes each one into its own package under
+# .gocache/website-examples and the whole set is then built and vetted. The
+# same pass asserts the shipped-package inventory tables in website/concepts/
+# against the tree, so a new backend, hasher or codec cannot ship undocumented.
+# This section is deliberately standalone: it shares no state with the
+# coverage or doc-integrity steps and can be moved without touching either.
+webdir="$repo_root/.gocache/website-examples"
+python3 - "$repo_root" <<'PY'
+import pathlib
+import re
+import shutil
+import sys
+
+repo_root = pathlib.Path(sys.argv[1]).resolve()
+website = repo_root / 'website'
+webdir = repo_root / '.gocache' / 'website-examples'
+
+shutil.rmtree(webdir, ignore_errors=True)
+webdir.mkdir(parents=True, exist_ok=True)
+
+fence_line = re.compile(r'^\s*(`{3,}|~{3,})\s*(.*?)\s*$')
+errors = []
+materialized = []
+pages = 0
+
+
+def go_blocks(lines):
+    """Yield (line number, info string, body lines) for every Go fence."""
+    marker = None
+    start = 0
+    info = ''
+    body = []
+    for number, line in enumerate(lines, 1):
+        match = fence_line.match(line)
+        if marker is None:
+            if match:
+                marker = match.group(1)[0] * 3
+                start = number
+                info = match.group(2)
+                body = []
+            continue
+        if match and match.group(1).startswith(marker):
+            if info.split(' ', 1)[0] == 'go':
+                yield start, info, body
+            marker = None
+            continue
+        body.append(line)
+
+
+for page in sorted(website.rglob('*.md')):
+    pages += 1
+    relative = page.relative_to(website).as_posix()
+    lines = page.read_text(encoding='utf-8', errors='ignore').splitlines()
+    index = 0
+    for number, info, body in go_blocks(lines):
+        index += 1
+        if info != 'go':
+            errors.append(
+                f'{relative}:{number}: a Go fence must use the info string '
+                f'"go" alone, not "{info}"'
+            )
+            continue
+        first = next((line for line in body if line.strip()), '')
+        if not first.startswith('package '):
+            errors.append(
+                f'{relative}:{number}: Go block is not a complete unit; every '
+                'Go block must declare its own package clause and imports '
+                '(website/AGENT.md, "Examples and links")'
+            )
+            continue
+        slug = relative[:-3].replace('/', '-')
+        directory = webdir / f'{slug}-{index}'
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / 'example.go').write_text(
+            '\n'.join(body) + '\n', encoding='utf-8', newline='\n'
+        )
+        materialized.append(f'{relative}:{number}')
+
+# The shipped-package inventory tables are the site's claim about what ships.
+# Compare each one with the packages that exist, so a new backend, hasher or
+# codec cannot ship without a matching table row (and a removed one cannot
+# linger).
+inventories = (
+    ('concepts/backends.md', 'cas/backend'),
+    ('concepts/hashes.md', 'cas/hash'),
+    ('concepts/codecs.md', 'cas/codec'),
+    ('specifications/object-format.md', 'cas/codec'),
+)
+for relative, root in inventories:
+    page = website / relative
+    if not page.is_file():
+        errors.append(f'{relative}: inventory page is missing')
+        continue
+    shipped = set()
+    for child in sorted((repo_root / root).iterdir()):
+        if child.is_dir() and any(p.suffix == '.go' for p in child.iterdir()):
+            shipped.add(f'{root}/{child.name}')
+    documented = set()
+    token = re.compile(r'`(' + re.escape(root) + r'/[A-Za-z0-9_]+)`')
+    for line in page.read_text(encoding='utf-8', errors='ignore').splitlines():
+        if line.lstrip().startswith('|'):
+            documented.update(token.findall(line))
+    missing = sorted(shipped - documented)
+    extra = sorted(documented - shipped)
+    if missing:
+        errors.append(f'{relative}: inventory table is missing {", ".join(missing)}')
+    if extra:
+        errors.append(
+            f'{relative}: inventory table names packages that do not exist: '
+            f'{", ".join(extra)}'
+        )
+
+for error in errors:
+    print(f'Website example error: {error}', file=sys.stderr)
+if errors:
+    sys.exit(1)
+print(f'materialized {len(materialized)} Go blocks from {pages} Markdown pages')
+print('shipped-package inventory tables match the tree')
+PY
+if ! (cd "$webdir" && go build ./... && go vet ./...); then
+  echo "website Go examples failed to build or vet; materialized copies are in $webdir" >&2
+  exit 1
+fi
+rm -rf "$webdir"
+
 if [[ -n "${CASK_RELEASE_TAG:-}" ]]; then
   echo "== release note sync =="
   ./scripts/release-notes.sh "$CASK_RELEASE_TAG" "${CASK_RELEASE_FROM_TAG:-}" > /tmp/cask-release-notes.txt

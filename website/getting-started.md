@@ -63,7 +63,8 @@ func main() {
 ## Important mental model
 
 - content determines object identity
-- the digest is the object key (it covers the type name and the encoded bytes)
+- the digest is the object key (it covers the whole envelope: the version, the
+  codec tag, the type name, and the encoded payload)
 - the codec owns serialization
 - the backend owns storage and never checks the digest itself
 - verification is explicit (`cas.Verify`) — nothing verifies automatically on
@@ -73,14 +74,19 @@ func main() {
 
 ## Run the examples
 
+The repository ships six runnable example programs. From the repo root:
+
 ```bash
 go run ./examples/files --help
 go run ./examples/bloom
 go run ./examples/notes
+go run ./examples/artifacts -store ./store put app v1.bin
+go run ./examples/pack roundtrip 8 "hello world"
+go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080
 ```
 
 Each `examples/` program is self-contained and documented in its own
-`README.md`.
+`README.md`, which lists its full command set.
 
 ## Next steps
 

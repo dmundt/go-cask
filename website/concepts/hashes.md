@@ -20,10 +20,27 @@ are not recommended for new content-addressed data.
 `Hasher` is a two-method interface:
 
 ```go
+package hashers
+
+import (
+    "io"
+
+    "github.com/dmundt/go-cask/cas"
+)
+
+// Hasher turns a stream of bytes into the Digest that addresses it, and
+// validates a Digest a caller passed in.
 type Hasher interface {
-    Digest(r io.Reader) (Digest, error)
-    Validate(d Digest) error
+    Digest(r io.Reader) (cas.Digest, error)
+    Validate(d cas.Digest) error
 }
+
+// The contract above and the shipped cas.Hasher accept exactly each other's
+// implementations, so this listing cannot drift from the real interface.
+var (
+    _ cas.Hasher = Hasher(nil)
+    _ Hasher     = cas.Hasher(nil)
+)
 ```
 
 Any algorithm that fits this shape works — BLAKE3, a truncated digest, or a

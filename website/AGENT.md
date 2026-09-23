@@ -21,8 +21,26 @@ developer-facing companion to the authoritative repository documentation under
 
 ## Examples and links
 
-- Every Go example MUST match the current public API and compile when presented
-  as a complete program.
+- Every Go block MUST be a complete unit: it declares its own `package` clause
+  and its own imports, and it compiles and vets on its own. There are no
+  compiled fragments and no generated context stubs. The `website examples`
+  step in `scripts/verify.sh` extracts every `go` fence under `website/`,
+  writes each one into its own package directory inside the module, and runs
+  `go build` and `go vet` over the whole set, so a non-compiling or
+  fragment-only block fails the gate instead of drifting silently.
+- Document a contract without pasting a fragment by declaring it in a complete
+  unit and asserting that it and the shipped type accept exactly each other's
+  implementations — `var _ cas.Hasher = Hasher(nil)` together with
+  `var _ Hasher = cas.Hasher(nil)`. The two assignments compile only while the
+  method sets agree, so the page cannot drift from `cas`.
+- The inventory tables in `concepts/backends.md`, `concepts/hashes.md`,
+  `concepts/codecs.md`, and `specifications/object-format.md` MUST name every
+  Go package directory under `cas/backend`, `cas/hash`, and `cas/codec`. The
+  same gate step checks those tables against the tree, so adding or removing a
+  packaged backend, hasher, or codec fails the gate until the matching table
+  names it.
+- Every Go block MUST match the current public API; the gate's build and vet
+  are the check.
 - Use fenced code blocks only for code, shell commands, and wire formats.
 - Use Markdown links to internal pages. Do not use raw HTML links or HTML
   layout wrappers in Markdown pages.

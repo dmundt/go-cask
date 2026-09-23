@@ -6,8 +6,11 @@ boundary.
 
 ## Repository layout
 
-- `cas/` — the generic storage core (byte layer + typed layer)
-- `cas/backend/` — storage backends (filesystem, memory, opt-in packfile)
+- `cas/` — the generic storage core (byte layer + typed layer) plus the
+  app-facing helpers `cas/pack`, `cas/bloom`, `cas/verify`, `cas/refs`,
+  `cas/repo`, and `cas/cache`
+- `cas/backend/` — storage backends (filesystem, memory, opt-in packfile) and
+  the portable archive helper `cas/backend/snapshot`
 - `cas/codec/` — codec implementations (JSON, gob, binary, CBOR, compression
   wrappers)
 - `cas/hash/` — hasher implementations (SHA-256, SHA-512, SHA-512/256)
