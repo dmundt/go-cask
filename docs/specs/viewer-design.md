@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v34
+version: v36
 ---
 
 # Viewer Design — go-cask
@@ -93,7 +93,7 @@ and silently discards the declared size.
 | `/viewer/objects/{hash}/dump` | lazy hexdump fragment (HTML, not the stored bytes) | viewer |
 | `POST /viewer/objects/{hash}/verify` | verifies one object, answers with the result fragment | operator |
 | `POST /viewer/objects/verify` | verifies every stored object, answers with the summary fragment | operator |
-| `/viewer/login` | login page and token submission | public |
+| `/viewer/login` | login page and token submission; a rejected attempt is answered `401` (empty body), and the page states the reason when it is shown again | public |
 | `/viewer/static/{viewer.css,htmx.min.js}` | the viewer's only two assets, served from its own origin | public |
 
 That table is the whole surface. Every other path under `/viewer/` is
@@ -151,6 +151,20 @@ string. The viewer MUST classify the failure with the `cas` sentinel errors and
 render a state pill, a plain-language explanation, and — for a digest mismatch
 — both the expected address and the digest the stored bytes actually hash to.
 Reporting one unlabeled hash does not tell an operator which side it is.
+
+That rule covers the whole result, not only a mismatch: a failure the sentinels
+do not classify is rendered with the viewer's own sentence, and the underlying
+error MUST NOT appear in the response — a wrapped backend or interpreter error
+carries whatever the failing layer put in it, including the store's absolute
+paths, and an operator reading the page needs the finding, not the layer. The
+error goes to the audit line (viewer-security §9), which is where a cause
+belonging to the implementation is read.
+
+The login page carries the same rule. A rejected token is answered `401` with an
+empty body — the same refusal a data endpoint gives a caller without a session —
+and the login page, when it is shown again, states in one owned sentence why the
+operator is looking at it. The rejection itself never describes the token or the
+account (api-design §5–§6).
 
 The integrity filter orders its states as Verified, Unverified, and Corrupt.
 These are exclusive alternatives on one axis, so the filter is a single-choice
@@ -383,7 +397,10 @@ Viewer tests MUST cover:
 - pagination totals, boundaries, and pager links retaining query state;
 - direct-link and htmx selection behavior;
 - accessible table/sort/status markup and CSS asset headers;
-- session/role/CSRF/error behavior and bounded raw-byte preview.
+- session/role/CSRF/error behavior and bounded raw-byte preview;
+- response hygiene: `Retry-After` on a throttled login, `Cache-Control:
+  no-store` (and `Vary: Cookie`) on every response, empty rejection bodies, and
+  no response body carrying a Go error string or a filesystem path.
 
 ## 8. Checklist
 
@@ -392,4 +409,4 @@ Viewer tests MUST cover:
 - [x] Filter/sort/page/selection/panel state is URL-addressable and validated
 - [x] Pagination is server-side and progressively enhanced
 - [x] No browser storage, typed graph, or invented metadata; htmx is the only script
-- [x] Security and accessibility requirements remain enforced
+- [x] Security and accessibility requirements remain enforced, including response headers and error prose

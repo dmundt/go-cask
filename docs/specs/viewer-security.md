@@ -109,6 +109,14 @@ the whole interaction model. `style-src` admits inline styles because htmx
 injects a style element for its indicator class; `script-src` stays strict,
 which is the directive that governs injection.
 
+**No viewer response is cacheable (MUST):** every response MUST carry
+`Cache-Control: no-store`, and the pages whose body depends on the session MUST
+name `Cookie` in `Vary`. The viewer renders digests, object bytes, and the
+session's verification state, and §12's remote shape reaches it through a
+TLS-terminating proxy; without these headers a shared cache in that path could
+retain a response, or answer a later caller with a page rendered for someone
+else's session.
+
 ## 11. Secret handling
 
 Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`. A startup token MAY additionally be supplied out of band, with the `-token-file` flag or the `CASK_VIEWER_TOKEN` environment variable, and MAY be displayed once on an interactive terminal (cli.md §4); outside that it MUST NOT appear in the process log at any level, in the output of a process without a terminal, or in an API response.
@@ -143,6 +151,7 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)
 - [x] All admin actions audit-logged; secrets never logged (§9)
 - [x] Browser talks only to the backend API; all authz in the backend (§10)
+- [x] Every response `no-store` and session-dependent pages vary on `Cookie` (§10)
 - [x] Secrets never hardcoded/committed/logged/returned (§11)
 - [x] Remote access only via VPN + reverse proxy + OIDC/SSO; role derived from the configured claim (§12)
 - [x] Input validated everywhere; 401/403 empty bodies never disclose existence (§13)

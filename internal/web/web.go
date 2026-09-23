@@ -239,9 +239,19 @@ func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 // origin, so the policy can deny everything else outright: no third-party
 // script can be injected, the pages cannot be framed, and a browser cannot be
 // talked into treating a hexdump as a script by sniffing it.
+//
+// No viewer response is cacheable. Handler output is per-request and mostly
+// session-scoped — digests, object bytes, and the session's verification state
+// — so a cache between the viewer and the browser (the TLS-terminating proxy a
+// remote deployment puts in front of it, viewer-security §12) must not retain
+// it. The pages that do turn on the session cookie say so with Vary, so an
+// intermediary cannot answer a later caller with a page rendered for someone
+// else's session.
 func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := w.Header()
+		header.Set("Cache-Control", "no-store")
+		header.Add("Vary", "Cookie")
 		header.Set("X-Content-Type-Options", "nosniff")
 		// style-src allows inline styles because htmx injects a style element
 		// for its indicator class; script-src stays strict, which is the

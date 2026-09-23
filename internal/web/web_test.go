@@ -3,7 +3,9 @@ package web
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -154,4 +156,152 @@ func TestResponsesCarryHardeningHeaders(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestEveryResponseIsUncacheable pins the cache policy: the viewer renders
+// digests, object bytes, and the session's verification state, and a remote
+// deployment reaches it through a TLS-terminating proxy (viewer-security §12).
+// A shared cache in that path must neither retain a response nor answer a later
+// caller with a page rendered for someone else's session, so every viewer
+// response — page, fragment, static asset, and rejection alike — is no-store
+// and varies on the session cookie.
+func TestEveryResponseIsUncacheable(t *testing.T) {
+	ts, _ := newTestServer(t)
+	viewer := login(t, ts, "viewer-tok")
+
+	anonymous := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	rejected, err := anonymous.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {"x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected.Body.Close()
+	if rejected.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anonymous verify = %d, want 401", rejected.StatusCode)
+	}
+
+	for _, tc := range []struct {
+		name string
+		resp *capturedResponse
+	}{
+		{name: "login page", resp: getResponse(t, ts.Client(), ts.URL+"/viewer/login")},
+		{name: "object page", resp: getResponse(t, viewer, ts.URL+"/viewer/objects")},
+		{name: "fragment", resp: getResponse(t, viewer, ts.URL+"/viewer/objects?tab=bytes")},
+		{name: "stylesheet", resp: getResponse(t, ts.Client(), ts.URL+"/viewer/static/viewer.css")},
+		{name: "script", resp: getResponse(t, ts.Client(), ts.URL+"/viewer/static/htmx.min.js")},
+		{name: "401", resp: &capturedResponse{status: rejected.StatusCode, header: rejected.Header}},
+	} {
+		if got := tc.resp.header.Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s Cache-Control = %q, want no-store", tc.name, got)
+		}
+		if vary := tc.resp.header.Values("Vary"); !slices.Contains(vary, "Cookie") {
+			t.Errorf("%s Vary = %v, want it to name Cookie", tc.name, vary)
+		}
+	}
+}
+
+// TestRejectionsCarryNoBody keeps the viewer's refusals silent: a caller
+// without a session, a session without the role, and a mutation without CSRF
+// all answer with the status alone. Nothing in the response tells a prober
+// whether the target exists or why the request was refused.
+func TestRejectionsCarryNoBody(t *testing.T) {
+	ts, _ := newTestServer(t)
+	anonymous := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	viewer := login(t, ts, "viewer-tok")
+	csrf := csrfFromPage(getBody(t, viewer, ts.URL+"/viewer/objects"))
+
+	unauthorized, err := anonymous.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {"x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unauthorized.Body.Close()
+	forbidden, err := viewer.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer forbidden.Body.Close()
+	csrfRejected, err := viewer.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {"wrong"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer csrfRejected.Body.Close()
+
+	for _, tc := range []struct {
+		name   string
+		resp   *http.Response
+		status int
+	}{
+		{"missing session", unauthorized, http.StatusUnauthorized},
+		{"insufficient role", forbidden, http.StatusForbidden},
+		{"missing CSRF", csrfRejected, http.StatusForbidden},
+	} {
+		body, err := io.ReadAll(tc.resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.resp.StatusCode != tc.status {
+			t.Errorf("%s = %d, want %d", tc.name, tc.resp.StatusCode, tc.status)
+		}
+		if len(body) != 0 {
+			t.Errorf("%s answered with a body: %.120q", tc.name, body)
+		}
+	}
+}
+
+// TestErrorBodiesCarryOnlyOwnedProse checks the other half of response
+// hygiene: a failure the viewer answers itself — a query it cannot parse, an
+// object it does not have — says what the viewer decided in the viewer's own
+// words. Interpreter text (a wrapped backend error, a filesystem path)
+// describes the layer underneath, and an operator reading the page must not
+// receive it.
+func TestErrorBodiesCarryOnlyOwnedProse(t *testing.T) {
+	ts, _ := newTestServer(t)
+	viewer := login(t, ts, "viewer-tok")
+	missing := strings.Repeat("11", 32)
+
+	for _, tc := range []struct {
+		name   string
+		target string
+		status int
+	}{
+		{"unparsable query", ts.URL + "/viewer/objects?limit=ten", http.StatusBadRequest},
+		{"missing object", ts.URL + "/viewer/objects/" + missing + "/dump", http.StatusNotFound},
+	} {
+		resp := getResponse(t, viewer, tc.target)
+		if resp.status != tc.status {
+			t.Errorf("%s = %d, want %d", tc.name, resp.status, tc.status)
+		}
+		for _, leak := range []string{"cas: ", "open ", "/tmp/", "/home/", `C:\`, "syscall", "runtime error"} {
+			if strings.Contains(resp.body, leak) {
+				t.Errorf("%s body carries interpreter text %q: %.200q", tc.name, leak, resp.body)
+			}
+		}
+	}
+}
+
+// capturedResponse is a finished response: its status, its headers, and the
+// body already read, so a caller can assert on all three after the exchange.
+type capturedResponse struct {
+	status int
+	header http.Header
+	body   string
+}
+
+// getResponse performs a GET and reads the whole body into a
+// capturedResponse.
+func getResponse(t *testing.T, client *http.Client, target string) *capturedResponse {
+	t.Helper()
+	resp, err := client.Get(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &capturedResponse{status: resp.StatusCode, header: resp.Header, body: string(body)}
 }
