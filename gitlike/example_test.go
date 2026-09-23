@@ -2,14 +2,28 @@ package gitlike_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	memory "github.com/dmundt/go-cask/cas/backend/mem"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
+
+// jsonCodec keeps the examples codec-agnostic while remaining copy-pasteable.
+type jsonCodec[T any] struct{}
+
+func (jsonCodec[T]) Encode(v T) ([]byte, error) { return json.Marshal(v) }
+
+func (jsonCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
 
 // These Examples are the consumer's view: they live in the external test
 // package, so every call below is public API, and the Codecs set is spelled out
@@ -23,10 +37,10 @@ import (
 func Example() {
 	ctx := context.Background()
 	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
-		Blob:   jsoncodec.New[*gitlike.Blob](),
-		Tree:   jsoncodec.New[*gitlike.Tree](),
-		Commit: jsoncodec.New[*gitlike.Commit](),
-		Tag:    jsoncodec.New[*gitlike.Tag](),
+		Blob:   jsonCodec[*gitlike.Blob]{},
+		Tree:   jsonCodec[*gitlike.Tree]{},
+		Commit: jsonCodec[*gitlike.Commit]{},
+		Tag:    jsonCodec[*gitlike.Tag]{},
 	})
 
 	h, err := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hi")})
@@ -50,10 +64,10 @@ func Example() {
 func ExampleRepository() {
 	ctx := context.Background()
 	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
-		Blob:   jsoncodec.New[*gitlike.Blob](),
-		Tree:   jsoncodec.New[*gitlike.Tree](),
-		Commit: jsoncodec.New[*gitlike.Commit](),
-		Tag:    jsoncodec.New[*gitlike.Tag](),
+		Blob:   jsonCodec[*gitlike.Blob]{},
+		Tree:   jsonCodec[*gitlike.Tree]{},
+		Commit: jsonCodec[*gitlike.Commit]{},
+		Tag:    jsonCodec[*gitlike.Tag]{},
 	})
 
 	h, err := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hi")})
@@ -80,10 +94,10 @@ func ExampleRepository() {
 func ExampleWalkGraph() {
 	ctx := context.Background()
 	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
-		Blob:   jsoncodec.New[*gitlike.Blob](),
-		Tree:   jsoncodec.New[*gitlike.Tree](),
-		Commit: jsoncodec.New[*gitlike.Commit](),
-		Tag:    jsoncodec.New[*gitlike.Tag](),
+		Blob:   jsonCodec[*gitlike.Blob]{},
+		Tree:   jsonCodec[*gitlike.Tree]{},
+		Commit: jsonCodec[*gitlike.Commit]{},
+		Tag:    jsonCodec[*gitlike.Tag]{},
 	})
 	resolver := gitlike.NewResolver(repo)
 

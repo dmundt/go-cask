@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,10 +14,44 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
-	gobcodec "github.com/dmundt/go-cask/cas/codec/gob"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
+
+// jsonCodec is a tiny in-package codec to keep the gitlike tests codec-agnostic
+// without depending on cas/codec.
+type jsonCodec[T any] struct{}
+
+func (jsonCodec[T]) Encode(v T) ([]byte, error) { return json.Marshal(v) }
+
+func (jsonCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
+
+// gobCodec is a tiny in-package codec to verify non-JSON storage types remain
+// supported without importing the codec layer.
+type gobCodec[T any] struct{}
+
+func (gobCodec[T]) Encode(v T) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (gobCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&v); err != nil {
+		var zero T
+		return zero, err
+	}
+	return v, nil
+}
 
 // ref keeps object literals readable: a reference field is a plain cas.Digest
 // now, so this is the identity function (it also documents where a reference
@@ -27,10 +62,10 @@ func ref(d cas.Digest) cas.Digest { return d }
 // no codec, so every construction passes one explicitly.
 func jsonCodecs() Codecs {
 	return Codecs{
-		Blob:   jsoncodec.New[*Blob](),
-		Tree:   jsoncodec.New[*Tree](),
-		Commit: jsoncodec.New[*Commit](),
-		Tag:    jsoncodec.New[*Tag](),
+		Blob:   jsonCodec[*Blob]{},
+		Tree:   jsonCodec[*Tree]{},
+		Commit: jsonCodec[*Commit]{},
+		Tag:    jsonCodec[*Tag]{},
 	}
 }
 
@@ -1067,10 +1102,10 @@ func TestValidate(t *testing.T) {
 func TestRepositoryWithAnotherCodec(t *testing.T) {
 	ctx := context.Background()
 	repo := NewRepository(mem.New(), sha256hash.New(), Codecs{
-		Blob:   gobcodec.NewRaw[*Blob](),
-		Tree:   gobcodec.NewRaw[*Tree](),
-		Commit: gobcodec.NewRaw[*Commit](),
-		Tag:    gobcodec.NewRaw[*Tag](),
+		Blob:   gobCodec[*Blob]{},
+		Tree:   gobCodec[*Tree]{},
+		Commit: gobCodec[*Commit]{},
+		Tag:    gobCodec[*Tag]{},
 	})
 
 	// The invariant is codec-independent: a gob-backed repository refuses a
