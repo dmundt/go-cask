@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v36
+version: v37
 ---
 
 # Defaults and Behavior — go-cask
@@ -28,8 +28,8 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Fan-out layout | `FanOut=2`, `FanLevels=1` → `<base>/<fan-out dirs>/<full hex digest>`; no algorithm directory; file name always the full digest | cas-core §4.4 |
 | Fan-out bound | `FanLevels × FanOut ≤ 64` | cas-core §4.4 |
 | Dir / file perms | `0o755` / `0o644` | cas-core §4.4 |
-| Default codec | JSON (`json.New[T]()`), compressed by default with `flate` for size-sensitive payloads | cas-core §4.6 |
-| Default compression codec | `flate` (`cas/codec/flate`) as the default compression wrapper for durable payloads | cas-core §4.6 |
+| Default codec | JSON (`json.New[T]()`), uncompressed: no default constructor wraps a payload in a compression codec | cas-core §4.6 |
+| Default compression codec | `flate` (`cas/codec/flate`) is the wrapper to choose when a payload needs compressing (smallest of the three, no header); compression is opt-in and never applied by a default constructor | cas-core §4.6; extensions §3 |
 | Compact binary codec | Optional app-defined payload codec (`binary.New(next, transform, restore)` or `binary.NewRaw(encode, decode)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
