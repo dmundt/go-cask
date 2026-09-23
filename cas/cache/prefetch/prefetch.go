@@ -56,15 +56,16 @@ func NewSmartCache[T cas.Object[T]](store *mem.CachedStore[T], prefetchDepth int
 // GetWithPrefetch loads the object at d and, if prefetching is enabled,
 // asynchronously warms the cache with every reachable reference up to
 // prefetchDepth levels. The prefetch is skipped — never waited for — when every
-// prefetch slot is busy or ctx is already canceled. The returned object and
-// error are those of the load, so prefetching cannot fail the call.
+// prefetch slot is busy; the load decides whether the call itself was canceled.
+// The returned object and error are those of the load, so prefetching cannot
+// fail the call.
 func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, d cas.Digest) (T, error) {
 	loaded, err := c.store.Get(ctx, d)
 	if err != nil {
 		var zero T
 		return zero, err
 	}
-	if c.prefetchDepth <= 0 || ctx.Err() != nil {
+	if c.prefetchDepth <= 0 {
 		return loaded, nil
 	}
 	select {
@@ -75,10 +76,9 @@ func (c *SmartCache[T]) GetWithPrefetch(ctx context.Context, d cas.Digest) (T, e
 	go func() {
 		defer func() { <-c.sem }()
 		// WithoutCancel keeps ctx's values but drops its cancellation, so a
-		// request-scoped ctx that ends the instant GetWithPrefetch returns
-		// (the common case: an HTTP handler's r.Context()) does not kill the
-		// prefetch before it starts. prefetchTimeout is the only thing that
-		// bounds this background work.
+		// request-scoped ctx that ends after the read is already in flight or
+		// just returned does not kill the prefetch before it starts; only the
+		// prefetchTimeout bounds the background walk.
 		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), prefetchTimeout)
 		defer cancel()
 		seen := map[string]struct{}{d.String(): {}}
