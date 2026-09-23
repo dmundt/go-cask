@@ -160,6 +160,9 @@ go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/backend/fs/
 go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/backend/fs/
 go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 
+echo "== helper script behaviour =="
+./scripts/test-bench-scripts.sh
+
 echo "== doc integrity =="
 cd docs/specs
 fail_doc=0
