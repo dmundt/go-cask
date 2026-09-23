@@ -16,6 +16,7 @@
 package refs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -300,7 +301,7 @@ func (s *Store) List(ctx context.Context) ([]Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b Ref) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
