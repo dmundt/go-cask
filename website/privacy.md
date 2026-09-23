@@ -103,4 +103,4 @@ the website operator may be sent to the email address provided in the
 GitHub should be directed to GitHub using the contact details in
 [GitHub's General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 
-Last updated: 21 September 2026
+Privacy policy revision: 21 September 2026

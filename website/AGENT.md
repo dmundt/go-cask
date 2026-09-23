@@ -55,6 +55,41 @@ python -m mkdocs build --strict
 Preview through `python -m mkdocs serve`; browser `file://` pages cannot load
 MkDocs' search index, so local search is not a valid file-preview check.
 
+## Build provenance in the footer
+
+The footer partial (`website/overrides/partials/copyright.html`, loaded through
+`theme.custom_dir` in `mkdocs.yml`) shows the date and short revision of the
+revision the site was built from, and derives the copyright year from that same
+date instead of keeping a literal. `website/macros.py` publishes both values.
+
+- `SITE_BUILD_DATE` — the deployed revision's committer date, ISO 8601. The
+  hook normalizes it to UTC and renders `YYYY-MM-DD`. The deploy workflow
+  passes `github.event.head_commit.timestamp` on push and falls back to
+  `git log -1 --format=%cI` when a workflow dispatch has no commit payload.
+- `SITE_REVISION` — the deployed revision, short form, passed from
+  `github.event.head_commit.id` with `github.sha` as the fallback.
+
+Both start as empty strings in `mkdocs.yml`'s `extra` block; the hook overwrites
+them before any page or template renders. They are sourced from the revision,
+never from wall-clock time, so two builds of one revision produce the same
+footer. Check that after a change to the footer or the hook: the built
+`site/index.html` must contain one `md-copyright__site-build` line naming the
+value of `SITE_REVISION` it was given, and repeating the build with the same
+values must reproduce that line byte for byte.
+
+Unlike `IMPRESSUM`, neither is required: a local build without the environment
+variables falls back to the checkout's own `git log` and `git rev-parse`, and
+when even that is unavailable the value stays empty. The footer then omits the
+build line, or drops the year, rather than rendering an empty or stale label.
+`mkdocs build --strict` and `mkdocs serve` must both keep succeeding with no new
+environment variable set. The build-provenance markup lives in the HTML partial
+only: raw HTML stays forbidden in every `*.md` file, and the doc-integrity pass
+in `scripts/verify.sh` enforces that.
+
+`website/privacy.md`'s final line is the privacy policy's own revision date
+("Privacy policy revision: …"), not the site's build date; keep that wording so
+the two dates cannot be read as one.
+
 ## Signed pull-request workflow
 
 When repository policy requires signed commits, rebuild PR branches locally from
