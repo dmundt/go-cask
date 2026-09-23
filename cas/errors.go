@@ -15,10 +15,13 @@ import "errors"
 
 // Sentinel errors. Backends map their "not found" condition to ErrNotFound
 // via %w; integrity checks return ErrDigestMismatch; parsing a digest returns
-// ErrInvalidDigest; an envelope with an unknown type name or major version
-// returns ErrUnknownType; a stored payload that the store codec cannot decode
-// returns ErrCorrupt; an object written with a different codec than the one
-// reading it returns ErrCodecMismatch. Compare with errors.Is, never by string.
+// ErrInvalidDigest; a stored type the reader does not handle — one with no
+// registered resolver, or one outside a caller's fixed object model — returns
+// ErrUnknownType; stored object data that cannot be parsed or decoded — a
+// malformed or truncated envelope, a frame version this build cannot read, a
+// payload the store codec rejects — returns ErrCorrupt; an object written with
+// a different codec than the one reading it returns ErrCodecMismatch. Compare
+// with errors.Is, never by string.
 var (
 	// ErrNotFound reports that a digest is absent from a backend.
 	ErrNotFound = errors.New("cas: object not found")
@@ -26,14 +29,21 @@ var (
 	ErrDigestMismatch = errors.New("cas: digest mismatch")
 	// ErrInvalidDigest reports malformed or unsupported digest bytes.
 	ErrInvalidDigest = errors.New("cas: invalid digest")
-	// ErrUnknownType reports an object type without a registered resolver.
+	// ErrUnknownType reports a type dispatch miss: a stored type name with no
+	// registered resolver, or one outside the fixed object model the caller
+	// decodes. It answers a question about intact bytes and is never a parse
+	// failure — a malformed envelope is ErrCorrupt, in every reader.
 	ErrUnknownType = errors.New("cas: unknown object type or version")
-	// ErrCorrupt reports invalid stored object data.
+	// ErrCorrupt reports invalid stored object data: an envelope that does not
+	// parse (a truncated or oversized header field, an empty type name, a
+	// frame version this build cannot read, a payload length that does not fit
+	// the frame) or a payload the store's codec cannot decode, including one
+	// that decodes to nil or violates its object's Validate.
 	ErrCorrupt = errors.New("cas: corrupt object")
 	// ErrCodecMismatch reports that an object was written with a different
 	// codec than the one reading it. The stored bytes are intact — the reader
 	// changed — so it is kept distinct from ErrCorrupt (damaged bytes) and
-	// ErrUnknownType (unknown type name or major version), and neither of those
+	// ErrUnknownType (a type the reader does not handle), and neither of those
 	// is ever returned for a codec difference.
 	ErrCodecMismatch = errors.New("cas: codec mismatch")
 	// ErrUnsupported reports that a maintenance operation was requested that

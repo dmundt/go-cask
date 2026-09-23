@@ -172,6 +172,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `lru.Cache` no longer embeds `memory.CachedStore`: it exposes the methods it
   owns rather than the wrapped type's entire method set, and reaches the wrapped
   store only through `CachedStore()`.
+- `fs.New` and `packfs.New` validate the store directory before creating
+  anything: a base that is empty or whitespace, `.`, the filesystem root, a
+  volume root (`C:`), or a parent-traversal path (`..`, `../store`) is rejected,
+  where it previously opened a backend that owned the caller's whole working
+  directory or drive. A nested directory is still a valid base — only the caller
+  can tell whether it already belongs to another store — so
+  `fs.New(filepath.Join(root, name))` and `packfs`'s own loose sub-store are
+  unaffected.
 - `gitlike.NewPreloader` and `fs.EnsureBase`/`fs.CleanupTemp` take a
   `context.Context`, so background preloading and large temporary-file sweeps
   honour the caller's cancellation.
@@ -244,6 +252,28 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reported phantom digests and `Stats` counted every object twice. The index is
   keyed by the digest's hex form now, and an index written by an older build is
   dropped on load (the loose tree still holds every object).
+- A damaged stored object is no longer reported as an unknown type. A truncated
+  or otherwise unreadable envelope is now `cas.ErrCorrupt` from every reader
+  (`Store.Get`, `EnvelopeFromBytes`/`EnvelopeType`, `PeekType`,
+  `cas/repo.Registry.Resolve`), which is what `Store.Type`/`PeekType` already
+  reported for those bytes; `cas.ErrUnknownType` now means only that an intact
+  object names a type the caller does not handle. Consumers that skip an object
+  with `errors.Is(err, cas.ErrUnknownType)` — "not my type, leave it alone" —
+  can no longer mistake an unreadable object for one they simply do not decode,
+  which in a maintenance path such as a GC sweep meant treating a damaged
+  manifest as a leaf and deleting the objects it referenced.
+
+### Security
+
+- The viewer's startup token is no longer written to the process log: `cask web`
+  emitted it with `slog.Warn("viewer startup token", "admin_token", …)`, so
+  under systemd/journald, Docker, or a log shipper the admin credential was
+  retained and indexed for readers who are not operators. No log level carries
+  the token now. An interactive `cask web` still shows the one-time login deep
+  link on its terminal; an unattended deployment supplies the token instead with
+  the new `-token-file <path>` flag or the `CASK_VIEWER_TOKEN` environment
+  variable, and a generated token that cannot be shown is reported as such
+  without its value (cli.md §4, viewer-security §5.1, §9, §11).
 
 ## [v1.6.5] - 2026-09-22
 

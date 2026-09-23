@@ -32,7 +32,7 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 - The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or performs a direct `?token=` login (§5.1) — neither exposes store data.
 - Login attempts MUST be rate limited (max 5 failures/IP/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
-- Startup token characteristics: cryptographically secure random; displayed only at startup (once); not stored in plaintext config; regenerated on every restart.
+- Startup token characteristics: cryptographically secure random; supplied out of band with `-token-file`/`CASK_VIEWER_TOKEN` or displayed once, and only when stderr is an interactive terminal — never through the logging package, at any level (cli.md §4, §9, §11); not stored in plaintext config; regenerated on every restart unless the operator supplied it.
 - A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie.
 - **Direct `?token=` login (MUST):** the token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs; the server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`; login still honors the throttle and audit-logs the action **without** the token value; after the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
 
@@ -73,7 +73,7 @@ table in the same commit that ships it.
 
 ## 9. Audit logging
 
-All administrative actions MUST be logged, including timestamp, user/session identifier, action, affected resource, result. Never log passwords, session cookies, authentication tokens, or secret keys.
+All administrative actions MUST be logged, including timestamp, user/session identifier, action, affected resource, result. Never log passwords, session cookies, authentication tokens, or secret keys. The process log is one of those sinks: `cask web` MUST NOT hand the startup token to the logging package at any level, because under systemd/journald, Docker, or a log shipper that output is retained and indexed beyond the operator. The token is written only to an interactive terminal, or not at all (§5.1, §11).
 
 ## 10. API architecture
 
@@ -100,7 +100,7 @@ else's session.
 
 ## 11. Secret handling
 
-Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`.
+Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`. A startup token MAY additionally be supplied out of band, with the `-token-file` flag or the `CASK_VIEWER_TOKEN` environment variable, and MAY be displayed once on an interactive terminal (cli.md §4); outside that it MUST NOT appear in the process log at any level, in the output of a process without a terminal, or in an API response.
 
 ## 12. Production deployments
 
@@ -118,7 +118,7 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [x] Auth required; login throttled (5/IP/min, backoff, audit-logged without the token) (§5)
-- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5)
+- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on an interactive terminal only, or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
 - [x] Cookies always use `HttpOnly` + `SameSite=Strict` + `Secure`; no sensitive data in cookies (§7)
 - [x] Roles viewer/operator/admin enforced; authn and authz separated (§8)
