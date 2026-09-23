@@ -14,6 +14,8 @@
 | `cas.Hasher` and `gitlike.Codecs` (both injected; the tests wire `sha256.New()` + `json.New[T]()`) | `NewRepository(backend, hasher, codecs)` → each per-type `cas.New` |
 | `cas.Backend` | the shared backend under `Repository` |
 | `Store.Get` (envelope type verification) | resolver reads |
+| `cas.EnvelopeType` (bounded header read) | `Resolver.objectType` |
+| `cas/repo.Walk` + the `cas/repo.Resolver` interface | `WalkGraph` (and `cas/repo.Reachable` over a gitlike repository) |
 | `lru.Cache[T]` | `CachedRepository` |
 | `CachedStore[T].PreloadRecursive` | `Preloader` |
 
@@ -22,8 +24,9 @@
 - **Four `Object[T]` types** with the self-describing envelope (`types.go`). Reference fields are plain `cas.Digest`: the zero value is "absent", the tag `omitzero` leaves an absent reference out of the encoding (`TreeEntry.Hash`, `Commit.Parent`), and `Digest` renders itself as one lowercase-hex string through `encoding.TextMarshaler` and validates as it decodes — so the package contains **no** codec code at all (it imports no codec package; the caller passes the four codecs). Each reference is one bare hex string on the wire (the previous build wrote `"sha256:hexdigest"`) — see the migration note below.
 - **`Validate() error`** on `TreeEntry`/`Tree`/`Commit`/`Tag` — the object invariants (`TreeEntry` needs a name, `Commit` needs a tree, `Tag` needs a name; an absent digest is valid where absence is legal). The store enforces them on every `Put` and `Get` (`cas.Validator`), so a tree-less commit cannot be written *and* a stored one is `ErrCorrupt` — under any codec, which is why the old `Commit.MarshalJSON`/`UnmarshalJSON` pair is gone.
 - **`Repository`** — per-type `Store[T]` over one `cas.Backend`, the caller's `cas.Hasher` and the caller's `gitlike.Codecs` (`NewRepository(backend, hasher, codecs)`); cross-type access without `any`, and the wrong store is a compile-time error. The repository names neither the algorithm nor the wire format.
-- **`Resolver` / `ResolvedObject` / `parseType` / `ResolveAny`** — typed resolution; `ResolveAny` reads the envelope type via `parseType` and dispatches to the typed `Resolve*`.
-- **`WalkGraph`, `CachedRepository`, `Preloader`** — whole-graph traversal, per-type LRU caches, and a background commit preloader.
+- **`Resolver` / `ResolvedObject` / `Resolve` / `ResolveAny`** — typed resolution. `Resolve` returns the concrete object as a `cas/repo.Object` (so the Resolver satisfies `cas/repo.Resolver`), `ResolveAny` returns the typed union built from it, and the four `Resolve*` methods stay the compile-time-typed reads.
+- **`WalkGraph`** — whole-graph traversal, delegated to `cas/repo.Walk`: gitlike does not implement its own walk any more, so a gitlike repository and a `cas/repo.Registry` follow identical rules (at-most-once, explicit stack, context checked per node), and `cas/repo.Reachable` expands a gitlike root set without a second traversal.
+- **`CachedRepository`, `Preloader`** — per-type LRU caches and a background commit preloader; `Repository.Close`/`CachedRepository.Close` release the shared backend (packfs flushes its active pack there).
 - **`cas` is untouched** — the canonical *consumer* pattern.
 
 ## Codec-agnostic by construction
@@ -34,8 +37,8 @@ The `_test.go` files do name a codec (the shipped JSON one) exactly as a client 
 
 ## Code walkthrough
 
-- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules, which the store enforces on every `Put` and `Get` (`cas.Validator`) rather than any codec. `parseType` reads the envelope type from stored bytes (wrapping `cas.EnvelopeFromBytes`) — the parser every app with its own model copies.
-- `repo.go` — `Repository` wires the four stores over one backend, the caller's hasher and the caller's `Codecs` (one `Codec[T]` per type); `Resolver.ResolveAny` resolves any digest via `parseType` → typed `Resolve*` → `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` traverses the whole graph.
+- `types.go` — `Blob` (leaf), `Tree`/`TreeEntry`, `Commit` (tree + optional parent), `Tag` (target); `Type()` returns the versioned names so object majors can coexist; `Validate()` carries the per-type rules, which the store enforces on every `Put` and `Get` (`cas.Validator`) rather than any codec. `bareType` maps a versioned name to the union's bare name (`"blob@1"` → `"blob"`).
+- `repo.go` — `Repository` wires the four stores over one backend, the caller's hasher and the caller's `Codecs` (one `Codec[T]` per type); `Resolver.Resolve` reads the envelope type through `cas.EnvelopeType` on a bounded prefix and dispatches to the typed `Resolve*`, `ResolveAny` maps the result onto the `ResolvedObject` union; `PrintObject` renders via a type switch (no reflection); `WalkGraph` delegates to `cas/repo.Walk`.
 - `cached.go` — `CachedRepository` (per-type `lru.Cache` + convenience getters) and `Preloader` (worker pool running `Commits.PreloadRecursive`).
 - `gitlike_test.go` — round-trips, references, `ResolveAny` for every type, legacy unversioned envelopes, `WalkGraph`, cached repository, preloader.
 
@@ -58,6 +61,7 @@ classDiagram
         +ResolveTree() Tree
         +ResolveBlob() Blob
         +ResolveTag() Tag
+        +Resolve() casrepo.Object
         +ResolveAny() ResolvedObject
     }
     class Blob { +Data []byte }

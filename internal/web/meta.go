@@ -36,6 +36,13 @@ type objectMeta struct {
 // stored object, and each row needs a type, a size, and a write time — without
 // this cache every keystroke in the search box would re-read and re-stat the
 // entire store.
+//
+// It is deliberately a digest-keyed map and not a cas/cache/lru.Cache: that
+// cache is bound to a *cas.Store[T] (it wraps the lazy-loading typed store), so
+// it cannot hold a non-object value like this metadata record. Eviction is
+// wholesale rather than per-entry, which is sound here because entries are tiny,
+// immutable, and cheap to recompute — the alternative is a generic key/value LRU
+// the core does not ship (go-cask#200).
 type metaCache struct {
 	mu       sync.RWMutex
 	byDigest map[string]objectMeta
@@ -71,11 +78,10 @@ func (s *Server) objectMetaFor(ctx context.Context, d cas.Digest) objectMeta {
 		return meta
 	}
 	var meta objectMeta
-	data, err := s.readN(ctx, d, typePrefixLimit)
-	if err != nil {
+	if typ, err := index.HeaderType(ctx, s.store, d); err != nil {
 		meta.Unreadable = true
 	} else {
-		meta.Type = index.EnvelopeType(data)
+		meta.Type = typ
 	}
 	if size, err := s.store.Size(ctx, d); err == nil {
 		meta.Size = size

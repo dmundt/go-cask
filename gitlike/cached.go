@@ -68,6 +68,14 @@ func (c *CachedRepository) GetBlob(ctx context.Context, d cas.Digest) (*Blob, er
 	return c.Blobs.Get(ctx, d)
 }
 
+// GetTag returns the tag at d via the tag cache.
+func (c *CachedRepository) GetTag(ctx context.Context, d cas.Digest) (*Tag, error) {
+	return c.Tags.Get(ctx, d)
+}
+
+// Close releases the shared backend through the wrapped repository.
+func (c *CachedRepository) Close() error { return c.repo.Close() }
+
 // ResolveAny resolves d to any supported object type through the shared
 // resolver. It reads the raw bytes and the per-type stores directly, so it does
 // not serve from these caches; use GetBlob/GetTree/GetCommit/GetTag for a cached

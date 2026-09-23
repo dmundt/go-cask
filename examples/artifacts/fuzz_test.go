@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"testing"
 
+	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // FuzzGzipCodecRoundTrip drives the real codec stack the example stores with —
-// the gzip wrapper over the JSON codec — on the real object type, so the corpus
-// exercises the production path rather than a copy of it.
+// the shipped gzip wrapper over the JSON codec — on the real object type, so the
+// corpus exercises the production path rather than a copy of it.
 //
 // The payload is a byte slice on purpose: JSON renders []byte as base64, so
 // arbitrary bytes round-trip. A bare string payload would not, because
@@ -19,7 +20,7 @@ func FuzzGzipCodecRoundTrip(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte{0x00, 0xff, 0xb2, 0x7f})
 	f.Fuzz(func(t *testing.T, data []byte) {
-		codec := newGzipCodec[*Artifact](jsoncodec.New[*Artifact]())
+		codec := gzipcodec.New(jsoncodec.New[*Artifact]())
 		in := &Artifact{Name: "fuzz", Data: data}
 
 		encoded, err := codec.Encode(in)

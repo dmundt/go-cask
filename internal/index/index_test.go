@@ -85,6 +85,45 @@ func TestEnvelopeType(t *testing.T) {
 	}
 }
 
+// TestHeaderType pins the contract the viewer's index, the inspector and the
+// cask CLI share: a readable object yields its versioned type name, bytes that
+// are not an envelope yield "" with no error (a raw object written by `cask put`
+// is untyped, not damaged), and only an unreadable object returns an error.
+func TestHeaderType(t *testing.T) {
+	ctx := context.Background()
+	backend := memory.New()
+	put := func(data []byte) cas.Digest {
+		t.Helper()
+		d := sha256.Of(data)
+		if err := backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	typed := put(tlvEnvelope("blob@1", []byte("x")))
+	raw := put([]byte("not an envelope"))
+	truncated := put([]byte{1, 200, 'a'}) // declared type length beyond the buffer
+
+	if got, err := HeaderType(ctx, backend, typed); err != nil || got != "blob@1" {
+		t.Fatalf("HeaderType(typed) = (%q, %v), want (%q, nil)", got, err, "blob@1")
+	}
+	if got, err := HeaderType(ctx, backend, raw); err != nil || got != "" {
+		t.Fatalf("HeaderType(raw) = (%q, %v), want (\"\", nil): a raw object is untyped, not unreadable", got, err)
+	}
+	if got, err := HeaderType(ctx, backend, truncated); err != nil || got != "" {
+		t.Fatalf("HeaderType(truncated) = (%q, %v), want (\"\", nil)", got, err)
+	}
+	missing := sha256.Of([]byte("never stored"))
+	if _, err := HeaderType(ctx, backend, missing); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("HeaderType(missing) = %v, want cas.ErrNotFound", err)
+	}
+	// A read failure is an error, not a silently empty type.
+	failing := &snapshotSource{Backend: backend, getErr: errors.New("boom")}
+	if _, err := HeaderType(ctx, failing, typed); err == nil {
+		t.Fatal("HeaderType with a failing Get must return an error")
+	}
+}
+
 type snapshotSource struct {
 	*memory.Backend
 	getErr  error

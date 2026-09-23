@@ -5,40 +5,52 @@
 //
 // It demonstrates: gitlike Blob/Tree/Commit/Tag, Repository,
 // Resolver/ResolvedObject, WalkGraph, Store[T] with the JSON codec
-// (json.New[T]()), fs.Backend fan-out, explicit cas.Verifier integrity checks,
-// Stats, derived object-state audit (verified/orphaned/corrupt), and an
+// (json.New[T]()), fs.Backend fan-out, cas/refs for the mutable HEAD/INDEX
+// pointers, explicit cas.Verifier/cas.VerifyAll integrity checks, Stats,
+// derived object-state audit (verified/orphaned/corrupt), and an
 // argument-parsing CLI.
 //
 // Usage:
 //
-//	go run ./examples/files [-store <dir>] <command> [args]
+//	go run ./examples/files [-store <root>] <command> [args]
 //
 // Commands: add <file...>, commit -m <msg>, log, cat <hash>, graph,
 // audit [-no-verify], verify, stats.
+//
+// The -store root holds two independent trees — the Git shape this example
+// imitates, and the only shape that is safe for both:
+//
+//	<root>/objects  the fs.Backend base: every content-addressable object
+//	<root>/refs     the cas/refs.Store: HEAD (current commit), INDEX (current tree)
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	iofs "io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
-	crc32 "github.com/dmundt/go-cask/cas/verify/crc32"
+	"github.com/dmundt/go-cask/cas/refs"
 	"github.com/dmundt/go-cask/gitlike"
 )
 
-const usage = `usage: files [-store <dir>] <command> [args]
+// The two refs this example keeps: HEAD names the current commit, INDEX the
+// tree a commit would record next. cas/refs validates the names and stores
+// bare-hex digests.
+const (
+	headRef  = "HEAD"
+	indexRef = "INDEX"
+)
+
+const usage = `usage: files [-store <root>] <command> [args]
 
 commands:
   add <file...>     store files as blobs and build a tree (prints the tree hash)
@@ -48,124 +60,86 @@ commands:
   graph             print the object graph reachable from HEAD
   audit [-no-verify]  report every object's state (verified/orphaned/corrupt)
   verify            recompute every stored digest
-  stats             print the object count and total size`
+  stats             print the object count and total size
 
-// app bundles the store, repository and the small ref files (HEAD/INDEX).
+The -store root holds objects/ (the object store) and refs/ (HEAD and INDEX).`
+
+// app bundles the object store, the gitlike repository over it, the mutable
+// refs, and the hasher each integrity check recomputes with.
+//
+// objects and refs are separate directories under root, and that separation is
+// load-bearing rather than cosmetic: the refs Store publishes a new value
+// through a "<name>.tmp" temp file, and the fs backend's Clean reclaims every
+// "*.tmp" beneath its own base — so a ref written inside <root>/objects could
+// be swept away mid-write. The same base reports every digest-named file
+// beneath it at any depth as an object (cas-core §4.4: one base belongs to
+// exactly one store), so refs must not live there either.
 type app struct {
 	backend *fs.Backend
 	repo    *gitlike.Repository
-	dir     string
-	index   string // path of the INDEX file (current tree)
-	head    string // path of the HEAD file (current commit)
+	hasher  cas.Hasher
+	root    string      // the example root the CLI was pointed at
+	objects string      // <root>/objects: the fs.Backend base
+	refs    *refs.Store // <root>/refs: HEAD and INDEX
 }
 
-func newApp(dir string) (*app, error) {
-	backend, err := fs.New(dir)
+func newApp(root string) (*app, error) {
+	objects := filepath.Join(root, "objects")
+	backend, err := fs.New(objects)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open object store %s: %w", objects, err)
 	}
 	// gitlike names neither the hash algorithm nor the wire format, so the
 	// example supplies both: the sha256 hasher and one JSON codec per type.
-	repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
+	hasher := sha256.New()
+	repo := gitlike.NewRepository(backend, hasher, gitlike.Codecs{
 		Blob:   jsoncodec.New[*gitlike.Blob](),
 		Tree:   jsoncodec.New[*gitlike.Tree](),
 		Commit: jsoncodec.New[*gitlike.Commit](),
 		Tag:    jsoncodec.New[*gitlike.Tag](),
 	})
-	return &app{backend: backend, repo: repo, dir: dir, index: filepath.Join(dir, "INDEX"), head: filepath.Join(dir, "HEAD")}, nil
-}
-
-// readRef reads a ref file: the printable "sha256:hexdigest" form (or bare
-// hex). A missing file surfaces as io/fs.ErrNotExist; unreadable bytes or a
-// malformed digest surface as their own errors.
-func (a *app) readRef(path string) (cas.Digest, error) {
-	b, err := os.ReadFile(path)
+	// Refs live beside the objects base, never inside it (see app's doc
+	// comment): refs.Open owns <root>/refs as a plain directory of files.
+	refStore, err := refs.Open(filepath.Join(root, "refs"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open refs: %w", err)
 	}
-	return sha256.Parse(strings.TrimSpace(string(b)))
+	return &app{
+		backend: backend,
+		repo:    repo,
+		hasher:  hasher,
+		root:    root,
+		objects: objects,
+		refs:    refStore,
+	}, nil
 }
 
-func (a *app) writeRef(path string, d cas.Digest) error {
-	return os.WriteFile(path, []byte(sha256.Format(d)+"\n"), 0o644)
+// currentTree returns the tree INDEX points at; refs.ErrNotFound means no add
+// has staged a tree yet.
+func (a *app) currentTree(ctx context.Context) (cas.Digest, error) {
+	return a.refs.Get(ctx, indexRef)
 }
 
-func (a *app) currentTree() (cas.Digest, error) { return a.readRef(a.index) }
-
-func (a *app) headCommit() (cas.Digest, error) { return a.readRef(a.head) }
+// headCommit returns the commit HEAD points at.
+func (a *app) headCommit(ctx context.Context) (cas.Digest, error) {
+	return a.refs.Get(ctx, headRef)
+}
 
 // headCommitOrAbsent reads HEAD and distinguishes "the store has no HEAD yet"
-// from "HEAD exists but cannot be read". Only a genuinely missing HEAD file
-// (or a zero digest) is absent — the first-commit case. An unreadable or
+// from "HEAD exists but cannot be read". Only a genuinely missing ref
+// (refs.ErrNotFound) is absent — the first-commit case. An unreadable or
 // malformed HEAD is corruption, and callers must see it instead of silently
 // treating the store as empty.
-func (a *app) headCommitOrAbsent() (cas.Digest, bool, error) {
-	d, err := a.headCommit()
+func (a *app) headCommitOrAbsent(ctx context.Context) (cas.Digest, bool, error) {
+	d, err := a.headCommit(ctx)
 	switch {
 	case err == nil:
 		return d, !d.IsZero(), nil
-	case errors.Is(err, iofs.ErrNotExist):
-		return nil, false, nil // no HEAD file yet: nothing committed
+	case errors.Is(err, refs.ErrNotFound):
+		return nil, false, nil // no HEAD ref yet: nothing committed
 	default:
 		return nil, false, fmt.Errorf("read HEAD: %w", err)
 	}
-}
-
-func objectPath(dir, h string) string {
-	return filepath.Join(dir, h[:2], h)
-}
-
-func (a *app) sidecarPath(d cas.Digest) string {
-	return objectPath(a.dir, d.String()) + ".crc32"
-}
-
-func (a *app) writeCRC32Sidecar(ctx context.Context, d cas.Digest) error {
-	r, err := a.backend.Get(ctx, d)
-	if err != nil {
-		return fmt.Errorf("read %s for crc32 sidecar: %w", d, err)
-	}
-	defer r.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("read %s bytes for crc32 sidecar: %w", d, err)
-	}
-	path := a.sidecarPath(d)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create crc32 sidecar dir for %s: %w", d, err)
-	}
-	return os.WriteFile(path, []byte(crc32.Format(crc32.Of(data))+"\n"), 0o644)
-}
-
-func (a *app) verifyCRC32Sidecar(ctx context.Context, d cas.Digest) error {
-	r, err := a.backend.Get(ctx, d)
-	if err != nil {
-		return fmt.Errorf("load object %s for crc32 check: %w", d, err)
-	}
-	defer r.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("read object %s bytes for crc32 check: %w", d, err)
-	}
-	want := crc32.Of(data)
-	rawSidecar, err := os.ReadFile(a.sidecarPath(d))
-	if err != nil {
-		return fmt.Errorf("%w: missing crc32 sidecar for %s", cas.ErrNotFound, d)
-	}
-	got, err := crc32.Parse(strings.TrimSpace(string(rawSidecar)))
-	if err != nil {
-		return fmt.Errorf("decode crc32 sidecar for %s: %w", d, err)
-	}
-	if !bytes.Equal(got, want) {
-		return fmt.Errorf("crc32 mismatch for %s: want %s got %s", d, crc32.Format(want), crc32.Format(got))
-	}
-	return nil
-}
-
-func (a *app) verifyOne(ctx context.Context, d cas.Digest) error {
-	if err := cas.NewVerifier(a.backend, sha256.New()).Verify(ctx, d); err != nil {
-		return err
-	}
-	return a.verifyCRC32Sidecar(ctx, d)
 }
 
 // add stores each file as a blob and builds a tree of them; identical
@@ -181,19 +155,17 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := a.writeCRC32Sidecar(ctx, h); err != nil {
-			return nil, err
-		}
 		entries = append(entries, gitlike.TreeEntry{Name: filepath.Base(p), Hash: h, Mode: "100644"})
 	}
 	h, err := a.repo.Trees.Put(ctx, &gitlike.Tree{Entries: entries})
 	if err != nil {
 		return nil, err
 	}
-	if err := a.writeCRC32Sidecar(ctx, h); err != nil {
-		return nil, err
-	}
-	if err := a.writeRef(a.index, h); err != nil {
+	// Deliberately nothing is persisted beside the new objects (the old CRC32
+	// sidecar write used to stand here): integrity is a recompute from the
+	// object's own bytes (cas.Verify/cas.VerifyAll), so an object has no
+	// second file that a later run would have to keep in sync.
+	if err := a.refs.Set(ctx, indexRef, h); err != nil {
 		return nil, err
 	}
 	return h, nil
@@ -203,11 +175,11 @@ func (a *app) add(ctx context.Context, paths []string) (cas.Digest, error) {
 // head as parent (if any), and advances HEAD. The first commit has no parent
 // because HEAD is absent, not because reading it failed.
 func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
-	tree, err := a.currentTree()
+	tree, err := a.currentTree(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no tree to commit (run add first): %w", err)
 	}
-	parent, _, err := a.headCommitOrAbsent()
+	parent, _, err := a.headCommitOrAbsent(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -222,15 +194,12 @@ func (a *app) commit(ctx context.Context, msg string) (cas.Digest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := a.writeCRC32Sidecar(ctx, h); err != nil {
-		return nil, err
-	}
-	return h, a.writeRef(a.head, h)
+	return h, a.refs.Set(ctx, headRef, h)
 }
 
 // log walks the commit chain from HEAD backwards (parents only).
 func (a *app) log(ctx context.Context, out io.Writer) error {
-	h, present, err := a.headCommitOrAbsent()
+	h, present, err := a.headCommitOrAbsent(ctx)
 	if err != nil {
 		return err
 	}
@@ -262,22 +231,20 @@ func (a *app) cat(ctx context.Context, d cas.Digest, out io.Writer) error {
 	return err
 }
 
-// verify recomputes every stored digest and reports any corruption.
+// verify recomputes every stored object's digest from its bytes and reports
+// any mismatch — the core's portable whole-store pass. There is no app-level
+// checksum to keep in sync: an object is its own integrity record.
 func (a *app) verify(ctx context.Context) error {
-	digests, err := a.backend.List(ctx)
+	report, err := cas.VerifyAll(ctx, a.backend, a.hasher)
 	if err != nil {
 		return err
 	}
-	bad := 0
-	for _, h := range digests {
-		if err := a.verifyOne(ctx, h); err != nil {
-			fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
-			bad++
-		}
+	for _, d := range report.Bad {
+		fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", d, cas.ErrDigestMismatch)
 	}
-	fmt.Printf("verified %d objects, %d corrupt\n", len(digests), bad)
-	if bad > 0 {
-		return fmt.Errorf("%d corrupt objects", bad)
+	fmt.Printf("verified %d objects, %d corrupt\n", report.Checked, len(report.Bad))
+	if len(report.Bad) > 0 {
+		return fmt.Errorf("%d corrupt objects", len(report.Bad))
 	}
 	return nil
 }
@@ -303,7 +270,7 @@ func printable(d cas.Digest) string {
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("files", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	dir := flags.String("store", "./objects", "filesystem store directory")
+	dir := flags.String("store", "./store", "example root directory; objects/ (the store base) and refs/ (HEAD, INDEX) are created inside it")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, usage)
 		flags.PrintDefaults()
@@ -367,7 +334,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	case "graph":
-		h, err := a.headCommit()
+		h, err := a.headCommit(ctx)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1

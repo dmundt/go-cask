@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
@@ -22,10 +24,14 @@ func writeTempFile(t *testing.T, dir, name, content string) string {
 }
 
 // testObjectPath rebuilds the on-disk path for a digest under the default (2,1)
-// fan-out layout: <dir>/<2 hex>/<full hex>. There is no algorithm directory:
-// the backend does not know the client's hash algorithm.
-func testObjectPath(dir string, h string) string {
-	return filepath.Join(dir, h[:2], h)
+// fan-out layout: <objects>/<2 hex>/<full hex>. There is no algorithm
+// directory: the backend does not know the client's hash algorithm.
+//
+// The example itself no longer derives this path — that was the deleted
+// objectPath helper, which broke under a non-default fan-out. A test may: it
+// has to corrupt one specific file to prove Verify still catches bit rot.
+func testObjectPath(objects string, h string) string {
+	return filepath.Join(objects, h[:2], h)
 }
 
 // Acceptance: add → commit → log → cat round-trips.
@@ -155,7 +161,7 @@ func TestAuditStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := testObjectPath(a.dir, digests[0].String())
+	path := testObjectPath(a.objects, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +220,7 @@ func TestVerify(t *testing.T) {
 	if len(digests) == 0 {
 		t.Fatal("no objects stored")
 	}
-	path := testObjectPath(a.dir, digests[0].String())
+	path := testObjectPath(a.objects, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -228,18 +234,26 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
+// TestIntactObjectVerifiesWithoutSidecar pins the contract the deleted CRC32
+// sidecar broke: an object is verified from its own stored bytes alone, with
+// nothing persisted beside it. The old check returned "missing crc32 sidecar"
+// for exactly this intact object, so audit labelled an object written by
+// anything but this example (cask put, a snapshot import) as corrupt — and the
+// sidecar files themselves were invisible to List yet unreclaimable by Clean.
+func TestIntactObjectVerifiesWithoutSidecar(t *testing.T) {
 	ctx := context.Background()
 	a, err := newApp(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := writeTempFile(t, a.dir, "seed.txt", "crc32 sidecar")
+	f := writeTempFile(t, t.TempDir(), "seed.txt", "no sidecar needed")
 	if _, err := a.add(ctx, []string{f}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := a.commit(ctx, "c"); err != nil {
+		t.Fatal(err)
+	}
 
-	// Positive: the stored sidecar matches the object's bytes.
 	digests, err := a.backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -248,13 +262,28 @@ func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
 		t.Fatal("no objects stored")
 	}
 	for _, d := range digests {
-		if err := a.verifyCRC32Sidecar(ctx, d); err != nil {
-			t.Fatalf("stored crc32 sidecar mismatch for %s: %v", d, err)
+		if err := cas.Verify(ctx, a.backend, d, a.hasher); err != nil {
+			t.Fatalf("intact object %s must verify without a sidecar: %v", d, err)
+		}
+		if _, err := os.Stat(testObjectPath(a.objects, d.String()) + ".crc32"); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("object %s has a sidecar beside it (%v); integrity is a recompute now", d, err)
 		}
 	}
 
-	// Negative: mutate the object, leaving the old checksum behind.
-	path := testObjectPath(a.dir, digests[0].String())
+	// audit agrees: every listed object is verified, none corrupt.
+	rep, err := a.audit(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.counts[stateCorrupt] != 0 {
+		t.Fatalf("intact objects without a sidecar must not be corrupt: %+v", rep.counts)
+	}
+	if rep.counts[stateVerified] != len(digests) {
+		t.Fatalf("verified = %d, want all %d objects (%+v)", rep.counts[stateVerified], len(digests), rep.counts)
+	}
+
+	// Negative: the recompute still rejects real damage.
+	path := testObjectPath(a.objects, digests[0].String())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -263,8 +292,127 @@ func TestVerifyCRC32SidecarPositiveAndNegative(t *testing.T) {
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.verifyCRC32Sidecar(ctx, digests[0]); err == nil {
-		t.Fatal("verifyCRC32Sidecar must reject a mutated object")
+	if err := cas.Verify(ctx, a.backend, digests[0], a.hasher); err == nil {
+		t.Fatal("Verify must reject a mutated object")
+	}
+}
+
+// TestLayoutSeparatesRefsFromObjects pins the example root's shape: objects in
+// <root>/objects (the fs.Backend base), refs in <root>/refs (cas/refs). The
+// split is what keeps a ref's "<name>.tmp" temp file out of the store's Clean
+// sweep and keeps refs out of the store's List.
+func TestLayoutSeparatesRefsFromObjects(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	a, err := newApp(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := writeTempFile(t, t.TempDir(), "a.txt", "layout")
+	if _, err := a.add(ctx, []string{f}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.commit(ctx, "c"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, sub := range []string{"objects", "refs"} {
+		p := filepath.Join(root, sub)
+		fi, err := os.Stat(p)
+		if err != nil || !fi.IsDir() {
+			t.Fatalf("layout: %s is not a directory (err %v)", p, err)
+		}
+	}
+
+	// The refs hold the bare-hex digest, cas/refs' format — no "sha256:" prefix.
+	for _, name := range []string{headRef, indexRef} {
+		p := filepath.Join(root, "refs", name)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("layout: ref %s: %v", p, err)
+		}
+		if _, err := cas.ParseDigest(strings.TrimSpace(string(b))); err != nil {
+			t.Fatalf("ref %s = %q, want a bare hex digest: %v", name, b, err)
+		}
+		if strings.Contains(string(b), ":") {
+			t.Fatalf("ref %s = %q, want bare hex (cas/refs' format)", name, b)
+		}
+	}
+
+	// The objects base holds objects only: no CRC32 sidecar, no temp leftover.
+	var stray []string
+	err = filepath.WalkDir(filepath.Join(root, "objects"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".crc32") || strings.HasSuffix(path, ".tmp") {
+			stray = append(stray, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stray) != 0 {
+		t.Fatalf("objects base contains non-object files: %v", stray)
+	}
+
+	// blob + tree + commit: the two refs are not among the listed objects.
+	digests, err := a.backend.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 3 {
+		t.Fatalf("stored objects = %d, want 3 (blob, tree, commit); refs must not be listed", len(digests))
+	}
+}
+
+// TestRefsRecordHistory pins what the hand-rolled ref file never had: HEAD is a
+// cas/refs ref, so each commit appends a reflog entry and Previous reports the
+// commit before the current one.
+func TestRefsRecordHistory(t *testing.T) {
+	ctx := context.Background()
+	work := t.TempDir()
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := writeTempFile(t, work, "a.txt", "one")
+	if _, err := a.add(ctx, []string{first}); err != nil {
+		t.Fatal(err)
+	}
+	c1, err := a.commit(ctx, "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := writeTempFile(t, work, "b.txt", "two")
+	if _, err := a.add(ctx, []string{second}); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := a.commit(ctx, "two")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prev, err := a.refs.Previous(ctx, headRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prev.Equal(c1) {
+		t.Fatalf("Previous(HEAD) = %s, want the first commit %s", prev, c1)
+	}
+	entries, err := a.refs.Log(ctx, headRef, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("HEAD reflog = %d entries, want 2 (one per commit)", len(entries))
+	}
+	if !entries[0].Digest.Equal(c2) {
+		t.Fatalf("newest reflog entry = %s, want the current commit %s", entries[0].Digest, c2)
 	}
 }
 
@@ -342,8 +490,8 @@ func TestRunCommands(t *testing.T) {
 		t.Fatal("add stdout empty")
 	}
 	// `add` prints the digest's bare hex form (cas.Digest.String): no
-	// algorithm prefix. The ref files use the printable form, but the CLI
-	// prints the digest itself.
+	// algorithm prefix. The refs store bare hex too (cas/refs' format), but
+	// the CLI prints the digest itself.
 	if len(digest) != 64 || strings.Contains(digest, ":") {
 		t.Fatalf("add printed %q, want a bare 64-hex digest", digest)
 	}
@@ -397,16 +545,16 @@ func TestRunCommands(t *testing.T) {
 
 func TestRunUsageErrors(t *testing.T) {
 	ctx := context.Background()
+	root := t.TempDir() // every case that reaches newApp points at a temp root
 	var stdout, stderr bytes.Buffer
 	cases := [][]string{
-		{},                     // no args
-		{"-store"},             // -store missing value
-		{"add"},                // add missing file
-		{"commit"},             // commit missing -m
-		{"cat"},                // cat missing digest
-		{"unknown"},            // unknown command
-		{"audit", "-badflag"},  // bad audit flag
-		{"-store", "x", "add"}, // add missing file
+		{},                      // no args
+		{"-store"},              // -store missing value
+		{"-store", root, "add"}, // add missing file
+		{"-store", root, "commit"},
+		{"-store", root, "cat"},
+		{"-store", root, "unknown"},
+		{"-store", root, "audit", "-badflag"}, // bad audit flag
 	}
 	for _, c := range cases {
 		stdout.Reset()
@@ -457,20 +605,21 @@ func TestRunStoreFlagForms(t *testing.T) {
 }
 
 // TestHeadReadErrorIsNotAbsence pins the distinction between "no HEAD yet" and
-// "HEAD exists but cannot be read": a corrupt HEAD is corruption, so commit and
-// audit must report it instead of silently starting a new root commit or
+// "HEAD exists but cannot be read": a corrupt HEAD ref is corruption, so commit
+// and audit must report it instead of silently starting a new root commit or
 // calling every object orphaned.
 func TestHeadReadErrorIsNotAbsence(t *testing.T) {
 	ctx := context.Background()
-	a, err := newApp(t.TempDir())
+	root := t.TempDir()
+	a, err := newApp(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := writeTempFile(t, a.dir, "seed.txt", "head corruption")
+	f := writeTempFile(t, t.TempDir(), "seed.txt", "head corruption")
 	if _, err := a.add(ctx, []string{f}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(a.head, []byte("not a digest\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "refs", headRef), []byte("not a digest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.commit(ctx, "c"); err == nil {
@@ -484,7 +633,7 @@ func TestHeadReadErrorIsNotAbsence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, present, err := empty.headCommitOrAbsent(); err != nil || present {
+	if _, present, err := empty.headCommitOrAbsent(ctx); err != nil || present {
 		t.Fatalf("headCommitOrAbsent() with no HEAD = present %v, err %v; want absent and no error", present, err)
 	}
 }
@@ -520,13 +669,16 @@ func TestRunGraph(t *testing.T) {
 	}
 }
 
+// TestRunStoreError pins the runtime-error exit code: a -store root that cannot
+// hold the layout (here a regular file stands where the root directory would
+// go, so <root>/objects cannot be created) fails newApp, which is exit 1 — not
+// the usage error (2) or the default root, which newApp creates on demand.
 func TestRunStoreError(t *testing.T) {
 	ctx := context.Background()
 	var stdout, stderr bytes.Buffer
-	// nonexistent store dir - newApp creates it, so use an invalid path
-	if code := run(ctx, []string{"stats"}, &stdout, &stderr); code == 2 {
-		// default dir store ./objects may exist - not deterministic; skip assert
-		_ = code
+	notADir := writeTempFile(t, t.TempDir(), "not-a-dir", "x")
+	if code := run(ctx, []string{"-store", notADir, "stats"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("stats with an unusable store root: code=%d, want 1 (stderr=%q)", code, stderr.String())
 	}
 }
 

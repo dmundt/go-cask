@@ -88,8 +88,43 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   command closes the store it opened, so a writer releases the backend's
   resources; `cask web` requires the `fs` backend and refuses `packfs` the same
   way.
+- `cask seed-preview -hash-algo sha256|sha512|sha512_256` (default `sha256`)
+  seeds the viewer preview graph under the algorithm the viewer reads it with.
+  Seeding was always sha256 before, so a viewer started with any other
+  `-hash-algo` silently found no graph and showed no references.
+
+- `gitlike.Resolver` satisfies `cas/repo.Resolver`: its new `Resolve(ctx, d)`
+  returns the concrete object, so `cas/repo.Walk` and `cas/repo.Reachable` run
+  over a gitlike repository — a gitlike root set now expands with the supported
+  cross-type walk instead of a hand-written traversal. `WalkGraph` keeps its
+  signature and stricter unknown-type behaviour and is now an adapter over
+  `cas/repo.Walk`. `Repository.Close`/`CachedRepository.Close` release the shared
+  backend (packfs flushes its active pack there), `CachedRepository.GetTag`
+  completes the cached getters, and `(*ResolvedObject).References()` reports the
+  union's outgoing references so callers stop re-deriving them.
 
 ### Changed
+
+- gitlike resolves an object's type from the **versioned** envelope name
+  (`cas.EnvelopeType` on a bounded header prefix), so an object stored as
+  `blob@2` is reported as an unknown type instead of being decoded through the
+  `@1` model; an absent major version still reads as `@1`.
+
+- The `artifacts` example stores through the shipped `cas/codec/gzip` wrapper
+  (`gzip.New(json.New[T]())`) instead of a bespoke gzip codec, so its objects
+  record the codec identity (`gzip+json`) and bound decompression. The envelope
+  of newly written artifacts therefore carries the tag, which changes their
+  digests — an existing example store keeps reading (v1/v2 objects both load)
+  but only new writes get the identity.
+
+- The `files` and `artifacts` examples keep their named pointers outside the
+  object store: the example root now holds `objects/` (the `fs` base) and
+  `refs/` (`cas/refs`, with an atomic write and a reflog per name), and
+  `-store` names that root. Refs previously lived beside the objects as plain
+  files written in place; they move because a ref inside a store base is
+  reported by `List`/`Stats` (digest-named files) and swept by `Clean`
+  (`*.tmp`), which is cas-core §4.4's one-base-one-store rule. An existing
+  example store needs its objects moved under `objects/` (each README says so).
 
 - The stored envelope is version 2 —
   `[version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
@@ -140,6 +175,29 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The viewer classifies a verification outcome the way `cask verify --all`
+  does: only a digest mismatch is `corrupt`, so an object that is missing or
+  unreadable is reported as unverified (with `Missing`/`Unreadable` prose)
+  instead of as corrupted content. The result badge follows the same state
+  instead of always rendering the corrupt style.
+- The `files` example no longer writes a `*.crc32` sidecar beside every object.
+  Those files were invisible to `List` but unreclaimable, and a missing sidecar
+  made `audit` report an intact object (one written by `cask put` or a snapshot
+  import) as `corrupt`; integrity is now the core's `Verify`/`VerifyAll`.
+- The `artifacts` example resolves its GC roots from the manifests' named refs
+  and expands them with `cas.Reachable`, so a manifest that cannot be decoded
+  aborts the sweep instead of having its artifacts deleted as unreachable, and
+  `gc` reports the number of objects it actually removed.
+- `seed-preview` no longer truncates the preview graph at the first missing
+  object: a swept (Detached) object drops only its own edges, so the blocks
+  after it keep their roots and the viewer stops showing their reachable
+  objects as orphaned.
+- The `api` example reports an object's size from the backend's physical
+  metadata (`cas.Statter`) instead of a process-local index, so `list`/`meta`
+  no longer report `size: 0` for objects the running process did not write
+  itself (after a restart or a snapshot import).
+- The viewer's single-object verify reports a failed reader close instead of
+  discarding it, so a close error cannot pass as a clean verification.
 - The viewer's object browser returns 500 when the store-wide metadata snapshot
   fails instead of panicking on a nil row slice.
 - Malformed CBOR payloads (oversized or overflowing declared lengths) return an

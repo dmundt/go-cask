@@ -7,7 +7,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -326,29 +325,41 @@ func TestResolveAnyUnknownType(t *testing.T) {
 	}
 }
 
-// --- parseType ---
+// --- objectType ---
 
-func TestParseType(t *testing.T) {
+// TestObjectTypeReturnsVersionedName pins that resolution compares the
+// versioned type name from the envelope header ("blob@1"), not a bare base
+// name: that is what makes a future "blob@2" unknown instead of decoded by the
+// @1 model.
+func TestObjectTypeReturnsVersionedName(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
-	// Stored type+payload bytes directly (no Store.Put) so we can test parseType.
+	// Stored type+payload bytes directly (no Store.Put) so we can probe the
+	// header reader on its own.
 	env := marshalEnvelope("blob@1", []byte{})
 	h := sha256hash.Of(env)
 	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	backend, err := repo.backend.Get(ctx, h)
+	typ, err := NewResolver(repo).objectType(ctx, h)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("objectType = %q, %v", typ, err)
 	}
-	b, _ := io.ReadAll(backend)
-	backend.Close()
-	typ, err := parseType(b)
-	if err != nil {
-		t.Fatalf("parseType = %q, %v", typ, err)
+	if typ != TypeBlob {
+		t.Fatalf("objectType = %q, want %q", typ, TypeBlob)
 	}
-	if typ != "blob" {
-		t.Fatalf("type = %q, want blob", typ)
+}
+
+// TestResolveUnknownMajor pins the versioned-name rule end to end: an object
+// whose envelope names blob@2 is unknown to the @1 model rather than being
+// decoded through it.
+func TestResolveUnknownMajor(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+	h := mustStoreEnv(t, repo, "blob@2", `{"data":""}`)
+	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("ResolveAny(blob@2) = %v, want ErrUnknownType", err)
 	}
 }
 
@@ -1193,23 +1204,34 @@ func TestPutRejectsCommitWithoutTree(t *testing.T) {
 	}
 }
 
-// --- parseType / ResolveAny error branches ---
+// --- objectType / ResolveAny error branches ---
 
-// TestParseTypeRejectsMalformedEnvelope covers parseType's cas.EnvelopeType
+// TestObjectTypeRejectsMalformedEnvelope covers objectType's cas.EnvelopeType
 // error return (garbage bytes are not a TLV envelope header).
-func TestParseTypeRejectsMalformedEnvelope(t *testing.T) {
-	// Version byte 0 is not the current envelope version.
-	if _, err := parseType([]byte{0x00}); err == nil {
-		t.Fatal("parseType on a malformed envelope must error")
+func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t, mem.New())
+	// Version byte 0 is not a known envelope version.
+	env := []byte{0x00}
+	h := sha256hash.Of(env)
+	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewResolver(repo).objectType(ctx, h); err == nil {
+		t.Fatal("objectType on a malformed envelope must error")
 	}
 }
 
-// TestParseTypeRejectsEmptyBase covers the "object missing type" branch when
-// the versioned type has no unversioned base ("@1" → base "").
-func TestParseTypeRejectsEmptyBase(t *testing.T) {
-	env := marshalEnvelope("@1", []byte(`{}`))
-	if _, err := parseType(env); err == nil {
-		t.Fatal("parseType of a type without a base name must error")
+// TestResolveAnyRejectsEmptyBase covers the type name with no base ("@1"): it
+// resolves to no model type, so ResolveAny reports it as unknown rather than
+// dispatching to a decoder that would fail later.
+func TestResolveAnyRejectsEmptyBase(t *testing.T) {
+	ctx := ctxBackground()
+	repo := newRepo(t, mem.New())
+	res := NewResolver(repo)
+	h := mustStoreEnv(t, repo, "@1", `{}`)
+	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("ResolveAny(@1) = %v, want ErrUnknownType", err)
 	}
 }
 

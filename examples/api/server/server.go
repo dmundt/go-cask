@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
@@ -24,41 +24,19 @@ type server struct {
 	backend        *fs.Backend
 	tokens         map[string]string // token → role
 	rl             *rateLimiter
-	sizesMu        sync.RWMutex
-	sizes          map[string]int64 // hash string → size (maintained at Put)
 	trustedProxies map[string]bool
 }
 
-// setSize records an object's size.
-func (s *server) setSize(hash string, size int64) {
-	s.sizesMu.Lock()
-	defer s.sizesMu.Unlock()
-	s.sizes[hash] = size
-}
-
-// sizeOf returns a recorded size (0 when unknown).
-func (s *server) sizeOf(hash string) int64 {
-	s.sizesMu.RLock()
-	defer s.sizesMu.RUnlock()
-	return s.sizes[hash]
-}
-
-// forgetSize drops a recorded size.
-func (s *server) forgetSize(hash string) {
-	s.sizesMu.Lock()
-	defer s.sizesMu.Unlock()
-	delete(s.sizes, hash)
-}
-
-// retainSizes drops every recorded size not in reachable (used by GC).
-func (s *server) retainSizes(reachable map[string]bool) {
-	s.sizesMu.Lock()
-	defer s.sizesMu.Unlock()
-	for hs := range s.sizes {
-		if !reachable[hs] {
-			delete(s.sizes, hs)
-		}
+// objectSize reports the stored size of h from the backend's physical metadata
+// (cas.Statter, which fs.Backend implements) instead of a process-local map: the
+// answer is then correct for objects this process never wrote — after a restart,
+// or after a snapshot import — and it cannot drift from the store.
+func (s *server) objectSize(ctx context.Context, h cas.Digest) int64 {
+	size, err := s.backend.Size(ctx, h)
+	if err != nil {
+		return 0 // absent or unreadable: the caller renders no size
 	}
+	return size
 }
 
 // New creates a server over backend with per-role tokens ("token" → role) and
@@ -69,7 +47,6 @@ func New(backend *fs.Backend, tokens map[string]string, rlCfg RateLimitConfig) *
 		backend:        backend,
 		tokens:         tokens,
 		rl:             newRateLimiter(rlCfg),
-		sizes:          map[string]int64{},
 		trustedProxies: map[string]bool{},
 	}
 }
@@ -192,7 +169,6 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.setSize(h.String(), size)
 	slog.Info("cas api audit", "action", "put", "hash", h.String(), "size", size, "deduplicated", exists)
 	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
@@ -223,7 +199,7 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 		objects = append(objects, map[string]any{
 			"hash":      h.String(),
 			"algorithm": sha256.Name,
-			"size":      s.sizeOf(h.String()),
+			"size":      s.objectSize(r.Context(), h),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": total, "objects": objects})
@@ -242,7 +218,7 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 	w.Header().Set("X-CAS-Algorithm", sha256.Name)
-	if size := s.sizeOf(h.String()); size > 0 {
+	if size := s.objectSize(r.Context(), h); size > 0 {
 		w.Header().Set("X-CAS-Size", strconv.FormatInt(size, 10))
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
@@ -264,7 +240,6 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
 	}
-	s.forgetSize(h.String())
 	slog.Info("cas api audit", "action", "delete", "hash", h.String())
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -372,9 +347,6 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gc failed"})
 		return
 	}
-	// The sweep already happened: keep the in-memory size index in step with
-	// the store even if the post-GC stats below fail.
-	s.retainSizes(reachable)
 	after, err := s.backend.Stats(r.Context())
 	if err != nil {
 		// GC succeeded but its outcome cannot be reported truthfully, so answer

@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/dmundt/go-cask/cas"
+	casrepo "github.com/dmundt/go-cask/cas/repo"
 )
+
+// The Resolver is cas/repo's Resolver: it resolves a digest to the concrete
+// object, so cas/repo.Walk and cas/repo.Reachable traverse a gitlike repository
+// with the same rules as any other typed object graph. The assertion makes the
+// contract a compile-time fact rather than a doc comment.
+var _ casrepo.Resolver = (*Resolver)(nil)
 
 // Codecs is the serialization set a Repository is built with: one Codec[T] per
 // object type. gitlike names no codec — a repository is codec-agnostic, and the
@@ -57,6 +63,12 @@ func NewRepository(backend cas.Backend, hasher cas.Hasher, codecs Codecs) *Repos
 	}
 }
 
+// Close releases the backend's resources. The four stores share one Backend, so
+// one store's Close closes it (Store.Close is idempotent and forwards to the
+// backend's io.Closer when it has one — packfs flushes its active pack there);
+// fs and mem hold no resources and report nil.
+func (r *Repository) Close() error { return r.Blobs.Close() }
+
 // ResolvedObject is the typed union returned by Resolver.ResolveAny — the
 // alternative to any for "resolve whatever this hash points to". Exactly one
 // of the fields is non-nil, matching Type.
@@ -105,6 +117,50 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 	return r.repo.Tags.Get(ctx, d)
 }
 
+// Resolve resolves d to its concrete object as a cas/repo.Object, discovering
+// the type from the self-describing envelope. The method is what makes the
+// Resolver satisfy cas/repo.Resolver, so cas/repo.Walk and cas/repo.Reachable
+// run over a gitlike repository without gitlike implementing either walk
+// itself — and so an app that grows past these four types can register its own
+// types with a cas/repo.Registry and walk the same store.
+//
+// An object whose stored type this repository does not know is reported as
+// cas.ErrUnknownType (the versioned name is compared, so a future "blob@2" is
+// unknown rather than decoded as a blob).
+func (r *Resolver) Resolve(ctx context.Context, d cas.Digest) (casrepo.Object, error) {
+	typ, err := r.objectType(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	switch typ {
+	case TypeBlob:
+		return objectOrErr(r.repo.Blobs.Get(ctx, d))
+	case TypeTree:
+		return objectOrErr(r.repo.Trees.Get(ctx, d))
+	case TypeCommit:
+		return objectOrErr(r.repo.Commits.Get(ctx, d))
+	case TypeTag:
+		return objectOrErr(r.repo.Tags.Get(ctx, d))
+	default:
+		return nil, fmt.Errorf("gitlike: %w: %q", cas.ErrUnknownType, typ)
+	}
+}
+
+// ResolveAny determines the object's type from the self-describing envelope and
+// returns the typed union. It returns (nil, ErrUnknownType) for an object type
+// this repository does not know.
+//
+// Only the envelope header is read to learn the type — never the payload — so
+// resolving a large Blob costs one bounded read plus the store read that
+// decodes it.
+func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
+	obj, err := r.Resolve(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	return resolvedObjectOf(obj)
+}
+
 // envelopeHeaderLimit bounds the prefix read to learn an object's type. The
 // envelope header is
 // [version u8][uvarint codecLen][codec][uvarint typeLen][type] — a few dozen
@@ -112,56 +168,78 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 // keeping the read cost of resolution independent of the object's size.
 const envelopeHeaderLimit = 1 << 10
 
-// ResolveAny determines the object's type from the self-describing envelope
-// and dispatches to the matching typed resolver. It returns
-// (nil, ErrUnknownType) for an object type this repository does not know.
+// objectType returns the versioned type name ("blob@1") stored in d's envelope
+// header, reading no payload byte.
 //
-// Only the envelope header is read to learn the type — never the payload — so
-// resolving a large Blob costs one bounded read, not a copy of the object.
-func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
+// The header is read as one bounded prefix and parsed by cas.EnvelopeType, not
+// streamed through cas.PeekType: the backends hand back a plain io.ReadCloser
+// (*os.File, bytes.Reader), which is not an io.ByteReader, so PeekType's
+// byte-at-a-time adapter would cost a read syscall per header byte while a walk
+// resolves one header per object. The prefix is bounded, so the cost stays
+// independent of the object's size, and the legacy rule that an absent major
+// version reads as "@1" (object-versioning §2) lives in cas.EnvelopeType.
+func (r *Resolver) objectType(ctx context.Context, d cas.Digest) (string, error) {
 	rc, err := r.repo.backend.Get(ctx, d)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
 	if err != nil {
 		_ = rc.Close() // the read error is the one worth reporting
-		return nil, fmt.Errorf("gitlike: read object header for resolution: %w", err)
+		return "", fmt.Errorf("gitlike: read object header for resolution: %w", err)
 	}
 	if err := rc.Close(); err != nil {
-		return nil, fmt.Errorf("gitlike: close object header reader: %w", err)
+		return "", fmt.Errorf("gitlike: close object header reader: %w", err)
 	}
-	typ, err := parseType(prefix)
+	typ, err := cas.EnvelopeType(prefix)
+	if err != nil {
+		return "", fmt.Errorf("gitlike: %w", err)
+	}
+	return typ, nil
+}
+
+// resolvedObjectOf maps a resolved concrete object onto the typed union — the
+// single place the four model types are turned into union fields, used by both
+// ResolveAny and WalkGraph.
+func resolvedObjectOf(obj casrepo.Object) (*ResolvedObject, error) {
+	switch o := obj.(type) {
+	case *Blob:
+		return &ResolvedObject{Type: bareType(TypeBlob), Blob: o}, nil
+	case *Tree:
+		return &ResolvedObject{Type: bareType(TypeTree), Tree: o}, nil
+	case *Commit:
+		return &ResolvedObject{Type: bareType(TypeCommit), Commit: o}, nil
+	case *Tag:
+		return &ResolvedObject{Type: bareType(TypeTag), Tag: o}, nil
+	default:
+		return nil, fmt.Errorf("gitlike: %w: %q", cas.ErrUnknownType, obj.Type())
+	}
+}
+
+// objectOrErr turns a typed store read into the interface result. A failed read
+// yields a nil Object rather than an interface holding a nil pointer, so a
+// caller's obj == nil test keeps meaning "no object".
+func objectOrErr[T casrepo.Object](obj T, err error) (casrepo.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch typ {
-	case "blob":
-		blob, err := r.ResolveBlob(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "blob", Blob: blob}, nil
-	case "tree":
-		tree, err := r.ResolveTree(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "tree", Tree: tree}, nil
-	case "commit":
-		commit, err := r.ResolveCommit(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "commit", Commit: commit}, nil
-	case "tag":
-		tag, err := r.ResolveTag(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "tag", Tag: tag}, nil
+	return obj, nil
+}
+
+// References returns the outgoing references of whichever union field is
+// populated, so a caller walking the graph — or feeding the result to
+// cas.RefListerFunc and cas.Reachable — does not repeat the type switch. A blob
+// is a leaf, and a union with no field set has no references.
+func (ro *ResolvedObject) References() []cas.Digest {
+	switch {
+	case ro.Commit != nil:
+		return ro.Commit.References()
+	case ro.Tree != nil:
+		return ro.Tree.References()
+	case ro.Tag != nil:
+		return ro.Tag.References()
 	default:
-		return nil, fmt.Errorf("gitlike: %w: %q", cas.ErrUnknownType, typ)
+		return nil
 	}
 }
 
@@ -194,44 +272,23 @@ func PrintObject(o *ResolvedObject) string {
 // Backend stores bytes without recomputing their digest, so a crafted store CAN
 // hold a cycle even though an honestly written one cannot. The stack is
 // explicit, so a deep history does not exhaust the goroutine stack.
+//
+// The walk itself is cas/repo.Walk: gitlike no longer implements its own
+// traversal, so a gitlike repository and a cas/repo.Registry follow identical
+// traversal rules (at-most-once, explicit stack, context checked per node,
+// references followed through cas/repo.Object.References()).
+//
+// gitlike's walk is stricter than cas/repo.Walk about types: a digest whose
+// stored type this repository does not know aborts the walk with
+// cas.ErrUnknownType, where cas/repo.Walk would report the unknown object to
+// visit and keep going. A reference that points at nothing aborts it with
+// cas.ErrNotFound, which both walks agree on.
 func WalkGraph(ctx context.Context, resolver *Resolver, d cas.Digest, visit func(*ResolvedObject) error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	visited := make(map[string]bool)
-	stack := []cas.Digest{d}
-	for len(stack) > 0 {
-		cur := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if cur.IsZero() || visited[cur.String()] {
-			continue
-		}
-		visited[cur.String()] = true
-		ro, err := resolver.ResolveAny(ctx, cur)
+	return casrepo.Walk(ctx, resolver, []cas.Digest{d}, func(_ cas.Digest, obj casrepo.Object) error {
+		ro, err := resolvedObjectOf(obj)
 		if err != nil {
 			return err
 		}
-		if err := visit(ro); err != nil {
-			return err
-		}
-		refs := referencesOf(ro)
-		for _, ref := range slices.Backward(refs) { // push reversed: keep reference order
-			stack = append(stack, ref)
-		}
-	}
-	return nil
-}
-
-// referencesOf returns the outgoing references of a resolved object.
-func referencesOf(ro *ResolvedObject) []cas.Digest {
-	switch ro.Type {
-	case "commit":
-		return ro.Commit.References()
-	case "tree":
-		return ro.Tree.References()
-	case "tag":
-		return ro.Tag.References()
-	default:
-		return nil
-	}
+		return visit(ro)
+	})
 }

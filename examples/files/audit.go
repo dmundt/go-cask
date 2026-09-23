@@ -4,8 +4,10 @@
 //
 // Reachability is marked from HEAD (the store's only root): objects the
 // commit graph cannot reach are orphaned (GC candidates). Integrity is
-// checked per object with the explicit cas.Verifier layer unless -no-verify is
-// given, in which case reachable objects are simply "unverified".
+// checked per object with the explicit cas.Verifier layer — a recompute from
+// the object's own stored bytes, with nothing persisted beside it — unless
+// -no-verify is given, in which case reachable objects are simply
+// "unverified".
 package main
 
 import (
@@ -56,12 +58,13 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 		return nil, err
 	}
 	rep := &auditReport{counts: make(map[auditState]int, 4)}
+	verifier := cas.NewVerifier(a.backend, a.hasher)
 	for _, h := range digests {
 		key := h.String()
 		reach := reachable[key]
 		state := stateVerified
 		if !noVerify {
-			if err := a.verifyOne(ctx, h); err != nil {
+			if err := verifier.Verify(ctx, h); err != nil {
 				state = stateCorrupt // corruption outranks orphaned: report it first
 			} else if !reach {
 				state = stateOrphaned
@@ -84,62 +87,34 @@ func (a *app) audit(ctx context.Context, noVerify bool) (*auditReport, error) {
 	return rep, nil
 }
 
-// reachableFromHead marks every object reachable from the HEAD commit by
+// reachableFromHead returns every object reachable from the HEAD commit by
 // following References() through the gitlike object model. Without a HEAD the
 // store has no roots and every object is unreachable — but only a genuinely
 // absent HEAD means that: an unreadable or malformed HEAD is corruption and is
 // reported instead of being treated as an empty root set.
+//
+// The closure is cas.Reachable, the core's root-seeded expansion: the ref
+// lister resolves one object and hands back its references, and a digest that
+// cannot be resolved (dangling or corrupt) simply ends that branch. The digest
+// itself stays in the set, which is what lets the report show it as
+// reachable-then-corrupt rather than silently dropping it.
 func (a *app) reachableFromHead(ctx context.Context) (map[string]bool, error) {
-	head, present, err := a.headCommitOrAbsent()
+	head, present, err := a.headCommitOrAbsent(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !present {
 		return map[string]bool{}, nil // no HEAD yet: no roots
 	}
-	seen := make(map[string]bool)
-	if err := a.markReachable(ctx, head, seen); err != nil {
-		return nil, err
-	}
-	return seen, nil
-}
-
-// markReachable adds d and, recursively, every digest its object references.
-// A digest that cannot be resolved (dangling or corrupt) stops that branch;
-// it was already marked, so it is still reported reachable-then-corrupt.
-func (a *app) markReachable(ctx context.Context, d cas.Digest, seen map[string]bool) error {
-	if d.IsZero() || seen[d.String()] {
-		return nil
-	}
-	seen[d.String()] = true
-	ro, err := gitlike.NewResolver(a.repo).ResolveAny(ctx, d)
-	if err != nil {
-		return nil // dangling/corrupt: nothing more to walk from here
-	}
-	for _, ref := range referencesOf(ro) {
-		if err := a.markReachable(ctx, ref, seen); err != nil {
-			return err
+	res := gitlike.NewResolver(a.repo)
+	refs := cas.RefListerFunc(func(ctx context.Context, d cas.Digest) ([]cas.Digest, error) {
+		ro, err := res.ResolveAny(ctx, d)
+		if err != nil {
+			return nil, nil // dangling/corrupt: nothing more to walk from here
 		}
-	}
-	return nil
-}
-
-// referencesOf returns the outgoing references of a resolved object — the
-// example's own type switch (gitlike's is unexported; this uses only the
-// public References() methods).
-func referencesOf(ro *gitlike.ResolvedObject) []cas.Digest {
-	switch {
-	case ro.Blob != nil:
-		return ro.Blob.References()
-	case ro.Tree != nil:
-		return ro.Tree.References()
-	case ro.Commit != nil:
-		return ro.Commit.References()
-	case ro.Tag != nil:
-		return ro.Tag.References()
-	default:
-		return nil
-	}
+		return ro.References(), nil
+	})
+	return cas.Reachable(ctx, refs, []cas.Digest{head})
 }
 
 // print writes one line per object (state, digest) followed by a summary.

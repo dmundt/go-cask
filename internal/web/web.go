@@ -293,11 +293,6 @@ func (s *Server) renderPage(w http.ResponseWriter, view string, data any) {
 // previewLimit bounds the hexdump preview; larger objects are truncated.
 const previewLimit = 256
 
-// typePrefixLimit bounds the bytes read for envelope type sniffing: only the
-// TLV header ([version][uvarint codecLen][codec][uvarint typeLen][type]) is
-// needed, not the payload.
-const typePrefixLimit = 4 << 10
-
 // readN reads at most n bytes from the object at d.
 func (s *Server) readN(ctx context.Context, d cas.Digest, n int64) ([]byte, error) {
 	rc, err := s.store.Get(ctx, d)

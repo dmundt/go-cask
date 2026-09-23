@@ -40,7 +40,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `gc --min-age <dur> <roots...>` | reclaim objects absent from `<roots...>` AND older than `--min-age` (grace default 1h; `--min-age 0` = immediate, dangerous); `<roots...>` must already be the complete reachable set, not just entry points |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
-| `seed-preview [-count <n>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
+| `seed-preview [-count <n>] [-hash-algo <name>]` | add 500 deterministic, valid envelope objects for local viewer preview; `-count` accepts 1–10000 |
 | `web [-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]` | start the embedded viewer (backend-architecture §3): prints a one-time startup admin token and the token URL, then opens the default browser unless `-no-open`; `-backend` accepts `fs` only (the viewer needs the filesystem backend); `-hash-algo` selects `sha256`, `sha512`, or `sha512_256` for digest parsing and verification and is shown in object Metadata → Identity → Algorithm; refuses a non-loopback bind unless `-allow-insecure-bind`, and logs a prominent warning when the override is used (viewer-security §4) — session cookies are always `Secure` (§7), so such a bind must be reached through a TLS-terminating proxy or no session will hold; config-file support (`-config`) deferred — flags only |
 | `version` | print library + Go version |
 
@@ -72,7 +72,14 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
   viewer can demonstrate all four reference states. Consecutive objects cycle
   through zero, one, two, and three outgoing references, producing varied
   inbound counts too. It is idempotent for a given `-count`: rerunning
-  reports deduplicated objects instead of writing copies. `web` recognizes
+  reports deduplicated objects instead of writing copies. `-hash-algo` selects
+  the digest algorithm the graph is addressed with and **must match**
+  `cask web -hash-algo`: the viewer recognizes the preview graph by re-deriving
+  every ordinal's digest with its own hasher, so seeding with one algorithm and
+  reading with another finds no graph at all (the viewer shows no references).
+  A missing object inside a block does not truncate the graph — a sweep that
+  reclaims a Detached entry only drops that object's own edges — and `web`
+  recognizes
   only this known deterministic preview graph and supplies it to the viewer;
   ordinary stores remain reference-free unless their host provides a viewer
   source.

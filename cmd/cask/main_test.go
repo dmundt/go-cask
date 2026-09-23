@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -109,6 +110,83 @@ func TestListRejectsOutOfRangeFlags(t *testing.T) {
 	}
 }
 
+// TestSeedPreviewFollowsHashAlgorithm pins that seeding and reading agree on
+// the digest algorithm. The preview graph is addressed by the viewer's hasher,
+// so `seed-preview -hash-algo sha512` must be readable with sha512 — and a
+// sha256 probe must find no graph at all rather than silently reporting an
+// empty reference index.
+func TestSeedPreviewFollowsHashAlgorithm(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "seed-preview", "-count", "16", "-hash-algo", sha512.Name); code != 0 {
+		t.Fatalf("seed-preview -hash-algo %s exit = %d, want 0", sha512.Name, code)
+	}
+	backend, err := fs.New(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if _, err := previewReferences(ctx, backend, sha256.New()); !errors.Is(err, errNoPreviewGraph) {
+		t.Fatalf("sha256 probe over a %s graph = %v, want errNoPreviewGraph", sha512.Name, err)
+	}
+	references, err := previewReferences(ctx, backend, sha512.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects := make([]cas.Digest, 0, 16)
+	for ordinal := range 16 {
+		object, err := previewObjectFor(ordinal, objects, sha512.New())
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects = append(objects, object.digest)
+	}
+	if got := references.Outbound(objects[3]); len(got) != 3 {
+		t.Fatalf("sha512 preview outbound = %v, want 3 references", got)
+	}
+}
+
+// TestPreviewReferencesToleratesHoles pins that an object missing inside a
+// block does not truncate the index. `cask gc` reclaims the detached object of
+// every block; stopping at that hole used to drop every later block, so the
+// viewer reported their reachable objects as orphaned.
+func TestPreviewReferencesToleratesHoles(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "seed-preview", "-count", "16"); code != 0 {
+		t.Fatalf("seed-preview exit = %d, want 0", code)
+	}
+	backend, err := fs.New(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	objects := make([]cas.Digest, 0, 16)
+	for ordinal := range 16 {
+		object, err := previewObjectFor(ordinal, objects, sha256.New())
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects = append(objects, object.digest)
+	}
+	// The detached object of the first block has no inbound edge, so it is the
+	// one a sweep reclaims first.
+	if err := backend.Delete(ctx, objects[previewDetachedOffset]); err != nil {
+		t.Fatal(err)
+	}
+
+	references, err := previewReferences(ctx, backend, sha256.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if references.IsReachable(objects[previewDetachedOffset]) {
+		t.Fatal("the deleted object must not be reachable")
+	}
+	laterRoot := objects[previewBlockSize+previewRootOffset]
+	if !references.IsReachable(laterRoot) {
+		t.Fatalf("the block after the hole lost its root %s: the index truncated at the first gap", laterRoot)
+	}
+}
+
 func TestSeedPreview(t *testing.T) {
 	mf := localMF(t)
 	out, code := run(t, mf, "seed-preview", "-count", "16")
@@ -126,7 +204,7 @@ func TestSeedPreview(t *testing.T) {
 	if len(digests) != 16 {
 		t.Fatalf("seeded objects = %d, want 16", len(digests))
 	}
-	references, err := previewReferences(context.Background(), backend)
+	references, err := previewReferences(context.Background(), backend, sha256.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +213,10 @@ func TestSeedPreview(t *testing.T) {
 	}
 	objects := make([]cas.Digest, 0, 16)
 	for ordinal := range 16 {
-		object := previewObjectFor(ordinal, objects)
+		object, err := previewObjectFor(ordinal, objects, sha256.New())
+		if err != nil {
+			t.Fatal(err)
+		}
 		objects = append(objects, object.digest)
 	}
 	if got := references.Outbound(objects[3]); len(got) != 3 || !got[0].Equal(objects[2]) || !got[1].Equal(objects[1]) || !got[2].Equal(objects[0]) {

@@ -11,11 +11,13 @@ import (
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	casrepo "github.com/dmundt/go-cask/cas/repo"
 )
 
-// demo builds a small document graph and exercises cross-type resolution,
-// lazy attachment loading, SmartCache prefetch, broken-reference detection,
-// and the generic Walker[T] over a same-type related chain.
+// demo builds a small document graph and exercises cross-type resolution
+// through the app's cas/repo registry, the cross-type reachable set it enables,
+// lazy attachment loading, SmartCache prefetch, broken-reference detection, and
+// the generic Walker[T] over a same-type related chain.
 func demo() error {
 	ctx := context.Background()
 	backend, err := fs.New("./objects")
@@ -80,6 +82,16 @@ func demo() error {
 		}
 		fmt.Printf("  tag: %s\n", t.Name)
 	}
+
+	// Cross-type reachable set. cas/repo.Reachable expands a root to the
+	// transitively-closed digest set over every registered type — the set
+	// Backend.GC/Backend.Prune require, and the reason a caller must expand
+	// roots before calling either (cas-core §4.11, consistency §4).
+	reachable, err := casrepo.Reachable(ctx, res, []cas.Digest{first})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("reachable from first: %d objects\n", len(reachable))
 
 	// Lazy loading: the attachment is NOT loaded until accessed.
 	co, err := attachments.Proxy(ctx, att)

@@ -3,16 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/dmundt/go-cask/cas"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+	casrepo "github.com/dmundt/go-cask/cas/repo"
 )
 
-// Repository bundles the per-type stores over one Backend — the app's own
-// repository, copied from the gitlike pattern (cas-core §4.12).
+// Repository bundles the app's per-type stores over one Backend and the
+// cas/repo.Registry that resolves a digest to the right concrete type across
+// them (cas-core §4.12, examples spec §3.3).
+//
+// The registry is what an app no longer copies from gitlike: RegisterStore
+// records each typed store under its type name, and Registry.Resolve reads that
+// name from the stored envelope, so cross-type resolution is a core API rather
+// than a hand-written header read and type switch. The typed stores stay
+// exported fields, so calling the wrong store is still a compile-time error.
 type Repository struct {
-	backend cas.Backend
+	registry *casrepo.Registry
 	// Notes stores Note objects.
 	Notes *cas.Store[*Note]
 	// Tags stores Tag objects.
@@ -21,12 +28,30 @@ type Repository struct {
 	Attachments *cas.Store[*Attachment]
 }
 
+// newRepository builds the per-type stores over backend with the app's codecs
+// and registers each one, so a digest can be resolved without the caller
+// knowing its type in advance.
 func newRepository(backend cas.Backend, hasher cas.Hasher) (*Repository, error) {
+	notes := cas.New(backend, jsoncodec.New[*Note](), hasher)
+	tags := cas.New(backend, jsoncodec.New[*Tag](), hasher)
+	attachments := cas.New(backend, jsoncodec.New[*Attachment](), hasher)
+
+	registry := casrepo.NewRegistry(backend, hasher)
+	if err := casrepo.RegisterStore(registry, typeNote, notes); err != nil {
+		return nil, err
+	}
+	if err := casrepo.RegisterStore(registry, typeTag, tags); err != nil {
+		return nil, err
+	}
+	if err := casrepo.RegisterStore(registry, typeAttachment, attachments); err != nil {
+		return nil, err
+	}
+
 	return &Repository{
-		backend:     backend,
-		Notes:       cas.New(backend, jsoncodec.New[*Note](), hasher),
-		Tags:        cas.New(backend, jsoncodec.New[*Tag](), hasher),
-		Attachments: cas.New(backend, jsoncodec.New[*Attachment](), hasher),
+		registry:    registry,
+		Notes:       notes,
+		Tags:        tags,
+		Attachments: attachments,
 	}, nil
 }
 
@@ -42,10 +67,21 @@ type ResolvedObject struct {
 	Attachment *Attachment
 }
 
-// Resolver resolves any hash to the right concrete type.
+// Resolver resolves any digest to the right concrete type through the app's
+// registry.
 type Resolver struct{ repo *Repository }
 
+// The Resolver is cas/repo's Resolver, so cas/repo.Walk, cas/repo.Reachable and
+// any other cross-type helper in that package run over this app's object graph.
+var _ casrepo.Resolver = (*Resolver)(nil)
+
 func newResolver(repo *Repository) *Resolver { return &Resolver{repo: repo} }
+
+// Resolve resolves d to its concrete object, discovering the type from the
+// self-describing envelope through the registry.
+func (r *Resolver) Resolve(ctx context.Context, d cas.Digest) (casrepo.Object, error) {
+	return r.repo.registry.Resolve(ctx, d)
+}
 
 // ResolveNote loads a note by digest.
 func (r *Resolver) ResolveNote(ctx context.Context, d cas.Digest) (*Note, error) {
@@ -62,56 +98,29 @@ func (r *Resolver) ResolveAttachment(ctx context.Context, d cas.Digest) (*Attach
 	return r.repo.Attachments.Get(ctx, d)
 }
 
-// envelopeHeaderLimit bounds the prefix read to learn an object's type. The
-// envelope header is
-// [version u8][uvarint codecLen][codec][uvarint typeLen][type] — a few dozen
-// bytes for any realistic codec tag and type name — so this is generous while
-// keeping the read cost of resolution independent of the object's size
-// (gitlike/repo.go uses the same limit).
-const envelopeHeaderLimit = 1 << 10
-
-// ResolveAny discovers the type from the self-describing envelope and
-// dispatches to the matching typed resolver.
-//
-// Only the envelope header is read to learn the type — never the payload — so
-// resolving a large Attachment costs one bounded read, not a copy of the object.
+// ResolveAny discovers the type from the self-describing envelope and returns
+// the typed union. Only the envelope header is read to learn the type — never
+// the payload — so resolving a large Attachment costs one bounded read plus the
+// store read that decodes it.
 func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
-	rc, err := r.repo.backend.Get(ctx, d)
+	obj, err := r.Resolve(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
-	if err != nil {
-		_ = rc.Close() // the read error is the one worth reporting
-		return nil, fmt.Errorf("notes: read object header for resolution: %w", err)
-	}
-	if err := rc.Close(); err != nil {
-		return nil, fmt.Errorf("notes: close object header reader: %w", err)
-	}
-	typ, err := parseType(prefix)
-	if err != nil {
-		return nil, err
-	}
-	switch typ {
-	case "note":
-		n, err := r.ResolveNote(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "note", Note: n}, nil
-	case "tag":
-		t, err := r.ResolveTag(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "tag", Tag: t}, nil
-	case "attachment":
-		a, err := r.ResolveAttachment(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return &ResolvedObject{Type: "attachment", Attachment: a}, nil
+	return resolvedObjectOf(obj)
+}
+
+// resolvedObjectOf maps a resolved concrete object onto the typed union — the
+// one place the app's three model types become union fields.
+func resolvedObjectOf(obj casrepo.Object) (*ResolvedObject, error) {
+	switch o := obj.(type) {
+	case *Note:
+		return &ResolvedObject{Type: bareType(typeNote), Note: o}, nil
+	case *Tag:
+		return &ResolvedObject{Type: bareType(typeTag), Tag: o}, nil
+	case *Attachment:
+		return &ResolvedObject{Type: bareType(typeAttachment), Attachment: o}, nil
 	default:
-		return nil, fmt.Errorf("%w: %q", cas.ErrUnknownType, typ)
+		return nil, fmt.Errorf("notes: %w: %q", cas.ErrUnknownType, obj.Type())
 	}
 }

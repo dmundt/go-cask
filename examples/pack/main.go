@@ -59,16 +59,11 @@ func splitPayload(payload []byte, chunkSize int) []Chunk {
 	return out
 }
 
-// Reassemble concatenates manifest chunks into the original payload.
+// Reassemble concatenates manifest chunks into the original payload. Split and
+// Join are one pair owned by cas/pack, so this is a thin adapter over
+// pack.Join rather than a second implementation of the same concatenation.
 func (m Manifest) Reassemble() []byte {
-	if len(m.Chunks) == 0 {
-		return nil
-	}
-	out := make([]byte, 0, m.TotalSize)
-	for _, chunk := range m.Chunks {
-		out = append(out, []byte(chunk.Data)...)
-	}
-	return out
+	return pack.Join(asChunkBytes(m.Chunks))
 }
 
 func asChunkBytes(chunks []Chunk) [][]byte {

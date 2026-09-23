@@ -129,7 +129,7 @@ func init() {
 		},
 		{
 			name:     "seed-preview",
-			operands: "[-count <n>]",
+			operands: "[-count <n>] [-hash-algo <name>]",
 			summary:  "add deterministic viewer preview objects (-count 1-10000)",
 			flags:    func() *flag.FlagSet { return seedPreviewFlags(new(seedPreviewArgs)) },
 			op:       opSeedPreview,

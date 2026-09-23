@@ -294,12 +294,10 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	rc, err := t.Get(ctx, h)
-	if err != nil {
-		return err
-	}
-	data, err := io.ReadAll(io.LimitReader(rc, 4<<10)) // TLV header carries the type
-	rc.Close()
+	// The type is read through the shared header reader: a raw object stored by
+	// `put` has no envelope and reports an empty type, while an object that
+	// cannot be read at all is the CLI's error.
+	typ, err := index.HeaderType(ctx, t, h)
 	if err != nil {
 		return err
 	}
@@ -307,7 +305,6 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 	if err != nil {
 		return err
 	}
-	typ := index.EnvelopeType(data)
 	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size, "type": typ,
