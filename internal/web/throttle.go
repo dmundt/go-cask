@@ -75,6 +75,27 @@ func (t *throttle) allow(ip string) bool {
 	return true
 }
 
+// retryAfter reports how long ip must wait before its next attempt. It is read
+// after allow has refused an attempt, so the answer is the remaining block, and
+// it is rounded up to whole seconds because Retry-After (HTTP) is expressed in
+// seconds: a request refused 200ms into its block still waits a second, and the
+// minimum of one second keeps the advertised delay from rounding down to "now"
+// (api-design §5).
+func (t *throttle) retryAfter(ip string) time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	st, ok := t.attempts[ip]
+	if !ok {
+		return time.Second
+	}
+	remaining := time.Until(st.blockedUntil)
+	if remaining < time.Second {
+		return time.Second
+	}
+	// Round up: the remainder of a partial second is still part of the wait.
+	return ((remaining + time.Second - 1) / time.Second) * time.Second
+}
+
 // reset clears the record for ip after a successful login.
 func (t *throttle) reset(ip string) {
 	t.mu.Lock()

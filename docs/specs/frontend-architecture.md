@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v10
+version: v11
 ---
 
 # Frontend Architecture — go-cask
@@ -86,6 +86,8 @@ Reference implementation of this architecture: object-browser-first, low-level t
 
 - Nothing sensitive reaches the browser: no tokens, no secrets, no storage internals — only rendered HTML (viewer-security).
 - Sessions are cookies (`HttpOnly`, `SameSite=Strict`); CSRF tokens protect every mutation; 401/403 responses are empty bodies never disclosing existence.
+- Error responses carry the viewer's own prose only. A failure the operator can see is classified and explained; the Go error behind it goes to the audit line, because interpreter text names the layer underneath (filesystem paths, syscalls) rather than the finding (viewer-design §3).
+- No response is cacheable: every response is `Cache-Control: no-store`, and the pages whose body depends on the session vary on `Cookie`, so a proxy in front of the viewer cannot serve one session's page to another (viewer-security §10).
 - htmx requests carry the same session cookie as full-page navigation — the backend cannot distinguish and MUST NOT need to.
 
 ## 10. Checklist
