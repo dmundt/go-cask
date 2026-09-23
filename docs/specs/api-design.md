@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v11
+version: v12
 ---
 
 # API Design — go-cask
@@ -74,7 +74,7 @@ Applies to every endpoint: the viewer (`/viewer/*`, `text/html`) and any example
   same-origin (viewer-security §5.1); every other endpoint requires a valid
   session.
 - Example JSON surfaces: `Authorization: Bearer <token>`, configured per-role tokens.
-- Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance).
+- Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance). Those destructive actions exist on a JSON surface such as `examples/api` (§12), not on the viewer: the viewer exposes verify only, so `admin` there reaches nothing `operator` does not (viewer-security §8, consistency §9).
 - CSRF: every viewer mutation is POST + server-validated CSRF token, carried in the request body or the `X-CSRF-Token` header; a `?_csrf=` query value is never accepted (viewer-security §5).
 - Audit: every mutation audit-logged; tokens/secrets never logged.
 - Rate limiting: IP-based middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); viewer login throttle fixed at 5 failures/IP/min with backoff (viewer-security), whose 429 carries the remaining block as `Retry-After`.

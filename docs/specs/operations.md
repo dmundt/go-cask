@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v14
+version: v15
 ---
 
 # Operations — go-cask
@@ -24,14 +24,14 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 
 ## 3. Observability
 
-- Structured logging (`log/slog`): mutations (store/delete/verify/gc) with affected hash and result; login-throttle rejections with caller IP; slow operations (latency above a threshold); GC runs (deleted count, duration).
-- Metrics (counters): objects stored/read/deleted, bytes in/out, cache hits/misses (`CacheStats`), login-throttle count. Expose read-only via the viewer stats page and structured logs. Do NOT add a metrics dependency unless required (coding-guidelines §3); if it becomes necessary, expose a small interface the deployment implements.
+- Structured logging (`log/slog`) as implemented: the viewer audits login, throttle, and CSRF rejections and every verification result (`internal/web/auth.go`, `internal/web/verify.go`); `examples/api` logs its put/delete/verify/GC mutations with the affected hash; `cask web` logs lifecycle errors. A dedicated **slow-operation** line (latency above a threshold) is designed but not implemented: no code path measures an operation's duration against a threshold (extensions §3).
+- Metrics (counters) as implemented: `cas.Stats` reports object count and total bytes only; the cache layer reports its own `CacheStats` (hits/misses/loads/evicts, `cas/cache/mem`). Store-level operation counters (objects stored/read/deleted, bytes in/out, login-throttle count) and any read-only viewer stats page are designed but not implemented — the viewer has no stats route (`internal/web/web.go`; extensions §3). Do NOT add a metrics dependency unless required (coding-guidelines §3); if it becomes necessary, expose a small interface the deployment implements.
 - Audit logging follows `viewer-security.md`: never log tokens or secrets.
 
 ## 4. Integrity cadence
 
-- `Verify` on every read is expensive; recommended: verify on write-back (re-read after `Put`) for critical data; scheduled full `Verify` (e.g. nightly); random-sample `Verify` during `List`.
-- On mismatch: return `ErrDigestMismatch`, quarantine the object (move aside), audit-log, alert.
+- `Verify` on every read is expensive; recommended: verify on write-back (re-read after `Put`) for critical data, and run the full scan on an operator-chosen cadence. As implemented the product schedules nothing and samples nothing: `cask verify <hash>|--all` and the viewer's Verify control are on demand. A **scheduled** full `Verify` (e.g. nightly) and a **random-sample** `Verify` during `List` are designed but not implemented (extensions §3); a nightly CI job does not exist.
+- On mismatch: return `ErrDigestMismatch` (or record the digest in `Report.Bad`) and audit-log it. **Quarantine** (moving the object aside) and alerting are designed but not implemented (extensions §3).
 
 ## 5. Migration
 
@@ -136,58 +136,15 @@ done < /tmp/cask-layout-files.txt
 
 If the new layout is canonical and verified, replace the old store path in place; otherwise recover from `./store-backup-*` before any writes resume. The core rule is unchanged: keep the old data tree intact until the new one passes `Verify`, then flip the active root. There is no silent in-place migration in the library; the migration is an operational rewrite plus a verified cutover.
 
-## 6. Object descriptor + sidecar checksum
+## 6. Object descriptor + sidecar checksum — designed, not implemented
 
-The core does not put a payload checksum inside the TLV envelope. The object digest is already the checksum of the stored bytes. A payload checksum is therefore an optional sidecar descriptor, stored above the `Backend` contract rather than inside the content-addressed payload itself.
+The core does not put a payload checksum inside the TLV envelope. The object digest is already the checksum of the stored bytes, so a payload checksum can only ever be an optional sidecar descriptor **above** the `Backend` contract: putting it inside the object bytes would make it part of the object identity and create a circular dependency, because the checksum would be computed over bytes that contain the checksum.
 
-### 6.1 Exact shape
+**Nothing writes or reads such a descriptor today.** There is no `<base>/.meta/<digest>.json` producer, reader, or checksum-validation path in the library, the CLI, or the viewer, so an operator must not budget for one (extensions §3). The sidecars that do exist are unrelated shapes: `cas/pack` writes a string-map manifest for chunked payloads, and the old `examples/files` `.crc32` sidecar was deliberately deleted, because an object verifies from its own stored bytes alone. The concrete layout, fields, and read path remain a design sketch in `docs/design/object-descriptor-checksum.md`; the required producer work is catalogued in extensions §3 with what exists and what does not.
 
-The canonical raw object remains the backend bytes keyed by `Digest`, with the exact layout unchanged:
+### 6.1 Why not in the TLV?
 
-```text
-<base>/<digest path>          // bytes with canonical content-address identity
-<base>/.meta/<digest>.json    // sidecar descriptor, optional and not part of the hash input
-```
-
-A minimal descriptor record is:
-
-```json
-{
-  "version": 1,
-  "digest": "sha256:abcd...",
-  "type": "blob@1",
-  "codec": "json",
-  "payload_checksum": "sha256:abcd...",
-  "payload_size": 4096,
-  "created_at": "2026-09-16T22:45:00Z",
-  "references": ["sha256:dead...", "sha256:beef..."]
-}
-```
-
-Rules:
-
-- `digest` is the object key. It is the authoritative content-address identity.
-- `payload_checksum` is a metadata checksum of the logical payload or of a chunked payload. For a whole-object store it is usually equal to `digest`; the descriptor stores it only so the metadata can be validated without re-decoding the whole content stream.
-- The sidecar does not replace the object digest, does not change the `Digest` of the stored bytes, and does not alter the TLV bytes on disk.
-- `Store[T]` or an app-level descriptor package writes it; `Backend` stores only bytes.
-
-### 6.2 Why not in the TLV?
-
-Putting the checksum into the object bytes would make it part of the object identity. That creates a circular dependency: the checksum must be computed over bytes that contain the checksum itself. The result is a different hash for a different payload and a store where object identity no longer matches the bytes you stored.
-
-The repo therefore keeps the TLV envelope stable and keeps checksum metadata in a sidecar record outside the hash input.
-
-### 6.3 Verification path
-
-When a descriptor is present:
-
-1. `Backend.Get` returns the bytes for `digest`.
-2. the descriptor is read or lazily opened from `/.meta/<digest>.json`.
-3. the payload checksum is recomputed from the logical payload or chunk stream and checked against `payload_checksum`.
-4. the object is decoded and `Validate()` is enforced.
-5. on any mismatch, the object is treated as `ErrCorrupt` and quarantined.
-
-This pattern is useful for app metadata, chunked payload manifests, and large recovery metadata — not for the base object bytes, which are already digest-addressed.
+Putting the checksum into the object bytes would make it part of the object identity. That creates a circular dependency: the checksum must be computed over bytes that contain the checksum itself. The result is a different hash for a different payload and a store where object identity no longer matches the bytes you stored. The repo therefore keeps the TLV envelope stable and, if the descriptor ever lands, keeps checksum metadata in a sidecar record outside the hash input.
 
 ## 7. Backup
 
@@ -199,9 +156,11 @@ This pattern is useful for app metadata, chunked payload manifests, and large re
 
 - [x] fsync-before-rename enforced; directory fsync configurable
 - [x] orphan `*.tmp` sweep documented/implemented
-- [x] slog logging for mutations, login-throttle rejections, slow ops, GC runs
-- [x] verify cadence defined; mismatch → quarantine + audit + alert
+- [x] slog logging for the viewer's mutations/audit lines and login-throttle rejections; `examples/api` logs its mutation and GC runs
+- [ ] slow-operation (latency-threshold) logging — not implemented (extensions §3)
+- [ ] store-level metric counters (objects/bytes) and a read-only viewer stats page — not implemented; only `cas.Stats` and the cache layer's `CacheStats` exist (extensions §3)
+- [x] verify runs on demand; mismatch → `ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` report, viewer audit
+- [ ] quarantine on mismatch + alerting — not implemented (extensions §3)
 - [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
-- [x] object descriptor + sidecar checksum defined as optional metadata above the backend, never in the hash input
+- [ ] object descriptor + sidecar checksum — designed (rationale in §6.1) but not implemented: no producer, reader, or validation path (extensions §3)
 - [x] backup procedure documented; the packfile backend's doubled on-disk footprint and missing space reclamation stated (performance §9)
-- [x] backup procedure documented

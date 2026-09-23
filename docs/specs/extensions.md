@@ -1,8 +1,8 @@
 ---
 type: Specification
 title: Extensions — go-cask
-description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of implemented and designed-but-deferred possible extensions (packfiles, compression layer, encryption layer, chunking).
-version: v13
+description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of implemented and designed-but-deferred possible extensions (packfiles, compression layer, encryption layer, chunking) and the specified-but-unimplemented maintenance surface (§3.1).
+version: v14
 ---
 
 # Extensions — go-cask
@@ -50,6 +50,51 @@ Requirements for **future extensions and clients** (backends, object types, code
 
 **Rejected (2026-09): a namespace option (`fs.WithNamespace`).** Putting several stores in one root as `<base>/<namespace>/<fan-out>/<hex>` was rejected on four grounds: (1) the whole option reduces to `filepath.Join(root, name)` — which callers already have — plus a validator for a client-supplied path element (separators, `..`, absolute paths, Windows reserved names, case/NFC folding); (2) it reintroduces a runtime-chosen name used as a path element, the coupling the hash-agnostic core removed (cas-core §4.2); (3) it isolates nothing a separate base does not, because a store's isolation comes from the one-base exclusivity rule, not from a path segment (`List`/`Stats`/`Clean` walk the base recursively and match on the file name, so a prefix changes only where the walk starts — cas-core §4.4); (4) no consumer needs it — the CLI takes one `-store`, the viewer binds one backend, every example uses one store per base. Several stores under one root are already `fs.New(filepath.Join(root, name))`, and `fs.New` validates that base before creating it (`fs.ValidateBase`: no empty path, `.`, filesystem or volume root, or parent traversal — a nested directory is accepted, cas-core §4.4). Revisit only if a root-level *enumeration* need appears (one sweep or one stats view across many namespaces), which would be an app-layer root front-end over directories — not a byte-layer option.
 
+### 3.1 Maintenance surface: specified, not implemented
+
+These items are specified in an owning spec and have no implementation. Each entry states what exists today and what does not, so that no tick in an owning spec is read as a shipped capability; the design itself stays in the owning spec.
+
+- **Quarantine of a broken object** (consistency §2, operations §4) — exists: `cas.Verify`
+  returns `ErrDigestMismatch`, `cas.VerifyAll` collects the mismatching digests in
+  `Report.Bad`, `cask verify --all` prints one `CORRUPT` line per bad object and exits 1, and
+  the viewer records a session-scoped corrupt state plus one audit line. Does not exist:
+  moving the bytes aside into a quarantine directory, and any alerting hook.
+- **`ScanRefs`, the dangling-reference scan** (consistency §3, §8) — exists: a dangling
+  reference fails `cas/repo.Walk`/`Reachable`, and the viewer's `Orphaned`/`Detached` states
+  come from a host-supplied reachability function, not from a scan. Does not exist: a pass
+  over the store that reports every reference whose target is not stored.
+- **Sampled and scheduled `Verify`** (consistency §2, §6; operations §4) — exists: on-demand
+  verification (`cask verify <hash>` or `--all`, and the viewer's Verify control). Does not
+  exist: random sampling, a scheduler, or a nightly CI job (there is no nightly workflow).
+- **Store-level metric counters and a viewer stats page** (operations §3,
+  backend-architecture §7) — exists: `cas.Stats` (object count, total bytes) and the cache
+  layer's `CacheStats`. Does not exist: objects/bytes operation counters, a login-throttle
+  counter, or any stats route in the viewer.
+- **Slow-operation (latency-threshold) logging** (operations §3) — exists: `log/slog` audit
+  lines for login, throttle, CSRF, and verify, plus the CLI's plain-text summaries. Does not
+  exist: any measurement of an operation's duration against a threshold.
+- **Object descriptor + sidecar checksum** (`<base>/.meta/<digest>.json`) (operations §6) —
+  exists: the rationale and a design sketch (`docs/design/object-descriptor-checksum.md`);
+  `cas/pack` writes an unrelated string-map manifest for chunked payloads, and the old
+  `examples/files` `.crc32` sidecar was deleted on purpose, because an object verifies from
+  its own stored bytes alone (`examples/files/main_test.go` pins it). Does not exist: a
+  descriptor producer, a descriptor reader, or a checksum-validation path.
+- **Viewer delete/GC/prune routes** (consistency §4–§5, defaults §4) — deliberately not
+  implemented: the viewer inspects and does not destroy (viewer-design §5, viewer-security
+  §8), and object removal stays in the CLI (`cask gc`, `cask prune`), where it can be
+  scripted and paired with the root list a sweep needs. A destructive route has to be
+  designed against that rule before it can ship.
+- **Dangerous all-objects prune** (consistency §5) — exists: `cask prune` requires a root
+  list, defaults to `--dry-run`, and warns on `--min-age 0`. Does not exist: an explicit
+  all-objects mode, a confirmation step, or a role gate.
+
+**Deferral decision (2026-10):** the maintenance surface above stays deferred. Nothing in it
+gates v1.0.0 — the store is correct without it (content addressing plus explicit
+reclamation), and every item is additive behind the existing `Backend`/`cas` maintenance
+contracts — so each item is unticked in its owning spec and recorded here instead of being
+implemented now. Revisit per item when an operator needs it; implementing one is additive
+work, not a redesign.
+
 ## 4. Checklist
 
 - [x] Lives in its own package; `cas`/`gitlike` untouched
@@ -64,3 +109,4 @@ Requirements for **future extensions and clients** (backends, object types, code
 - [x] Simple: one job, nothing speculative
 - [x] Catalog entries (§3) reference an owning spec; no design-less wishes
 - [x] Catalog status matches the build: a shipped extension reads as implemented, a de-claimed guarantee is not promised, and a settled but unimplemented one reads as deferred (§3)
+- [x] Every deferred maintenance entry (§3.1) states what exists today and what does not, and its owning spec carries no tick for it

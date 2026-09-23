@@ -78,7 +78,7 @@ Every item MUST be satisfied before the first stable release.
 - [x] Doc-integrity gate passes (mermaid balance, `.md` refs)
 
 ### 6.3 Spec compliance
-- [x] All 20 instruction specs' acceptance checklists fully ticked (all audit items triaged 2026-09)
+- [x] All 20 instruction specs' acceptance checklists triaged (all audit items triaged 2026-09); every item with no implementation is unticked and catalogued in extensions §3 with what exists and what does not
 - [x] All recorded decisions have provenance in their owning specs with version bumps
 
 ### 6.4 Examples
@@ -89,7 +89,8 @@ Every item MUST be satisfied before the first stable release.
 - [x] Viewer is a byte-layer tool, never imports `examples/` (coding-guidelines §9)
 - [x] Sessions, CSRF, role checks, rate limiting, audit logging implemented (viewer-security checklist)
 - [x] `cask web` starts the viewer, prints URL + token, auto-opens browser (`--no-open` suppresses)
-- [x] GC template exists (`gc.html`); raw-HTML fragments converted to templates
+- [ ] GC template exists (`gc.html`): there is no `gc.html` and no GC route — the viewer's templates are `login.html`, `objects.html`, and `partials.html`, and object removal is CLI-only (consistency §9, viewer-design §5, extensions §3)
+- [x] raw-HTML fragments converted to templates
 
 ### 6.6 Extensions
 - [x] Extension catalog (extensions.md §3) records deferral decisions with triggers

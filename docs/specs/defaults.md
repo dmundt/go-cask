@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v34
+version: v35
 ---
 
 # Defaults and Behavior — go-cask
@@ -14,7 +14,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 - Three layers (cas-core §3): byte (non-generic `Digest`/`Backend`/backends) → typed (generic `Object[T]`/`Codec[T]`/`Store[T]`/`Walker[T]`/caches) → application (per-app types; `gitlike` is the reference).
 - One HTTP surface (api-design §2): the viewer (`/viewer/*`, HTML). No network JSON API ships (backend-architecture §1); `examples/api` demonstrates a JSON surface.
 - One server, one mux (backend-architecture §3–4), fixed middleware order: session auth → role → CSRF → handler.
-- Five maintenance operations (consistency §8): `Verify`, `ScanRefs`, `GC`, `Prune`, `Stats`.
+- Four maintenance operations (consistency §8): `Verify`, `GC`, `Prune`, `Stats`. A fifth, `ScanRefs`, is designed but not implemented, as is the rest of the deferred maintenance surface (extensions §3).
 
 ## 2. Core defaults and constants (`cas`)
 
@@ -77,8 +77,8 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Active-search trigger | `input changed delay:300ms` | viewer-design §5 |
 | Object-list pagination | `limit=25`, `offset=0`; allowed limits `25`, `50`, `100`, `250` | viewer-design §5 |
 | Object-list initial sort | hash ascending; sort/filter/page state is URL-addressable | viewer-design §5 |
-| GC progress polling | none; GC returns one result fragment | viewer-design §5 |
-| Roles | viewer (read) / operator (+store, verify) / admin (+delete, GC, prune) | viewer-security |
+| Viewer admin action | verify only (one object, or every object); the viewer has no delete, GC, or prune route | viewer-design §5, viewer-security §8 |
+| Roles | viewer (read) / operator (+verify) / admin (the same as operator — the viewer exposes no destructive action) | viewer-security §8 |
 
 ## 5. Maintenance and consistency defaults
 
@@ -86,8 +86,10 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 |---|---|---|
 | GC trigger | explicit only (never automatic) | consistency §4 |
 | GC algorithm | mark-and-sweep from application roots | consistency §4 |
-| `Verify` cadence | scheduled full (nightly) + sampled on `List` | consistency §6 |
-| Broken-object handling | quarantine + audit-log + alert (never auto-fix) | consistency §2 |
+| `Verify` cadence | on demand (CLI `verify <hash>\|--all`, viewer Verify control); nothing samples and nothing is scheduled | consistency §2, §6 |
+| Broken-object handling | report + audit-log (`ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` line, viewer audit); no quarantine and no alert | consistency §2 |
+| Dangerous all-objects prune | no dedicated mode: `cask prune` takes a required root list, `--dry-run` is the default, and `--min-age 0` warns | consistency §5 |
+| Deferred maintenance surface | quarantine, `ScanRefs`, sampled/scheduled `Verify`, store metric counters + viewer stats page, latency-threshold logging, `.meta/<digest>.json` descriptor, viewer delete/GC routes — designed only, each with what exists and what does not | extensions §3 |
 | Dangling-ref handling | diagnostics only; repair is the app's job | consistency §3 |
 | Orphan `*.tmp` | ignored by `List`/`Stats`; removed by `clean` | operations §2 |
 | Write durability | temp file → `f.Sync()` → `os.Rename` (dir fsync optional) | operations §1 |

@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v20
+version: v21
 ---
 
 # Backend Architecture — go-cask
@@ -36,9 +36,10 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 - Every viewer route is `text/html` (pages + htmx fragments). Its only
   presentation asset is the embedded, locally served
   `/viewer/static/viewer.css`; vendored htmx is the only script. The hexdump
-  view buffers at most **256 KiB** for in-page display (a bounded preview, not
-  a streaming download — api-design §11 streaming applies to the API surface,
-  not the hexdump UI).
+  view buffers at most **256 bytes** (`internal/web/web.go`'s `previewLimit`)
+  for in-page display and states the truncation on the page (a bounded preview,
+  not a streaming download — api-design §11 streaming applies to the API
+  surface, not the hexdump UI).
 - Errors are minimal HTML; 401/403 are empty bodies never disclosing existence.
 - The product serves no OpenAPI; an HTTP surface needing a documented contract (`examples/api`) keeps it in a separate embedded `openapi.yaml` (api-design §13).
 
@@ -71,9 +72,9 @@ viewer:
 
 ## 7. Observability and audit
 
-- `log/slog`: viewer mutations, slow operations, GC runs (operations §3), login failures.
+- `log/slog`: viewer audit lines (login failures, throttle and CSRF rejections, verify results) and `cask web` lifecycle errors; slow-operation logging is not implemented (operations §3).
 - Audit per viewer-security: every admin action logged; tokens/secrets never logged.
-- Metrics counters (objects/bytes/cache) via the viewer stats page and logs — no external metrics dependency.
+- Metrics counters (objects/bytes/cache) and the viewer stats page they were to be exposed on are **not implemented**: `cas.Stats` reports object count and total bytes, the cache layer reports its own `CacheStats`, and the viewer's route table has no stats route (`internal/web/web.go`). `log/slog` is the observability surface (operations §3, extensions §3).
 
 ## 8. Deployment shapes
 
@@ -97,5 +98,6 @@ All product shapes share the config contract and the viewer security model; an a
 - [x] Raw object views stream; no full buffering
 - [x] Errors per api-design §5/§6; 401/403 empty bodies
 - [x] Config per §6; startup/shutdown lifecycle implemented
-- [x] slog + audit logging; metrics via the viewer stats page and logs
+- [x] slog + audit logging
+- [ ] metric counters and a viewer stats page — not implemented; `cas.Stats` and the cache layer's `CacheStats` are the only counters, and the viewer has no stats route (extensions §3)
 - [x] No network JSON API ships; `examples/api` is the documented pattern
