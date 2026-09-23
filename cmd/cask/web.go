@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,7 +38,77 @@ type webArgs struct {
 	tokenFile     string
 	trustedProxy  string
 	allowInsecure bool
+	showToken     tokenDisplay
 	noOpen        bool
+}
+
+// displayChoice is the resolved answer to "may the viewer display the one-time
+// login hint?". It has three states because the flag's absence is not a
+// negation: an absent -show-token keeps the terminal heuristic, the flag forces
+// the hint, and -show-token=false suppresses it for good (cli.md §2).
+type displayChoice int
+
+const (
+	// displayHidden keeps the generated token off the notice because nothing
+	// asked for it and the notice's stream is not an interactive terminal; the
+	// remedy is logged.
+	displayHidden displayChoice = iota
+	// displayShown displays the generated token: the operator asked for it, or
+	// the notice's stream is an interactive terminal and no choice was given.
+	displayShown
+	// displaySuppressed keeps the token off the notice because the operator
+	// asked for that (-show-token=false), so no remedy is needed.
+	displaySuppressed
+)
+
+// tokenDisplay is the -show-token flag: a tri-state choice, because its default
+// is neither "always" nor "never" but the terminal heuristic, and the flag
+// package's bool cannot tell an absent flag from an explicit
+// -show-token=false (cli.md §2, §4).
+type tokenDisplay struct {
+	set   bool
+	value bool
+}
+
+// String reports the flag's current state for help output.
+func (d *tokenDisplay) String() string {
+	if !d.set {
+		return "auto"
+	}
+	return strconv.FormatBool(d.value)
+}
+
+// Set implements flag.Value. IsBoolFlag makes a bare -show-token mean
+// -show-token=true, and -show-token=false its negation.
+func (d *tokenDisplay) Set(value string) error {
+	v, err := strconv.ParseBool(value)
+	if err != nil {
+		return fmt.Errorf("not a boolean: %q", value)
+	}
+	d.set, d.value = true, v
+	return nil
+}
+
+// IsBoolFlag implements the flag package's boolFlag interface, so the flag may
+// be written bare.
+func (d *tokenDisplay) IsBoolFlag() bool { return true }
+
+// resolve turns the flag and the notice stream's terminal state into the
+// announcement's display choice: an absent flag keeps the terminal heuristic —
+// the behavior before the flag existed — an explicit true forces the hint, and
+// an explicit false suppresses it.
+func (d tokenDisplay) resolve(interactive bool) displayChoice {
+	switch {
+	case !d.set:
+		if interactive {
+			return displayShown
+		}
+		return displayHidden
+	case d.value:
+		return displayShown
+	default:
+		return displaySuppressed
+	}
 }
 
 // viewerTokenEnv supplies the viewer's startup admin token to an unattended
@@ -58,6 +129,7 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
 	flags.StringVar(&a.trustedProxy, "trusted-proxy", "", "comma-separated IPs/CIDRs whose forwarded client address the login throttle may believe (e.g. 10.0.0.0/8); empty trusts none")
 	flags.BoolVar(&a.allowInsecure, "allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
+	flags.Var(&a.showToken, "show-token", "show the generated startup token's one-time login hint even when stdout is not an interactive terminal (default: only on an interactive stdout; -show-token=false never shows it)")
 	flags.BoolVar(&a.noOpen, "no-open", false, "do not open the default browser")
 	return flags
 }
@@ -204,10 +276,20 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		}
 	}()
 
-	baseURL := "http://" + listener.Addr().String()
-	announceLogin(os.Stderr, baseURL, token, generated, stderrIsTerminal())
+	addr := listener.Addr().String()
+	// The notice goes to stdout, the stream that carries command output, and
+	// may be requested without a terminal; the deep link it prints is the one
+	// that can log in (noticeOrigin). Opening the browser keeps the bind's
+	// plain http:// origin it always used.
+	announceLogin(os.Stdout, loginNotice{
+		bind:      addr,
+		baseURL:   noticeOrigin(addr),
+		token:     token,
+		generated: generated,
+		display:   a.showToken.resolve(stdoutIsTerminal()),
+	})
 	if !a.noOpen {
-		openBrowser(loginURL(baseURL, token))
+		openBrowser(loginURL("http://"+addr, token))
 	}
 
 	exitCode := 0
@@ -238,9 +320,9 @@ func loginURL(baseURL, token string) string {
 // whether this run generated it. An operator-supplied token — `-token-file`
 // first, then CASK_VIEWER_TOKEN — is used as given and is never displayed, so
 // an unattended deployment never needs the token printed; only a token
-// generated here may be shown, and only on an interactive terminal
-// (viewer-security §5.1, §11). A returned error names the flag or the file, not
-// the token.
+// generated here may be shown, and only when the operator asks for it or the
+// notice's stream is an interactive terminal (viewer-security §5.1, §11). A
+// returned error names the flag or the file, not the token.
 func resolveStartupToken(a webArgs) (string, bool, error) {
 	if a.tokenFile != "" {
 		b, err := os.ReadFile(a.tokenFile)
@@ -263,34 +345,92 @@ func resolveStartupToken(a webArgs) (string, bool, error) {
 	return token, true, nil
 }
 
-// stderrIsTerminal reports whether stderr is an interactive terminal — the only
-// place a generated startup token may be shown. os.ModeCharDevice is the
-// standard library's terminal test on every platform, so the viewer needs no
-// terminal dependency (coding-guidelines §3).
-func stderrIsTerminal() bool {
-	info, err := os.Stderr.Stat()
+// noticeOrigin returns the login deep link's origin for the startup notice, or
+// "" when no link may be printed. Only a loopback bind can hold a plain http://
+// login: the session cookie is always Secure (viewer-security §7), so a
+// non-loopback bind is reachable only over https:// through a TLS-terminating
+// proxy, and its bind address is not the origin the operator's browser uses
+// (cli.md §2).
+func noticeOrigin(listenerAddr string) string {
+	if !isLoopbackBind(listenerAddr) {
+		return ""
+	}
+	return "http://" + listenerAddr
+}
+
+// loginNotice is the viewer's one-time startup announcement: where the viewer
+// can be reached, whether a login link can work there, and whether the
+// generated startup token may be displayed.
+type loginNotice struct {
+	// bind is the address the viewer actually listens on; it names the
+	// reachable location when no deep link can be printed.
+	bind string
+	// baseURL is the login deep link's origin, or empty when the bind is not
+	// loopback (noticeOrigin).
+	baseURL string
+	// token is the startup admin token.
+	token string
+	// generated reports that this run generated the token. Only a generated
+	// token may ever be displayed; an operator-supplied one is not repeated
+	// (viewer-security §5.1, §11).
+	generated bool
+	// display is the resolved display choice.
+	display displayChoice
+}
+
+// stdoutIsTerminal reports whether the notice's stream — standard output — is
+// an interactive terminal, which is where a generated startup token may be
+// shown by default. os.ModeCharDevice is the standard library's terminal test
+// on every platform, so the viewer needs no terminal dependency
+// (coding-guidelines §3). The test follows the stream the notice uses, not
+// stderr: a run that redirects its notice into a file or a pipe must not have
+// the token written into it (viewer-security §5.1, §11).
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
 	if err != nil {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
-// announceLogin performs the viewer's one-time login announcement. The token is
-// written to w only when this run generated it AND w belongs to an interactive
-// terminal; an operator-supplied token is not repeated, and when a generated
-// token cannot be shown the remedy is logged instead of the token. The token
-// never reaches a slog handler at any level (viewer-security §5.1, §9, §11), and
-// the tests assert exactly that.
-func announceLogin(w io.Writer, baseURL, token string, generated, interactive bool) {
-	if generated && interactive {
-		fmt.Fprintf(w, "cask web: log in once at %s (shown here only; the startup token is never logged)\n", loginURL(baseURL, token))
-		return
+// announceLogin performs the viewer's one-time login announcement on w, the
+// process's standard output: the hint is deliberate command output, so it
+// belongs on the stream that carries command output while stderr stays reserved
+// for errors (cli.md §3, §4).
+//
+// The token is written only when this run generated it AND display allows it; an
+// operator-supplied token is not repeated. A deep link is written only when the
+// bind can hold a login (loginNotice.baseURL); otherwise the notice names the
+// bind and the https:// expectation, so a link that cannot log anyone in is
+// never printed. A generated token that stays hidden logs the remedy — never the
+// token, and never the link (viewer-security §5.1, §9, §11); the tests assert
+// exactly that.
+func announceLogin(w io.Writer, n loginNotice) {
+	shown := n.generated && n.display == displayShown
+	switch {
+	case shown && n.baseURL != "":
+		fmt.Fprintf(w, "cask web: log in once at %s (shown here only; the startup token is never logged)\n", loginURL(n.baseURL, n.token))
+	case shown:
+		fmt.Fprintf(w, "cask web: startup token %s (shown here only; the startup token is never logged)\n", n.token)
+		fmt.Fprintf(w, "cask web: %s\n", viewerLocation(n))
+	default:
+		fmt.Fprintf(w, "cask web: %s — the startup token is never logged or echoed\n", viewerLocation(n))
 	}
-	fmt.Fprintf(w, "cask web: viewer at %s/viewer/ — the startup token is never logged or echoed\n", baseURL)
-	if generated {
-		slog.Warn("viewer startup token was generated but not shown: stderr is not an interactive terminal",
-			"remedy", "restart with -token-file <path> or "+viewerTokenEnv+" to supply the token instead")
+	if n.generated && n.display == displayHidden {
+		slog.Warn("viewer startup token was generated but not shown: the notice stream is not an interactive terminal",
+			"remedy", "run with -show-token to display the one-time login hint, or supply the token with -token-file or "+viewerTokenEnv)
 	}
+}
+
+// viewerLocation names where the operator reaches the viewer: the deep link's
+// origin for a loopback bind, or the bind and the https:// expectation for a
+// non-loopback one, where no plain http:// link can hold a session
+// (viewer-security §7).
+func viewerLocation(n loginNotice) string {
+	if n.baseURL != "" {
+		return "viewer at " + n.baseURL + "/viewer/"
+	}
+	return "viewer bound to " + n.bind + ": log in over https:// through a TLS-terminating proxy (session cookies are always Secure, so this bind's plain http:// cannot hold a session)"
 }
 
 func viewerHasher(name string) (cas.Hasher, error) {

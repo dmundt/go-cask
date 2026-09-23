@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v35
+version: v36
 ---
 
 # Defaults and Behavior — go-cask
@@ -65,7 +65,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 | Item | Default/value | Defined in |
 |---|---|---|
-| Startup | `cask web` IS the viewer; loopback-only default bind; admin token never logged — shown once on an interactive terminal, or supplied with `-token-file`/`CASK_VIEWER_TOKEN` | cli §2, viewer-security |
+| Startup | `cask web` IS the viewer; loopback-only default bind; admin token never logged — shown once on stdout (`-show-token` forces it without a terminal, `-show-token=false` suppresses it, absent keeps the terminal heuristic), or supplied with `-token-file`/`CASK_VIEWER_TOKEN`; a non-loopback bind prints no login link, only the bind and the `https://` expectation | cli §2, viewer-security |
 | Default bind | `127.0.0.1:8080` | viewer-security |
 | Short-hash display | 8 hex chars (`9f86d081`) — `cas.Digest.Prefix(8)`, the core's total display helper | viewer-design §7 |
 | Generic-list hash format | `<shorthash> (<type>)` | viewer-design §7 |

@@ -116,6 +116,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The viewer's one-time login hint is printed to **stdout** — the stream that
+  carries command output, not the error stream a supervisor or a log shipper
+  retains — and `cask web -show-token` displays it in any run: a bare
+  `-show-token` forces the hint without a terminal, `-show-token=false` never
+  shows it, and an absent flag keeps the interactive-terminal heuristic, so an
+  operator under a supervisor can ask for the hint while an unattended
+  deployment keeps using `-token-file`/`CASK_VIEWER_TOKEN`. A non-loopback bind
+  no longer prints a `http://` login link that could not hold a session (the
+  cookie is always `Secure`): the notice names the bind and the `https://`
+  expectation instead.
+
 - gitlike resolves an object's type from the **versioned** envelope name
   (`cas.EnvelopeType` on a bounded header prefix), so an object stored as
   `blob@2` is reported as an unknown type instead of being decoded through the

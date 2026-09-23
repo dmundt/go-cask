@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v11
+version: v12
 ---
 
 # Viewer Security — go-cask
@@ -26,13 +26,14 @@ The viewer SHALL run only when explicitly invoked: `cask web` starts it; no othe
 - Default bind SHALL be `127.0.0.1` or `localhost`; the viewer MUST NOT be exposed on all interfaces by default.
 - Network exposure requires an explicit config change (`bind`).
 - If bind is a non-loopback address, the app MUST log a prominent startup warning and MUST refuse to start unless HTTPS is enabled or explicit `allow_insecure_bind: true` is set.
+- A non-loopback bind MUST NOT be given a printed login link: the session cookie is always `Secure` (§7), so the only login that can hold is over `https://` through a TLS-terminating proxy. The startup notice MUST name the bind and that `https://` expectation instead (cli.md §2).
 
 ## 5. Authentication
 
 - The viewer SHALL require authentication for all **protected** resources; unauthenticated access to them is not permitted. The only unauthenticated entry points are the login page (`/viewer/login`) and the `/viewer/` landing, which either redirects (303) to login or completes the same-origin `?token=` deep link (§5.1) — neither exposes store data.
 - Login attempts MUST be rate limited (max 5 failures/caller-address/min) with exponential backoff; each failure MUST be audit-logged without the submitted token value. The address the throttle keys on is the **caller address** defined in §5.2, not necessarily the direct peer.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin` role. Additional viewer/operator principals are provisioned via the configured identity provider (OIDC) or configured per-role tokens. Sessions MUST carry exactly one role resolved at login.
-- Startup token characteristics: cryptographically secure random; supplied out of band with `-token-file`/`CASK_VIEWER_TOKEN` or displayed once, and only when stderr is an interactive terminal — never through the logging package, at any level (cli.md §4, §9, §11); not stored in plaintext config; regenerated on every restart unless the operator supplied it.
+- Startup token characteristics: cryptographically secure random; supplied out of band with `-token-file`/`CASK_VIEWER_TOKEN` or displayed once on **standard output** — on an interactive terminal, or in any run whose operator asks for the display with `-show-token` — never through the logging package, at any level (cli.md §4, §9, §11); not stored in plaintext config; regenerated on every restart unless the operator supplied it.
 - A startup or configured per-role token establishes a session two ways: via `POST /viewer/login` (preferred) or via a direct `GET /viewer/?token=<token>` — the `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a valid session cookie. Both token-accepting endpoints admit a token only from the viewer's own origin (§5.1).
 - **CSRF sourcing (MUST):** every viewer mutation is POST plus a per-session CSRF token compared in constant time. The token MUST be read from the request body (the form's hidden field) or the `X-CSRF-Token` header, never from the query string: a URL-borne token is captured by access logs, bookmarks, proxies, and `Referer` chains. A `?csrf=<token>` value MUST NOT validate.
 
@@ -46,7 +47,7 @@ The deep link is the `cask web` "open viewer" URL, `GET /viewer/?token=<token>`.
 - A refused request MUST NOT create a session, MUST NOT set a session cookie, and MUST be refused before the login throttle is consulted, so a cross-site flood cannot spend a real caller's login budget.
 - The token appears only in that one login URL — it MUST NOT be echoed into the session, cookies, or logs; the server MUST send `Referrer-Policy: no-referrer` on the response so the token does not leak via `Referer`; login still honors the throttle and audit-logs the action **without** the token value; after the session cookie is set the client MUST NOT reuse the token URL (a stale token URL is just a login attempt, not a session).
 
-The URL contract is unchanged for the operator: the opened token URL and a same-origin link or form both still sign in. No session is ever minted from a request the viewer cannot attribute to its own origin.
+The URL contract is unchanged for the operator: the opened token URL and a same-origin link or form both still sign in. No session is ever minted from a request the viewer cannot attribute to its own origin. What the startup notice prints is a separate decision from what the endpoint accepts: a loopback bind prints `http://<addr>/viewer/?token=…`, and a non-loopback bind MUST NOT print a link at all, because its plain `http://` origin cannot hold an always-`Secure` session cookie (§7) — the notice names the bind and the `https://` expectation instead.
 
 ### 5.2 Caller address (proxy deployments)
 
@@ -98,7 +99,7 @@ table in the same commit that ships it.
 
 ## 9. Audit logging
 
-All administrative actions MUST be logged, including timestamp, user/session identifier, action, affected resource, result. Never log passwords, session cookies, authentication tokens, or secret keys. The process log is one of those sinks: `cask web` MUST NOT hand the startup token to the logging package at any level, because under systemd/journald, Docker, or a log shipper that output is retained and indexed beyond the operator. The token is written only to an interactive terminal, or not at all (§5.1, §11).
+All administrative actions MUST be logged, including timestamp, user/session identifier, action, affected resource, result. Never log passwords, session cookies, authentication tokens, or secret keys. The process log is one of those sinks: `cask web` MUST NOT hand the startup token to the logging package at any level, because under systemd/journald, Docker, or a log shipper that output is retained and indexed beyond the operator. The token is written only to the one-time login notice on standard output — an interactive terminal, or a run whose operator explicitly asked for the display — or not at all (§5.1, §11).
 
 ## 10. API architecture
 
@@ -125,7 +126,7 @@ else's session.
 
 ## 11. Secret handling
 
-Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`. A startup token MAY additionally be supplied out of band, with the `-token-file` flag or the `CASK_VIEWER_TOKEN` environment variable, and MAY be displayed once on an interactive terminal (cli.md §4); outside that it MUST NOT appear in the process log at any level, in the output of a process without a terminal, or in an API response.
+Secrets must never be hardcoded, committed to source control, written to logs, or returned in API responses (access/secret keys, session/startup tokens, encryption keys). Use environment variables or dedicated secret providers. The only place a token MAY appear in a URL is the documented `GET /viewer/?token=` login deep link (§5.1) — that URL is one-time, is never logged, and its response carries `Referrer-Policy: no-referrer`. A startup token MAY additionally be supplied out of band, with the `-token-file` flag or the `CASK_VIEWER_TOKEN` environment variable, and MAY be displayed once on standard output — on an interactive terminal, or in any run whose operator explicitly requests the display with `cask web -show-token` (cli.md §4) — and only for a loopback bind, whose printed link can hold a session (§5.1, §7). Outside that it MUST NOT appear in the process log at any level, in the output of a process that was not asked to display it, or in an API response.
 
 ## 12. Production deployments
 
@@ -151,7 +152,8 @@ The viewer is an administrative tool. Priority: 1 Security, 2 Auditability, 3 Si
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [x] Auth required; login throttled (5/caller-address/min, backoff, audit-logged without the token) (§5)
 - [x] A forwarded client address is believed only from a configured trusted proxy; with none configured the peer address keys the throttle and the header is ignored (§5.2)
-- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on an interactive terminal only, or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)
+- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on stdout (an interactive terminal, or a run that passes `-show-token`), or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)
+- [x] No login link is printed for a non-loopback bind; the notice names the bind and the `https://` expectation instead (§4, §5.1)
 - [x] Both token-accepting endpoints refuse a request that is not same-origin (403, empty body, audit line); no cross-site request mints a session (§5.1)
 - [x] CSRF token accepted from the POST body or the `X-CSRF-Token` header only; `?_csrf=` never validates (§5)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)
