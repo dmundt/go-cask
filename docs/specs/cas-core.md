@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v62
+version: v63
 ---
 
 # CAS Core — go-cask
@@ -22,7 +22,7 @@ CASK is a reusable Go **content-addressable store**: blobs stored once under the
 5. **Layering.** The byte layer is **non-generic** (`Digest` + `io.Reader` only); all generics live in the typed layer.
 6. **No `any` in the public API.** Each object type gets its own `Store[T]`; mixing types is a compile-time error. `Store[T].Get` returns the concrete `T`, never an `Object[T]` interface (§4.8).
 7. **Streaming I/O.** The byte layer moves `io.Reader`/`io.ReadCloser`; the fs backend copies an object to disk without buffering it in memory (the mem backend buffers by design), and `Verify` streams through the injected `Hasher`.
-8. **Thread safety by default.** Backends have lock-free reads (atomic rename), one `sync.Mutex` for `Put`/`Delete`; caches use `sync.Map`/`atomic`; writes are atomic (temp file + `Sync()` + rename).
+8. **Thread safety by default.** Backends with an immutable object layout have lock-free reads (atomic rename), one `sync.Mutex` for `Put`/`Delete`; the packfile backend serializes its in-memory index on that same mutex (§4.14); caches use `sync.Map`/`atomic`; writes are atomic (temp file + `Sync()` + rename).
 
 Testable via the CAS laws (testing-strategy.md §1).
 
@@ -337,7 +337,7 @@ Per-method contracts (every backend MUST honor):
 
 Every implementation rejects an absent digest with `ErrInvalidDigest` instead of addressing an object that cannot exist, and none of them recomputes a digest: content addressing makes a conflict impossible by construction, so an explicit integrity check is the caller's job (`cas.Verify(ctx, raw, d, hasher)` / `cas.NewVerifier(raw, hasher).Verify(ctx, d)`, §4.11). **`Verify` is deliberately NOT part of this interface** — it is a separate maintenance-layer concern that reads bytes from the backend and takes the client's `Hasher` explicitly.
 
-This interface is the **backend extension point** — any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2).
+This interface is the **backend extension point** — any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2). The implementations this repo ships are `fs.Backend` (§4.4), `memory.Backend` (§4.5), and the opt-in `packfs.Backend` (§4.14).
 
 Portable state transfer is intentionally a helper above this interface:
 `cas/backend/snapshot.Export` writes a deterministic archive of raw digests and
@@ -497,7 +497,7 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 - **`cas.VerifyAll(ctx, backend Backend, hasher Hasher) (*Report, error)`** — the generic, backend-agnostic form: lists every digest and re-verifies each, collecting mismatches in `Report.Bad` instead of aborting on the first one (any other read failure still aborts, wrapped). Works against any `Backend`, including one that implements no maintenance methods of its own — it needs only `List` and `Get` (go-cask#137).
 - **`cas.Sweep(ctx, backend Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error)`** — the generic, backend-agnostic mark-and-sweep: deletes every listed digest absent from `reachable` (the caller computes the reachable set — `cas.Reachable` for one type, `cas/repo.Reachable` across several). `SweepOptions.MinAge > 0` restricts deletion to objects older than that age and requires the backend to implement `Statter` (`ErrUnsupported` otherwise); `SweepOptions.DryRun` reports the doomed set without deleting. Needs only `List` and `Delete`, so it works against any backend, including `packfs`, which has no backend-native GC/Prune of its own (go-cask#137).
 - **`cas.Capabilities` / `cas.CapabilitiesOf(backend Backend) Capabilities`** — reports which optional maintenance operations a backend supports. `Verify` and `Sweep` are always `true` (the two functions above need nothing beyond the minimal `Backend` interface); `Clean`/`Stat` report whether `backend` implements the optional `cas.Cleaner`/`cas.Statter` interfaces.
-- **`cas.Cleaner`** (`Clean(ctx, olderThan time.Duration) (int, error)`) and **`cas.Statter`** (`Size(ctx, d) (int64, error)`, `ModTime(ctx, d) (time.Time, error)`) — optional capability interfaces a backend opts into structurally; `fs.Backend` satisfies both, `mem.Backend` and `packfs.Backend` satisfy neither.
+- **`cas.Cleaner`** (`Clean(ctx, olderThan time.Duration) (int, error)`) and **`cas.Statter`** (`Size(ctx, d) (int64, error)`, `ModTime(ctx, d) (time.Time, error)`) — optional capability interfaces a backend opts into structurally; `fs.Backend` satisfies both, `packfs.Backend` satisfies both (`Clean`; `Size`/`ModTime`, §4.14), and `mem.Backend` satisfies neither.
 - **`fs.Backend.GC(ctx, reachable map[string]bool) error`** — mark-and-sweep: deletes every object whose `d.String()` is not in `reachable`; the caller computes the reachable set. A faster, fs-native path than `cas.Sweep` for the common case; `cas.Sweep` is the documented cross-backend equivalent.
 - **`fs.Backend.Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool) ([]Digest, error)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); returns the doomed digests, or the would-be-deleted set when `dryRun` is set. Detection/consistency in `consistency.md`. A faster, fs-native path than `cas.Sweep(..., SweepOptions{MinAge: ...})`.
 - **`fs.Backend.Clean(ctx, olderThan time.Duration) (int, error)`** — sweeps orphan temp files older than the threshold and returns the count. fs-specific: "orphan scratch state" is not a concept the minimal `Backend` interface exposes, so there is no generic equivalent.
@@ -565,7 +565,7 @@ type ResolvedObject struct {
 - `Resolve` reads a **bounded header prefix** of the raw bytes, reads the versioned type name with `cas.EnvelopeType` (§8 d1, §4.6), then dispatches to the matching `Resolve*` on that **versioned** name — so a `blob@2` is unknown to the `@1` model rather than decoded through it, and an absent `@major` still reads as `@1` (object-versioning §2). `ResolveAny` maps the resolved object onto the union below; an unknown type returns `ErrUnknownType`. `(*ResolvedObject).References()` returns the outgoing references of whichever union field is populated, so a caller walking the graph (or feeding `cas.RefListerFunc`) does not repeat the type switch.
 - `PrintObject(*ResolvedObject) string` renders any resolved object via a type switch — no reflection. The tag branch renders `Tag.Target` with `cas.Digest.Prefix(8)` — the core's total display helper (`""` when absent, a short digest whole) — and shows `<absent>` for a target that does not exist yet.
 - **`WalkGraph`** — whole-graph traversal: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)` is a thin adapter over `cas/repo.Walk`, so gitlike does not carry a second traversal and both walks share one rule set (at-most-once, explicit stack, context checked per node). gitlike stays the stricter of the two: a digest whose stored type this repository does not know aborts the walk with `ErrUnknownType`, where `cas/repo.Walk` reports the unregistered type to `visit` and keeps going. Its type-switch presentation makes the union example-specific; the generic, several-type alternative is `cas/repo.Walk` over a caller-registered `Registry`. Each digest is visited **at most once** and the stack is explicit, exactly like `Walker[T]`: a diamond-shaped history costs one visit per object instead of one per path (a 12-level diamond is 13 visits, not 2¹³−1), and a store this library did not write — the `Backend` stores bytes without re-verifying their digest — cannot make the walk loop.
-- **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`/`GetTag` serve from the caches, while `ResolveAny` reads through the shared resolver (raw bytes + per-type stores) and is therefore *not* cache-served. `Repository.Close`/`CachedRepository.Close` release the shared backend (one `Store.Close`, which forwards to the backend's `io.Closer` — packfs flushes its active pack there).
+- **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob`/`GetTag` serve from the caches, while `ResolveAny` reads through the shared resolver (raw bytes + per-type stores) and is therefore *not* cache-served. `Repository.Close`/`CachedRepository.Close` release the shared backend (one `Store.Close`, which forwards to the backend's `io.Closer` — packfs releases its active pack handle there; it flushes no index at close, because every packed `Put` already persisted it, §4.14).
 - **`Preloader`** — background worker pool on a `chan cas.Digest`, running `Commits.PreloadRecursive(ctx, d, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.
 
 ### 4.13 Batching and prefetching — loading many objects
@@ -601,6 +601,77 @@ func GetMany(ctx context.Context, raw Backend, digests []Digest, fn func(Digest,
 
 The batch and prefetch layers therefore compose rather than compete: `GetMany` removes the backend's per-object opens, and the caches remove the repeated reads a traversal would otherwise make.
 
+### 4.14 `packfs.Backend` — the optional packfile backend (`cas/backend/packfs`)
+
+`packfs.New(basePath, opts ...packfs.Option)` returns a backend that keeps every object **twice** inside one
+base: the loose tree at `<base>/loose/` (a full `fs.Backend`, fan-out default) and an append-only pack file
+plus a JSON index under `<base>/packs/`. Packing is **opt-in** — without `packfs.WithEnabled()` the backend
+forwards to the loose tree and behaves exactly like `fs.Backend` — and `cmd/cask` selects the enabled form
+with `-backend packfs` (cli §1, backend-architecture §5). It is an extension over the byte contract, not a new
+core surface: it implements the same six methods and opts into the optional capability interfaces.
+
+- **Capabilities (implemented).** `cas.Backend` (required), `cas.Cleaner` (`Clean`), `cas.Statter`
+  (`Size`/`ModTime`), `cas.BatchGetter` (`GetMany`, §4.13) and `io.Closer` (`Close`). It implements **no**
+  `GC`/`Prune`/`Verify` of its own: maintenance runs through the portable layer (§4.11) — `cas.Verify`/
+  `cas.VerifyAll` for integrity, `cas.Sweep` for mark-and-sweep.
+- **Pack format.** The active pack is `<base>/packs/current.pack`, opened `O_CREATE|O_RDWR|O_APPEND`; each
+  record is the header `[uint32 BE digest length][digest][uint64 BE payload length]` followed by the payload.
+  There is **no magic, no format version and no whole-pack checksum**: a pack is not self-describing, and the
+  index is the only record of what it holds. Rotation (at `PackMaxBytes` or `PackMaxEntries`) closes the
+  active file and opens `<base>/packs/pack-<unixnano>.pack`; the next `New` reopens `current.pack` — creating
+  it when absent — and appends there, so a rotated pack is never written again while `current.pack` may be
+  appended to across restarts.
+- **Write policy (`Put`).** With packing enabled the reader is spooled to a scratch file under `packs/` (so a
+  large object is never held in memory by the backend), copied into the loose tree through the fs backend's
+  atomic `Sync`+rename path, then appended to the active pack and recorded in the index. **Nothing is filtered
+  by size: every object is both loose and packed.** An idempotent re-`Put` of the same digest appends a second
+  payload copy and replaces the index record. Durability comes from the loose copy; the pack append is not
+  separately fsynced. The index is rewritten atomically (temp file + rename) after every packed `Put`.
+- **Index.** `<base>/packs/index.json` holds an `entries` map from each packed digest's hex form to
+  `{"pack": <path>, "offset": <n>, "size": <n>}`; it is loaded once at `New` and kept in memory. Keys are the
+  **hex** form, not raw digest bytes: `encoding/json` replaces invalid UTF-8 in a map key, and a digest is
+  arbitrary binary, so a raw-byte key would not survive the round trip. A record is validated on load and
+  again on use — `offset` and `size` non-negative without overflow, the pack path inside `packs/`, a regular
+  file at least `offset+size` bytes long. A record that fails is **stale**: it is dropped, the index is
+  rewritten, and the object is served from the loose tree (`Get`, `Exists`, `Size`, `ModTime` and `GetMany`
+  all do this). Nothing is recovered by scanning packs, and the index is a redundant location map rather than
+  the only copy of anything: a **missing** `index.json` is tolerated (`New` starts with an empty packed view
+  and the loose tree still holds every object), while a **malformed** one is refused — `New` fails decoding it
+  instead of guessing — and deleting or repairing the file restores a working backend.
+- **Reads.** `Get` looks the digest up in the index and returns an `io.SectionReader` over the pack
+  (streaming, one open per object); a digest with no usable record goes to the loose backend, whose
+  `ErrNotFound` is the answer for a missing object. `GetMany` groups a batch by pack file and serves each
+  group from a single open (§4.13). Reads consult the in-memory index under the **same `sync.Mutex`** that
+  serializes `Put`/`Delete`, so packfs reads are *not* lock-free the way `fs` reads are; `GetMany` plans under
+  the mutex and serves the batch outside it.
+- **`List`/`Stats`.** `List` merges the loose digests with the index keys (deduplicated, byte-sorted), so it
+  still walks every loose file: with the loose mirror present this is not an O(packs) listing. `Stats` drops
+  stale records, takes the loose backend's totals and adds the index payload sizes of digests not present
+  loose, so it reports **logical object bytes, not the packs' physical size** — dead and duplicated payloads
+  in a pack are invisible to it.
+- **`Delete` reclaims nothing from a pack.** It removes the loose object and drops the index record
+  (persisting the index); the payload bytes stay in the pack file. `packfs` therefore has **no native
+  GC/Prune**: `internal/store.Store.Sweep` falls through to the portable `cas.Sweep` (§4.11), and an
+  age-gated `--min-age` sweep works because packfs implements `Statter`. A sweep makes an object unreachable
+  through the backend (`List` no longer reports it, `Get` is `ErrNotFound`), which is exactly what
+  mark-and-sweep requires (consistency §4), but the disk space is **not** reclaimed: packs are append-only
+  and are never rewritten or truncated, so a packed store grows with every `Put` — including a re-`Put` of
+  identical content — until its pack files are removed. Compaction is a documented open follow-up, not an
+  implemented guarantee (§8 d12); rebuilding through `cas/backend/snapshot.Export`/`Import` (§4.3) into a
+  fresh base is the portable way to reclaim the space today.
+- **`Clean`/`Size`/`ModTime`.** `Clean` sweeps orphan `*.tmp` scratch older than the threshold — the loose
+  tree's leftovers (fs backend) plus the pack directory's spool and rename temporaries. `Size` returns the
+  recorded payload length. `ModTime` returns the **pack file's** modification time: a pack object has no
+  per-object timestamp, so age-based retention over a packed store ages objects by their pack, not by their
+  first `Put` (consistency §5), and the loose copy's timestamp is not what is reported.
+- **Construction.** `packfs.WithEnabled()` enables packing; `packfs.WithPackMaxBytes(n)` and
+  `packfs.WithPackMaxEntries(n)` rotate the active pack once it reaches `n` (`0` = unlimited). The defaults
+  are **64 MiB** and **10 000 entries**. Options are functions over the package's own config type, so an
+  `fs.Option` does not compile against `packfs` (library-design §4).
+- **What it does not do.** No size threshold, no inode reduction (the loose mirror keeps one file per object),
+  no O(packs) `List`/`Stats`, and no space reclamation. Its measured, implemented win is the batched read
+  (§4.13).
+
 ## 5. Data flows
 
 - **Write path:** `codec.Encode(obj)` → TLV envelope (built by `Store.Put`) → `d, err := hasher.Digest(reader)` (the injected client hasher) → `raw.Put(ctx, d, reader)` (atomic fs, idempotent) → return `d`. Optional `PutDedup`: check `raw.Exists(d)` first, skip the write.
@@ -612,7 +683,7 @@ The batch and prefetch layers therefore compose rather than compete: `GetMany` r
 
 | Concern | Mechanism |
 |---|---|
-| Backend file access | lock-free reads (atomic rename); one `sync.Mutex` for `Put`/`Delete` |
+| Backend file access | lock-free reads (atomic rename); one `sync.Mutex` for `Put`/`Delete` — `fs.Backend` (§4.4). `packfs.Backend` reads its in-memory pack index under that same mutex (§4.14) |
 | Atomic visibility | temp file → `f.Sync()` → `os.Rename` |
 | Object lazy load | `sync.RWMutex` + double-checked locking in `CachedObject` |
 | Cache index | `sync.Map` keyed by `d.String()` |
@@ -635,7 +706,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | Area | Exported identifiers |
 |---|---|
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
-| Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, the base pre-flight `fs.ValidateBase`/`fs.EnsureBase`/`fs.CleanupTemp`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` and the `cas/backend` stream helpers `WriteAll`/`ReadAll`/`ReadPayload` |
+| Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, the base pre-flight `fs.ValidateBase`/`fs.EnsureBase`/`fs.CleanupTemp`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); `packfs.Backend` (`packfs.New`, `packfs.WithEnabled`, `packfs.WithPackMaxBytes`, `packfs.WithPackMaxEntries`, and its `Clean`/`Size`/`ModTime`/`GetMany` capabilities, §4.14); shared `cas.Stats` and the `cas/backend` stream helpers `WriteAll`/`ReadAll`/`ReadPayload` |
 | Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `CodecNamer` (the optional codec-identity interface), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, `PeekType`, `PeekVersion`, `EnvelopeVersion` (the format version this build writes); codecs `json.New[T]()` (`cas/codec/json`), `gob.NewRaw[T]()` / `gob.New[T](next)` (`cas/codec/gob`), `binary.New(inner, wrap, unwrap)` / `binary.NewRaw(marshal, unmarshal)` (`cas/codec/binary`) |
 | Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` (any short/display form is `cas.Digest.Prefix`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
@@ -688,8 +759,10 @@ Resolved decisions (so implementation never re-litigates them):
 10. **Object invariants — RESOLVED: a core contract (`Validator`), not codec code.** An object type declares `Validate() error` and the store calls it: before encoding on `Put`/`PutDedup` (an invalid object is never written; the object's own error is preserved) and after decoding on `Get` (a violation is `ErrCorrupt`). The alternative — leaving the check in per-codec methods, as `gitlike.Commit` did with `MarshalJSON`/`UnmarshalJSON` — was rejected because it silently stops applying the moment a client picks another codec: a gob-backed repository would have accepted a tree-less commit and returned a rootless one. The store therefore decides nil-ness itself (an internal nil check, the only reflection in `cas`) and then asserts the structural interface, so `Validate` never sees a nil receiver. `GetRaw` does not decode, so it does not validate: an inspector must be able to read a broken object.
 11. **Repository codecs — RESOLVED: injected (`gitlike.Codecs`), so the reference model names no wire format.** `NewRepository(raw, hasher, codecs)` takes one `Codec[T]` per object type; `package gitlike` imports no codec package and the JSON codec is just the usual choice at the call site. `TestRepositoryWithAnotherCodec` runs the whole model (typed reads, `ResolveAny`, `WalkGraph`, and the tree invariant) over gob, which is the point of decisions 10 and 11 together: the object model is codec-independent end to end.
 
+12. **Packfile backend — RESOLVED: shipped as an opt-in extension; the pack-rewrite GC is de-claimed (2026-09-23).** `cas/backend/packfs` ships (§4.14): a loose tree plus append-only packs and a JSON index, reachable as `-backend packfs` and wired through the CLI's store seam (`internal/store`). The earlier decision that "packfiles remain deferred — no new core surface before v1.0.0", and the performance §9 requirement that GC "rewrite packs dropping unreachable objects", no longer described the build; both are corrected. Decision on the unmet half, taken from the code and the existing consistency model: **no pack rewrite is implemented, and none is required for correctness.** Mark-and-sweep from roots (consistency §4, `cas.Sweep`) removes an object from the backend's view — loose file and index record — which is the guarantee GC makes; the packed payload stays because a pack is append-only. Space reclamation for a packed store is therefore an **accepted, documented trade-off**, not an unimplemented requirement, and no compaction guarantee is claimed anywhere in the spec set. A rewrite (read-modify-write of a pack, index rebuild, atomic swap, crash story) remains an open follow-up whose only added guarantee would be space; until it ships, `snapshot.Export`/`Import` (§4.3) into a fresh base is the supported way to reclaim.
+
 Open follow-ups (future extensions, not blocking):
-4. **Packfiles** — Git-style packing of small objects into `pack-<ts>.pack`; design/acceptance in performance §9.
+4. **Pack rewrite/compaction** — rewrite a pack dropping unreachable payloads (index rebuild + atomic swap), so a packed store reclaims space; the shipped GC is the portable sweep and never shrinks a pack (§4.14, §8 d12). Design/acceptance in performance §9.
 5. **Compression layer** — `CompressedStore` wrapping `Backend` with gzip via `io.Pipe`; deferred until a real need.
 8. **Encryption layer** — `EncryptedCodec[T]` wrapping `Codec[T]` with AES-256-GCM (std-lib); the app supplies the key (never generated/stored by the core); transparent to the byte layer (payload carries ciphertext unchanged); deferred until a real need.
 

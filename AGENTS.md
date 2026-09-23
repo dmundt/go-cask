@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v31
+version: v32
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -185,8 +185,9 @@ Related specs that also constrain work in this repo:
 - `docs/specs/extensions.md` — the simple requirements
   every future extension or client of the cas core must satisfy (extend don't
   modify, stable surface only, recipes, compatibility), plus the catalog of
-  designed-but-deferred possible extensions (packfiles, compression layer,
-  encryption layer, chunking).
+  implemented and designed-but-deferred possible extensions (packfiles —
+  shipped as `cas/backend/packfs` —, compression layer, encryption layer,
+  chunking).
 - `docs/specs/consistency.md` — the consistency model:
   broken/dangling object detection, mark-and-sweep GC from roots,
   age-based pruning (retention), informed by Git/IPFS/restic without
@@ -314,6 +315,7 @@ flowchart TB
 | `Backend`       | Raw byte storage interface (non-generic)                    |
 | `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
 | `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
+| `packfs` backend | Opt-in packfile backend (`cas/backend/packfs`, `packfs.New` + `packfs.WithEnabled`): the loose tree plus append-only packs and a JSON index, selected by `cask -backend packfs`. Shipped, but no pack compaction — a sweep reclaims correctness, not space (cas-core §4.14) |
 | `Codec[T]`       | Serialization contract for a type `T`                       |
 | `Object[T]`      | Self-describing, typed object with `References()`           |
 | `Store[T]`       | Generic store: Put/PutDedup/Get/GetRaw/Exists/Delete          |
@@ -350,7 +352,9 @@ build their own equivalents for their own types.
    the storage core.
 6. **Streaming I/O.** `Backend` moves `io.Reader`/`io.ReadCloser` so large
    objects never need to be fully buffered by the byte layer.
-7. **Thread-safe by default.** Backend reads are lock-free (atomic rename);
+7. **Thread-safe by default.** Backend reads are lock-free (atomic rename;
+   the packfile backend is the stated exception — it reads its in-memory pack
+   index under the mutex that serializes writes, cas-core §4.14);
    one `sync.Mutex` coordinates `Put`/`Delete`; caches use `sync.Map`/
    `atomic`; writes are atomic (temp file + rename + `Sync()`).
 8. **Errors are wrapped** (`fmt.Errorf("...: %w", err)`) and `context.Context`
@@ -369,6 +373,7 @@ build their own equivalents for their own types.
 
 > Quick map: `errors.go` → cas-core §4.1–4.3 (sentinel errors, `Digest`,
 > `Backend`); `backend/fs`/`backend/mem` → cas-core §4.4–4.5;
+> `backend/packfs` → cas-core §4.14;
 > `codec.go`/`object.go`/`store.go` → cas-core §4.6–4.8; `walker` → §4.9;
 > `cas/cache/{mem,lru,prefetch}` → §4.10; backend `Stats`/`Verify`/`GC`/
 > `Prune` → §4.11; `gitlike/*` → §4.12; `cas/hash/sha256` is the shipped client
@@ -546,9 +551,10 @@ gofmt -l .
 - Immutability: never mutate stored objects in place; always re-`Put` to
   change content (which yields a new digest).
 - Concurrency: backend reads are lock-free (atomic rename; see
-  `performance.md` §2); one `sync.Mutex` coordinates
-  `Put`/`Delete`; caches use `sync.Map` + `atomic` counters. The core has no
-  registry and no other mutable global.
+  `performance.md` §2) — the packfile backend reads its in-memory index under
+  the mutex that serializes writes instead (cas-core §4.14); one `sync.Mutex`
+  coordinates `Put`/`Delete`; caches use `sync.Map` + `atomic` counters. The
+  core has no registry and no other mutable global.
 - **The store base belongs to exactly one store** (cas-core §4.4): `List`/`Stats`
   report any digest-named file beneath it at any depth, and `Clean` reclaims any
   `*.tmp` beneath it. So never nest one store inside another's base or its parent

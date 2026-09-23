@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v15
+version: v16
 ---
 
 # go-cask Rules Index
@@ -12,7 +12,7 @@ version: v15
 | Path | Rule file |
 |---|---|
 | `cas/digest.go`, `cas/hasher.go`; `TestDigest*` / `FuzzParseDigest` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
-| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 + architecture boundary rule: backends stay storage-only; helper packages must not become implicit backends |
+| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 + architecture boundary rule: backends stay storage-only; helper packages must not become implicit backends |
 | `cas/hash/sha256/` (the shipped client hasher) | [`cas-core.md`](specs/cas-core.md) §4.2 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification/sweep are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |

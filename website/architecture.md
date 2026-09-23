@@ -11,8 +11,9 @@ letting every application define its own types.
    lowercase hex) and `Backend` (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`).
    Backends know nothing about codecs, object types, or hash algorithms.
 2. **Backends** — `cas/backend/fs` (filesystem, Git-like fan-out directories,
-   atomic writes) and `cas/backend/mem` (in-memory, for tests) ship today; any
-   type that satisfies `Backend` works.
+   atomic writes), `cas/backend/mem` (in-memory, for tests), and the opt-in
+   `cas/backend/packfs` (the loose tree mirrored into append-only pack files
+   for batched reads) ship today; any type that satisfies `Backend` works.
 3. **Typed layer (generic)** — `Object[T]` (a versioned type name plus
    `References() []Digest`), `Codec[T]` (`Encode`/`Decode`), `Store[T]`
    (`Put`/`PutDedup`/`Get`/`GetRaw`/`Exists`/`Delete`), and `Walker[T]` for

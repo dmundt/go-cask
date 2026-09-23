@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v33
+version: v34
 ---
 
 # Defaults and Behavior — go-cask
@@ -34,8 +34,9 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
 | Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; the byte is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
-| Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
+| Read concurrency | `fs`: lock-free (`Get`/`Exists`/`List`/`Stats`); `mem` uses an `RWMutex`; `packfs` reads take its in-memory index mutex | cas-core §4.4, §4.14 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
+| Storage backend selection | `fs` (loose filesystem, Git-like fan-out) is the default; `packfs` is opt-in (`cask -backend packfs`, `packfs.WithEnabled()`) | cli §1, cas-core §4.14 |
 | Hash-on-write | one pass, spool + hasher (`io.MultiWriter`) | performance §3 |
 | Cache key | `d.String()` → `*CachedObject[T]` in `sync.Map` | cas-core §4.10 |
 | LRU `maxSize` | MUST be > 0 | cas-core §4.10 |
@@ -100,7 +101,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | FS-backend small Put/Get (warm) | ≥10k obj/s; p99 ≤5 ms | performance §11 |
 | Large-object streaming (1 GiB) | RSS ≤64 MiB above baseline | performance §11 |
 | `List` at 1M objects (fs, (2,2)) | ≤30 s | performance §11 |
-| Pack threshold (future) | objects ≤8 KiB; flush at 64 MiB | performance §9 |
+| Packfile rotation (`packfs`) | no size threshold — every `Put` is mirrored loose **and** into the active pack; rotation at `PackMaxBytes` = 64 MiB or `PackMaxEntries` = 10 000 (`0` = unlimited) | cas-core §4.14, performance §9 |
 
 Baselines are calibratable on CI hardware (performance §11.4) — default targets, not absolutes.
 

@@ -9,7 +9,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Deduplicated by content** — identical bytes map to the same digest and are stored once.
 - **Typed on top** — the `cas` core stays generic; each app defines its own `Object[T]` and `Store[T]` model.
 - **Composable** — backends and codecs plug in behind the `Backend` and `Codec[T]` contracts; the client supplies the hash algorithm (`sha256` is the default).
-- **Fast by default** — lock-free reads, streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
+- **Fast by default** — lock-free reads (`fs`; the opt-in packfile backend serializes its index), streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
 - **Optional acceleration** — `cas/bloom` adds hot-path absence checks; the stdlib-style `gzip`, `zlib`, and `flate` codec wrappers compress payloads when the workload benefits.
 - **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
@@ -34,7 +34,7 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports [examples/](examples/) (viewer-design §7, coding-guidelines §9).
 - **Dependencies one-directional** — [cas/](cas/), [internal/](internal/), [cmd/](cmd/) never import [examples/](examples/); examples are self-contained except the shared `gitlike` library.
-- **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends and a JSON codec; only the cas-core §7.1 surface is stable.
+- **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends plus the opt-in `packfs`, and a JSON codec; only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
 - **Examples teach; the `gitlike` package is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
