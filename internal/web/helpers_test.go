@@ -76,6 +76,28 @@ func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	return ts, srv
 }
 
+// postFormAsBrowser posts a form the way a page served by the viewer does: the
+// request carries the origin headers a browser attaches, because the viewer
+// accepts a token only from its own origin (viewer-security §5.1). Tests that
+// exercise the login path itself must present them.
+func postFormAsBrowser(t *testing.T, c *http.Client, target string, form url.Values) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	if u, err := url.Parse(target); err == nil {
+		req.Header.Set("Origin", u.Scheme+"://"+u.Host)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
 // login performs the startup-token login and returns an authed client.
 func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 	t.Helper()
@@ -85,10 +107,7 @@ func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 	c := &http.Client{Transport: ts.Client().Transport, Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	resp, err := c.PostForm(ts.URL+"/viewer/login", url.Values{"token": {token}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := postFormAsBrowser(t, c, ts.URL+"/viewer/login", url.Values{"token": {token}})
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusSeeOther {
@@ -96,6 +115,14 @@ func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
 	}
 	c.CheckRedirect = nil // follow redirects from here on
 	return c
+}
+
+// sessionCount reports how many sessions the server holds, under the session
+// store's lock so the race detector sees the read as synchronized.
+func sessionCount(srv *Server) int {
+	srv.sessions.mu.Lock()
+	defer srv.sessions.mu.Unlock()
+	return len(srv.sessions.byID)
 }
 
 func statusCode(t *testing.T, client *http.Client, target string) int {

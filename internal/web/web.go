@@ -218,10 +218,13 @@ func (s *Server) Handler() http.Handler {
 }
 
 // landing is the viewer's entry point. It completes the documented `?token=`
-// deep link (viewer-security §5.1), sends a caller without a session to the
-// login page so a browser can reach it, and otherwise shows the object
-// browser. It is registered for the exact path: every other path under the
-// prefix belongs to a named route or to the catch-all.
+// deep link (viewer-security §5.1) when the request is same-origin, sends a
+// caller without a session to the login page so a browser can reach it, and
+// otherwise shows the object browser. A token on a request that is not
+// same-origin is refused by loginToken before any session exists, so a
+// cross-site <img>, <link>, or navigation cannot mint one. It is registered
+// for the exact path: every other path under the prefix belongs to a named
+// route or to the catch-all.
 func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
 		s.loginToken(w, r, token)

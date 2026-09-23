@@ -12,6 +12,11 @@ const csrfField = "csrf"
 // csrfOK reports whether a POST request carries the session's CSRF token
 // (constant-time compare). GET requests and the login POST (no session
 // exists yet) are exempt.
+//
+// The token is read from the request body or the X-CSRF-Token header only,
+// never from the query string: a URL-borne token is captured by access logs,
+// bookmarks, proxies, and Referer chains. PostFormValue ignores the query, so
+// `?_csrf=<token>` never validates (viewer-security §5).
 func csrfOK(r *http.Request, sess *Session) bool {
 	if r.Method != http.MethodPost {
 		return true
@@ -19,7 +24,7 @@ func csrfOK(r *http.Request, sess *Session) bool {
 	if sess == nil {
 		return true // login POST: no session yet; login has its own throttling
 	}
-	given := r.FormValue(csrfField)
+	given := r.PostFormValue(csrfField)
 	if given == "" {
 		given = r.Header.Get("X-CSRF-Token")
 	}

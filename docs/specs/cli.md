@@ -111,6 +111,11 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - `-backend` accepts `fs` (default) or `packfs`; anything else is a usage error (exit 2). An absent flag is not the same as an unknown one: it selects the documented default without passing through validation.
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
 - No secrets in output: the startup token is never logged at any level and never echoed; the one place it is displayed is the one-time interactive-terminal login hint, and `-token-file`/`CASK_VIEWER_TOKEN` supply it unattended. Errors name the flag or the file, never the token (viewer-security §5.1, §9, §11).
+- No secrets in output: tokens are never echoed; errors never include the token.
+- The viewer's token URL is an acceptance contract, not a display one: it signs in
+  only from the viewer's own origin — the URL the browser opens, or a same-origin
+  form or link — and a cross-site request bearing it is refused with 403 and an
+  empty body (viewer-security §5.1).
 - Std-lib only (`flag` package); documented per coding-guidelines §7.
 
 ## 5. Checklist

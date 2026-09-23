@@ -86,6 +86,9 @@ func viewerEnvelope(payload []byte) []byte {
 func viewerBenchmarkSession(b *testing.B, handler http.Handler) *http.Cookie {
 	b.Helper()
 	request := httptest.NewRequest(http.MethodGet, "/viewer/?token=benchmark-token", nil)
+	// The documented deep link is a top-level navigation the viewer accepts
+	// only from its own origin (viewer-security §5.1).
+	request.Header.Set("Sec-Fetch-Site", "none")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusSeeOther {

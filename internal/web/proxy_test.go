@@ -268,6 +268,13 @@ func postToken(t *testing.T, ts *httptest.Server, peer, token string, headers ma
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// These tests exercise the throttle, not the origin rule, so the request is
+	// sent the way a viewer page's form is: same-origin. Without this the
+	// same-origin admission (viewer-security §5.1) answers 403 before the
+	// throttle is ever consulted, which is a different assertion.
+	if _, ok := headers["Sec-Fetch-Site"]; !ok {
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+	}
 	for name, value := range headers {
 		req.Header.Set(name, value)
 	}

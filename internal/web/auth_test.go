@@ -35,11 +35,9 @@ func TestLoginFlow(t *testing.T) {
 	}
 
 	// Wrong token → 401 with no body. The reason lives on the login page, which
-	// a human returns to; the rejection itself says nothing.
-	resp, err = c.PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// a human returns to; the rejection itself says nothing. The request is sent
+	// as a browser would send it (same-origin), which the login now requires.
+	resp = postFormAsBrowser(t, ts.Client(), ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -88,6 +86,10 @@ func TestRoleTokensLogin(t *testing.T) {
 	}
 }
 
+// TestDirectTokenLogin walks the documented deep link end to end
+// (viewer-security §5.1): the URL `cask web` prints and opens is a top-level
+// navigation with no initiator, so it arrives as `Sec-Fetch-Site: none`, and
+// it must still sign the browser in and land on the object browser.
 func TestDirectTokenLogin(t *testing.T) {
 	ts, _ := newTestServer(t)
 	jar, _ := cookiejar.New(nil)
@@ -95,7 +97,12 @@ func TestDirectTokenLogin(t *testing.T) {
 		return http.ErrUseLastResponse
 	}}
 
-	resp, err := c.Get(ts.URL + "/viewer/?token=" + testStartupToken)
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/?token="+testStartupToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Sec-Fetch-Site", "none")
+	resp, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +112,9 @@ func TestDirectTokenLogin(t *testing.T) {
 	}
 	if resp.Header.Get("Location") != "/viewer/" {
 		t.Fatalf("direct token redirect = %q, want /viewer/", resp.Header.Get("Location"))
+	}
+	if len(resp.Cookies()) != 1 {
+		t.Fatalf("direct token login cookies = %d, want 1", len(resp.Cookies()))
 	}
 
 	resp, err = c.Get(ts.URL + "/viewer/")
@@ -118,19 +128,169 @@ func TestDirectTokenLogin(t *testing.T) {
 	}
 }
 
-func TestLoginThrottle(t *testing.T) {
+// TestTokenLoginAcceptsSameOriginRequest pins the accepted half of the
+// same-origin rule (viewer-security §5.1): a same-origin link or form and an
+// address-bar/bookmark navigation both authenticate, and so does a request
+// whose Origin names the viewer's own host when Sec-Fetch-Site is absent.
+func TestTokenLoginAcceptsSameOriginRequest(t *testing.T) {
 	ts, _ := newTestServer(t)
-	for range 5 {
-		resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
+	// Do not follow the login redirect: the 303 and the cookie it carries are
+	// what this test asserts.
+	c := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	for _, tc := range []struct {
+		name   string
+		header map[string]string
+	}{
+		{"same-origin link", map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": ts.URL}},
+		{"Origin fallback", map[string]string{"Origin": ts.URL}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/?token="+testStartupToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, value := range tc.header {
+				req.Header.Set(name, value)
+			}
+			resp, err := c.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusSeeOther {
+				t.Fatalf("same-origin token login = %d, want 303", resp.StatusCode)
+			}
+			if len(resp.Cookies()) != 1 {
+				t.Fatalf("same-origin token login cookies = %d, want 1", len(resp.Cookies()))
+			}
+		})
 	}
-	resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+}
+
+// TestTokenLoginRejectsCrossSiteRequest pins viewer-security §5.1: a token
+// presented by a cross-site page must not mint a session, whether it arrives
+// as a GET deep link an <img> can trigger or as a POST the login form would
+// send. The reply is 403 with an empty body (§13) and no session cookie, and
+// the refusal never creates a session.
+func TestTokenLoginRejectsCrossSiteRequest(t *testing.T) {
+	ts, srv := newTestServer(t)
+	// No redirect following: the login response itself is what must not carry
+	// a session cookie.
+	c := &http.Client{Transport: ts.Client().Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	for _, tc := range []struct {
+		name   string
+		header map[string]string
+	}{
+		{"cross-site", map[string]string{"Sec-Fetch-Site": "cross-site"}},
+		{"same-site", map[string]string{"Sec-Fetch-Site": "same-site"}},
+		{"foreign Origin", map[string]string{"Origin": "https://attacker.example"}},
+		{"no origin headers", nil},
+	} {
+		t.Run("GET "+tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, ts.URL+"/viewer/?token="+testStartupToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, value := range tc.header {
+				req.Header.Set(name, value)
+			}
+			resp, err := c.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("cross-site token GET = %d, want 403", resp.StatusCode)
+			}
+			if len(body) != 0 {
+				t.Fatalf("cross-site token GET body = %q, want empty", body)
+			}
+			if len(resp.Cookies()) != 0 {
+				t.Fatalf("cross-site token GET set cookies: %v", resp.Cookies())
+			}
+		})
+	}
+
+	// The same refusal covers the login POST: a cross-site form must not force
+	// the victim's browser into a session either.
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/viewer/login", strings.NewReader(url.Values{"token": {testStartupToken}}.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Origin", "https://attacker.example")
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site login POST = %d, want 403", resp.StatusCode)
+	}
+	if len(resp.Cookies()) != 0 {
+		t.Fatalf("cross-site login POST set cookies: %v", resp.Cookies())
+	}
+	if got := sessionCount(srv); got != 0 {
+		t.Fatalf("rejected cross-site logins created %d sessions, want 0", got)
+	}
+}
+
+// TestCSRFQueryValueRejected pins viewer-security §5 at the HTTP surface: a
+// valid CSRF token supplied as `?_csrf=…` (`?csrf=…` for the field name the
+// viewer uses) is refused, while the same token in the form body or the
+// X-CSRF-Token header still authorizes the mutation.
+func TestCSRFQueryValueRejected(t *testing.T) {
+	ts, _ := newTestServer(t)
+	admin := login(t, ts, testStartupToken)
+	csrf := csrfFromPage(getBody(t, admin, ts.URL+"/viewer/objects"))
+	if csrf == "" {
+		t.Fatal("object browser carried no CSRF token")
+	}
+
+	// The query string alone is not a carrier, even holding the exact token.
+	resp := postFormAsBrowser(t, admin, ts.URL+"/viewer/objects/verify?csrf="+url.QueryEscape(csrf), url.Values{})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST with ?csrf= = %d, want 403", resp.StatusCode)
+	}
+
+	// The form body is.
+	resp = postFormAsBrowser(t, admin, ts.URL+"/viewer/objects/verify", url.Values{"csrf": {csrf}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST with csrf in the body = %d, want 200", resp.StatusCode)
+	}
+
+	// So is the header.
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/viewer/objects/verify", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-CSRF-Token", csrf)
+	resp, err = admin.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST with X-CSRF-Token = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestLoginThrottle(t *testing.T) {
+	ts, _ := newTestServer(t)
+	for range 5 {
+		resp := postFormAsBrowser(t, ts.Client(), ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
+		resp.Body.Close()
+	}
+	resp := postFormAsBrowser(t, ts.Client(), ts.URL+"/viewer/login", url.Values{"token": {"wrong"}})
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
@@ -169,10 +329,7 @@ func TestLoginRejectsEmptyToken(t *testing.T) {
 	ts := httptest.NewTLSServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	resp, err := ts.Client().PostForm(ts.URL+"/viewer/login", url.Values{"token": {""}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := postFormAsBrowser(t, ts.Client(), ts.URL+"/viewer/login", url.Values{"token": {""}})
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -306,6 +463,20 @@ func TestSessionAndRoleHelpers(t *testing.T) {
 		}
 		if csrfOK(req, &Session{CSRF: "other"}) {
 			t.Fatal("csrfOK should reject mismatched token")
+		}
+		// The same token in the query string never validates: a URL-borne
+		// token leaks through logs, bookmarks, proxies, and Referer chains
+		// (viewer-security §5).
+		query := httptest.NewRequest(http.MethodPost, "/viewer/objects/verify?csrf=csrf-token", nil)
+		query.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if csrfOK(query, sess) {
+			t.Fatal("csrfOK accepted a token from the query string")
+		}
+		// The header remains an accepted carrier.
+		header := httptest.NewRequest(http.MethodPost, "/viewer/objects/verify", nil)
+		header.Header.Set("X-CSRF-Token", "csrf-token")
+		if !csrfOK(header, sess) {
+			t.Fatal("csrfOK rejected the X-CSRF-Token header")
 		}
 		rec := httptest.NewRecorder()
 		setSessionCookie(rec, sess)
