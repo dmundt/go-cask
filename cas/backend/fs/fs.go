@@ -443,11 +443,11 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 // isTempFile reports whether name is an object temp file: "<hex>.tmp" or a
 // collision fallback "<hex>.tmp.<n>" (createTempExcl).
 func isTempFile(name string) bool {
-	i := strings.Index(name, ".tmp")
-	if i < 0 {
+	_, after, ok := strings.Cut(name, ".tmp")
+	if !ok {
 		return false
 	}
-	rest := name[i+len(".tmp"):]
+	rest := after
 	if rest == "" {
 		return true
 	}

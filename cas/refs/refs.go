@@ -279,7 +279,7 @@ func (s *Store) List(ctx context.Context) ([]Ref, error) {
 		if rel == "." {
 			return nil
 		}
-		top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+		top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
 		if top == logSubdir {
 			if de.IsDir() {
 				return filepath.SkipDir

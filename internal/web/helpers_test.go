@@ -147,14 +147,14 @@ func tlvEnvelope(typeName string, payload []byte) []byte {
 
 func csrfFromPage(page string) string {
 	// <input type="hidden" name="csrf" value="...">
-	idx := strings.Index(page, `name="csrf" value="`)
-	if idx < 0 {
+	_, after, ok := strings.Cut(page, `name="csrf" value="`)
+	if !ok {
 		return ""
 	}
-	rest := page[idx+len(`name="csrf" value="`):]
-	end := strings.Index(rest, `"`)
-	if end < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, `"`)
+	if !ok0 {
 		return ""
 	}
-	return rest[:end]
+	return before0
 }
