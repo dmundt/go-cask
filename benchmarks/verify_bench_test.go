@@ -22,39 +22,39 @@ func BenchmarkVerify(b *testing.B) {
 		name   string
 		mutate func(cas.Backend, cas.Digest) cas.Digest
 	}{
-		{name: "valid", mutate: func(raw cas.Backend, h cas.Digest) cas.Digest { return h }},
-		{name: "corrupt", mutate: func(raw cas.Backend, h cas.Digest) cas.Digest {
+		{name: "valid", mutate: func(backend cas.Backend, h cas.Digest) cas.Digest { return h }},
+		{name: "corrupt", mutate: func(backend cas.Backend, h cas.Digest) cas.Digest {
 			bad := sha256.Of([]byte("corrupt" + data))
-			if err := raw.Put(ctx, bad, strings.NewReader(data)); err != nil {
+			if err := backend.Put(ctx, bad, strings.NewReader(data)); err != nil {
 				panic(err)
 			}
 			return bad
 		}},
-		{name: "missing", mutate: func(raw cas.Backend, h cas.Digest) cas.Digest {
+		{name: "missing", mutate: func(backend cas.Backend, h cas.Digest) cas.Digest {
 			return sha256.Of([]byte("missing" + data))
 		}},
 	} {
 		b.Run("verify/"+tc.name, func(b *testing.B) {
-			raw, err := fs.New(b.TempDir())
+			backend, err := fs.New(b.TempDir())
 			if err != nil {
 				b.Fatal(err)
 			}
 			h := digestData([]byte(data))
-			if err := raw.Put(ctx, h, strings.NewReader(data)); err != nil {
+			if err := backend.Put(ctx, h, strings.NewReader(data)); err != nil {
 				b.Fatal(err)
 			}
-			bad := tc.mutate(raw, h)
+			bad := tc.mutate(backend, h)
 			b.SetBytes(int64(len(data)))
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				if tc.name == "valid" {
-					if err := raw.Verify(ctx, bad, sha256.New()); err != nil {
+					if err := backend.Verify(ctx, bad, sha256.New()); err != nil {
 						b.Fatal(err)
 					}
 					continue
 				}
-				if err := raw.Verify(ctx, bad, sha256.New()); err == nil {
+				if err := backend.Verify(ctx, bad, sha256.New()); err == nil {
 					b.Fatal("expected verify failure for invalid object")
 				}
 			}
@@ -66,19 +66,19 @@ func BenchmarkVerify(b *testing.B) {
 func BenchmarkVerifyBaseline(b *testing.B) {
 	ctx := context.Background()
 	data := strings.Repeat("verify", 1024)
-	raw, err := fs.New(b.TempDir())
+	backend, err := fs.New(b.TempDir())
 	if err != nil {
 		b.Fatal(err)
 	}
 	h := digestData([]byte(data))
-	if err := raw.Put(ctx, h, strings.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, h, strings.NewReader(data)); err != nil {
 		b.Fatal(err)
 	}
 	b.SetBytes(int64(len(data)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {
-		if err := raw.Verify(ctx, h, sha256.New()); err != nil {
+		if err := backend.Verify(ctx, h, sha256.New()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -98,7 +98,7 @@ func BenchmarkVerifyMaintenanceChecks(b *testing.B) {
 		{name: "adler32", hasher: adler32.New()},
 	} {
 		b.Run("verify/maintenance/"+tc.name, func(b *testing.B) {
-			raw, err := fs.New(b.TempDir())
+			backend, err := fs.New(b.TempDir())
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -106,14 +106,14 @@ func BenchmarkVerifyMaintenanceChecks(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if err := raw.Put(ctx, h, strings.NewReader(data)); err != nil {
+			if err := backend.Put(ctx, h, strings.NewReader(data)); err != nil {
 				b.Fatal(err)
 			}
 			b.SetBytes(int64(len(data)))
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
-				if err := cas.Verify(ctx, raw, h, tc.hasher); err != nil {
+				if err := cas.Verify(ctx, backend, h, tc.hasher); err != nil {
 					b.Fatal(err)
 				}
 			}

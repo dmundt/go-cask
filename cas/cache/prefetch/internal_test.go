@@ -134,8 +134,8 @@ func TestPrefetchDiamondVisitsSharedSubgraphOnce(t *testing.T) {
 // normally makes one impossible — and pins that the visited set ends the walk.
 func TestPrefetchSelfReferenceTerminates(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
-	s := cas.New(raw, jsoncodec.New[internalObject](), sha256.New())
+	backend := backmem.New()
+	s := cas.New(backend, jsoncodec.New[internalObject](), sha256.New())
 	cs := mem.New(s)
 
 	cyclic := sha256.Of([]byte("cyclic root"))
@@ -143,7 +143,7 @@ func TestPrefetchSelfReferenceTerminates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rc, err := raw.Get(ctx, h)
+	rc, err := backend.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestPrefetchSelfReferenceTerminates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := raw.Put(ctx, cyclic, bytes.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, cyclic, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -189,8 +189,8 @@ func TestPrefetchStopsAtZeroDepth(t *testing.T) {
 // list is skipped without stopping the walk at the real reference beside it.
 func TestPrefetchSkipsAbsentReferences(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
-	zs := cas.New(raw, jsoncodec.New[zeroRefObject](), sha256.New())
+	backend := backmem.New()
+	zs := cas.New(backend, jsoncodec.New[zeroRefObject](), sha256.New())
 	cs := mem.New(zs)
 
 	child, err := zs.Put(ctx, zeroRefObject{})

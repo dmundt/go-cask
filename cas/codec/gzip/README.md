@@ -14,7 +14,7 @@ This is a stdlib-style compression wrapper for large or repetitive payloads. It 
 
 ```go
 codec := gzip.New(json.New[MyType]())
-store := cas.New(raw, codec, sha256.New())
+store := cas.New(backend, codec, sha256.New())
 ```
 
 Use it when application data is large, repetitive, or expensive to store uncompressed without changing the rest of the CAS design.

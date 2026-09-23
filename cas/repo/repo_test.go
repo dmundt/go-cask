@@ -63,7 +63,7 @@ func (r root) References() []cas.Digest {
 // testStores bundles the three per-type stores plus a Registry with all three
 // registered, over a shared mem.Backend.
 type testStores struct {
-	raw      *mem.Backend
+	backend  *mem.Backend
 	leaves   *cas.Store[leaf]
 	branches *cas.Store[branch]
 	roots    *cas.Store[root]
@@ -72,14 +72,14 @@ type testStores struct {
 
 func newTestStores(t *testing.T) *testStores {
 	t.Helper()
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
 	ts := &testStores{
-		raw:      raw,
-		leaves:   cas.New(raw, jsoncodec.New[leaf](), hasher),
-		branches: cas.New(raw, jsoncodec.New[branch](), hasher),
-		roots:    cas.New(raw, jsoncodec.New[root](), hasher),
-		reg:      repo.NewRegistry(raw, hasher),
+		backend:  backend,
+		leaves:   cas.New(backend, jsoncodec.New[leaf](), hasher),
+		branches: cas.New(backend, jsoncodec.New[branch](), hasher),
+		roots:    cas.New(backend, jsoncodec.New[root](), hasher),
+		reg:      repo.NewRegistry(backend, hasher),
 	}
 	if err := repo.RegisterStore(ts.reg, "leaf@1", ts.leaves); err != nil {
 		t.Fatalf("register leaf: %v", err)
@@ -150,18 +150,18 @@ func TestWalkVisitsEveryObjectOnceAcrossThreeTypes(t *testing.T) {
 // walk stop after each digest once instead of looping forever.
 func TestWalkTerminatesOnCycle(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(raw, hasher)
-	branches := cas.New(raw, jsoncodec.New[branch](), hasher)
+	reg := repo.NewRegistry(backend, hasher)
+	branches := cas.New(backend, jsoncodec.New[branch](), hasher)
 	if err := repo.RegisterStore(reg, "branch@1", branches); err != nil {
 		t.Fatal(err)
 	}
 
 	dA := mustDigest(t, strings.Repeat("aa", 32))
 	dB := mustDigest(t, strings.Repeat("bb", 32))
-	storeEnvelope(t, raw, dA, "branch@1", branch{Label: "a", Children: []cas.Digest{dB}})
-	storeEnvelope(t, raw, dB, "branch@1", branch{Label: "b", Children: []cas.Digest{dA}})
+	storeEnvelope(t, backend, dA, "branch@1", branch{Label: "a", Children: []cas.Digest{dB}})
+	storeEnvelope(t, backend, dB, "branch@1", branch{Label: "b", Children: []cas.Digest{dA}})
 
 	visits := 0
 	err := repo.Walk(ctx, reg, []cas.Digest{dA}, func(cas.Digest, repo.Object) error {
@@ -177,10 +177,10 @@ func TestWalkTerminatesOnCycle(t *testing.T) {
 }
 
 func TestRegisterDuplicateTypeNameFails(t *testing.T) {
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(raw, hasher)
-	leaves := cas.New(raw, jsoncodec.New[leaf](), hasher)
+	reg := repo.NewRegistry(backend, hasher)
+	leaves := cas.New(backend, jsoncodec.New[leaf](), hasher)
 
 	if err := repo.RegisterStore(reg, "leaf@1", leaves); err != nil {
 		t.Fatalf("first register: %v", err)
@@ -203,7 +203,7 @@ func TestRegistryResolveUnknownTypeReturnsErrUnknownType(t *testing.T) {
 	}
 
 	// A registry that never registered "leaf@1".
-	other := repo.NewRegistry(ts.raw, sha256.New())
+	other := repo.NewRegistry(ts.backend, sha256.New())
 	obj, err := other.Resolve(ctx, hl)
 	if obj != nil {
 		t.Fatalf("Resolve for an unregistered type returned a non-nil object: %v", obj)
@@ -233,7 +233,7 @@ func TestWalkReportsUnknownTypeWithoutAborting(t *testing.T) {
 		t.Fatal(err)
 	}
 	dUnknown := mustDigest(t, strings.Repeat("cc", 32))
-	storeEnvelope(t, ts.raw, dUnknown, "mystery@1", map[string]string{"x": "y"})
+	storeEnvelope(t, ts.backend, dUnknown, "mystery@1", map[string]string{"x": "y"})
 
 	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{hl, dUnknown}})
 	if err != nil {
@@ -333,13 +333,13 @@ func TestReachableBuildsRootSetForGCAcrossTypes(t *testing.T) {
 	// Simulate GC: delete everything the backend holds that Reachable did not
 	// mark, then confirm the kept objects are still there and the orphan is
 	// gone.
-	all, err := ts.raw.List(ctx)
+	all, err := ts.backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, d := range all {
 		if !reachable[d.String()] {
-			if err := ts.raw.Delete(ctx, d); err != nil {
+			if err := ts.backend.Delete(ctx, d); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -357,7 +357,7 @@ func TestReachableTreatsUnknownTypeAsReachableLeaf(t *testing.T) {
 	ts := newTestStores(t)
 
 	dUnknown := mustDigest(t, strings.Repeat("ee", 32))
-	storeEnvelope(t, ts.raw, dUnknown, "mystery@1", map[string]string{"x": "y"})
+	storeEnvelope(t, ts.backend, dUnknown, "mystery@1", map[string]string{"x": "y"})
 	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{dUnknown}})
 	if err != nil {
 		t.Fatal(err)
@@ -471,7 +471,7 @@ func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
 	d := mustDigest(t, strings.Repeat("22", 32))
-	if err := ts.raw.Put(ctx, d, bytes.NewReader([]byte{0xff})); err != nil {
+	if err := ts.backend.Put(ctx, d, bytes.NewReader([]byte{0xff})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ts.reg.Resolve(ctx, d); !errors.Is(err, cas.ErrUnknownType) {
@@ -484,9 +484,9 @@ func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 // that errors, and one that returns a nil Object with a nil error.
 func TestResolvePropagatesDecoderError(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(raw, hasher)
+	reg := repo.NewRegistry(backend, hasher)
 	wantErr := errors.New("decode exploded")
 	if err := reg.Register("broken@1", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) {
 		return nil, wantErr
@@ -494,7 +494,7 @@ func TestResolvePropagatesDecoderError(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := mustDigest(t, strings.Repeat("33", 32))
-	storeEnvelope(t, raw, d, "broken@1", map[string]string{})
+	storeEnvelope(t, backend, d, "broken@1", map[string]string{})
 	if _, err := reg.Resolve(ctx, d); !errors.Is(err, wantErr) {
 		t.Fatalf("Resolve error = %v, want wrapping %v", err, wantErr)
 	}
@@ -502,16 +502,16 @@ func TestResolvePropagatesDecoderError(t *testing.T) {
 
 func TestResolveRejectsNilObjectFromDecoder(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(raw, hasher)
+	reg := repo.NewRegistry(backend, hasher)
 	if err := reg.Register("empty@1", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) {
 		return nil, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	d := mustDigest(t, strings.Repeat("44", 32))
-	storeEnvelope(t, raw, d, "empty@1", map[string]string{})
+	storeEnvelope(t, backend, d, "empty@1", map[string]string{})
 	if _, err := reg.Resolve(ctx, d); err == nil {
 		t.Fatal("Resolve for a decoder returning (nil, nil) = nil error, want an error")
 	}
@@ -587,10 +587,10 @@ func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
 }
 
-// storeEnvelope writes a hand-built TLV envelope directly into raw at d,
+// storeEnvelope writes a hand-built TLV envelope directly into backend at d,
 // bypassing the codec/Store layer entirely (test helper: production
 // serialization always goes through a Store's Codec).
-func storeEnvelope(t *testing.T, raw cas.Backend, d cas.Digest, typeName string, payload any) {
+func storeEnvelope(t *testing.T, backend cas.Backend, d cas.Digest, typeName string, payload any) {
 	t.Helper()
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -605,7 +605,7 @@ func storeEnvelope(t *testing.T, raw cas.Backend, d cas.Digest, typeName string,
 	n = binary.PutUvarint(lenBuf[:], uint64(len(data)))
 	buf.Write(lenBuf[:n])
 	buf.Write(data)
-	if err := raw.Put(context.Background(), d, bytes.NewReader(buf.Bytes())); err != nil {
+	if err := backend.Put(context.Background(), d, bytes.NewReader(buf.Bytes())); err != nil {
 		t.Fatal(err)
 	}
 }

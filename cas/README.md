@@ -43,7 +43,7 @@ Optional layers such as Bloom sit above the authoritative `cas` core and provide
 
 ## Layering note
 
-The project uses one canonical sentence: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+The project uses one canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 
 - `cas/backend/fs` is the authoritative raw byte store.
 - `cas/backend/packfs` is a concrete storage policy that adds pack files and a private index on top of that byte store.

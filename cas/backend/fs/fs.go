@@ -282,7 +282,7 @@ func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, 
 		if err == nil {
 			return f, nil
 		}
-		if errors.Is(err, fs.ErrNotExist) {
+		if isNotExist(err) {
 			return nil, err
 		}
 		if _, statErr := os.Stat(path); statErr != nil {
@@ -291,6 +291,10 @@ func openWithRetry(open func(string) (*os.File, error), path string) (*os.File, 
 		time.Sleep(time.Millisecond)
 	}
 	return nil, err
+}
+
+func isNotExist(err error) bool {
+	return err != nil && (errors.Is(err, fs.ErrNotExist) || os.IsNotExist(err))
 }
 
 // Exists reports whether the object is stored. Lock-free.
@@ -442,6 +446,9 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(s.base); err != nil {
+		if isNotExist(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
 	var digests []cas.Digest
@@ -450,7 +457,7 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 			return err
 		}
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isNotExist(err) {
 				return nil // entry vanished during concurrent mutation
 			}
 			return err
@@ -470,6 +477,9 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 		return nil
 	})
 	if err != nil {
+		if isNotExist(err) {
+			return digests, nil
+		}
 		return nil, fmt.Errorf("cas: list objects: %w", err)
 	}
 	// Hex order equals byte order (the hex alphabet '0'-'9','a'-'f' is ordinal
@@ -488,6 +498,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(s.base); err != nil {
+		if isNotExist(err) {
+			return &cas.Stats{}, nil
+		}
 		return nil, fmt.Errorf("cas: stats: %w", err)
 	}
 	st := &cas.Stats{}
@@ -496,7 +509,7 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 			return err
 		}
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isNotExist(err) {
 				return nil // file vanished during concurrent mutation
 			}
 			return err
@@ -513,7 +526,7 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		}
 		info, err := d.Info()
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isNotExist(err) {
 				return nil // file vanished during concurrent Delete/Put; treat as transient
 			}
 			return err
@@ -523,6 +536,9 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 		return nil
 	})
 	if err != nil {
+		if isNotExist(err) {
+			return st, nil
+		}
 		return nil, fmt.Errorf("cas: stats: %w", err)
 	}
 	return st, nil

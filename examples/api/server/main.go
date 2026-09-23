@@ -32,7 +32,7 @@ func main() {
 	)
 	flag.Parse()
 
-	raw, err := fs.New(*store)
+	backend, err := fs.New(*store)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
@@ -47,7 +47,7 @@ func main() {
 	cfg := DefaultRateLimit()
 	cfg.Burst = *burst
 	cfg.RequestsPerSecond = *rate
-	srv := New(raw, tokenMap, cfg)
+	srv := New(backend, tokenMap, cfg)
 
 	httpSrv := &http.Server{
 		Addr:              *bind,

@@ -156,8 +156,8 @@ const envelopeHeaderLimit = 1 << 10
 // readEnvelopeHeader reads a bounded prefix of the object stored at d, enough
 // to learn its type via cas.EnvelopeType without reading (or buffering) the
 // whole payload.
-func readEnvelopeHeader(ctx context.Context, raw cas.Backend, d cas.Digest) ([]byte, error) {
-	rc, err := raw.Get(ctx, d)
+func readEnvelopeHeader(ctx context.Context, backend cas.Backend, d cas.Digest) ([]byte, error) {
+	rc, err := backend.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}

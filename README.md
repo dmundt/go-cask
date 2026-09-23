@@ -13,7 +13,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Optional acceleration** — `cas/bloom` adds hot-path absence checks; the stdlib-style `gzip`, `zlib`, and `flate` codec wrappers compress payloads when the workload benefits.
 - **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
-- **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+- **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 - **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate object identity from validation, re-reading the bytes with the caller-supplied `Hasher` while the backend itself stays a storage-only `Digest -> bytes` layer.
 - **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
 
@@ -160,10 +160,10 @@ import (
     "github.com/dmundt/go-cask/gitlike"
 )
 
-raw, _ := fs.New("./objects")  // backend
+backend, _ := fs.New("./objects")  // backend
 // typed layer: the client supplies both the hasher and the codecs, so the
 // repository names neither the algorithm nor the wire format.
-repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
     Blob:   jsoncodec.New[*gitlike.Blob](),
     Tree:   jsoncodec.New[*gitlike.Tree](),
     Commit: jsoncodec.New[*gitlike.Commit](),
@@ -177,7 +177,7 @@ For tests/ephemeral use, swap the backend:
 
 ```go
 mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
-raw := mem.New() // fast, deterministic, not persistent
+backend := mem.New() // fast, deterministic, not persistent
 ```
 
 ## The specification set

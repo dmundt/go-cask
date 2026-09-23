@@ -14,7 +14,7 @@ This is a stdlib-style compression wrapper for payloads that are large, repetiti
 
 ```go
 codec := zlib.New(json.New[MyType]())
-store := cas.New(raw, codec, sha256.New())
+store := cas.New(backend, codec, sha256.New())
 ```
 
 Use it when a payload is large or compressible and a transparent compression layer improves storage efficiency without changing the rest of the store design.

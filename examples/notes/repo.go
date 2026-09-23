@@ -12,7 +12,7 @@ import (
 // Repository bundles the per-type stores over one Backend — the app's own
 // repository, copied from the gitlike pattern (cas-core §4.12).
 type Repository struct {
-	raw cas.Backend
+	backend cas.Backend
 	// Notes stores Note objects.
 	Notes *cas.Store[*Note]
 	// Tags stores Tag objects.
@@ -21,12 +21,12 @@ type Repository struct {
 	Attachments *cas.Store[*Attachment]
 }
 
-func newRepository(raw cas.Backend, hasher cas.Hasher) (*Repository, error) {
+func newRepository(backend cas.Backend, hasher cas.Hasher) (*Repository, error) {
 	return &Repository{
-		raw:         raw,
-		Notes:       cas.New(raw, jsoncodec.New[*Note](), hasher),
-		Tags:        cas.New(raw, jsoncodec.New[*Tag](), hasher),
-		Attachments: cas.New(raw, jsoncodec.New[*Attachment](), hasher),
+		backend:     backend,
+		Notes:       cas.New(backend, jsoncodec.New[*Note](), hasher),
+		Tags:        cas.New(backend, jsoncodec.New[*Tag](), hasher),
+		Attachments: cas.New(backend, jsoncodec.New[*Attachment](), hasher),
 	}, nil
 }
 
@@ -75,7 +75,7 @@ const envelopeHeaderLimit = 1 << 10
 // Only the envelope header is read to learn the type — never the payload — so
 // resolving a large Attachment costs one bounded read, not a copy of the object.
 func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
-	rc, err := r.repo.raw.Get(ctx, d)
+	rc, err := r.repo.backend.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}

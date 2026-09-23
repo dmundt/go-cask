@@ -14,7 +14,7 @@ It serializes typed values with the Go standard library `encoding/json`. This is
 
 ```go
 codec := json.New[MyType]()
-store := cas.New(raw, codec, sha256.New())
+store := cas.New(backend, codec, sha256.New())
 ```
 
 This package is the simplest and most interoperable default for a typed store.

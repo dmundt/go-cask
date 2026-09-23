@@ -13,7 +13,7 @@ It is intended for tests, benchmarks, examples, and short-lived workloads. It is
 ## Typical use
 
 ```go
-raw := mem.New()
+backend := mem.New()
 ```
 
 This backend is excellent for local experiments, benchmark baselines, and unit tests that need a clean store without disk I/O.
@@ -24,10 +24,10 @@ Use `Snapshot` and `Restore` to capture and replay raw backend state:
 
 ```go
 var snapshot bytes.Buffer
-if err := raw.Snapshot(ctx, &snapshot); err != nil {
+if err := backend.Snapshot(ctx, &snapshot); err != nil {
     // handle error
 }
-if err := raw.Restore(ctx, &snapshot); err != nil {
+if err := backend.Restore(ctx, &snapshot); err != nil {
     // handle error
 }
 ```

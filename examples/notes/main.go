@@ -18,11 +18,11 @@ import (
 // and the generic Walker[T] over a same-type related chain.
 func demo() error {
 	ctx := context.Background()
-	raw, err := fs.New("./objects")
+	backend, err := fs.New("./objects")
 	if err != nil {
 		return err
 	}
-	repo, err := newRepository(raw, sha256.New())
+	repo, err := newRepository(backend, sha256.New())
 	if err != nil {
 		return err
 	}

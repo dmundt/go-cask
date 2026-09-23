@@ -14,7 +14,7 @@ This follows the same stdlib-style compression strategy as the other codec wrapp
 
 ```go
 codec := flate.New(json.New[MyType]())
-store := cas.New(raw, codec, sha256.New())
+store := cas.New(backend, codec, sha256.New())
 ```
 
 Use it when you want a fast, stdlib-only representation-layer optimization for large or repetitive payloads.

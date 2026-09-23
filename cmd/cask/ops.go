@@ -20,7 +20,7 @@ import (
 // there is no storage service layer — the library is the single source of
 // behavior, backend-architecture §2).
 type target struct {
-	raw *fs.Backend
+	backend *fs.Backend
 }
 
 // openTarget returns the store the ops speak to. A missing -store is a usage
@@ -30,11 +30,11 @@ func openTarget(ctx context.Context, mf modeFlags) (*target, error) {
 	if mf.store == "" {
 		return nil, usagef("-store <path> is required")
 	}
-	raw, err := fs.New(mf.store)
+	backend, err := fs.New(mf.store)
 	if err != nil {
 		return nil, err
 	}
-	return &target{raw: raw}, nil
+	return &target{backend: backend}, nil
 }
 
 // usageError marks an argument error (exit code 2).
@@ -45,19 +45,19 @@ func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
 
-// pruneCount runs raw.Prune (delete objects absent from roots AND older than
+// pruneCount runs backend.Prune (delete objects absent from roots AND older than
 // minAge; dryRun reports without deleting) and returns how many objects it
 // deleted / would delete. roots is treated as the complete reachable set at
 // the byte layer: the store cannot interpret references, so cask cannot
 // expand a root into what it points to — graph-aware reachability is the
 // app's job (cas-core §4.11, cas.Reachable). Pass every digest that must
 // survive, not just entry points, or Prune/GC will delete what they reference.
-func pruneCount(ctx context.Context, raw *fs.Backend, roots []cas.Digest, minAge time.Duration, dryRun bool) (int, error) {
+func pruneCount(ctx context.Context, backend *fs.Backend, roots []cas.Digest, minAge time.Duration, dryRun bool) (int, error) {
 	reachable := make(map[string]bool, len(roots))
 	for _, r := range roots {
 		reachable[r.String()] = true
 	}
-	doomed, err := raw.Prune(ctx, reachable, minAge, dryRun)
+	doomed, err := backend.Prune(ctx, reachable, minAge, dryRun)
 	if err != nil {
 		return 0, err
 	}
@@ -102,7 +102,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 		defer f.Close()
 		r = f
 	}
-	h, dedup, err := localPut(ctx, t.raw, r)
+	h, dedup, err := localPut(ctx, t.backend, r)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func opPut(ctx context.Context, t *target, args []string) error {
 
 // localPut stores bytes under the digest of their content, streaming through a
 // temp spool while hashing (hash-on-write).
-func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Digest, bool, error) {
+func localPut(ctx context.Context, backend *fs.Backend, r io.Reader) (cas.Digest, bool, error) {
 	hasher := sha256.NewHasher()
 	spool, err := os.CreateTemp("", "cask-put-*")
 	if err != nil {
@@ -131,7 +131,7 @@ func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Digest, bo
 		return nil, false, err
 	}
 	h := cas.NewDigest(hasher.Sum(nil))
-	exists, err := raw.Exists(ctx, h)
+	exists, err := backend.Exists(ctx, h)
 	if err != nil {
 		return nil, false, err
 	}
@@ -139,7 +139,7 @@ func localPut(ctx context.Context, raw *fs.Backend, r io.Reader) (cas.Digest, bo
 		if _, err := spool.Seek(0, 0); err != nil {
 			return nil, false, err
 		}
-		if err := raw.Put(ctx, h, spool); err != nil {
+		if err := backend.Put(ctx, h, spool); err != nil {
 			return nil, false, err
 		}
 	}
@@ -176,7 +176,7 @@ func opGet(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	rc, err := t.raw.Get(ctx, h)
+	rc, err := t.backend.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func opList(ctx context.Context, t *target, args []string) error {
 		// Size is the stored object's byte count.
 		Size int64 `json:"size"`
 	}
-	digests, err := t.raw.List(ctx)
+	digests, err := t.backend.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func opList(ctx context.Context, t *target, args []string) error {
 	items := make([]item, 0, len(page))
 	skipped := 0
 	for _, h := range page {
-		size, err := t.raw.Size(ctx, h)
+		size, err := t.backend.Size(ctx, h)
 		if err != nil {
 			// List reports every digest-named file, including one at a path the
 			// layout cannot address (a stray file in the store directory): such
@@ -299,7 +299,7 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	rc, err := t.raw.Get(ctx, h)
+	rc, err := t.backend.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -308,7 +308,7 @@ func opMeta(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return err
 	}
-	size, err := t.raw.Size(ctx, h)
+	size, err := t.backend.Size(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func opStats(ctx context.Context, t *target, args []string) error {
 	if flags.NArg() != 0 {
 		return usagef("stats takes no arguments")
 	}
-	st, err := t.raw.Stats(ctx)
+	st, err := t.backend.Stats(ctx)
 	if err != nil {
 		return err
 	}
@@ -373,13 +373,13 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 		if flags.NArg() != 0 {
 			return usagef("verify --all takes no additional arguments")
 		}
-		digests, err := t.raw.List(ctx)
+		digests, err := t.backend.List(ctx)
 		if err != nil {
 			return err
 		}
 		bad := 0
 		for _, h := range digests {
-			if err := t.raw.Verify(ctx, h, sha256.New()); err != nil {
+			if err := t.backend.Verify(ctx, h, sha256.New()); err != nil {
 				fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", h, err)
 				bad++
 			}
@@ -397,7 +397,7 @@ func opVerify(ctx context.Context, t *target, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	if err := t.raw.Verify(ctx, h, sha256.New()); err != nil {
+	if err := t.backend.Verify(ctx, h, sha256.New()); err != nil {
 		return err
 	}
 	fmt.Printf("%s ok\n", sha256.Format(h))
@@ -448,7 +448,7 @@ func opGC(ctx context.Context, t *target, args []string) error {
 	// store cannot interpret references; graph-aware reachability is the
 	// app's job, cas-core §4.11). Only objects older than minAge are
 	// reclaimed, so a concurrent writer's recent objects survive the sweep.
-	deleted, err := pruneCount(ctx, t.raw, roots, a.minAge, false)
+	deleted, err := pruneCount(ctx, t.backend, roots, a.minAge, false)
 	if err != nil {
 		return err
 	}
@@ -483,7 +483,7 @@ func opClean(ctx context.Context, t *target, args []string) error {
 	if flags.NArg() != 0 {
 		return usagef("clean takes no positional arguments")
 	}
-	removed, err := t.raw.Clean(ctx, a.minAge)
+	removed, err := t.backend.Clean(ctx, a.minAge)
 	if err != nil {
 		return err
 	}
@@ -535,7 +535,7 @@ func opPrune(ctx context.Context, t *target, args []string) error {
 	for _, r := range roots {
 		reachable[r.String()] = true
 	}
-	doomed, err := t.raw.Prune(ctx, reachable, a.minAge, a.dryRun)
+	doomed, err := t.backend.Prune(ctx, reachable, a.minAge, a.dryRun)
 	if err != nil {
 		return err
 	}

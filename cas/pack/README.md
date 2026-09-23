@@ -2,7 +2,7 @@
 
 Package `pack` groups the lightweight, app-level helpers that operate on packed payloads: fixed-size chunk splitting and a JSON sidecar manifest for metadata. It is intentionally a small, reusable layer above the core `cas` store rather than a new hash, codec, or object model.
 
-The project’s canonical distinction is: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+The project’s canonical distinction is: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 
 ## Policy
 

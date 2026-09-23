@@ -182,7 +182,7 @@ classDiagram
     class Hasher { <<interface>> +Digest(r) (Digest, error) +Validate(d) error }
     class Validator { <<interface>> +Validate() error }
     class Store~T~ {
-        +raw Backend
+        +backend Backend
         +codec Codec~T~
         +hasher Hasher
         +Put(ctx, obj) (Digest, error)
@@ -192,7 +192,7 @@ classDiagram
         +Exists(ctx, d) (bool, error)
         +Delete(ctx, d) error
     }
-    Store~T~ o-- Backend : raw
+    Store~T~ o-- Backend : backend
     Store~T~ o-- Codec~T~ : codec
     Store~T~ o-- Hasher : hasher
     Store~T~ ..> Object~T~ : stores
@@ -236,7 +236,7 @@ classDiagram
     class TreeEntry { +Name string +Hash Digest +Mode string +Validate() error }
     class Commit { +Tree Digest +Parent Digest +Author string +Message string +Time time.Time +Validate() error }
     class Tag { +Name string +Target Digest +Tagger string +Message string +Validate() error }
-    class Repository { +raw Backend +Blobs +Trees +Commits +Tags }
+    class Repository { +backend Backend +Blobs +Trees +Commits +Tags }
     class Codecs { +Blob +Tree +Commit +Tag }
     class Resolver { +ResolveCommit() +ResolveTree() +ResolveBlob() +ResolveTag() +ResolveAny() }
     class ResolvedObject { +Type string +Commit *Commit +Tree *Tree +Blob *Blob +Tag *Tag }
@@ -428,24 +428,24 @@ type Object[T any] interface {
 
 ```go
 type Store[T Object[T]] struct {
-    raw    Backend
-    codec  Codec[T]
-    hasher Hasher
+    backend Backend
+    codec   Codec[T]
+    hasher  Hasher
 }
 
-func New[T Object[T]](raw Backend, codec Codec[T], hasher Hasher) *Store[T]
+func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 ```
 
-`New` **cannot fail**: the core resolves nothing, registers nothing and knows no algorithm (§4.2). It has no error to report, so the three collaborators MUST be non-nil — `raw`, `codec` and `hasher` are the caller-supplied seams, and a nil one panics at the first use rather than being detected here (v1.2.0's `New` returned an error; the seams are now plain values).
+`New` **cannot fail**: the core resolves nothing, registers nothing and knows no algorithm (§4.2). It has no error to report, so the three collaborators MUST be non-nil — `backend`, `codec` and `hasher` are the caller-supplied seams, and a nil one panics at the first use rather than being detected here (v1.2.0's `New` returned an error; the seams are now plain values).
 
 | Method | Behavior |
 |---|---|
-| `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Encode(obj)` → TLV envelope → `hasher.Digest` → `raw.Put` → `d` |
-| `PutDedup` | as `Put`, then `raw.Exists` first; returns `(d, alreadyStored, err)` |
-| `Get` | `raw.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
+| `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Encode(obj)` → TLV envelope → `hasher.Digest` → `backend.Put` → `d` |
+| `PutDedup` | as `Put`, then `backend.Exists` first; returns `(d, alreadyStored, err)` |
+| `Get` | `backend.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates |
-| `Exists` | delegates to `raw` |
-| `Delete` | delegates to `raw` |
+| `Exists` | delegates to `backend` |
+| `Delete` | delegates to `backend` |
 
 - **Every key argument is guarded.** `Store.check` applies `CheckDigest` (present) and `hasher.Validate` (well formed for the client's algorithm) to every digest a caller supplies — `Get`, `GetRaw`, `Exists`, `Delete` — and `Put`/`PutDedup` apply it to the digest the hasher just computed. A key that cannot name an object is rejected with `ErrInvalidDigest` (wrapped with the operation name) instead of silently missing.
 - **Object invariants are enforced on both paths** (`Validator`, §4.7). `Put`/`PutDedup` run `Validate` before encoding, so an invalid object is never written and the object's own error is preserved in the chain (`cas: put: <err>`); `Get` runs it after decoding and reports a violation as `ErrCorrupt` (wrapping the object's error), so a hand-crafted or foreign payload cannot come back in an impossible state. `GetRaw` cannot validate what it does not decode — an inspector must be able to read a broken object.
@@ -478,10 +478,10 @@ Prefetch-on-access (`prefetch.SmartCache[T]`, `prefetch.NewSmartCache(store, dep
 ### 4.11 Maintenance
 
 - **`Backend.Stats(ctx)`** → `*cas.Stats` (`TotalSize`, `ObjectCount`) with `String()` rendering `"N objects, M bytes"`; part of the `Backend` interface so **every backend** reports it (fs walks the tree; mem recomputes from its map). **There is no per-algorithm breakdown** — the core does not know which algorithm produced a digest (§4.2), so it cannot group objects by one; a client that needs that groups its own digests.
-- **`cas.Verify(ctx, raw Backend, d Digest, hasher Hasher) error`** and **`(*cas.Verifier).Verify(ctx, d Digest) error`** — re-read the object and recompute its digest with the injected hasher, streaming so a large object is never buffered; they check `d` (`CheckDigest` + `hasher.Validate`) first and report `ErrDigestMismatch` when the stored bytes no longer digest to `d`. The filesystem backend still exposes `Verify(ctx, d, hasher)` as a thin compatibility wrapper that delegates to this shared verifier layer.
-- **`cas.VerifyAll(ctx, raw Backend, hasher Hasher) (*Report, error)`** — the generic, backend-agnostic form: lists every digest and re-verifies each, collecting mismatches in `Report.Bad` instead of aborting on the first one (any other read failure still aborts, wrapped). Works against any `Backend`, including one that implements no maintenance methods of its own — it needs only `List` and `Get` (go-cask#137).
-- **`cas.Sweep(ctx, raw Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error)`** — the generic, backend-agnostic mark-and-sweep: deletes every listed digest absent from `reachable` (the caller computes the reachable set — `cas.Reachable` for one type, `cas/repo.Reachable` across several). `SweepOptions.MinAge > 0` restricts deletion to objects older than that age and requires the backend to implement `Statter` (`ErrUnsupported` otherwise); `SweepOptions.DryRun` reports the doomed set without deleting. Needs only `List` and `Delete`, so it works against any backend, including `packfs`, which has no backend-native GC/Prune of its own (go-cask#137).
-- **`cas.Capabilities` / `cas.CapabilitiesOf(raw Backend) Capabilities`** — reports which optional maintenance operations a backend supports. `Verify` and `Sweep` are always `true` (the two functions above need nothing beyond the minimal `Backend` interface); `Clean`/`Stat` report whether `raw` implements the optional `cas.Cleaner`/`cas.Statter` interfaces.
+- **`cas.Verify(ctx, backend Backend, d Digest, hasher Hasher) error`** and **`(*cas.Verifier).Verify(ctx, d Digest) error`** — re-read the object and recompute its digest with the injected hasher, streaming so a large object is never buffered; they check `d` (`CheckDigest` + `hasher.Validate`) first and report `ErrDigestMismatch` when the stored bytes no longer digest to `d`. The filesystem backend still exposes `Verify(ctx, d, hasher)` as a thin compatibility wrapper that delegates to this shared verifier layer.
+- **`cas.VerifyAll(ctx, backend Backend, hasher Hasher) (*Report, error)`** — the generic, backend-agnostic form: lists every digest and re-verifies each, collecting mismatches in `Report.Bad` instead of aborting on the first one (any other read failure still aborts, wrapped). Works against any `Backend`, including one that implements no maintenance methods of its own — it needs only `List` and `Get` (go-cask#137).
+- **`cas.Sweep(ctx, backend Backend, reachable map[string]bool, opts SweepOptions) ([]Digest, error)`** — the generic, backend-agnostic mark-and-sweep: deletes every listed digest absent from `reachable` (the caller computes the reachable set — `cas.Reachable` for one type, `cas/repo.Reachable` across several). `SweepOptions.MinAge > 0` restricts deletion to objects older than that age and requires the backend to implement `Statter` (`ErrUnsupported` otherwise); `SweepOptions.DryRun` reports the doomed set without deleting. Needs only `List` and `Delete`, so it works against any backend, including `packfs`, which has no backend-native GC/Prune of its own (go-cask#137).
+- **`cas.Capabilities` / `cas.CapabilitiesOf(backend Backend) Capabilities`** — reports which optional maintenance operations a backend supports. `Verify` and `Sweep` are always `true` (the two functions above need nothing beyond the minimal `Backend` interface); `Clean`/`Stat` report whether `backend` implements the optional `cas.Cleaner`/`cas.Statter` interfaces.
 - **`cas.Cleaner`** (`Clean(ctx, olderThan time.Duration) (int, error)`) and **`cas.Statter`** (`Size(ctx, d) (int64, error)`, `ModTime(ctx, d) (time.Time, error)`) — optional capability interfaces a backend opts into structurally; `fs.Backend` satisfies both, `mem.Backend` and `packfs.Backend` satisfy neither.
 - **`fs.Backend.GC(ctx, reachable map[string]bool) error`** — mark-and-sweep: deletes every object whose `d.String()` is not in `reachable`; the caller computes the reachable set. A faster, fs-native path than `cas.Sweep` for the common case; `cas.Sweep` is the documented cross-backend equivalent.
 - **`fs.Backend.Prune(ctx, roots []Digest, minAge time.Duration, dryRun bool) ([]Digest, error)`** — deletes objects unreachable from `roots` AND older than `minAge` (age = file mtime ≈ first-`Put`); returns the doomed digests, or the would-be-deleted set when `dryRun` is set. Detection/consistency in `consistency.md`. A faster, fs-native path than `cas.Sweep(..., SweepOptions{MinAge: ...})`.

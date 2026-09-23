@@ -34,7 +34,7 @@ type Capabilities struct {
 	Stat bool
 }
 
-// CapabilitiesOf reports which optional maintenance operations raw supports.
+// CapabilitiesOf reports which optional maintenance operations the backend supports.
 func CapabilitiesOf(backend Backend) Capabilities {
 	_, clean := backend.(Cleaner)
 	_, stat := backend.(Statter)

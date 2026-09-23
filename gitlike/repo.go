@@ -32,7 +32,7 @@ type Codecs struct {
 // without any: each store is typed, so calling the wrong store is a
 // compile-time error.
 type Repository struct {
-	raw cas.Backend
+	backend cas.Backend
 	// Blobs stores Blob objects.
 	Blobs *cas.Store[*Blob]
 	// Trees stores Tree objects.
@@ -43,16 +43,16 @@ type Repository struct {
 	Tags *cas.Store[*Tag]
 }
 
-// NewRepository builds a Repository over raw with the caller's hasher and
+// NewRepository builds a Repository over backend with the caller's hasher and
 // codecs. The repository names neither the hash algorithm nor the wire format:
 // both are client seams (cas-core §4.2, §4.6).
-func NewRepository(raw cas.Backend, hasher cas.Hasher, codecs Codecs) *Repository {
+func NewRepository(backend cas.Backend, hasher cas.Hasher, codecs Codecs) *Repository {
 	return &Repository{
-		raw:     raw,
-		Blobs:   cas.New(raw, codecs.Blob, hasher),
-		Trees:   cas.New(raw, codecs.Tree, hasher),
-		Commits: cas.New(raw, codecs.Commit, hasher),
-		Tags:    cas.New(raw, codecs.Tag, hasher),
+		backend: backend,
+		Blobs:   cas.New(backend, codecs.Blob, hasher),
+		Trees:   cas.New(backend, codecs.Tree, hasher),
+		Commits: cas.New(backend, codecs.Commit, hasher),
+		Tags:    cas.New(backend, codecs.Tag, hasher),
 	}
 }
 
@@ -117,7 +117,7 @@ const envelopeHeaderLimit = 1 << 10
 // Only the envelope header is read to learn the type — never the payload — so
 // resolving a large Blob costs one bounded read, not a copy of the object.
 func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObject, error) {
-	rc, err := r.repo.raw.Get(ctx, d)
+	rc, err := r.repo.backend.Get(ctx, d)
 	if err != nil {
 		return nil, err
 	}

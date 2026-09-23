@@ -386,8 +386,8 @@ func main() {
     // 1. Filesystem backend + git-like example repository on top. gitlike names
     //    neither the algorithm nor the wire format, so the client supplies both:
     //    the sha256 hasher and one JSON codec per object type.
-    raw, _ := fs.New("./repo")
-    repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+    backend, _ := fs.New("./repo")
+    repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
         Blob:   jsoncodec.New[*gitlike.Blob](),
         Tree:   jsoncodec.New[*gitlike.Tree](),
         Commit: jsoncodec.New[*gitlike.Commit](),
@@ -439,7 +439,7 @@ unchanged:
 ```go
 import mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
 
-raw := mem.New() // in-memory: fast, deterministic, not persistent
+backend := mem.New() // in-memory: fast, deterministic, not persistent
 ```
 
 ---
@@ -459,7 +459,7 @@ raw := mem.New() // in-memory: fast, deterministic, not persistent
    codec's job, not the object's.
 2. Create your own `*Store[Document]` with the JSON codec `json.New[Document]()`
    (package `cas/codec/json`) and the client's hasher —
-   `cas.New(raw, json.New[Document](), sha256.New())`.
+   `cas.New(backend, json.New[Document](), sha256.New())`.
 3. Reference other objects with plain `cas.Digest` fields — the field IS the
    address on the wire (one hex string, no codec wrapper). Tag a field
    `json:"…,omitzero"` when an absent reference should be left out of the

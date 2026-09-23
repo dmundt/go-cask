@@ -38,12 +38,12 @@ import (
 
 func main() {
     ctx := context.Background()
-    raw, err := fs.New("./repo")
+    backend, err := fs.New("./repo")
     if err != nil {
         panic(err)
     }
 
-    repo := gitlike.NewRepository(raw, sha256.New(), gitlike.Codecs{
+    repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
         Blob:   jsoncodec.New[*gitlike.Blob](),
         Tree:   jsoncodec.New[*gitlike.Tree](),
         Commit: jsoncodec.New[*gitlike.Commit](),

@@ -34,12 +34,12 @@ func (n *Note) References() []cas.Digest { return nil }
 func main() {
     ctx := context.Background()
 
-    raw, err := fsbackend.New("./repo")
+    backend, err := fsbackend.New("./repo")
     if err != nil {
         panic(err)
     }
 
-    store := cas.New(raw, jsoncodec.New[*Note](), sha256.New())
+    store := cas.New(backend, jsoncodec.New[*Note](), sha256.New())
 
     ref, err := store.Put(ctx, &Note{Text: "hello"})
     if err != nil {
@@ -55,7 +55,7 @@ The default layout is the Git-like `FanOut=2`, `FanLevels=1` (`aa/<full hex>`).
 Both are configurable:
 
 ```go
-raw, err := fsbackend.New("./repo",
+backend, err := fsbackend.New("./repo",
     fsbackend.WithFanOut(2),
     fsbackend.WithFanLevels(1),
 )

@@ -71,17 +71,17 @@ func (digestErrorHasher) Validate(cas.Digest) error { return nil }
 func TestVerifierDetectsCorruption(t *testing.T) {
 	ctx := context.Background()
 	base := t.TempDir()
-	raw, err := fs.New(base)
+	backend, err := fs.New(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	data := []byte("hello world")
 	d := sha256.Of(data)
-	if err := raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
-	if err := cas.NewVerifier(raw, sha256.New()).Verify(ctx, d); err != nil {
+	if err := cas.NewVerifier(backend, sha256.New()).Verify(ctx, d); err != nil {
 		t.Fatalf("Verify(intact) = %v, want nil", err)
 	}
 
@@ -89,10 +89,10 @@ func TestVerifierDetectsCorruption(t *testing.T) {
 	if err := os.WriteFile(path, []byte("tampered bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cas.NewVerifier(raw, sha256.New()).Verify(ctx, d); !errors.Is(err, cas.ErrDigestMismatch) {
+	if err := cas.NewVerifier(backend, sha256.New()).Verify(ctx, d); !errors.Is(err, cas.ErrDigestMismatch) {
 		t.Fatalf("Verify(tampered) = %v, want ErrDigestMismatch", err)
 	}
-	if err := cas.Verify(ctx, raw, d, sha256.New()); !errors.Is(err, cas.ErrDigestMismatch) {
+	if err := cas.Verify(ctx, backend, d, sha256.New()); !errors.Is(err, cas.ErrDigestMismatch) {
 		t.Fatalf("cas.Verify(tampered) = %v, want ErrDigestMismatch", err)
 	}
 }
@@ -126,15 +126,15 @@ func TestVerifyRejectsInvalidInputs(t *testing.T) {
 
 func TestVerifyPropagatesHasherErrors(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	d := sha256.Of([]byte("hello"))
-	if err := raw.Put(ctx, d, bytes.NewReader([]byte("hello"))); err != nil {
+	if err := backend.Put(ctx, d, bytes.NewReader([]byte("hello"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := cas.Verify(ctx, raw, d, validateErrorHasher{}); err == nil || !strings.Contains(err.Error(), "validate failed") {
+	if err := cas.Verify(ctx, backend, d, validateErrorHasher{}); err == nil || !strings.Contains(err.Error(), "validate failed") {
 		t.Fatalf("Verify(validate error) = %v, want validate error", err)
 	}
-	if err := cas.Verify(ctx, raw, d, digestErrorHasher{}); err == nil || !strings.Contains(err.Error(), "digest failed") {
+	if err := cas.Verify(ctx, backend, d, digestErrorHasher{}); err == nil || !strings.Contains(err.Error(), "digest failed") {
 		t.Fatalf("Verify(digest error) = %v, want digest error", err)
 	}
 }
@@ -151,22 +151,22 @@ func TestVerifyReportsBackendReadFailure(t *testing.T) {
 func TestVerifyReportsBackendCloseFailure(t *testing.T) {
 	digest := sha256.Of([]byte("hello"))
 	want := errors.New("close failed")
-	raw := closeErrorBackend{
+	backend := closeErrorBackend{
 		reader: failingCloseReader{Reader: bytes.NewReader([]byte("hello")), err: want},
 	}
-	if err := cas.Verify(context.Background(), raw, digest, sha256.New()); !errors.Is(err, want) {
+	if err := cas.Verify(context.Background(), backend, digest, sha256.New()); !errors.Is(err, want) {
 		t.Fatalf("Verify(close error) = %v, want %v", err, want)
 	}
 }
 
 func TestVerifyAllOverMinimalBackend(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New() // implements neither Cleaner nor Statter
+	backend := mem.New() // implements neither Cleaner nor Statter
 	good := sha256.Of([]byte("good"))
-	if err := raw.Put(ctx, good, bytes.NewReader([]byte("good"))); err != nil {
+	if err := backend.Put(ctx, good, bytes.NewReader([]byte("good"))); err != nil {
 		t.Fatal(err)
 	}
-	report, err := cas.VerifyAll(ctx, raw, sha256.New())
+	report, err := cas.VerifyAll(ctx, backend, sha256.New())
 	if err != nil {
 		t.Fatalf("VerifyAll() = %v, want nil", err)
 	}
@@ -178,13 +178,13 @@ func TestVerifyAllOverMinimalBackend(t *testing.T) {
 func TestVerifyAllReportsCorruption(t *testing.T) {
 	ctx := context.Background()
 	base := t.TempDir()
-	raw, err := fs.New(base)
+	backend, err := fs.New(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	data := []byte("hello world")
 	d := sha256.Of(data)
-	if err := raw.Put(ctx, d, bytes.NewReader(data)); err != nil {
+	if err := backend.Put(ctx, d, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(base, d.String()[:2], d.String())
@@ -192,7 +192,7 @@ func TestVerifyAllReportsCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := cas.VerifyAll(ctx, raw, sha256.New())
+	report, err := cas.VerifyAll(ctx, backend, sha256.New())
 	if err != nil {
 		t.Fatalf("VerifyAll(corrupt) = %v, want nil (corruption is reported, not fatal)", err)
 	}
@@ -219,8 +219,8 @@ func TestVerifyAllAbortsOnBackendReadFailure(t *testing.T) {
 	ctx := context.Background()
 	d := sha256.Of([]byte("hello"))
 	want := errors.New("get failed")
-	raw := listOneBackend{d: d, err: want}
-	if _, err := cas.VerifyAll(ctx, raw, sha256.New()); !errors.Is(err, want) {
+	backend := listOneBackend{d: d, err: want}
+	if _, err := cas.VerifyAll(ctx, backend, sha256.New()); !errors.Is(err, want) {
 		t.Fatalf("VerifyAll(get error) = %v, want %v", err, want)
 	}
 }

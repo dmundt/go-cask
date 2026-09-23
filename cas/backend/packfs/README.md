@@ -4,7 +4,7 @@ Package `packfs` provides an opt-in backend for large stores that need to coales
 
 This is a performance extension, not the default storage model. The default backend remains [fs](../fs/README.md), and the pack layer is intended only when a real workload crosses the large-store threshold described in the repo docs.
 
-The project’s canonical distinction is: `cas/backend/fs` is the raw backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+The project’s canonical distinction is: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 
 ## Policy
 
@@ -17,7 +17,7 @@ The project’s canonical distinction is: `cas/backend/fs` is the raw backend, `
 ## Typical use
 
 ```go
-raw, err := packfs.New("./store", packfs.WithEnabled(), packfs.WithPackMaxBytes(64<<20))
+backend, err := packfs.New("./store", packfs.WithEnabled(), packfs.WithPackMaxBytes(64<<20))
 ```
 
 Use this only when a workload is large enough to justify coalescing small objects into append-only pack files. For normal durable use, prefer `fs`.

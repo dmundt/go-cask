@@ -44,13 +44,13 @@ func (c collection) References() []cas.Digest {
 // root set Backend.GC/Backend.Prune require.
 func ExampleRegistry() {
 	ctx := context.Background()
-	raw := mem.New()
+	backend := mem.New()
 	hasher := sha256.New()
 
-	notes := cas.New(raw, jsoncodec.New[note](), hasher)
-	collections := cas.New(raw, jsoncodec.New[collection](), hasher)
+	notes := cas.New(backend, jsoncodec.New[note](), hasher)
+	collections := cas.New(backend, jsoncodec.New[collection](), hasher)
 
-	registry := repo.NewRegistry(raw, hasher)
+	registry := repo.NewRegistry(backend, hasher)
 	if err := repo.RegisterStore(registry, note{}.Type(), notes); err != nil {
 		panic(err)
 	}

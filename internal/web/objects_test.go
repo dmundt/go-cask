@@ -1,4 +1,4 @@
-// Tests for the object rows, the inspector, and the raw-byte view.
+// Tests for the object rows, the inspector, and the backend-byte view.
 
 package web
 
@@ -36,28 +36,28 @@ func TestObjectRawIsLimitedTo256Bytes(t *testing.T) {
 	}
 	page := string(body)
 	if resp.StatusCode != http.StatusOK || !strings.Contains(page, "preview truncated at 256 B of 257 B") {
-		t.Fatalf("raw preview = (%d, %.400q), want formatted truncation note", resp.StatusCode, page)
+		t.Fatalf("backend preview = (%d, %.400q), want formatted truncation note", resp.StatusCode, page)
 	}
 	if strings.Contains(page, "00000100") {
-		t.Fatalf("raw preview rendered bytes beyond offset 255: %.400q", page)
+		t.Fatalf("backend preview rendered bytes beyond offset 255: %.400q", page)
 	}
 }
 
 func TestObjectInspectorRendersInboundReferenceCount(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	target := mustParse(t, "sha256:"+strings.Repeat("a1", 32))
-	if err := raw.Put(ctx, target, bytes.NewReader(tlvEnvelope("blob@1", nil))); err != nil {
+	if err := backend.Put(ctx, target, bytes.NewReader(tlvEnvelope("blob@1", nil))); err != nil {
 		t.Fatal(err)
 	}
 	references := newTestReferenceIndex()
 	references.Record(mustParse(t, "sha256:"+strings.Repeat("b2", 32)), []cas.Digest{target})
 	references.Record(mustParse(t, "sha256:"+strings.Repeat("c3", 32)), []cas.Digest{target})
-	srv, err := New(raw, Config{StartupToken: testStartupToken, References: references})
+	srv, err := New(backend, Config{StartupToken: testStartupToken, References: references})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestObjectInspectorRendersInboundReferenceCount(t *testing.T) {
 
 func TestObjectInspectorRendersReferencesTab(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,14 +106,14 @@ func TestObjectInspectorRendersReferencesTab(t *testing.T) {
 		{inbound, "commit@1"},
 		{outbound, "tree@1"},
 	} {
-		if err := raw.Put(ctx, object.digest, bytes.NewReader(tlvEnvelope(object.typ, nil))); err != nil {
+		if err := backend.Put(ctx, object.digest, bytes.NewReader(tlvEnvelope(object.typ, nil))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	references := newTestReferenceIndex()
 	references.Record(inbound, []cas.Digest{target})
 	references.Record(target, []cas.Digest{outbound})
-	srv, err := New(raw, Config{StartupToken: testStartupToken, References: references})
+	srv, err := New(backend, Config{StartupToken: testStartupToken, References: references})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,19 +371,19 @@ func TestObjectsListAndRaw(t *testing.T) {
 
 // TestLargeObjectDetailAndRaw covers objects above the preview limit: the type
 // is sniffed from the envelope header only, the detail page reports the real
-// size, and the raw view says the preview is truncated.
+// size, and the backend view says the preview is truncated.
 func TestLargeObjectDetailAndRaw(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	env := tlvEnvelope("blob@1", bytes.Repeat([]byte("x"), previewLimit+10))
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
+	srv, err := New(backend, Config{StartupToken: testStartupToken, RoleTokens: map[string]string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestLargeObjectDetailAndRaw(t *testing.T) {
 	rawBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if !strings.Contains(string(rawBody), "preview truncated") {
-		t.Fatalf("raw view does not mark the truncated preview: %.200q", rawBody)
+		t.Fatalf("backend view does not mark the truncated preview: %.200q", rawBody)
 	}
 }
 
@@ -420,15 +420,15 @@ func TestLargeObjectDetailAndRaw(t *testing.T) {
 // viewer has — the browser inspector — with that object selected.
 func TestColdObjectLinkSelectsInTheBrowser(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("cold")))); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("cold")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,15 +464,15 @@ func TestColdObjectLinkSelectsInTheBrowser(t *testing.T) {
 // unnoticed just because it still looks right.
 func TestEveryRowCellCarriesTheSelectionLink(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := raw.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("row")))); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("row")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,11 +503,11 @@ func TestEveryRowCellCarriesTheSelectionLink(t *testing.T) {
 // no type and an object whose bytes could not be read: an empty type cell
 // reads as the former, so the row must name the failure instead.
 func TestUnreadableObjectRowSaysSo(t *testing.T) {
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,11 +543,11 @@ func TestUnreadableObjectRowSaysSo(t *testing.T) {
 // directly rather than through a server so a panic fails this test instead of
 // being recovered and logged by net/http.
 func TestObjectListSnapshotFailureIsA500NotAPanic(t *testing.T) {
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}

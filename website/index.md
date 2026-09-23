@@ -55,12 +55,12 @@ func (n *Note) References() []cas.Digest { return nil }
 func main() {
     ctx := context.Background()
 
-    raw, err := fsbackend.New("./repo")
+    backend, err := fsbackend.New("./repo")
     if err != nil {
         panic(err)
     }
 
-    store := cas.New(raw, jsoncodec.New[*Note](), sha256.New())
+    store := cas.New(backend, jsoncodec.New[*Note](), sha256.New())
 
     ref, err := store.Put(ctx, &Note{Text: "hello"})
     if err != nil {
@@ -75,7 +75,7 @@ func main() {
 
     // Verification is explicit and separate from storage: it re-reads the
     // bytes and recomputes the digest with the caller's hasher.
-    if err := cas.Verify(ctx, raw, ref, sha256.New()); err != nil {
+    if err := cas.Verify(ctx, backend, ref, sha256.New()); err != nil {
         panic(err)
     }
 }

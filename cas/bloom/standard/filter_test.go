@@ -82,12 +82,12 @@ func TestFilterValidationAndReset(t *testing.T) {
 
 func TestGuardUsesFilterForHotPath(t *testing.T) {
 	ctx := context.Background()
-	raw := backmem.New()
+	backend := backmem.New()
 	filter, err := New(256, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, err := bloom.NewGuard(raw, filter)
+	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {
 		t.Fatal(err)
 	}

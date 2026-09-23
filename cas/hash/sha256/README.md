@@ -14,7 +14,7 @@ It follows the repository's policy: the core is hash-agnostic, but new durable c
 
 ```go
 h := sha256.New()
-store := cas.New(raw, codec, h)
+store := cas.New(backend, codec, h)
 ```
 
 This package is the simplest and safest default for app-level object identity in the repo's examples and documentation.

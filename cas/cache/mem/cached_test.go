@@ -82,9 +82,9 @@ func TestWarmupReportsCanceledContext(t *testing.T) {
 // reference stopped the walk before the parent commit was ever reached.
 func TestPreloadRecursiveSkipsForeignAndMissingRefs(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	s := cas.New(raw, jsoncodec.New[testObject](), sha256.New())
-	other := cas.New(raw, jsoncodec.New[otherObject](), sha256.New())
+	backend := mem.New()
+	s := cas.New(backend, jsoncodec.New[testObject](), sha256.New())
+	other := cas.New(backend, jsoncodec.New[otherObject](), sha256.New())
 
 	foreign, err := other.Put(ctx, otherObject{Name: "not a testObject"})
 	if err != nil {

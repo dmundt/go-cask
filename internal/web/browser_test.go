@@ -21,16 +21,16 @@ import (
 
 func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	payload := tlvEnvelope("blob@1", []byte("sha512 viewer"))
 	digest := sha512.Of(payload)
-	if err := raw.Put(ctx, digest, bytes.NewReader(payload)); err != nil {
+	if err := backend.Put(ctx, digest, bytes.NewReader(payload)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken, Hasher: sha512.New(), HashAlgorithm: sha512.Name})
+	srv, err := New(backend, Config{StartupToken: testStartupToken, Hasher: sha512.New(), HashAlgorithm: sha512.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
 
 func TestFilterDroppingSelectionSwapsInspector(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +72,11 @@ func TestFilterDroppingSelectionSwapsInspector(t *testing.T) {
 	tree := tlvEnvelope("tree@1", []byte("tree"))
 	blobDigest, treeDigest := sha256.Of(blob), sha256.Of(tree)
 	for payload, digest := range map[string]cas.Digest{string(blob): blobDigest, string(tree): treeDigest} {
-		if err := raw.Put(ctx, digest, strings.NewReader(payload)); err != nil {
+		if err := backend.Put(ctx, digest, strings.NewReader(payload)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,18 +120,18 @@ func TestFilterDroppingSelectionSwapsInspector(t *testing.T) {
 
 func TestOrphanedObjectStateRequiresReachability(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	reachable := sha256.Of([]byte("reachable"))
 	orphaned := sha256.Of([]byte("orphaned"))
 	for _, digest := range []cas.Digest{reachable, orphaned} {
-		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+		if err := backend.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		Reachability: testReachabilityIndex{reachable.String(): true},
 	})
@@ -156,7 +156,7 @@ func TestOrphanedObjectStateRequiresReachability(t *testing.T) {
 		t.Fatalf("orphaned filter = (%d, %.400q)", resp.StatusCode, body)
 	}
 
-	unconfigured, err := New(raw, Config{StartupToken: testStartupToken})
+	unconfigured, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestOrphanedObjectStateRequiresReachability(t *testing.T) {
 
 func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,13 +201,13 @@ func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 	orphaned := sha256.Of([]byte("orphaned-with-inbound"))
 	detached := sha256.Of([]byte("detached"))
 	for _, digest := range []cas.Digest{resolved, orphaned, detached} {
-		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+		if err := backend.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	references := newTestReferenceIndex()
 	references.Record(resolved, []cas.Digest{orphaned})
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		References:   references,
 		Reachability: testReachabilityIndex{resolved.String(): true},
@@ -232,7 +232,7 @@ func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 		t.Fatalf("detached inspector state = %.900q", page)
 	}
 
-	withoutReferences, err := New(raw, Config{
+	withoutReferences, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		Reachability: testReachabilityIndex{resolved.String(): true},
 	})
@@ -249,7 +249,7 @@ func TestDetachedStateRequiresOrphanhoodAndNoInboundReferences(t *testing.T) {
 
 func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	interior := sha256.Of([]byte("interior"))
 	orphaned := sha256.Of([]byte("orphaned"))
 	for _, digest := range []cas.Digest{root, interior, orphaned} {
-		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+		if err := backend.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -266,7 +266,7 @@ func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 	// entry point; interior gets an inbound edge from root, so it is
 	// reachable but not a Root.
 	references.Record(root, []cas.Digest{interior})
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		References:   references,
 		Reachability: testReachabilityIndex{root.String(): true, interior.String(): true},
@@ -291,7 +291,7 @@ func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 		t.Fatalf("root inspector state = %.900q", page)
 	}
 
-	withoutReferences, err := New(raw, Config{
+	withoutReferences, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		Reachability: testReachabilityIndex{root.String(): true, interior.String(): true},
 	})
@@ -313,7 +313,7 @@ func TestRootStateRequiresReachabilityAndNoInboundReferences(t *testing.T) {
 // agree for every state.
 func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,14 +322,14 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 	orphaned := sha256.Of([]byte("all-states-orphaned-with-inbound")) // unreachable, inbound > 0
 	detached := sha256.Of([]byte("all-states-detached"))              // unreachable, inbound 0
 	for _, digest := range []cas.Digest{root, resolved, orphaned, detached} {
-		if err := raw.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
+		if err := backend.Put(ctx, digest, bytes.NewReader([]byte(digest.String()))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	references := newTestReferenceIndex()
 	references.Record(root, []cas.Digest{resolved})
 	references.Record(resolved, []cas.Digest{orphaned})
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		References:   references,
 		Reachability: testReachabilityIndex{root.String(): true, resolved.String(): true},
@@ -397,11 +397,11 @@ func TestAllFourReferenceStatesAreMutuallyExclusive(t *testing.T) {
 }
 
 func TestEmptyObjectListKeepsInspectorEmpty(t *testing.T) {
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestEmptyObjectListKeepsInspectorEmpty(t *testing.T) {
 
 func TestInspectorTrailStepsThroughVisitedObjects(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,12 +428,12 @@ func TestInspectorTrailStepsThroughVisitedObjects(t *testing.T) {
 	for _, word := range []string{"alpha", "beta", "gamma"} {
 		payload := []byte(word)
 		h := sha256.Of(payload)
-		if err := raw.Put(ctx, h, bytes.NewReader(payload)); err != nil {
+		if err := backend.Put(ctx, h, bytes.NewReader(payload)); err != nil {
 			t.Fatal(err)
 		}
 		digests = append(digests, h.String())
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,15 +475,15 @@ func TestInspectorTrailStepsThroughVisitedObjects(t *testing.T) {
 
 func TestClickingSelectedRowEmptiesInspector(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	payload := []byte("toggle")
-	if err := raw.Put(ctx, sha256.Of(payload), bytes.NewReader(payload)); err != nil {
+	if err := backend.Put(ctx, sha256.Of(payload), bytes.NewReader(payload)); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,19 +508,19 @@ func TestClickingSelectedRowEmptiesInspector(t *testing.T) {
 
 func TestFilteredOutSelectionFallsBackToFirstRow(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	kept := sha256.Of([]byte("kept"))
-	if err := raw.Put(ctx, kept, bytes.NewReader([]byte("kept"))); err != nil {
+	if err := backend.Put(ctx, kept, bytes.NewReader([]byte("kept"))); err != nil {
 		t.Fatal(err)
 	}
 	dropped := sha256.Of([]byte("dropped"))
-	if err := raw.Put(ctx, dropped, bytes.NewReader(tlvEnvelope("blob@1", []byte("dropped")))); err != nil {
+	if err := backend.Put(ctx, dropped, bytes.NewReader(tlvEnvelope("blob@1", []byte("dropped")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,16 +541,16 @@ func TestFilteredOutSelectionFallsBackToFirstRow(t *testing.T) {
 
 func TestIntegrityAndReachabilityAreIndependentColumns(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Stored bytes deliberately do not hash to their address, so Verify fails.
 	orphaned := sha256.Of([]byte("orphaned-corrupt"))
-	if err := raw.Put(ctx, orphaned, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, orphaned, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(raw, Config{
+	srv, err := New(backend, Config{
 		StartupToken: testStartupToken,
 		Reachability: testReachabilityIndex{},
 	})
@@ -655,7 +655,7 @@ func TestIntegrityAndReachabilityAreIndependentColumns(t *testing.T) {
 // Metadata on the next pick. Tab links therefore re-render the list too.
 func TestTabSelectionSurvivesPickingAnotherRow(t *testing.T) {
 	ctx := context.Background()
-	raw, err := fs.New(t.TempDir())
+	backend, err := fs.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,12 +663,12 @@ func TestTabSelectionSurvivesPickingAnotherRow(t *testing.T) {
 	for _, payload := range [][]byte{[]byte("first"), []byte("second")} {
 		data := tlvEnvelope("blob@1", payload)
 		digest := sha256.Of(data)
-		if err := raw.Put(ctx, digest, bytes.NewReader(data)); err != nil {
+		if err := backend.Put(ctx, digest, bytes.NewReader(data)); err != nil {
 			t.Fatal(err)
 		}
 		digests = append(digests, digest)
 	}
-	srv, err := New(raw, Config{StartupToken: testStartupToken})
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {
 		t.Fatal(err)
 	}

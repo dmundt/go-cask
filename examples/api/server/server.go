@@ -20,7 +20,7 @@ import (
 // server is the CAS API server: routes over an fs.Backend with bearer-token
 // role auth and IP-based rate limiting.
 type server struct {
-	raw            *fs.Backend
+	backend        *fs.Backend
 	tokens         map[string]string // token → role
 	rl             *rateLimiter
 	sizesMu        sync.RWMutex
@@ -60,12 +60,12 @@ func (s *server) retainSizes(reachable map[string]bool) {
 	}
 }
 
-// New creates a server over raw with per-role tokens ("token" → role) and
-// the given rate-limit config. The raw store MUST be an FSBackend (the
+// New creates a server over backend with per-role tokens ("token" → role) and
+// the given rate-limit config. The backend store MUST be an FSBackend (the
 // example serves a filesystem store; GC/Verify/Stats are FS operations).
-func New(raw *fs.Backend, tokens map[string]string, rlCfg RateLimitConfig) *server {
+func New(backend *fs.Backend, tokens map[string]string, rlCfg RateLimitConfig) *server {
 	return &server{
-		raw:            raw,
+		backend:        backend,
 		tokens:         tokens,
 		rl:             newRateLimiter(rlCfg),
 		sizes:          map[string]int64{},
@@ -158,7 +158,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// Store raw bytes — the digest is computed while streaming
+// Store backend bytes — the digest is computed while streaming
 // the body to a temp spool (memory-bounded), then the spool streams into
 // the store. Identical bytes → identical digest → deduplicated.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +178,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	}
 	h := cas.NewDigest(hasher.Sum(nil))
 	ctx := r.Context()
-	exists, err := s.raw.Exists(ctx, h)
+	exists, err := s.backend.Exists(ctx, h)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store check failed"})
 		return
@@ -188,7 +188,7 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "spool rewind failed"})
 			return
 		}
-		if err := s.raw.Put(ctx, h, spool); err != nil {
+		if err := s.backend.Put(ctx, h, spool); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store failed"})
 			return
 		}
@@ -211,7 +211,7 @@ func (s *server) listObjects(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "offset must be >= 0"})
 		return
 	}
-	digests, err := s.raw.List(r.Context())
+	digests, err := s.backend.List(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
 		return
@@ -236,7 +236,7 @@ func (s *server) getObject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rc, err := s.raw.Get(r.Context(), h)
+	rc, err := s.backend.Get(r.Context(), h)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -261,7 +261,7 @@ func (s *server) deleteObject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.raw.Delete(r.Context(), h); err != nil {
+	if err := s.backend.Delete(r.Context(), h); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
 	}
@@ -276,7 +276,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rc, err := s.raw.Get(r.Context(), h)
+	rc, err := s.backend.Get(r.Context(), h)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -287,13 +287,13 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
 		return
 	}
-	size, err := s.raw.Size(r.Context(), h)
+	size, err := s.backend.Size(r.Context(), h)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stat failed"})
 		return
 	}
 	// Type is best-effort from the self-describing envelope; references are
-	// a typed-layer concern (this raw store cannot interpret them).
+	// a typed-layer concern (this backend store cannot interpret them).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hash":       h.String(),
 		"algorithm":  sha256.Name,
@@ -309,7 +309,7 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rc, err := s.raw.Get(r.Context(), h)
+	rc, err := s.backend.Get(r.Context(), h)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -332,7 +332,7 @@ func (s *server) verifyObject(w http.ResponseWriter, r *http.Request) {
 
 // Storage statistics.
 func (s *server) stats(w http.ResponseWriter, r *http.Request) {
-	st, err := s.raw.Stats(r.Context())
+	st, err := s.backend.Stats(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
 		return
@@ -364,19 +364,19 @@ func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 		}
 		reachable[h.String()] = true
 	}
-	before, err := s.raw.Stats(r.Context())
+	before, err := s.backend.Stats(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
 		return
 	}
-	if err := s.raw.GC(r.Context(), reachable); err != nil {
+	if err := s.backend.GC(r.Context(), reachable); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gc failed"})
 		return
 	}
 	// The sweep already happened: keep the in-memory size index in step with
 	// the store even if the post-GC stats below fail.
 	s.retainSizes(reachable)
-	after, err := s.raw.Stats(r.Context())
+	after, err := s.backend.Stats(r.Context())
 	if err != nil {
 		// GC succeeded but its outcome cannot be reported truthfully, so answer
 		// 500 rather than inventing a "deleted" count; the failure is logged.
@@ -410,11 +410,11 @@ func parseDigestParam(w http.ResponseWriter, r *http.Request) (cas.Digest, bool)
 	return h, true
 }
 
-func parseBounded(raw string, def, lo, hi int) (int, error) {
-	if raw == "" {
+func parseBounded(backend string, def, lo, hi int) (int, error) {
+	if backend == "" {
 		return def, nil
 	}
-	n, err := strconv.Atoi(raw)
+	n, err := strconv.Atoi(backend)
 	if err != nil || n < lo || n > hi {
 		return 0, fmt.Errorf("out of bounds")
 	}

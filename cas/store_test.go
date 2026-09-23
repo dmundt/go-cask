@@ -41,13 +41,13 @@ func TestStoreRejectsEmptyTypeName(t *testing.T) {
 
 func TestStoreNewJSONConstructors(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	jsonStore := cas.NewJSON[test.Note](raw, sha256.New())
+	backend := mem.New()
+	jsonStore := cas.NewJSON[test.Note](backend, sha256.New())
 	if _, err := jsonStore.Put(ctx, test.Note{Title: "json"}); err != nil {
 		t.Fatalf("NewJSON Put = %v", err)
 	}
 
-	gzipStore := cas.NewCompressedJSON[test.Note](raw, sha256.New(), gzipcodec.New(jsoncodec.New[test.Note]()))
+	gzipStore := cas.NewCompressedJSON[test.Note](backend, sha256.New(), gzipcodec.New(jsoncodec.New[test.Note]()))
 	if _, err := gzipStore.Put(ctx, test.Note{Title: "gzip"}); err != nil {
 		t.Fatalf("NewCompressedJSON Put = %v", err)
 	}
@@ -94,13 +94,13 @@ func memFactory(t *testing.T) cas.Backend { return mem.New() }
 
 // testBackendContract exercises the Backend contract (Put/Get round-trip)
 // against any backend implementation.
-func testBackendContract(t *testing.T, raw cas.Backend) {
+func testBackendContract(t *testing.T, backend cas.Backend) {
 	ctx := context.Background()
 	h := test.DigestData([]byte("contract"))
-	if err := raw.Put(ctx, h, strings.NewReader("contract")); err != nil {
+	if err := backend.Put(ctx, h, strings.NewReader("contract")); err != nil {
 		t.Fatal(err)
 	}
-	rc, err := raw.Get(ctx, h)
+	rc, err := backend.Get(ctx, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,9 +113,9 @@ func testBackendContract(t *testing.T, raw cas.Backend) {
 	}
 }
 
-func newTestStore(t *testing.T, raw cas.Backend) *cas.Store[test.Note] {
+func newTestStore(t *testing.T, backend cas.Backend) *cas.Store[test.Note] {
 	t.Helper()
-	return cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
+	return cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 }
 
 func TestBackendContract(t *testing.T) {
@@ -127,15 +127,15 @@ func TestBackendContract(t *testing.T) {
 		{"memory", memFactory},
 	} {
 		t.Run(bf.name, func(t *testing.T) {
-			raw := bf.fn(t)
-			testBackendContract(t, raw)
+			backend := bf.fn(t)
+			testBackendContract(t, backend)
 		})
 	}
 }
 
 func TestStoreRoundTrip(t *testing.T) {
-	raw := mem.New()
-	s := newTestStore(t, raw)
+	backend := mem.New()
+	s := newTestStore(t, backend)
 	ctx := context.Background()
 
 	h, err := s.Put(ctx, test.Note{Title: "t", Body: "b"})
@@ -198,8 +198,8 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestStoreDedup(t *testing.T) {
-	raw := mem.New()
-	s := newTestStore(t, raw)
+	backend := mem.New()
+	s := newTestStore(t, backend)
 	ctx := context.Background()
 
 	h1, err := s.Put(ctx, test.Note{Title: "same"})
@@ -213,7 +213,7 @@ func TestStoreDedup(t *testing.T) {
 	if h1.String() != h2.String() {
 		t.Fatalf("identical content must hash identically: %s vs %s", h1, h2)
 	}
-	list, err := raw.List(ctx)
+	list, err := backend.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,15 +259,15 @@ func TestStoreEmptyStore(t *testing.T) {
 
 func TestStoreRecoveryAfterCorruption(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	s := newTestStore(t, raw)
+	backend := mem.New()
+	s := newTestStore(t, backend)
 	obj := test.Note{Title: "before", Body: "payload"}
 
 	d, err := s.Put(ctx, obj)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := raw.Put(ctx, d, strings.NewReader("corrupted envelope")); err != nil {
+	if err := backend.Put(ctx, d, strings.NewReader("corrupted envelope")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Get(ctx, d); !errors.Is(err, cas.ErrUnknownType) && !errors.Is(err, cas.ErrCorrupt) {
@@ -289,14 +289,14 @@ func TestStoreRecoveryAfterCorruption(t *testing.T) {
 func TestStoreTypeSafety(t *testing.T) {
 	// A node store must NOT decode a note object as a node: wrong-type
 	// payloads fail loudly rather than producing garbage.
-	raw := mem.New()
+	backend := mem.New()
 	ctx := context.Background()
-	notes := newTestStore(t, raw)
+	notes := newTestStore(t, backend)
 	h, err := notes.Put(ctx, test.Note{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes := cas.New(raw, jsoncodec.New[test.Node](), sha256.New())
+	nodes := cas.New(backend, jsoncodec.New[test.Node](), sha256.New())
 	if _, err := nodes.Get(ctx, h); err == nil {
 		t.Fatal("decoding a note as a node must fail")
 	}
@@ -369,8 +369,8 @@ func TestStorePutDedup(t *testing.T) {
 // @major) decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	raw := mem.New()
-	st := cas.New(raw, jsoncodec.New[test.Note](), sha256.New())
+	backend := mem.New()
+	st := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	payload, err := (jsoncodec.New[test.Note]()).Encode(test.Note{Title: "legacy"})
 	if err != nil {
 		t.Fatal(err)
@@ -388,7 +388,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 	buf.Write(payload)
 	env := buf.Bytes()
 	h := test.DigestData(env)
-	if err := raw.Put(ctx, h, bytes.NewReader(env)); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.Get(ctx, h)
