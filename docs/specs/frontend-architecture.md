@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v11
+version: v12
 ---
 
 # Frontend Architecture — go-cask
@@ -37,13 +37,13 @@ Governs the browser-facing architecture of go-cask (applies to the viewer and an
 | Partial updates | `hx-get`/`hx-post` + `hx-target` + `hx-swap` into semantic containers |
 | Lazy loading | `hx-trigger="revealed"` loads the hexdump table into `#hexdump` |
 | Paging | offset/limit query state; table, result count, and pager render and swap together |
-| Long-running ops | no polling: verify/delete/gc answer with a `result` fragment |
+| Long-running ops | no polling: verification answers with a result fragment (one object) or refreshed control state (the sweep) |
 | Cross-panel update | none: every swap targets the panel that asked for it |
-| Destructive actions | POST forms + `hx-confirm` + CSRF token |
+| Destructive actions | none in the viewer: object removal is CLI-only, so the viewer has no destructive form, and `hx-confirm` is unused (consistency §9, viewer-design §5) |
 | Inspector width | native CSS `resize` bounded by `min-width`/`max-width`; no script, no persistence or application state |
 
 - GET endpoints are side-effect free; every mutation is a POST form with CSRF (viewer-security).
-- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, and paging), `#object-table`, `#object-inspector`, `#hexdump`, `#object-meta`, `#action-result` (verify/delete), `#gc-result` — never the whole page.
+- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, and paging), `#object-inspector` (selection and its tabs), `#hexdump` (lazy bytes), `#integrity` (verify result), and `#verify-all` (the sweep control's own refreshed state) — never the whole page. There is no delete or GC target, because the viewer has no such route.
 - No custom events, no `_hyperscript`, no Alpine, and no hand-written JS at
   all: htmx is the only script the viewer ships (coding-guidelines §4).
 
