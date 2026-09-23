@@ -380,6 +380,9 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 			return err
 		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // entry vanished during concurrent cleanup/write
+			}
 			return err
 		}
 		if d.IsDir() || !isTempFile(d.Name()) {
@@ -438,12 +441,18 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(s.base); err != nil {
+		return nil, fmt.Errorf("cas: list objects: %w", err)
+	}
 	var digests []cas.Digest
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // entry vanished during concurrent mutation
+			}
 			return err
 		}
 		if d.IsDir() {
@@ -478,12 +487,18 @@ func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(s.base); err != nil {
+		return nil, fmt.Errorf("cas: stats: %w", err)
+	}
 	st := &cas.Stats{}
 	err := filepath.WalkDir(s.base, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // file vanished during concurrent mutation
+			}
 			return err
 		}
 		if d.IsDir() {
