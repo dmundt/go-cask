@@ -61,8 +61,17 @@ type packRecord struct {
 	Size int64 `json:"size"`
 }
 
+// manifest is the on-disk pack index: one record per packed digest.
+//
+// Entries is keyed by the digest's lowercase-hex form, NOT by its raw bytes, and
+// that is load-bearing: encoding/json replaces invalid UTF-8 in a string (a map
+// key included) with U+FFFD, and a digest is arbitrary binary. A manifest
+// written with raw digest keys therefore reads back with corrupted keys — the
+// index would hold keys no lookup can match and no List should report. Only the
+// encoding differs: the in-memory index stays keyed by the raw digest bytes
+// (string(d)), which is what every lookup uses.
 type manifest struct {
-	// Entries maps digests to pack locations.
+	// Entries maps each packed digest's hex form to its pack location.
 	Entries map[string]packRecord `json:"entries"`
 }
 
@@ -291,19 +300,21 @@ func (b *Backend) loadIndex() error {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("cas: decode pack manifest: %w", err)
 	}
-	if m.Entries == nil {
-		m.Entries = make(map[string]packRecord)
-	}
 	filtered := make(map[string]packRecord, len(m.Entries))
 	for key, rec := range m.Entries {
-		if err := cas.CheckDigest(cas.NewDigest([]byte(key)), "pack: manifest"); err != nil {
+		// A key that is not a hex digest is a foreign entry, or one written by
+		// a build that keyed the manifest by raw digest bytes (a form JSON
+		// cannot round-trip). Either way it names no addressable object; the
+		// loose tree still holds every object, so dropping it loses nothing.
+		d, err := cas.ParseDigest(key)
+		if err != nil {
 			continue
 		}
 		valid, err := b.validPackRecord(rec)
 		if err != nil || !valid {
 			continue
 		}
-		filtered[key] = rec
+		filtered[string(d)] = rec
 	}
 	b.index = filtered
 	return nil
@@ -342,8 +353,14 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 	return true, nil
 }
 
+// persistIndex writes the pack index atomically: the manifest carries every
+// indexed digest in hex form (see manifest), so it survives the JSON round trip
+// into the next process.
 func (b *Backend) persistIndex() error {
-	m := manifest{Entries: b.index}
+	m := manifest{Entries: make(map[string]packRecord, len(b.index))}
+	for key, rec := range b.index {
+		m.Entries[cas.NewDigest([]byte(key)).String()] = rec
+	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cas: encode pack manifest: %w", err)

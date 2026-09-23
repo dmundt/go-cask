@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/dmundt/go-cask/internal/store"
 )
 
 // errHelp reports that -h/-help asked for the usage text while the global flags
@@ -21,7 +23,8 @@ var errHelp = errors.New("help requested")
 
 // modeFlags are the global flags parsed before the subcommand.
 type modeFlags struct {
-	store string
+	store   string
+	backend string
 }
 
 // commandSpec is one subcommand. commands is the single source of dispatch, of
@@ -39,8 +42,8 @@ type commandSpec struct {
 	// when the command takes no flags. It is the same parser the operation
 	// parses with, so the help text cannot list a flag the parser rejects.
 	flags func() *flag.FlagSet
-	// op is the store operation, run in-process over the opened target.
-	op func(ctx context.Context, t *target, args []string) error
+	// op is the store operation, run in-process over the opened store.
+	op func(ctx context.Context, t *store.Store, args []string) error
 	// run executes a command that is not a store operation (web, version).
 	run func(ctx context.Context, mf modeFlags, args []string) int
 }
@@ -133,9 +136,9 @@ func init() {
 		},
 		{
 			name:     "web",
-			operands: "[-store <dir>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]",
+			operands: "[-store <dir>] [-backend <name>] [-bind <addr>] [-hash-algo <name>] [-tokens r=t,...] [-allow-insecure-bind] [-no-open]",
 			summary:  "start the embedded viewer; prints a one-time startup token and the token URL",
-			flags:    func() *flag.FlagSet { return webFlags(new(webArgs), "") },
+			flags:    func() *flag.FlagSet { return webFlags(new(webArgs), "", "") },
 			run:      runWeb,
 		},
 		{
@@ -158,10 +161,13 @@ func command(name string) (commandSpec, bool) {
 }
 
 // globalFlags registers the flags that precede the subcommand (cli.md §1) and
-// returns the parser with the store path bound to store.
-func globalFlags(store *string) *flag.FlagSet {
+// returns the parser with the store path bound to storePath and the backend
+// name bound to backend. An absent -backend keeps its zero value, which the
+// store package resolves to its documented default.
+func globalFlags(storePath, backend *string) *flag.FlagSet {
 	flags := newFlagSet("cask")
-	flags.StringVar(store, "store", "", "the store directory (the library in-process, FSBackend)")
+	flags.StringVar(storePath, "store", "", "the store directory (the library in-process)")
+	flags.StringVar(backend, "backend", "", "storage backend: fs (default) or packfs")
 	return flags
 }
 
@@ -175,7 +181,7 @@ func usage() string {
 		fmt.Fprintf(&b, "  %s\n        %s\n", c.synopsis(), c.summary)
 	}
 	b.WriteString("\nglobal flags:\n")
-	printDefaults(globalFlags(new(string)), &b)
+	printDefaults(globalFlags(new(string), new(string)), &b)
 	b.WriteString("\nrun 'cask <command> -h' for a command's flags\n")
 	return b.String()
 }
@@ -215,7 +221,7 @@ func main() {
 // errHelp so main can print the usage and exit 0 (cli.md §1, §3, §4).
 func parseGlobal(args []string) (modeFlags, string, []string, error) {
 	var mf modeFlags
-	flags := globalFlags(&mf.store)
+	flags := globalFlags(&mf.store, &mf.backend)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return mf, "", nil, errHelp
@@ -267,11 +273,27 @@ func runStoreOp(ctx context.Context, mf modeFlags, spec commandSpec, args []stri
 		lock, err := acquireStoreLock(mf.store)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			_ = t.Close()
 			return 1
 		}
 		defer lock.release()
 	}
-	return reportError(spec.op(ctx, t, args))
+	return reportError(runTargetOp(ctx, spec, t, args))
+}
+
+// runTargetOp runs a store operation over an opened store and always closes the
+// store before returning. Closing on the write path is what releases a
+// writer's backend resources — packfs keeps its active pack file open for
+// appends and persists its index through it — so no subcommand leaves the
+// handle behind (cli.md §2). A close failure is reported when the operation
+// itself succeeded, because it means the write may not be durable; an
+// operation failure stays primary.
+func runTargetOp(ctx context.Context, spec commandSpec, t *store.Store, args []string) error {
+	err := spec.op(ctx, t, args)
+	if closeErr := t.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // reportError prints err to stderr and returns the exit code its classification
