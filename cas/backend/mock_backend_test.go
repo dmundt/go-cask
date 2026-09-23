@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -21,7 +22,7 @@ func (m *mockBackend) Put(_ context.Context, d cas.Digest, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	m.items[d.String()] = append([]byte(nil), b...)
+	m.items[d.String()] = slices.Clone(b)
 	return nil
 }
 

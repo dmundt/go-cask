@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -95,7 +96,7 @@ func TestImportRejectsMalformedArchiveWithoutWritingInvalidRecord(t *testing.T) 
 	}
 
 	destination := membackend.New()
-	data := append([]byte(nil), archive.Bytes()...)
+	data := slices.Clone(archive.Bytes())
 	binary.BigEndian.PutUint64(data[10:18], 2)
 	if err := Import(ctx, destination, bytes.NewReader(data)); err == nil {
 		t.Fatal("truncated second record must fail")
@@ -129,7 +130,7 @@ func TestImportRejectsDuplicateDigest(t *testing.T) {
 	if err := Export(ctx, source, &archive); err != nil {
 		t.Fatal(err)
 	}
-	data := append([]byte(nil), archive.Bytes()...)
+	data := slices.Clone(archive.Bytes())
 	binary.BigEndian.PutUint64(data[10:18], 2)
 	data = append(data, archive.Bytes()[18:]...)
 

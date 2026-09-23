@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -21,7 +22,7 @@ type Data map[string]string
 // Split breaks data into fixed-size chunks. The final chunk may be shorter.
 func Split(data []byte, size int) [][]byte {
 	if size <= 0 {
-		return [][]byte{append([]byte(nil), data...)}
+		return [][]byte{slices.Clone(data)}
 	}
 	if len(data) == 0 {
 		return nil
@@ -30,7 +31,7 @@ func Split(data []byte, size int) [][]byte {
 	out := make([][]byte, 0, count)
 	for i := 0; i < len(data); i += size {
 		end := min(i+size, len(data))
-		out = append(out, append([]byte(nil), data[i:end]...))
+		out = append(out, slices.Clone(data[i:end]))
 	}
 	return out
 }

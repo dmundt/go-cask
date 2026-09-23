@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -292,7 +293,7 @@ func TestEnvelopeFormatWithPayloadLen(t *testing.T) {
 func TestEnvelopeToleratesTrailingBytes(t *testing.T) {
 	payload := []byte("abc")
 	data := encodeEnvelope("json", "note@1", payload)
-	extended := append(append([]byte(nil), data...), []byte("future trailer")...)
+	extended := append(slices.Clone(data), []byte("future trailer")...)
 
 	env, err := EnvelopeFromBytes(extended)
 	if err != nil {
