@@ -18,8 +18,18 @@ type Backend interface {
 
 | Package | Storage | Notes |
 |---|---|---|
-| `cas/backend/fs` | filesystem | durable, atomic writes, Git-like fan-out directories |
+| `cas/backend/fs` | filesystem | durable, atomic writes, Git-like fan-out directories — the default |
 | `cas/backend/mem` | in-memory | fast, deterministic, not persistent — tests and benchmarks |
+| `cas/backend/packfs` | filesystem + pack files | opt-in (`packfs.New(dir, packfs.WithEnabled())`): the same loose objects, mirrored into append-only pack files with a JSON index; batched reads open each pack once |
+
+`cask -backend fs|packfs` selects the backend for every store operation
+(`fs` is the default); `cask web` needs the `fs` backend, because the viewer
+reads per-object physical metadata through the filesystem backend.
+
+The packfile backend is a read-throughput option, not a space optimization:
+it keeps every object both loose and packed, `List`/`Stats` still walk the
+loose tree, and a sweep removes the object from the index without reclaiming
+the pack bytes — packs are append-only and are never compacted.
 
 Any other storage engine (object storage, a database, a network service)
 works if it satisfies the interface above.

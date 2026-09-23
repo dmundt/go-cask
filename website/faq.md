@@ -43,7 +43,11 @@ needs `Digest`/`Validate`. See the
 The filesystem backend (`cas/backend/fs`) is a solid default for local and
 small-to-medium deployments: durable, atomic writes, Git-like fan-out
 directories. The in-memory backend (`cas/backend/mem`) is for tests and
-ephemeral use. Any other storage engine works if it implements the six-method
+ephemeral use. The packfile backend (`cas/backend/packfs`, selected with
+`cask -backend packfs`) keeps the loose objects and mirrors them into
+append-only pack files, so a batch of reads opens each pack once — reach for it
+when read-open cost dominates, not to save disk space or inodes, which it does
+not. Any other storage engine works if it implements the six-method
 `Backend` interface (`Put`/`Get`/`Exists`/`Delete`/`List`/`Stats`).
 
 ## Is go-cask a replacement for files?

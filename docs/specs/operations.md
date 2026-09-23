@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v13
+version: v14
 ---
 
 # Operations — go-cask
@@ -14,11 +14,13 @@ How a CASK-backed deployment stays durable, observable, and migratable. Related:
 - Writes: uniquely named temp file (created `O_CREATE|O_EXCL`; a numeric suffix is appended if another process holds `<path>.tmp`) → `f.Sync()` → `os.Rename`. The unique name means concurrent writers (even across processes) never share a temp inode; `f.Sync()` before rename guarantees data is on disk before it becomes visible.
 - Optional full durability: fsync the containing directory after rename so the rename survives a crash; make it configurable (cost vs. durability trade-off).
 - The store never exposes partial writes — atomic rename is the contract.
+- **The packfile backend's durable object is the loose one.** `packfs.Put` writes the object through the fs backend's temp-file→`Sync`→rename path and *then* appends it to the active pack, so the fsync contract above still holds and the pack append is an additional, non-fsynced copy. Losing the pack (or its index) loses the packed view, not the object (cas-core §4.14).
 
 ## 2. Crash recovery
 
 - Orphan `*.tmp` files (crash mid-write) are ignored by `List`/`Stats`; provide a documented maintenance operation (e.g. `clean`) removing `*.tmp` files older than a threshold.
 - After a crash: run `Verify` over the store (or a representative sample) to detect corruption; restore from backup on mismatch.
+- **The packfile index is not a recovery dependency.** A stale record (pack missing, shorter than the record, outside `packs/`) is dropped on use and the object is re-read from the loose tree, which holds every object. A **deleted** `packs/index.json` therefore costs the packed view only — the index repopulates as objects are written and nothing scans packs to rebuild it; a **malformed** one is refused at construction (`packfs.New` fails decoding it rather than guessing), so the operator deletes or repairs the file and reopens (cas-core §4.14).
 
 ## 3. Observability
 
@@ -191,7 +193,7 @@ This pattern is useful for app metadata, chunked payload manifests, and large re
 
 - The store is a plain directory tree — back it up with standard tooling (tar/rsync/object-storage sync).
 - Consistent snapshot without quiescing: copy while running, then `Verify` the copy — the atomic-write design guarantees the copy never contains partial objects, only possibly the newest ones.
-- Dedup keeps backups small; consider packfiles (performance §9) before large-scale backup.
+- Dedup keeps backups small. The packfile backend does **not**: it keeps the loose tree and mirrors every object into a pack, so backing up a `packfs` store copies the data twice and a sweep never shrinks it. Choose `packfs` for read-open amortization, not for backup or disk size (performance §9, cas-core §4.14).
 
 ## 8. Checklist
 
@@ -201,4 +203,5 @@ This pattern is useful for app metadata, chunked payload manifests, and large re
 - [x] verify cadence defined; mismatch → quarantine + audit + alert
 - [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
 - [x] object descriptor + sidecar checksum defined as optional metadata above the backend, never in the hash input
+- [x] backup procedure documented; the packfile backend's doubled on-disk footprint and missing space reclamation stated (performance §9)
 - [x] backup procedure documented

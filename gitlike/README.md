@@ -26,7 +26,7 @@
 - **`Repository`** — per-type `Store[T]` over one `cas.Backend`, the caller's `cas.Hasher` and the caller's `gitlike.Codecs` (`NewRepository(backend, hasher, codecs)`); cross-type access without `any`, and the wrong store is a compile-time error. The repository names neither the algorithm nor the wire format.
 - **`Resolver` / `ResolvedObject` / `Resolve` / `ResolveAny`** — typed resolution. `Resolve` returns the concrete object as a `cas/repo.Object` (so the Resolver satisfies `cas/repo.Resolver`), `ResolveAny` returns the typed union built from it, and the four `Resolve*` methods stay the compile-time-typed reads.
 - **`WalkGraph`** — whole-graph traversal, delegated to `cas/repo.Walk`: gitlike does not implement its own walk any more, so a gitlike repository and a `cas/repo.Registry` follow identical rules (at-most-once, explicit stack, context checked per node), and `cas/repo.Reachable` expands a gitlike root set without a second traversal.
-- **`CachedRepository`, `Preloader`** — per-type LRU caches and a background commit preloader; `Repository.Close`/`CachedRepository.Close` release the shared backend (packfs flushes its active pack there).
+- **`CachedRepository`, `Preloader`** — per-type LRU caches and a background commit preloader; `Repository.Close`/`CachedRepository.Close` release the shared backend (packfs releases its active pack handle there; its index is already persisted per `Put`).
 - **`cas` is untouched** — the canonical *consumer* pattern.
 
 ## Codec-agnostic by construction

@@ -1,8 +1,8 @@
 ---
 type: Specification
 title: Performance — go-cask
-description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, packfiles as an extension, performance-test requirements, benchmarks and profiling.
-version: v16
+description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
+version: v17
 ---
 
 # Performance — go-cask
@@ -76,7 +76,7 @@ Correctness, clarity, and documented contracts come first; reject any micro-opti
 
 ### 8.1 Object count vs layout
 
-One file per loose object; first hard limit is usually inodes/dir-entry performance, not disk. Within one directory ~10k–100k entries are fine on ext4; choose `FanOut`/`FanLevels` so leaf dirs stay under ~10k entries for the expected deduplicated count. `List`/`Stats` walk every file (O(object count)) — background work at 1M+; packfiles reduce to O(packs) via the index (§9).
+One file per loose object; first hard limit is usually inodes/dir-entry performance, not disk. Within one directory ~10k–100k entries are fine on ext4; choose `FanOut`/`FanLevels` so leaf dirs stay under ~10k entries for the expected deduplicated count. `List`/`Stats` walk every file (O(object count)) — background work at 1M+; the shipped packfile backend does not change that, because it keeps the loose tree alongside its packs (§9).
 
 | Layout | Directories | Practical loose ceiling (ext4, SSD) | Use |
 |---|---|---|---|
@@ -84,31 +84,58 @@ One file per loose object; first hard limit is usually inodes/dir-entry performa
 | Git-like (2,1) | 256 | ~1M–10M | default |
 | wide (4,1) | 65,536 | ~10M–100M | many-object stores |
 | deep 2/2 (2,2) | 65,536 leaf | ~10M–100M | many-object stores |
-| + packfiles | ~2/pack | billions (bounded by pack count/disk) | ≥100M small (§9) |
+| + packfs | loose tree + `packs/` | unchanged (same loose files, plus pack copies) | read-open amortization, not density (§9) |
 
 ### 8.2 Other limits
 
 - Dedup reduces effective object count — size for the deduplicated count.
 - Memory backend: RAM-bound, ~100+ B/object map overhead plus data; for tests/benchmarks/ephemeral stores only.
 - SHA-256 (or SHA-1) collision risk is negligible at realistic scale.
-- Reads stream one FD each; concurrent readers bounded by `ulimit` (packs amortize to 1 FD/pack).
-- The single `Put` mutex serializes writers on one store; for write-heavy work shard, batch small writes into packs (§9), or scale behind the CAS API (which rate-limits per IP).
-- Disk and inode exhaustion are eventual limits; dedup + GC (reachability) reclaim disk; inodes can precede space — packfiles fix both.
+- Reads stream one FD each; concurrent readers bounded by `ulimit` (a packfs batch amortizes to 1 FD/pack).
+- The single `Put` mutex serializes writers on one store; for write-heavy work, shard or scale behind the CAS API (which rate-limits per IP). The packfile backend does not batch writes — it appends each `Put` immediately — and serializes reads against writes on the same mutex (§9).
+- Disk and inode exhaustion are eventual limits; dedup + GC (reachability) reclaim disk on `fs` and `mem`; inode count is unchanged by the packfile backend, which writes both the loose object and the pack copy (§9).
 
-## 9. Packfiles (deferred extension)
+## 9. Packfiles (shipped extension: `cas/backend/packfs`)
 
-Answer to "too many small loose objects"; implement behind the same `Backend` contract once the loose-store design is proven.
+`cas/backend/packfs` ships as an opt-in backend — the loose tree plus append-only pack files and a JSON
+index, selected by `cask -backend packfs` (cas-core §4.14). This section states what it does; the design
+sketch it replaced (a magic/version/checksum `.pack` with a `.idx` fan-out table, an 8 KiB size threshold,
+"objects above the threshold stay loose", pack-rewrite GC) is withdrawn, because none of it is what runs.
 
-- **Motivation:** at ~1M+ objects — inode exhaustion, slow `List`/`Stats`, slow backups, per-file overhead.
-- **Format** (Git-inspired, std-lib only): `.pack` (magic, version, size-prefixed objects appended, trailing whole-pack checksum) + `.idx` (sorted hash→offset with a Git-like fan-out table → O(1)–O(log n) lookup without full load).
-- **Write policy:** objects ≤ threshold (e.g. 8 KiB) go into the current pack; flush at a target size (e.g. 64 MiB) or time budget; flushed packs are **immutable**.
-- **Read:** `Backend.Get` stays streaming — index lookup, then `io.SectionReader`/`ReadAt` range read; never load a pack fully. Objects above threshold stay loose.
-- **List/Stats:** from the index files — O(packs) + O(entries), not O(files).
-- **GC:** rewrite packs dropping unreachable objects; verify pack checksums on rewrite.
-- **Concurrency:** flushed packs immutable → lock-free reads survive; the open pack is append-only under the `Put` mutex.
-- **Durability:** `f.Sync()` pack + index before exposing (operations §1); the batch window is the documented trade-off.
-- **Trade-offs:** random reads cost an index lookup + seek; write latency becomes batched; keep behind the `Backend` contract so `Store[T]`, caches, and HTTP are untouched.
-- **Acceptance:** same read API and all tests pass; p99 small-object read ≤ loose; `List`/`Stats` at 1M materially faster; `GC` handles packs; Put/Get win at ≥1M and inode count drops by orders of magnitude.
+- **Shape.** `<base>/loose/` is a full `fs.Backend` (fan-out default). `<base>/packs/current.pack` is the
+  active pack, appended under `O_APPEND` and rotated at `PackMaxBytes` (default 64 MiB) or `PackMaxEntries`
+  (default 10 000) into `<base>/packs/pack-<unixnano>.pack`; `<base>/packs/index.json` maps each packed
+  digest (hex) to its `{pack, offset, size}`. A record is `[uint32 BE digest length][digest][uint64 BE
+  payload length]` followed by the payload — no magic, no format version, no checksum, so the index is the
+  only description of a pack's contents.
+- **Write policy: every object is both loose and packed.** There is no size threshold and nothing stays only
+  loose: `Put` spools the stream to a scratch file, writes the object through the fs backend's atomic
+  `Sync`+rename path, appends it to the active pack, and rewrites the index atomically. A re-`Put` of the
+  same digest appends a second copy. Durability comes from the loose copy; the pack append is not separately
+  fsynced, and there is no batch window to trade against.
+- **Read.** `Get` is an index lookup plus an `io.SectionReader` over the pack — streaming, one open per
+  object, never a full-pack read. The per-open win is the **batch**: `GetMany` (cas-core §4.13) serves a group
+  of digests from one open per pack, measured at ≈ 6.0 ms and one open versus ≈ 13.7 ms and 4000 opens for
+  the sequential loop over 4000 objects in one pack. Reads take the in-memory index under the same mutex as
+  `Put`/`Delete`, so they are not lock-free the way `fs` reads are.
+- **List/Stats.** `List` merges the loose digests with the index keys and `Stats` adds the indexed payload
+  sizes of objects not present loose; both still walk the loose tree, so neither is O(packs), and `Stats`
+  reports logical bytes rather than the packs' physical size.
+- **GC: correctness yes, space no (de-claimed).** `packfs` implements no `GC`/`Prune`; `cask gc`/`prune` run
+  the portable `cas.Sweep` (cas-core §4.11), which drops the loose object and the index record so the object
+  becomes unreachable — the guarantee mark-and-sweep makes (consistency §4). The packed payload stays: packs
+  are append-only and are never rewritten or truncated, so a packed store's disk usage never falls on its
+  own, not even after a sweep, and an idempotent re-`Put` grows it. The earlier requirement that GC "rewrite
+  packs dropping unreachable objects" is withdrawn rather than promised (cas-core §8 d12); compaction is an
+  open follow-up (§12). Reclaiming space today means rebuilding — `cas/backend/snapshot.Export`/`Import`
+  (cas-core §4.3) into a fresh base — or deleting pack files an operator has decided are disposable.
+- **Delete/Clean.** `Delete` unlinks the loose object and drops the record; the pack is untouched. `Clean`
+  sweeps orphan `*.tmp` scratch older than the threshold in the loose tree and the pack directory.
+- **Aging.** `ModTime` reports the pack file's timestamp, not the object's first-`Put` time, so an age-gated
+  sweep ages objects by their pack; `Size` reports the recorded payload length.
+- **Choose it for the right reason.** Its implemented win is amortized read opens (§4.13 and the benchmarks
+  in cas-core). It does not reduce inode count, does not speed up `List`/`Stats`, and does not shrink a store
+  — the loose mirror plus the packs make a store *larger* on disk than the same objects on `fs` alone.
 
 ## 10. Content-defined chunking (deferred)
 
@@ -127,7 +154,7 @@ Go benchmarks (with `-benchmem`) are the unit level. Scenario tests prove end-to
 | T-03 | Mixed workload | 90% small reads + 10% writes, warm store |
 | T-04 | Concurrent readers | 32 goroutines reading the same 100k objects |
 | T-05 | Concurrent writers | 8 goroutines writing distinct small objects |
-| T-06 | List/Stats at scale | 100k and 1M objects; loose vs packed (§9 when landed) |
+| T-06 | List/Stats at scale | 100k and 1M objects; loose vs packed (§9) |
 | T-07 | Fan-out comparison | flat vs (2,1) vs (2,2) vs (4,1) at 100k objects |
 | T-08 | HTTP end-to-end | client → CAS API: streaming upload/download, 429 under load |
 
@@ -151,7 +178,7 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 
 ## 12. Checklist
 
-- [x] `Get`/`Exists`/`List`/`Stats` are lock-free
+- [x] `Get`/`Exists`/`List`/`Stats` are lock-free on `fs` (`mem` uses an `RWMutex`; the packfile backend takes its index mutex, §9)
 - [x] hash-on-write in a single pass (CLI/HTTP: `io.MultiWriter` + `io.Copy`; core: marshal once, digest, stream)
 - [x] timed benchmarks report allocations; payload-defined operations report bytes
 - [x] `-race` concurrent Put/Get/Delete test green
@@ -159,4 +186,4 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 - [x] profiling workflow documented and reproducible
 - [x] fan-out layout chosen per expected object count (§8.1)
 - [x] scenario tests T-01…T-08 exist and pass their thresholds
-- [x] packfiles (§9), when implemented, meet all acceptance criteria
+- [x] packfs ships behind the same `Backend` contract; its measured win (batched read opens) is benchmarked, and the unclaimed pieces (pack-level GC, space reclamation, O(packs) listing, inode reduction) are documented as not implemented rather than promised (§9, cas-core §4.14)

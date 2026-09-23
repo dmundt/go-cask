@@ -15,7 +15,7 @@ semantics separate from persistence.
 | Typed storage | `Object[T]`, `Codec[T]`, and `Store[T]` keep application types out of the byte layer. |
 | Pluggable policy | Applications select their `Hasher`, codec, and `Backend`. |
 | Verification | `cas.Verify` and `cas.NewVerifier` recompute a stored object's digest explicitly. |
-| Storage backends | Filesystem and in-memory backends ship; implementations of `Backend` remain interchangeable. |
+| Storage backends | Filesystem, in-memory, and an opt-in packfile backend (`cask -backend fs\|packfs`) ship; implementations of `Backend` remain interchangeable. |
 
 ## When to reach for it
 

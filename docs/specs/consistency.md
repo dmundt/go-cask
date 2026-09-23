@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v13
+version: v14
 ---
 
 # Consistency — go-cask
@@ -41,6 +41,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 
 - **Roots** are application-supplied pinned hashes (Git refs/branches, IPFS pins, Docker manifest digests; in `gitlike`, typically commit/tag hashes). `cas/refs.Store.Roots` is the concrete, library-provided source: every ref's current digest, ready to hand to `cas.Reachable` (single-type) or `cas/repo.Reachable` (cross-type, via a `Registry`) for expansion (library-design.md).
 - **Algorithm** (`GC(ctx, reachable map[string]bool)`, cas-core §4.11): **(1) Mark** — walk `References()` from every root (BFS/DFS with a visited set, robust even against cycles), collect the reachable set (via `cas.Reachable`/`Walker[T]` for one type, or `cas/repo.Walk`/`Reachable` across several registered types); **(2) Sweep** — delete every object whose `h.String()` is not in the reachable set. `fs.Backend.GC` is the fs-native fast path; `cas.Sweep(ctx, raw, reachable, cas.SweepOptions{})` is the generic form that works against any backend, including one with no backend-native GC of its own (`packfs`; go-cask#137).
+- **Unreachability and space are two different outcomes, and the sweep guarantees both only on `fs`/`mem`.** Mark-and-sweep's contract is that a swept object is gone from the store: `List` no longer reports it and `Get` is `ErrNotFound`. That holds on every backend. Reclaiming the *disk space* is a backend property, not a GC property: `fs` and `mem` unlink the bytes, while the packfile backend's `Delete` removes the loose object and the index record but leaves the payload in the append-only pack — a packed store grows with every `Put` and never shrinks on its own (cas-core §4.14, performance §9). No pack compaction is implemented or promised: see the de-claim in cas-core §8 d12.
 - **When:** explicit only — `POST /gc` (admin), CLI, or scheduled job. Never automatic by default (a store with no roots must not silently delete itself).
 - **Concurrency:** sweeping unlinks files; a concurrent `Put` of a swept hash just re-creates it (idempotent, lock-free-safe); a reader holding an open FD keeps the bytes (POSIX). No GC-vs-write coordination within one process. Across OS processes, the **grace model** applies (cas-core §6): a sweep that MAY race a live writer MUST reclaim only objects older than a grace `--min-age` (the `cask` CLI `gc`/`prune` default 1h), so fresh writes survive. A forced `--min-age 0` sweep is the dangerous variant — safe only when no other process writes. Maintenance sweeps never run concurrently with each other (`cask` serializes via `.cask.lock`, cli §2).
 - **Why not reference counting:** refcounts need a persisted, updated counter on every write — complexity and a drift source. Mark-and-sweep is stateless, correct by construction, cheap enough for a write-dominated store. (Git and restic both trace, not refcount.)
@@ -49,7 +50,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 
 Removes **unreachable** objects older than a threshold (restic-retention/S3-lifecycle style).
 
-- **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration.
+- **Age source:** creation time ≈ first-`Put` time, from file mtime (fs backend — zero schema change) or a per-object timestamp map (mem backend). No metadata sidecar, no schema migration. The packfile backend implements `Statter` but reports its **pack file's** mtime, so a packed object ages by its pack rather than by its own first `Put` (cas-core §4.14) — age-gated retention over a packed store is therefore a coarse, pack-level grace, not a per-object one.
 - **Operation:** `Prune(ctx, reachable map[string]bool, minAge time.Duration, dryRun bool)`: `reachable` MUST already be the complete, transitively-closed set of live digests, computed by the caller (`cas.Reachable`/`Walker[T]` for one type, or `cas/repo.Walk`/`Reachable` across several registered types) — Prune never expands references itself, exactly like `GC` (§4); delete objects absent from `reachable` AND older than `minAge`; `dryRun` returns the would-be-deleted set without deleting (default `true`; a real delete needs the explicit flag). `fs.Backend.Prune` is the fs-native fast path; `cas.Sweep(ctx, raw, reachable, cas.SweepOptions{MinAge: minAge, DryRun: dryRun})` is the generic form — it requires the backend to implement `cas.Statter` for age-based retention (`ErrUnsupported` otherwise; a backend without per-object modification times has no age to prune by).
 - **Grace period is the point:** unreachable-young objects are kept, giving a recovery window after a bad unpin/delete (restic "keep recent even if unreachable"; S3 noncurrent-version expiration).
 - **Dangerous variant** (explicit, admin, dry-run + confirm): prune ALL objects older than T regardless of reachability — removes history and can break references. Exists for legal/temp-data eviction; the one op that can destroy reachable data.
@@ -62,7 +63,7 @@ Removes **unreachable** objects older than a threshold (restic-retention/S3-life
 | Broken objects | full scan / sample / on-read | scheduled full `Verify` + sample on `List` |
 | Dangling refs | on-write check / periodic scan / lazy only | periodic scan; lazy tolerance always |
 | Reachability | DFS/BFS from roots, refcounts, bloom tracing | BFS/DFS from roots with visited set |
-| GC | mark-and-sweep, refcounts, pack rewrite | mark-and-sweep; pack rewrite deferred (performance §9) |
+| GC | mark-and-sweep, refcounts, pack rewrite | mark-and-sweep; pack rewrite **de-claimed** (not implemented, not required for correctness — performance §9, cas-core §8 d12) |
 | Retention | age-based, keep-N, both | age-based (`minAge`) with dry-run |
 
 Costs: full `Verify` O(bytes); reference scan O(refs) lock-free lookups; GC O(objects) per run. All background at scale (performance §8.1).
@@ -77,7 +78,7 @@ Costs: full `Verify` O(bytes); reference scan O(refs) lock-free lookups; GC O(ob
 | S3 lifecycle | age-based object expiration |
 | Docker registry | manifest digests as roots; GC walks manifests |
 
-Deliberately **not** adopted (yet): persisted refcounts, bloom filters as a GC or reachability authority, chunked pack GC (deferred with packfiles, performance §9), distributed GC coordination. Optional advisory bloom pre-checks are allowed as a front-end optimization, but they never replace the store's reachability graph or `Verify`-driven correctness model.
+Deliberately **not** adopted (yet): persisted refcounts, bloom filters as a GC or reachability authority, pack compaction/space-reclaiming rewrite (the shipped sweep deletes the loose object and the pack index record but never rewrites a pack — performance §9, cas-core §4.14), distributed GC coordination. Optional advisory bloom pre-checks are allowed as a front-end optimization, but they never replace the store's reachability graph or `Verify`-driven correctness model.
 
 ## 8. Anti-over-engineering
 
@@ -85,7 +86,7 @@ The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, 
 
 - No persisted refcounts, no incremental GC index, no automatic background GC, no GC-vs-write transactions, no distributed coordination.
 - Content addressing + atomic writes remove most consistency problems by construction; the rest is detection + explicit reclamation.
-- Future needs (pack rewriting, chunked GC) are added behind the same `Backend`/maintenance contracts — never a parallel model.
+- Future needs (pack rewriting, chunked GC) are added behind the same `Backend`/maintenance contracts — never a parallel model. Compaction in particular is a maintenance operation on one backend, not a change to mark-and-sweep: the reachable set stays the caller's (cas-core §4.14).
 
 ## 9. Where these live
 
@@ -99,6 +100,7 @@ The entire consistency surface is **five operations**: `cas.Verify(ctx, raw, d, 
 - [x] Broken objects quarantined + audit-logged, never auto-"fixed"
 - [x] Dangling scan O(refs) lock-free; reported as diagnostics
 - [x] GC mark-and-sweep from app roots; explicit only
+- [x] A sweep makes an object unreachable on every backend; space is reclaimed on `fs`/`mem` only, and the unpacked pack bytes of a packed store are documented rather than promised away (§4, performance §9)
 - [x] `Prune(reachable, minAge, dryRun)` keeps unreachable-young objects as grace; dry-run default
 - [x] Sweeps racing live writers grace-gated (`--min-age`); forced `--min-age 0` is the dangerous variant (cas-core §6)
 - [x] Dangerous all-objects prune is admin + dry-run + confirm
