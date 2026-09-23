@@ -183,6 +183,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The viewer's login throttle is proxy-aware: `cask web -trusted-proxy
+  <ip|cidr,...>` names the reverse proxies whose forwarded client address
+  (`X-Forwarded-For`, or RFC 7239 `Forwarded`) the throttle may believe, so
+  clients behind a proxy get a bucket each instead of sharing the proxy's and
+  letting five failed logins lock every operator out for up to 30 minutes.
+  With no trusted proxy configured — still the default — a forwarded header is
+  ignored and the direct peer address keys the throttle, so a spoofed header
+  can neither evade the throttle nor block another client; a malformed
+  `-trusted-proxy` entry fails startup rather than silently trusting nothing.
 - The viewer classifies a verification outcome the way `cask verify --all`
   does: only a digest mismatch is `corrupt`, so an object that is missing or
   unreadable is reported as unverified (with `Missing`/`Unreadable` prose)

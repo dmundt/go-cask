@@ -20,7 +20,6 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -64,6 +63,13 @@ type Config struct {
 	// Reachability provides host-computed root reachability for the optional
 	// Orphaned object state. Nil leaves orphan status unavailable.
 	Reachability ReachabilityIndex
+	// TrustedProxies lists the reverse proxies whose forwarded client address
+	// the viewer may believe, as CIDR blocks ("10.0.0.0/8") or single IPs
+	// ("127.0.0.1", "::1"). Empty — the default — trusts none, so the login
+	// throttle keys on the direct peer address alone. A value that is neither
+	// an IP nor a CIDR block fails New rather than silently trusting nothing
+	// (viewer-security §5.2).
+	TrustedProxies []string
 }
 
 // ReferenceIndex supplies application-level graph edges to the viewer. The
@@ -91,6 +97,9 @@ type Server struct {
 	sessions      *sessions
 	loginThrottle *throttle
 	meta          *metaCache
+	// trusted is the parsed Config.TrustedProxies: the peers whose forwarded
+	// client address the login throttle may believe (viewer-security §5.2).
+	trusted *trustedProxy
 	// snapshot is the published metadata snapshot together with the time it
 	// was built. The pair travels as one value, so a reader that loads it
 	// never sees a snapshot under the wrong timestamp.
@@ -150,6 +159,10 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 	if cfg.HashAlgorithm == "" {
 		cfg.HashAlgorithm = "sha256"
 	}
+	trusted, err := newTrustedProxy(cfg.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("viewer trusted proxies: %w", err)
+	}
 	tmpl, err := template.New("viewer").Funcs(template.FuncMap{
 		// The viewer's short form is the first 8 hex characters of a digest
 		// (cas.Digest.Prefix); templates that render a digest they hold as a
@@ -173,6 +186,7 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		sessions:      newSessions(),
 		loginThrottle: newThrottle(5, time.Minute),
 		meta:          newMetaCache(),
+		trusted:       trusted,
 		tmpl:          tmpl,
 	}, nil
 }
@@ -328,12 +342,4 @@ func (s *Server) parseDigest(w http.ResponseWriter, r *http.Request) (cas.Digest
 		return nil, false
 	}
 	return d, true
-}
-
-func callerIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

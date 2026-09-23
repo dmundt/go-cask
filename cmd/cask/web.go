@@ -35,6 +35,7 @@ type webArgs struct {
 	hashAlgorithm string
 	tokens        string
 	tokenFile     string
+	trustedProxy  string
 	allowInsecure bool
 	noOpen        bool
 }
@@ -55,9 +56,24 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
 	flags.StringVar(&a.tokens, "tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
+	flags.StringVar(&a.trustedProxy, "trusted-proxy", "", "comma-separated IPs/CIDRs whose forwarded client address the login throttle may believe (e.g. 10.0.0.0/8); empty trusts none")
 	flags.BoolVar(&a.allowInsecure, "allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
 	flags.BoolVar(&a.noOpen, "no-open", false, "do not open the default browser")
 	return flags
+}
+
+// splitList splits a comma-separated flag value into its trimmed, non-empty
+// entries. Values that are not IP addresses or CIDR blocks are left for the
+// viewer to reject at startup, so the error names the offending value rather
+// than dropping it here.
+func splitList(value string) []string {
+	var entries []string
+	for entry := range strings.SplitSeq(value, ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
 }
 
 // runWeb starts the embedded viewer — the product's only HTTP surface
@@ -148,6 +164,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		HashAlgorithm: a.hashAlgorithm,
 		StartupToken:  token,
 		RoleTokens:    roleTokens,
+		// The login throttle keys on the caller address. Empty — the default —
+		// trusts no proxy, so a forwarded header is ignored; a configured
+		// proxy's forwarded client address is believed instead
+		// (viewer-security §5.2). A malformed entry fails web.New below.
+		TrustedProxies: splitList(a.trustedProxy),
 	}
 	// A store without the known deterministic preview graph is an ordinary
 	// store, and stays reference-free (cli.md §2).
