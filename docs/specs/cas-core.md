@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v56
+version: v57
 ---
 
 # CAS Core — go-cask
@@ -444,6 +444,7 @@ func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 | `PutDedup` | as `Put`, then `backend.Exists` first; returns `(d, alreadyStored, err)` |
 | `Get` | `backend.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates |
+| `Type` | `backend.Get` → `PeekType` → close: reads the envelope header only, so the payload is never read or allocated. Reports the type as stored (which may be one this store cannot decode — `Get` is what rejects that), `ErrCorrupt` for an unusable header, and the backend's `ErrNotFound` for an absent object |
 | `Exists` | delegates to `backend` |
 | `Delete` | delegates to `backend` |
 
@@ -451,6 +452,7 @@ func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 - **Object invariants are enforced on both paths** (`Validator`, §4.7). `Put`/`PutDedup` run `Validate` before encoding, so an invalid object is never written and the object's own error is preserved in the chain (`cas: put: <err>`); `Get` runs it after decoding and reports a violation as `ErrCorrupt` (wrapping the object's error), so a hand-crafted or foreign payload cannot come back in an impossible state. `GetRaw` cannot validate what it does not decode — an inspector must be able to read a broken object.
 - **A nil object is rejected**: `Put`/`PutDedup` refuse one (`cas: put: nil object`) instead of encoding a payload that decodes back to nil, and `Get` reports a payload that decodes to nil as `ErrCorrupt` — checked **before** the decoded type is compared and before `Validate` runs, so no method is ever invoked on a nil receiver. The core decides "there is no value here" with an internal nil check (the only use of reflection in `cas`), so an implementation never has to tolerate a nil receiver.
 - Type safety from one store per type: `Store[Blob]` vs `Store[Commit]` distinct — passing a commit digest to a blob store is a **compile-time error**.
+- **Enumerating a store by type is `List` plus `Type`**, not `List` plus `Get`: `Store.Type` reads only the envelope header (§4.6), so "which objects are snapshots" costs a header read per object rather than a decode, and a large object costs the same as a small one.
 - `Get` returns the **concrete `T`** (type name verified); `GetRaw` returns bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of `any`/type assertions; the `Validator` check is a structural interface assertion on the stored value, applied uniformly to every type rather than dispatch on a concrete type.
 - `Store[T]` is safe for concurrent use if its `Backend` and `Hasher` are.
 
@@ -588,7 +590,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 |---|---|
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` and the `cas/backend` stream helpers `WriteAll`/`ReadAll`/`ReadPayload` |
-| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`; codecs `json.New[T]()` (`cas/codec/json`), `gob.NewRaw[T]()` / `gob.New[T](next)` (`cas/codec/gob`), `binary.New(inner, wrap, unwrap)` / `binary.NewRaw(marshal, unmarshal)` (`cas/codec/binary`) |
+| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, `PeekType`; codecs `json.New[T]()` (`cas/codec/json`), `gob.NewRaw[T]()` / `gob.New[T](next)` (`cas/codec/gob`), `binary.New(inner, wrap, unwrap)` / `binary.NewRaw(marshal, unmarshal)` (`cas/codec/binary`) |
 | Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` (any short/display form is `cas.Digest.Prefix`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
 | Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` |

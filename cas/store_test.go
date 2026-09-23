@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -418,7 +420,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 }
 
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
-// contexts on Put, PutDedup, GetRaw, and Get (via GetRaw).
+// contexts on Put, PutDedup, GetRaw, Get, Exists, Delete and Type.
 func TestStoreCanceledOps(t *testing.T) {
 	st := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -432,6 +434,7 @@ func TestStoreCanceledOps(t *testing.T) {
 		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, test.Note{Title: "t"}); return err }},
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
 		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
+		{"Type", func() error { _, err := st.Type(ctx, h); return err }},
 		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
 		{"Delete", func() error { return st.Delete(ctx, h) }},
 	} {
@@ -440,5 +443,173 @@ func TestStoreCanceledOps(t *testing.T) {
 				t.Fatalf("err = %v, want context.Canceled", err)
 			}
 		})
+	}
+}
+
+// countingBackend wraps a Backend and counts the bytes served through Get, so a
+// test can prove that a header peek never reads the payload.
+type countingBackend struct {
+	cas.Backend
+	read int
+}
+
+func (b *countingBackend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) {
+	rc, err := b.Backend.Get(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	return &countingReadCloser{rc: rc, n: &b.read}, nil
+}
+
+// countingReadCloser adds the bytes it serves to the counter.
+type countingReadCloser struct {
+	rc io.ReadCloser
+	n  *int
+}
+
+func (c *countingReadCloser) Read(p []byte) (int, error) {
+	n, err := c.rc.Read(p)
+	*c.n += n
+	return n, err
+}
+
+func (c *countingReadCloser) Close() error { return c.rc.Close() }
+
+// TestStoreTypePeekDoesNotReadThePayload pins the point of the peek: Type reads
+// the envelope header and stops, so a large object costs a header rather than a
+// payload. That is what makes List plus Type the cheap way to enumerate a store
+// by type, where Get would decode every object.
+func TestStoreTypePeekDoesNotReadThePayload(t *testing.T) {
+	ctx := context.Background()
+	counted := &countingBackend{Backend: mem.New()}
+	s := newTestStore(t, counted)
+
+	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPut := counted.read
+
+	typ, err := s.Type(ctx, d)
+	if err != nil {
+		t.Fatalf("Type = %v", err)
+	}
+	if typ != "note@1" {
+		t.Fatalf("Type = %q, want note@1", typ)
+	}
+	peeked := counted.read - afterPut
+	if peeked > 64 {
+		t.Fatalf("Type read %d bytes, want only the header (the payload is %d bytes)", peeked, 1<<20)
+	}
+
+	// The counter is live: a Get over the same backend does read the payload.
+	if _, err := s.Get(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if got := counted.read - afterPut - peeked; got < 1<<20 {
+		t.Fatalf("Get read %d bytes, want the whole payload", got)
+	}
+}
+
+// TestStoreTypeDoesNotAllocateThePayload states the same property in bytes
+// allocated: the peek's cost must not grow with the object.
+func TestStoreTypeDoesNotAllocateThePayload(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t, mem.New())
+	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	if _, err := s.Type(ctx, d); err != nil {
+		t.Fatalf("Type = %v", err)
+	}
+	runtime.ReadMemStats(&after)
+
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 1<<16 {
+		t.Fatalf("Type allocated %d bytes, want a header-sized cost (the payload is %d bytes)", grew, 1<<20)
+	}
+}
+
+// TestStoreTypeAcrossBackends runs the peek over both shipped backends, so the
+// contract holds where a reader is a file as well as where it is a buffer.
+func TestStoreTypeAcrossBackends(t *testing.T) {
+	for _, bf := range []struct {
+		name string
+		fn   backendFactory
+	}{
+		{"fs", fsFactory},
+		{"memory", memFactory},
+	} {
+		t.Run(bf.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newTestStore(t, bf.fn(t))
+			d, err := s.Put(ctx, test.Note{Title: "t", Body: "b"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			typ, err := s.Type(ctx, d)
+			if err != nil {
+				t.Fatalf("Type = %v", err)
+			}
+			if typ != "note@1" {
+				t.Fatalf("Type = %q, want note@1", typ)
+			}
+		})
+	}
+}
+
+// TestStoreTypeReportsTheStoredType shows the peek is honest about what is on
+// disk: it reports the stored type, including one this store cannot decode, and
+// leaves the rejection to Get.
+func TestStoreTypeReportsTheStoredType(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	notes := newTestStore(t, backend)
+	d, err := notes.Put(ctx, test.Note{Title: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	others := cas.New(backend, jsoncodec.New[test.Node](), sha256.New())
+	typ, err := others.Type(ctx, d)
+	if err != nil {
+		t.Fatalf("Type through another store = %v", err)
+	}
+	if typ != "note@1" {
+		t.Fatalf("Type = %q, want the stored type note@1", typ)
+	}
+	if _, err := others.Get(ctx, d); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Get(a foreign type) = %v, want ErrUnknownType", err)
+	}
+}
+
+// TestStoreTypeRejectsMissingAndCorruptKeys covers the peek's failure modes: an
+// absent object is ErrNotFound, an absent digest is rejected before any read,
+// and a damaged header is ErrCorrupt rather than a payload decode failure.
+func TestStoreTypeRejectsMissingAndCorruptKeys(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	s := newTestStore(t, backend)
+
+	if _, err := s.Type(ctx, sha256.Of([]byte("absent"))); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Type(missing) = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Type(ctx, cas.Digest{}); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("Type(absent digest) = %v, want ErrInvalidDigest", err)
+	}
+
+	// A stored object whose header is not a usable envelope: version 1 with an
+	// empty type name.
+	garbage := []byte{0x01, 0x00}
+	d := sha256.Of(garbage)
+	if err := backend.Put(ctx, d, bytes.NewReader(garbage)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Type(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Type(damaged header) = %v, want ErrCorrupt", err)
 	}
 }

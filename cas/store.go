@@ -267,6 +267,38 @@ func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
 	return data, nil
 }
 
+// Type reports the versioned type name stored at d without decoding the payload
+// or reading it. It opens the object, reads the envelope header (PeekType) and
+// closes the reader, so a large object costs a header read rather than a full
+// read and allocation. That is what makes "enumerate the store by type" a List
+// followed by one Type per digest, where Get would decode every payload.
+//
+// It reports the type as stored, which is not necessarily the type this store
+// decodes: a digest holding a different type or major version is reported here
+// and rejected by Get. An absent object returns the backend's ErrNotFound, and
+// an unusable header returns ErrCorrupt with the offending field named.
+func (s *Store[T]) Type(ctx context.Context, d Digest) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := s.check(d, "store: type"); err != nil {
+		return "", err
+	}
+	rc, err := s.backend.Get(ctx, d)
+	if err != nil {
+		return "", err
+	}
+	typeName, err := PeekType(rc)
+	if err != nil {
+		_ = rc.Close() // the header error is the one worth reporting
+		return "", err
+	}
+	if err := rc.Close(); err != nil {
+		return "", fmt.Errorf("cas: close object: %w", err)
+	}
+	return typeName, nil
+}
+
 // Exists reports whether the object is stored. Delegates to the backend.
 func (s *Store[T]) Exists(ctx context.Context, d Digest) (bool, error) {
 	if err := s.check(d, "store: exists"); err != nil {

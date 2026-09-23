@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -192,5 +193,148 @@ func TestEnvelopePayloadLenExceeds(t *testing.T) {
 	buf.WriteString("xy")
 	if _, err := EnvelopeFromBytes(buf.Bytes()); !errors.Is(err, ErrUnknownType) {
 		t.Fatalf("oversized payloadLen = %v", err)
+	}
+}
+
+// countingReader counts the bytes read through it. It deliberately does not
+// implement io.ByteReader, so PeekType exercises its byte-at-a-time adapter.
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+// Read reads from the underlying reader and adds the count.
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
+}
+
+// headerSize is the exact length of the [version][uvarint typeLen][type] header
+// encodeEnvelope writes for typ.
+func headerSize(typ string) int {
+	var buf [binary.MaxVarintLen64]byte
+	return 1 + binary.PutUvarint(buf[:], uint64(len(typ))) + len(typ)
+}
+
+// headerTail is what follows that header — the payload-length field and the
+// payload — which a peek deliberately leaves unread.
+func headerTail(typ string, payload []byte) []byte {
+	return encodeEnvelope(typ, payload)[headerSize(typ):]
+}
+
+// TestPeekTypeReadsOnlyTheHeader pins the point of the peek: the bytes consumed
+// are the header whatever the payload size, and the stream is left positioned
+// exactly after it.
+func TestPeekTypeReadsOnlyTheHeader(t *testing.T) {
+	const typ = "blob@1"
+	for _, size := range []int{0, 7, 1 << 20} {
+		payload := bytes.Repeat([]byte("x"), size)
+		cr := &countingReader{r: bytes.NewReader(encodeEnvelope(typ, payload))}
+
+		got, err := PeekType(cr)
+		if err != nil {
+			t.Fatalf("payload %d: PeekType = %v", size, err)
+		}
+		if got != typ {
+			t.Fatalf("payload %d: type = %q, want %q", size, got, typ)
+		}
+		if want := headerSize(typ); cr.n != want {
+			t.Fatalf("payload %d: read %d bytes, want exactly the %d-byte header", size, cr.n, want)
+		}
+		// Nothing was consumed past the header: the rest of the same stream is
+		// still the framed tail — the payload-length field and the payload —
+		// byte for byte.
+		rest, err := io.ReadAll(cr)
+		if err != nil {
+			t.Fatalf("payload %d: read rest = %v", size, err)
+		}
+		if want := headerTail(typ, payload); !bytes.Equal(rest, want) {
+			t.Fatalf("payload %d: %d bytes left, want the %d-byte framed tail", size, len(rest), len(want))
+		}
+	}
+}
+
+// TestPeekTypeAcceptsAByteReader covers the other branch: a reader that can read
+// single bytes itself is used directly, and still stops after the header.
+func TestPeekTypeAcceptsAByteReader(t *testing.T) {
+	payload := []byte("payload")
+	r := bytes.NewReader(encodeEnvelope("tree@2", payload)) // *bytes.Reader is an io.ByteReader
+
+	got, err := PeekType(r)
+	if err != nil {
+		t.Fatalf("PeekType = %v", err)
+	}
+	if got != "tree@2" {
+		t.Fatalf("type = %q, want tree@2", got)
+	}
+	rest, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read rest = %v", err)
+	}
+	if want := headerTail("tree@2", payload); !bytes.Equal(rest, want) {
+		t.Fatalf("%d bytes left, want the %d-byte framed tail", len(rest), len(want))
+	}
+}
+
+// TestPeekTypeLegacyUnversionedName keeps the "@1" default of the byte-slice
+// reader and the streaming one identical.
+func TestPeekTypeLegacyUnversionedName(t *testing.T) {
+	got, err := PeekType(bytes.NewReader(encodeEnvelope("mystery", []byte("{}"))))
+	if err != nil {
+		t.Fatalf("PeekType = %v", err)
+	}
+	if got != "mystery@1" {
+		t.Fatalf("legacy type = %q, want mystery@1", got)
+	}
+}
+
+// TestPeekTypeRejectsMalformedHeader names the offending field for every way a
+// header can be unusable, and reports ErrCorrupt rather than a decode failure:
+// PeekType resolves no type, so a damaged header is damaged data.
+func TestPeekTypeRejectsMalformedHeader(t *testing.T) {
+	var lenBuf [binary.MaxVarintLen64]byte
+	oversized := append([]byte{envelopeVersion}, lenBuf[:binary.PutUvarint(lenBuf[:], maxPeekTypeLen+1)]...)
+
+	for _, tc := range []struct {
+		name  string
+		data  []byte
+		field string
+	}{
+		{"empty stream", nil, "envelope version"},
+		{"unsupported version", []byte{0xff}, "version"},
+		{"truncated type length", []byte{envelopeVersion}, "type length"},
+		{"empty type", []byte{envelopeVersion, 0x00}, "empty type name"},
+		{"oversized type length", oversized, "exceeds"},
+		{"truncated type", []byte{envelopeVersion, 0x03, 'a'}, "truncated type"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := PeekType(bytes.NewReader(tc.data))
+			if !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("PeekType(%v) = %v, want ErrCorrupt", tc.data, err)
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("error %q does not name the field %q", err, tc.field)
+			}
+		})
+	}
+}
+
+// failingReader fails every read with a cause that is not end of stream.
+type failingReader struct{ err error }
+
+// Read reports the configured failure.
+func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// TestPeekTypeKeepsReadErrorCause keeps a real read failure on the chain, so a
+// caller can tell a broken stream from a truncated one.
+func TestPeekTypeKeepsReadErrorCause(t *testing.T) {
+	want := errors.New("device gone")
+	_, err := PeekType(failingReader{err: want})
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("PeekType(read failure) = %v, want ErrCorrupt", err)
+	}
+	if !errors.Is(err, want) {
+		t.Fatalf("PeekType(read failure) = %v, want the cause %v on the chain", err, want)
 	}
 }

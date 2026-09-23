@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v28
+version: v29
 ---
 
 # Defaults and Behavior — go-cask
@@ -32,6 +32,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Default compression codec | `flate` (`cas/codec/flate`) as the default compression wrapper for durable payloads | cas-core §4.6 |
 | Compact binary codec | Optional app-defined payload codec (`binary.New(inner, wrap, unwrap)` or `binary.NewRaw(marshal, unmarshal)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
+| Header-peek ceiling | `PeekType` reads an envelope type name of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
 | Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
 | Hash-on-write | one pass, spool + hasher (`io.MultiWriter`) | performance §3 |
