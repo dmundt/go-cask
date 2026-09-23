@@ -61,7 +61,7 @@ func readLockHolder(path string) string {
 	if err != nil {
 		return "an unknown process"
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
 		if pid, ok := strings.CutPrefix(line, "pid="); ok {
 			if n, err := strconv.Atoi(pid); err == nil {
 				return fmt.Sprintf("process %d", n)

@@ -122,7 +122,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	// the viewer is live — their grace `--min-age` keeps recent objects safe
 	// (cas-core §6).
 	roleTokens := map[string]string{} // token → role, for viewer login
-	for _, pair := range strings.Split(a.tokens, ",") {
+	for pair := range strings.SplitSeq(a.tokens, ",") {
 		role, tok, ok := strings.Cut(pair, "=")
 		tok = strings.TrimSpace(tok)
 		if !ok || tok == "" {

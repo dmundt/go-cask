@@ -143,7 +143,7 @@ func ValidateName(name string) error {
 	if strings.HasPrefix(clean, "/") || filepath.IsAbs(name) {
 		return fmt.Errorf("%w: %q is an absolute path", ErrInvalidName, name)
 	}
-	for _, part := range strings.Split(clean, "/") {
+	for part := range strings.SplitSeq(clean, "/") {
 		switch {
 		case part == "":
 			return fmt.Errorf("%w: %q has an empty path segment", ErrInvalidName, name)
