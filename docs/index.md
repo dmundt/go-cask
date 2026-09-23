@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v15
+version: v16
 ---
 
 # go-cask Rules Index
@@ -23,11 +23,11 @@ version: v15
 | `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
 | `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
 | `cas/repo/` (typed cross-type registry, Walk, Reachable) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) |
-| `cmd/cask/` | [`cli.md`](specs/cli.md) |
-| `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) |
-| `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) |
-| `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) |
-| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) |
+| `cmd/cask/` | [`cli.md`](specs/cli.md) + the [viewer page](../website/viewer.md) for the user-facing explanation of `cask web` |
+| `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
+| `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
+| `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) + [`internal/web/README.md`](../internal/web/README.md) |
+| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + the [viewer page](../website/viewer.md) for the user-facing explanation of the reference states |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
