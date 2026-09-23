@@ -30,7 +30,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Dir / file perms | `0o755` / `0o644` | cas-core §4.4 |
 | Default codec | JSON (`json.New[T]()`), compressed by default with `flate` for size-sensitive payloads | cas-core §4.6 |
 | Default compression codec | `flate` (`cas/codec/flate`) as the default compression wrapper for durable payloads | cas-core §4.6 |
-| Compact binary codec | Optional app-defined payload codec (`binary.New(inner, wrap, unwrap)` or `binary.NewRaw(marshal, unmarshal)`) for stable, compact binary payloads | cas-core §4.6 |
+| Compact binary codec | Optional app-defined payload codec (`binary.New(next, transform, restore)` or `binary.NewRaw(encode, decode)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
 | Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; the byte is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
@@ -113,7 +113,7 @@ Baselines are calibratable on CI hardware (performance §11.4) — default targe
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions require justification | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS; one scoped embedded viewer stylesheet | coding-guidelines §4 |
-| Lean-core budget | `cas/` ≤ ~1600 LOC, ≤ ~40 exported | library-design §1 |
+| Lean-core budget | `cas/` ≤ ~1600 LOC, ≤ ~45 exported identifiers (44 today) | library-design §1 |
 | Stable core surface | identifiers in cas-core §7.1 | cas-core §7.1 |
 | Extension rule | extend don't modify; own packages; stable surface only | extensions §1 |
 
