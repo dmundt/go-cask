@@ -170,3 +170,21 @@ func TestNextCodecFallback(t *testing.T) {
 		t.Fatalf("next codec fallback mismatch: %#v != %#v", got, orig)
 	}
 }
+
+// TestCodecName pins the identity tag: "cbor" when this codec owns the value's
+// conversion, and the inner codec's own tag when it only delegates to one
+// (the bytes are the inner codec's, so claiming cbor would read as a mismatch
+// against an identically encoded object).
+func TestCodecName(t *testing.T) {
+	if got := cbor.NewMap().CodecName(); got != "cbor" {
+		t.Fatalf("NewMap CodecName() = %q, want cbor", got)
+	}
+	raw := cbor.NewRaw[doc](encodeDoc, decodeDoc)
+	if got := raw.CodecName(); got != "cbor" {
+		t.Fatalf("NewRaw CodecName() = %q, want cbor", got)
+	}
+	delegating := cbor.New(jsoncodec.New[doc](), nil, nil)
+	if got := delegating.CodecName(); got != "json" {
+		t.Fatalf("delegating CodecName() = %q, want the inner tag json", got)
+	}
+}

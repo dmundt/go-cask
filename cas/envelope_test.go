@@ -9,10 +9,29 @@ import (
 	"testing"
 )
 
+// v1Envelope hand-builds a version 1 envelope — the layout that predates the
+// codec identity field:
+//
+//	[version u8 = 1][uvarint typeLen][type][uvarint payloadLen][payload]
+//
+// The reader tolerates these bytes forever (a version 1 object has no codec
+// identity and is never rewritten), so they are the back-compat evidence for
+// the envelope parser.
+func v1Envelope(typ string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(envelopeVersionV1)
+	var lenBuf [binary.MaxVarintLen64]byte
+	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], uint64(len(typ)))])
+	buf.WriteString(typ)
+	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], uint64(len(payload)))])
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
 func TestEnvelopeRoundTrip(t *testing.T) {
 	payload := []byte("hello world")
 	typ := "note@1"
-	data := encodeEnvelope(typ, payload)
+	data := encodeEnvelope("json", typ, payload)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -20,15 +39,52 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 	if out.Type != typ {
 		t.Fatalf("type = %q, want %q", out.Type, typ)
 	}
+	if out.Codec != "json" {
+		t.Fatalf("codec = %q, want json", out.Codec)
+	}
 	if string(out.Data) != string(payload) {
 		t.Fatalf("data = %q, want %q", string(out.Data), string(payload))
+	}
+}
+
+// TestEnvelopeCodecUnspecified pins the legal empty codec tag: a codec that
+// declares no identity writes an empty field, which means "unspecified" rather
+// than a format of its own.
+func TestEnvelopeCodecUnspecified(t *testing.T) {
+	out, err := EnvelopeFromBytes(encodeEnvelope("", "blob@1", []byte("x")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Codec != "" {
+		t.Fatalf("codec = %q, want the empty (unspecified) tag", out.Codec)
+	}
+	if out.Type != "blob@1" {
+		t.Fatalf("type = %q, want blob@1", out.Type)
+	}
+}
+
+// TestEnvelopeVersion1ReadsNoCodec pins the version 1 branch: no codec field
+// exists, so the tag reads back empty and the type follows the version byte.
+func TestEnvelopeVersion1ReadsNoCodec(t *testing.T) {
+	out, err := EnvelopeFromBytes(v1Envelope("note@1", []byte(`{"title":"v1"}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Type != "note@1" {
+		t.Fatalf("type = %q, want note@1", out.Type)
+	}
+	if out.Codec != "" {
+		t.Fatalf("codec = %q, want the empty (unspecified) tag for a v1 envelope", out.Codec)
+	}
+	if string(out.Data) != `{"title":"v1"}` {
+		t.Fatalf("data = %q", out.Data)
 	}
 }
 
 func TestEnvelopeLegacyUnversioned(t *testing.T) {
 	payload := []byte("{}")
 	// Legacy form: type without @major — decodeEnvelope appends @1.
-	data := encodeEnvelope("mystery", payload)
+	data := encodeEnvelope("json", "mystery", payload)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +95,7 @@ func TestEnvelopeLegacyUnversioned(t *testing.T) {
 }
 
 func TestEnvelopeEmptyPayload(t *testing.T) {
-	data := encodeEnvelope("blob@1", nil)
+	data := encodeEnvelope("json", "blob@1", nil)
 	out, err := EnvelopeFromBytes(data)
 	if err != nil {
 		t.Fatal(err)
@@ -56,14 +112,43 @@ func TestEnvelopeTruncatedVersion(t *testing.T) {
 }
 
 func TestEnvelopeUnknownVersion(t *testing.T) {
-	data := []byte{0xff, 0x01, 0x61} // version 255, typeLen 1, type "a"
-	if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrUnknownType) {
-		t.Fatalf("unknown version = %v", err)
+	for _, version := range []byte{0x00, 0x03, 0xff} {
+		// Version, codecLen 1, codec "a": only 1 and 2 are readable formats.
+		data := []byte{version, 0x01, 0x61}
+		if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrUnknownType) {
+			t.Fatalf("version %d = %v, want ErrUnknownType", version, err)
+		}
+	}
+}
+
+func TestEnvelopeTruncatedCodecLen(t *testing.T) {
+	data := []byte{envelopeVersion} // version only, no codecLen
+	_, err := EnvelopeFromBytes(data)
+	if !errors.Is(err, ErrUnknownType) {
+		t.Fatalf("truncated codecLen = %v, want ErrUnknownType", err)
+	}
+	if !strings.Contains(err.Error(), "codec length") {
+		t.Fatalf("error %q does not name the codec length field", err)
+	}
+}
+
+func TestEnvelopeOversizedCodec(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteByte(envelopeVersion)
+	var lenBuf [binary.MaxVarintLen64]byte
+	// codecLen = 100 but no codec bytes follow.
+	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], 100)])
+	_, err := EnvelopeFromBytes(buf.Bytes())
+	if !errors.Is(err, ErrUnknownType) {
+		t.Fatalf("oversized codec = %v, want ErrUnknownType", err)
+	}
+	if !strings.Contains(err.Error(), "codec") {
+		t.Fatalf("error %q does not name the codec field", err)
 	}
 }
 
 func TestEnvelopeTruncatedTypeLen(t *testing.T) {
-	data := []byte{0x01} // version only, no typeLen
+	data := []byte{envelopeVersion, 0x00} // version, empty codec, no typeLen
 	if _, err := EnvelopeFromBytes(data); !errors.Is(err, ErrUnknownType) {
 		t.Fatalf("truncated typeLen = %v", err)
 	}
@@ -71,7 +156,8 @@ func TestEnvelopeTruncatedTypeLen(t *testing.T) {
 
 func TestEnvelopeTruncatedType(t *testing.T) {
 	var buf bytes.Buffer
-	buf.WriteByte(0x01)
+	buf.WriteByte(envelopeVersion)
+	buf.WriteByte(0x00) // empty codec
 	var lenBuf [10]byte
 	n := binary.PutUvarint(lenBuf[:], 100)
 	buf.Write(lenBuf[:n])
@@ -83,7 +169,8 @@ func TestEnvelopeTruncatedType(t *testing.T) {
 
 func TestEnvelopeEmptyType(t *testing.T) {
 	var buf bytes.Buffer
-	buf.WriteByte(0x01)
+	buf.WriteByte(envelopeVersion)
+	buf.WriteByte(0x00) // empty codec
 	var lenBuf [10]byte
 	n := binary.PutUvarint(lenBuf[:], 0)
 	buf.Write(lenBuf[:n])
@@ -93,17 +180,37 @@ func TestEnvelopeEmptyType(t *testing.T) {
 	}
 }
 
+// TestEnvelopeVersion1TruncatedHeader pins the v1 branch's own failure paths:
+// a version 1 envelope has no codec field, so the type length follows the
+// version byte directly.
+func TestEnvelopeVersion1TruncatedHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"truncated type length", []byte{envelopeVersionV1}},
+		{"empty type", []byte{envelopeVersionV1, 0x00}},
+		{"truncated payload length", v1Envelope("note@1", nil)[:8]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := EnvelopeFromBytes(tc.data); !errors.Is(err, ErrUnknownType) {
+				t.Fatalf("EnvelopeFromBytes(%v) = %v, want ErrUnknownType", tc.data, err)
+			}
+		})
+	}
+}
+
 // TestEnvelopeVersionAppliedToLegacy pins the legacy path end to end: a type
 // name without "@major" reads back with "@1" appended.
 func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
-	env, err := EnvelopeFromBytes(encodeEnvelope("blob", []byte("x")))
+	env, err := EnvelopeFromBytes(encodeEnvelope("", "blob", []byte("x")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if env.Type != "blob@1" {
 		t.Fatalf("unversioned type name = %q, want blob@1", env.Type)
 	}
-	env, err = EnvelopeFromBytes(encodeEnvelope("blob@2", []byte("x")))
+	env, err = EnvelopeFromBytes(encodeEnvelope("", "blob@2", []byte("x")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,15 +220,15 @@ func TestEnvelopeVersionAppliedToLegacy(t *testing.T) {
 }
 
 func TestEnvelopeMarshalDeterministic(t *testing.T) {
-	a := encodeEnvelope("t", []byte("x"))
-	b := encodeEnvelope("t", []byte("x"))
+	a := encodeEnvelope("json", "t", []byte("x"))
+	b := encodeEnvelope("json", "t", []byte("x"))
 	if !bytes.Equal(a, b) {
 		t.Fatalf("deterministic marshal: %x != %x", a, b)
 	}
 }
 
 func TestEnvelopeFromBytesExported(t *testing.T) {
-	raw := encodeEnvelope("exported@1", []byte("data"))
+	raw := encodeEnvelope("cbor", "exported@1", []byte("data"))
 	env, err := EnvelopeFromBytes(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -129,21 +236,33 @@ func TestEnvelopeFromBytesExported(t *testing.T) {
 	if !strings.HasPrefix(env.Type, "exported") {
 		t.Fatalf("type = %q", env.Type)
 	}
+	if env.Codec != "cbor" {
+		t.Fatalf("codec = %q, want cbor", env.Codec)
+	}
 	if string(env.Data) != "data" {
 		t.Fatalf("data = %q", env.Data)
 	}
 }
 
-// TestEnvelopeFormatWithPayloadLen pins the byte layout: a payload-length
-// field precedes the payload, so the frame is self-delimiting.
+// TestEnvelopeFormatWithPayloadLen pins the byte layout: the codec identity tag
+// precedes the type name, and a payload-length field precedes the payload, so
+// the frame is self-delimiting.
 func TestEnvelopeFormatWithPayloadLen(t *testing.T) {
+	codec := "gzip+json"
 	typ := "note@1"
 	payload := []byte("abc")
-	data := encodeEnvelope(typ, payload)
+	data := encodeEnvelope(codec, typ, payload)
 	r := bytes.NewReader(data)
 	// [version u8]
 	if v, _ := r.ReadByte(); v != envelopeVersion {
 		t.Fatalf("version = %d", v)
+	}
+	// [codecLen uvarint][codec]
+	codecLen, _ := binary.ReadUvarint(r)
+	cb := make([]byte, codecLen)
+	r.Read(cb)
+	if string(cb) != codec {
+		t.Fatalf("codec = %q, want %q", cb, codec)
 	}
 	// [typeLen uvarint][type]
 	typeLen, _ := binary.ReadUvarint(r)
@@ -167,9 +286,27 @@ func TestEnvelopeFormatWithPayloadLen(t *testing.T) {
 	}
 }
 
+// TestEnvelopeToleratesTrailingBytes keeps the forward-compatibility rule: the
+// payload length is authoritative and the writer emits no trailer, so bytes
+// appended after the payload are ignored rather than read as payload.
+func TestEnvelopeToleratesTrailingBytes(t *testing.T) {
+	payload := []byte("abc")
+	data := encodeEnvelope("json", "note@1", payload)
+	extended := append(append([]byte(nil), data...), []byte("future trailer")...)
+
+	env, err := EnvelopeFromBytes(extended)
+	if err != nil {
+		t.Fatalf("EnvelopeFromBytes(extended) = %v", err)
+	}
+	if env.Type != "note@1" || env.Codec != "json" || !bytes.Equal(env.Data, payload) {
+		t.Fatalf("extended frame = %+v, want the framed type, codec and payload", env)
+	}
+}
+
 func TestEnvelopeTruncatedPayloadLen(t *testing.T) {
 	var buf bytes.Buffer
-	buf.WriteByte(0x01)
+	buf.WriteByte(envelopeVersion)
+	buf.WriteByte(0x00) // empty codec
 	var lenBuf [10]byte
 	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
 	buf.Write(lenBuf[:n])
@@ -182,7 +319,8 @@ func TestEnvelopeTruncatedPayloadLen(t *testing.T) {
 
 func TestEnvelopePayloadLenExceeds(t *testing.T) {
 	var buf bytes.Buffer
-	buf.WriteByte(0x01)
+	buf.WriteByte(envelopeVersion)
+	buf.WriteByte(0x00) // empty codec
 	var lenBuf [10]byte
 	n := binary.PutUvarint(lenBuf[:], uint64(len("note@1")))
 	buf.Write(lenBuf[:n])
@@ -210,48 +348,80 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// headerSize is the exact length of the [version][uvarint typeLen][type] header
-// encodeEnvelope writes for typ.
-func headerSize(typ string) int {
+// headerSize is the exact length of the
+// [version][uvarint codecLen][codec][uvarint typeLen][type] header
+// encodeEnvelope writes for codec and typ.
+func headerSize(codec, typ string) int {
 	var buf [binary.MaxVarintLen64]byte
-	return 1 + binary.PutUvarint(buf[:], uint64(len(typ))) + len(typ)
+	return 1 + binary.PutUvarint(buf[:], uint64(len(codec))) + len(codec) +
+		binary.PutUvarint(buf[:], uint64(len(typ))) + len(typ)
 }
 
 // headerTail is what follows that header — the payload-length field and the
 // payload — which a peek deliberately leaves unread.
-func headerTail(typ string, payload []byte) []byte {
-	return encodeEnvelope(typ, payload)[headerSize(typ):]
+func headerTail(codec, typ string, payload []byte) []byte {
+	return encodeEnvelope(codec, typ, payload)[headerSize(codec, typ):]
 }
 
 // TestPeekTypeReadsOnlyTheHeader pins the point of the peek: the bytes consumed
-// are the header whatever the payload size, and the stream is left positioned
-// exactly after it.
+// are the header — including the codec identity tag it steps over — whatever
+// the payload size, and the stream is left positioned exactly after it.
 func TestPeekTypeReadsOnlyTheHeader(t *testing.T) {
 	const typ = "blob@1"
-	for _, size := range []int{0, 7, 1 << 20} {
-		payload := bytes.Repeat([]byte("x"), size)
-		cr := &countingReader{r: bytes.NewReader(encodeEnvelope(typ, payload))}
+	for _, tc := range []struct {
+		name  string
+		codec string
+	}{
+		{"named codec", "gzip+json"},
+		{"unspecified codec", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, size := range []int{0, 7, 1 << 20} {
+				payload := bytes.Repeat([]byte("x"), size)
+				cr := &countingReader{r: bytes.NewReader(encodeEnvelope(tc.codec, typ, payload))}
 
-		got, err := PeekType(cr)
-		if err != nil {
-			t.Fatalf("payload %d: PeekType = %v", size, err)
-		}
-		if got != typ {
-			t.Fatalf("payload %d: type = %q, want %q", size, got, typ)
-		}
-		if want := headerSize(typ); cr.n != want {
-			t.Fatalf("payload %d: read %d bytes, want exactly the %d-byte header", size, cr.n, want)
-		}
-		// Nothing was consumed past the header: the rest of the same stream is
-		// still the framed tail — the payload-length field and the payload —
-		// byte for byte.
-		rest, err := io.ReadAll(cr)
-		if err != nil {
-			t.Fatalf("payload %d: read rest = %v", size, err)
-		}
-		if want := headerTail(typ, payload); !bytes.Equal(rest, want) {
-			t.Fatalf("payload %d: %d bytes left, want the %d-byte framed tail", size, len(rest), len(want))
-		}
+				got, err := PeekType(cr)
+				if err != nil {
+					t.Fatalf("payload %d: PeekType = %v", size, err)
+				}
+				if got != typ {
+					t.Fatalf("payload %d: type = %q, want %q", size, got, typ)
+				}
+				if want := headerSize(tc.codec, typ); cr.n != want {
+					t.Fatalf("payload %d: read %d bytes, want exactly the %d-byte header", size, cr.n, want)
+				}
+				// Nothing was consumed past the header: the rest of the same stream is
+				// still the framed tail — the payload-length field and the payload —
+				// byte for byte.
+				rest, err := io.ReadAll(cr)
+				if err != nil {
+					t.Fatalf("payload %d: read rest = %v", size, err)
+				}
+				if want := headerTail(tc.codec, typ, payload); !bytes.Equal(rest, want) {
+					t.Fatalf("payload %d: %d bytes left, want the %d-byte framed tail", size, len(rest), len(want))
+				}
+			}
+		})
+	}
+}
+
+// TestPeekTypeVersion1Stream covers the version 1 stream: no codec field is
+// present, so the type follows the version byte directly.
+func TestPeekTypeVersion1Stream(t *testing.T) {
+	const typ = "note@1"
+	payload := []byte("payload")
+	cr := &countingReader{r: bytes.NewReader(v1Envelope(typ, payload))}
+
+	got, err := PeekType(cr)
+	if err != nil {
+		t.Fatalf("PeekType(v1 stream) = %v", err)
+	}
+	if got != typ {
+		t.Fatalf("type = %q, want %q", got, typ)
+	}
+	// The v1 header is [version][typeLen][type]; there is no codec field.
+	if want := 1 + 1 + len(typ); cr.n != want {
+		t.Fatalf("read %d bytes, want the %d-byte v1 header", cr.n, want)
 	}
 }
 
@@ -259,7 +429,7 @@ func TestPeekTypeReadsOnlyTheHeader(t *testing.T) {
 // single bytes itself is used directly, and still stops after the header.
 func TestPeekTypeAcceptsAByteReader(t *testing.T) {
 	payload := []byte("payload")
-	r := bytes.NewReader(encodeEnvelope("tree@2", payload)) // *bytes.Reader is an io.ByteReader
+	r := bytes.NewReader(encodeEnvelope("zlib+json", "tree@2", payload)) // *bytes.Reader is an io.ByteReader
 
 	got, err := PeekType(r)
 	if err != nil {
@@ -272,7 +442,7 @@ func TestPeekTypeAcceptsAByteReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read rest = %v", err)
 	}
-	if want := headerTail("tree@2", payload); !bytes.Equal(rest, want) {
+	if want := headerTail("zlib+json", "tree@2", payload); !bytes.Equal(rest, want) {
 		t.Fatalf("%d bytes left, want the %d-byte framed tail", len(rest), len(want))
 	}
 }
@@ -280,7 +450,7 @@ func TestPeekTypeAcceptsAByteReader(t *testing.T) {
 // TestPeekTypeLegacyUnversionedName keeps the "@1" default of the byte-slice
 // reader and the streaming one identical.
 func TestPeekTypeLegacyUnversionedName(t *testing.T) {
-	got, err := PeekType(bytes.NewReader(encodeEnvelope("mystery", []byte("{}"))))
+	got, err := PeekType(bytes.NewReader(encodeEnvelope("json", "mystery", []byte("{}"))))
 	if err != nil {
 		t.Fatalf("PeekType = %v", err)
 	}
@@ -294,7 +464,18 @@ func TestPeekTypeLegacyUnversionedName(t *testing.T) {
 // PeekType resolves no type, so a damaged header is damaged data.
 func TestPeekTypeRejectsMalformedHeader(t *testing.T) {
 	var lenBuf [binary.MaxVarintLen64]byte
-	oversized := append([]byte{envelopeVersion}, lenBuf[:binary.PutUvarint(lenBuf[:], maxPeekTypeLen+1)]...)
+	oversized := func(field string, n uint64) []byte {
+		var buf bytes.Buffer
+		buf.WriteByte(envelopeVersion)
+		switch field {
+		case "codec":
+			buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], n)])
+		case "type":
+			buf.WriteByte(0x00) // empty codec
+			buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], n)])
+		}
+		return buf.Bytes()
+	}
 
 	for _, tc := range []struct {
 		name  string
@@ -303,10 +484,14 @@ func TestPeekTypeRejectsMalformedHeader(t *testing.T) {
 	}{
 		{"empty stream", nil, "envelope version"},
 		{"unsupported version", []byte{0xff}, "version"},
-		{"truncated type length", []byte{envelopeVersion}, "type length"},
-		{"empty type", []byte{envelopeVersion, 0x00}, "empty type name"},
-		{"oversized type length", oversized, "exceeds"},
-		{"truncated type", []byte{envelopeVersion, 0x03, 'a'}, "truncated type"},
+		{"truncated codec length", []byte{envelopeVersion}, "codec length"},
+		{"oversized codec length", oversized("codec", maxPeekNameLen+1), "exceeds"},
+		{"truncated codec", []byte{envelopeVersion, 0x03, 'a'}, "truncated codec"},
+		{"truncated type length", []byte{envelopeVersion, 0x00}, "type length"},
+		{"empty type", []byte{envelopeVersion, 0x00, 0x00}, "empty type name"},
+		{"oversized type length", oversized("type", maxPeekNameLen+1), "exceeds"},
+		{"truncated type", []byte{envelopeVersion, 0x00, 0x03, 'a'}, "truncated type"},
+		{"truncated v1 type", []byte{envelopeVersionV1, 0x03, 'a'}, "truncated type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := PeekType(bytes.NewReader(tc.data))
@@ -336,5 +521,44 @@ func TestPeekTypeKeepsReadErrorCause(t *testing.T) {
 	}
 	if !errors.Is(err, want) {
 		t.Fatalf("PeekType(read failure) = %v, want the cause %v on the chain", err, want)
+	}
+}
+
+// failAfterReader serves n bytes from data and then fails with err, so a header
+// read can break in the middle of a field rather than at end of stream.
+type failAfterReader struct {
+	data []byte
+	n    int
+	err  error
+}
+
+// Read serves the remaining bytes up to the budget, then reports err.
+func (f *failAfterReader) Read(p []byte) (int, error) {
+	if f.n <= 0 {
+		return 0, f.err
+	}
+	if len(p) > f.n {
+		p = p[:f.n]
+	}
+	n := copy(p, f.data[:f.n])
+	f.data = f.data[n:]
+	f.n -= n
+	return n, nil
+}
+
+// TestPeekTypeKeepsCodecReadErrorCause covers the same rule for the codec field:
+// a failure while stepping over it keeps its cause and names the field.
+func TestPeekTypeKeepsCodecReadErrorCause(t *testing.T) {
+	want := errors.New("device gone")
+	// version 2, codecLen 4, then the stream breaks after two codec bytes.
+	_, err := PeekType(&failAfterReader{data: []byte{envelopeVersion, 0x04, 'j', 's'}, n: 4, err: want})
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("PeekType(codec read failure) = %v, want ErrCorrupt", err)
+	}
+	if !errors.Is(err, want) {
+		t.Fatalf("PeekType(codec read failure) = %v, want the cause %v on the chain", err, want)
+	}
+	if !strings.Contains(err.Error(), "codec") {
+		t.Fatalf("error %q does not name the codec field", err)
 	}
 }

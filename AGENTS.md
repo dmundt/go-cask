@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v28
+version: v29
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -553,8 +553,12 @@ gofmt -l .
   base directories, `fs.New(filepath.Join(root, name))`; there is no
   `fs.WithNamespace` option (extensions §3).
 - Serialization format: RESOLVED and implemented — the TLV envelope
-  `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` (cas-core §8 decision 1,
-  `cas/envelope.go`), enabling `parseType`/`ResolveAny` without a side
-  registry.
+  `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
+  (cas-core §8 decision 1, `cas/envelope.go`), enabling `parseType`/`ResolveAny`
+  without a side registry. The codec field is the writing codec's identity tag
+  (`cas.CodecNamer`): `Store.Get` compares it and reports `ErrCodecMismatch` for
+  a codec change instead of a decode failure, so a codec change needs no type
+  major bump. A version 1 envelope has no codec field and still reads (as "codec
+  unspecified").
 - Follow the sibling spec `docs/specs/viewer-security.md`
   for anything touching the embedded viewer (`internal/web/`).

@@ -86,3 +86,32 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 	}
 	return c.decode(data)
 }
+
+// CodecName reports the codec identity tag written into the envelope: "binary"
+// for a direct custom-binary codec (NewRaw), and "binary+<inner tag>" when the
+// codec wraps an inner one (New) — the stored bytes are transformed inner
+// bytes, not this package's raw custom-binary payload, so the two cannot share
+// a tag. A wrapped codec that declares no tag yields "" (unspecified). It
+// satisfies cas.CodecNamer.
+func (c Codec[T]) CodecName() string {
+	if c.next == nil {
+		return "binary"
+	}
+	return composeTag("binary", c.next)
+}
+
+// composeTag builds the identity tag of a codec stacked over next:
+// "<name>+<inner tag>". It reports "" when next declares no tag, so an unnamed
+// inner codec leaves the stack unspecified rather than manufacturing a tag that
+// would later read as a mismatch.
+func composeTag[T any](name string, next cas.Codec[T]) string {
+	namer, ok := next.(cas.CodecNamer)
+	if !ok {
+		return ""
+	}
+	inner := namer.CodecName()
+	if inner == "" {
+		return ""
+	}
+	return name + "+" + inner
+}

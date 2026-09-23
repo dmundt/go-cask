@@ -48,23 +48,27 @@ small TLV envelope so a stored object is self-describing:
 
 ```text
 version            u8
+codec length       uvarint
+codec tag          bytes
 type length        uvarint
 type name          bytes
 payload length     uvarint
 payload            bytes
 ```
 
-The type name is versioned (`"note@1"`, `"commit@1"`), and the digest covers
-the whole envelope — so a type or version change produces a different digest,
-and `Store.Get` refuses to hand back a value whose decoded type does not match
-the stored one.
+The type name is versioned (`"note@1"`, `"commit@1"`), the codec tag records
+the format that produced the payload (`json`, `gzip+json`), and the digest
+covers the whole envelope — so a type, version or codec change produces a
+different digest. `Store.Get` reports `ErrCodecMismatch` when the stored tag
+and its own codec's tag disagree, and refuses to hand back a value whose
+decoded type does not match the stored one.
 
 ## Canonical data flow
 
 ```mermaid
 flowchart LR
     V["Application value (Object[T])"] -->|"Codec.Encode"| P["Payload bytes"]
-    P -->|"+ versioned type"| E["Envelope"]
+    P -->|"+ versioned type + codec tag"| E["Envelope"]
     E -->|"Hasher.Digest"| D["Digest"]
     E -->|"Backend.Put(d, envelope)"| B["Backend"]
     D -.->|"stored as key"| B

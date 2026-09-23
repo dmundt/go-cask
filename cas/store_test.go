@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -183,8 +184,8 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("Type() = %q", note2.Type())
 	}
 
-	// GetRaw returns the stored bytes in the self-describing TLV envelope
-	// form: [version][uvarint typeLen][type][codec payload].
+	// GetRaw returns the stored bytes in the self-describing TLV envelope form:
+	// [version][uvarint codecLen][codec][uvarint typeLen][type][codec payload].
 	rawBytes, err := s.GetRaw(ctx, h)
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +196,9 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if env.Type != "note@1" {
 		t.Fatalf("stored type = %q, want note@1", env.Type)
+	}
+	if env.Codec != "json" {
+		t.Fatalf("stored codec = %q, want json", env.Codec)
 	}
 	var payloadNote test.Note
 	if err := json.Unmarshal(env.Data, &payloadNote); err != nil {
@@ -335,9 +339,10 @@ func TestStoreCancelledContext(t *testing.T) {
 
 func TestEnvelopeFormat(t *testing.T) {
 	// The stored form must be exactly the self-describing TLV envelope
-	// [version][uvarint typeLen][type][codec payload], built by Store.Put
-	// from the codec payload (the codec is the serialization authority —
-	// objects no longer serialize themselves).
+	// [version][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload],
+	// built by Store.Put from the codec payload (the codec is the serialization
+	// authority — objects no longer serialize themselves). The codec identity
+	// tag in it is the version 2 addition this test pins.
 	ctx := context.Background()
 	s := newTestStore(t, mem.New())
 	h, err := s.Put(ctx, test.Note{Title: "t"})
@@ -354,6 +359,9 @@ func TestEnvelopeFormat(t *testing.T) {
 	}
 	if env.Type != "note@1" {
 		t.Fatalf("type = %q, want note@1", env.Type)
+	}
+	if env.Codec != "json" {
+		t.Fatalf("codec = %q, want json", env.Codec)
 	}
 	var note test.Note
 	if err := json.Unmarshal(env.Data, &note); err != nil {
@@ -611,5 +619,269 @@ func TestStoreTypeRejectsMissingAndCorruptKeys(t *testing.T) {
 	}
 	if _, err := s.Type(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
 		t.Fatalf("Type(damaged header) = %v, want ErrCorrupt", err)
+	}
+}
+
+// taglessJSONCodec is a Codec[T] that produces exactly the JSON wire format but
+// declares no identity: it does not implement cas.CodecNamer, so a store built
+// on it writes an empty codec tag.
+type taglessJSONCodec[T any] struct{}
+
+// Encode marshals v with encoding/json, exactly like cas/codec/json.
+func (taglessJSONCodec[T]) Encode(v T) ([]byte, error) { return json.Marshal(v) }
+
+// Decode unmarshals data with encoding/json.
+func (taglessJSONCodec[T]) Decode(data []byte) (T, error) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return v, err
+	}
+	return v, nil
+}
+
+// v1EnvelopeBytes hand-builds a version 1 envelope, the layout that predates
+// the codec identity field:
+//
+//	[version u8 = 1][uvarint typeLen][type][uvarint payloadLen][payload]
+//
+// It is the documented recipe for testdata/envelope-v1.bin: the fixture is
+// checked in rather than generated at test time, so a rewrite of the reader
+// cannot silently rewrite the bytes it is supposed to keep readable.
+func v1EnvelopeBytes(typ string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(1) // envelope version 1: no codec field exists
+	var lenBuf [binary.MaxVarintLen64]byte
+	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], uint64(len(typ)))])
+	buf.WriteString(typ)
+	buf.Write(lenBuf[:binary.PutUvarint(lenBuf[:], uint64(len(payload)))])
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
+// v1FixturePayload is the JSON body stored in testdata/envelope-v1.bin.
+const v1FixturePayload = `{"title":"v1 fixture","body":"written before codec identity"}`
+
+// readV1Fixture loads the checked-in version 1 envelope and checks it against
+// the documented recipe, so the fixture cannot drift into something the test's
+// own builder would not produce.
+func readV1Fixture(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("testdata/envelope-v1.bin")
+	if err != nil {
+		t.Fatalf("read testdata/envelope-v1.bin: %v", err)
+	}
+	if want := v1EnvelopeBytes("note@1", []byte(v1FixturePayload)); !bytes.Equal(data, want) {
+		t.Fatalf("fixture = %q, want the documented recipe %q", data, want)
+	}
+	return data
+}
+
+// TestStoreReadsV1Fixture is the backwards-compatibility evidence: an object
+// written before the codec identity existed (version 1, no codec field) still
+// loads and round-trips through the current reader, and reports no mismatch —
+// an absent tag means "unspecified", never a difference.
+func TestStoreReadsV1Fixture(t *testing.T) {
+	ctx := context.Background()
+	data := readV1Fixture(t)
+
+	backend := mem.New()
+	h := test.DigestData(data)
+	if err := backend.Put(ctx, h, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	s := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
+	got, err := s.Get(ctx, h)
+	if err != nil {
+		t.Fatalf("Get(v1 fixture) = %v, want nil (no codec mismatch for an untagged object)", err)
+	}
+	if got.Title != "v1 fixture" || got.Body != "written before codec identity" {
+		t.Fatalf("Get(v1 fixture) = %+v", got)
+	}
+
+	// The tag is read back empty, which is what "no check" is based on.
+	raw, err := s.GetRaw(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := cas.EnvelopeFromBytes(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Codec != "" {
+		t.Fatalf("v1 fixture codec = %q, want the empty (unspecified) tag", env.Codec)
+	}
+}
+
+// TestStoreV1ObjectThroughADifferentCodecIsCorrupt pins the honest gap the
+// design names: a v1 object carries no codec identity, so a reader with another
+// codec cannot prove a mismatch — the bytes are indistinguishable from damage.
+// ErrCorrupt stays the answer, and never ErrCodecMismatch, but the message
+// names the absent identity so the diagnosis is one step from the sentinel.
+func TestStoreV1ObjectThroughADifferentCodecIsCorrupt(t *testing.T) {
+	ctx := context.Background()
+	data := readV1Fixture(t)
+
+	backend := mem.New()
+	h := test.DigestData(data)
+	if err := backend.Put(ctx, h, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	s := cas.New(backend, gzipcodec.New(jsoncodec.New[test.Note]()), sha256.New())
+	_, err := s.Get(ctx, h)
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(v1 fixture through gzip) = %v, want ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrCodecMismatch) {
+		t.Fatalf("Get(v1 fixture through gzip) = %v, must not claim a codec mismatch", err)
+	}
+	if !strings.Contains(err.Error(), "no codec identity") {
+		t.Fatalf("error %q does not name the absent codec identity", err)
+	}
+}
+
+// TestStoreReportsCodecMismatch covers the acceptance criterion in both
+// directions: an object written with one codec and read through a store built
+// on another reports ErrCodecMismatch — never ErrCorrupt (the bytes are intact)
+// and never ErrUnknownType (the type is known). Both objects carry the same
+// versioned type name, so a codec change needs no major bump.
+func TestStoreReportsCodecMismatch(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	jsonStore := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
+	gzipStore := cas.New(backend, gzipcodec.New(jsoncodec.New[test.Note]()), sha256.New())
+
+	fromJSON, err := jsonStore.Put(ctx, test.Note{Title: "json", Body: "written as json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromGzip, err := gzipStore.Put(ctx, test.Note{Title: "gzip", Body: "written as gzip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both objects are note@1: the codec tag is what differs, not the major.
+	for _, d := range []cas.Digest{fromJSON, fromGzip} {
+		raw, err := jsonStore.GetRaw(ctx, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := cas.EnvelopeFromBytes(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if env.Type != "note@1" {
+			t.Fatalf("stored type = %q, want note@1 (a codec change must not need a major bump)", env.Type)
+		}
+	}
+
+	for _, tc := range []struct {
+		name    string
+		store   *cas.Store[test.Note]
+		digest  cas.Digest
+		wantTag string
+	}{
+		{"json-written read through a gzip store", gzipStore, fromJSON, "json"},
+		{"gzip-written read through a json store", jsonStore, fromGzip, "gzip+json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.store.Get(ctx, tc.digest)
+			if !errors.Is(err, cas.ErrCodecMismatch) {
+				t.Fatalf("Get = %v, want ErrCodecMismatch", err)
+			}
+			if errors.Is(err, cas.ErrCorrupt) {
+				t.Fatalf("Get = %v, must not report ErrCorrupt for a codec change", err)
+			}
+			if errors.Is(err, cas.ErrUnknownType) {
+				t.Fatalf("Get = %v, must not report ErrUnknownType for a codec change", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantTag) {
+				t.Fatalf("error %q does not name the stored codec %q", err, tc.wantTag)
+			}
+		})
+	}
+}
+
+// TestStoreForeignTypeStaysUnknownType keeps the sentinels distinct: an object
+// of another type, read by a store using the same codec, is ErrUnknownType and
+// never ErrCodecMismatch. The codec check must not fire for a type difference.
+func TestStoreForeignTypeStaysUnknownType(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	notes := newTestStore(t, backend)
+	d, err := notes.Put(ctx, test.Note{Title: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodes := cas.New(backend, jsoncodec.New[test.Node](), sha256.New())
+	_, err = nodes.Get(ctx, d)
+	if !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Get(foreign type) = %v, want ErrUnknownType", err)
+	}
+	if errors.Is(err, cas.ErrCodecMismatch) {
+		t.Fatalf("Get(foreign type) = %v, must not report a codec mismatch", err)
+	}
+}
+
+// TestStoreCodecTags pins the identity tags: a stack composes its inner codec's
+// tag, and a codec that does not implement cas.CodecNamer writes no tag at all
+// — and then reads any tag without complaint, in both directions.
+func TestStoreCodecTags(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+
+	// A stack reports "<outer>+<inner>", both through the interface and in the
+	// envelope it writes.
+	gzipCodec := gzipcodec.New(jsoncodec.New[test.Note]())
+	var namer cas.CodecNamer = gzipCodec
+	if got := namer.CodecName(); got != "gzip+json" {
+		t.Fatalf("gzip.New(json.New[T]()).CodecName() = %q, want gzip+json", got)
+	}
+	gzipStore := cas.New(backend, gzipCodec, sha256.New())
+	gzipDigest, err := gzipStore.Put(ctx, test.Note{Title: "tagged"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoredCodec(t, ctx, gzipStore, gzipDigest, "gzip+json")
+
+	// A codec without CodecNamer declares no tag: the envelope's codec field is
+	// empty ("unspecified").
+	taglessStore := cas.New(backend, taglessJSONCodec[test.Note]{}, sha256.New())
+	taglessDigest, err := taglessStore.Put(ctx, test.Note{Title: "tagless"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoredCodec(t, ctx, taglessStore, taglessDigest, "")
+
+	// It reads a tagged object without complaint...
+	jsonStore := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
+	jsonDigest, err := jsonStore.Put(ctx, test.Note{Title: "json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := taglessStore.Get(ctx, jsonDigest); err != nil {
+		t.Fatalf("tagless codec reading a tagged object = %v, want nil", err)
+	}
+	// ...and a tagged codec reads a tagless object without complaint, because
+	// the comparison applies only when both sides declare a tag.
+	if _, err := jsonStore.Get(ctx, taglessDigest); err != nil {
+		t.Fatalf("tagged codec reading a tagless object = %v, want nil", err)
+	}
+}
+
+// assertStoredCodec checks the codec identity tag recorded in the stored
+// envelope at d.
+func assertStoredCodec[T cas.Object[T]](t *testing.T, ctx context.Context, s *cas.Store[T], d cas.Digest, want string) {
+	t.Helper()
+	raw, err := s.GetRaw(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := cas.EnvelopeFromBytes(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Codec != want {
+		t.Fatalf("stored codec = %q, want %q", env.Codec, want)
 	}
 }

@@ -2,7 +2,7 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of designed-but-deferred possible extensions (packfiles, compression layer, chunking).
-version: v10
+version: v11
 ---
 
 # Extensions — go-cask
@@ -28,6 +28,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 8. Doc comments on every exported identifier (coding-guidelines §7); OpenAPI for any HTTP surface (api-design §13).
 9. If your extension is a good teaching example, propose it in `examples.md` instead of growing the core.
 10. Build your stores with your own one-line constructor: `package cas` ships no `NewJSON`/`NewCompressedJSON` because it must not import `cas/codec`, and a helper taking a codec saves nothing over `cas.New`. Write it where the type lives — `func newNoteStore(backend cas.Backend, hasher cas.Hasher) *cas.Store[*Note] { return cas.New(backend, json.New[*Note](), hasher) }` — or register each store once with `cas/repo.RegisterStore` and read it back typed with `cas/repo.LookupStore[T]` (never a `map[string]any` or a caller-side assertion). `Store.Close` is idempotent and forwards to a backend that implements `io.Closer`: close the store or the backend once the stores over it are finished, so a flush-on-close backend such as `packfs` is not left with unwritten state.
+11. **Name the wire format your codec produces** (`cas.CodecNamer`, `CodecName() string`, cas-core §4.6). The tag is written into the envelope and compared on read, so a codec change is reported as `cas.ErrCodecMismatch` instead of surfacing as a decode failure — which is what removes the old requirement to hand-bump every type major on a codec change. Declare a stable lowercase tag (`json`, `gzip+json`), compose it from an inner codec's tag when your codec wraps one (`"<name>+" + inner`), and report `""` when the inner codec declares none. Never derive a tag from `%T`, reflection or the payload: a rename or a package move must not read as a format change. Omitting the interface is legal — the envelope then carries an empty tag and no check is made — but it means the codec is invisible to that check.
 
 ## 3. Known possible extensions
 

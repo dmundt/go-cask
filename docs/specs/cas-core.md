@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v58
+version: v59
 ---
 
 # CAS Core — go-cask
@@ -408,6 +408,8 @@ type Codec[T any] interface {
 - Contract: `Decode(Encode(v)) == v` (round-trip) for all storable values.
 - **A reference field is a plain `cas.Digest` — there is no codec-side hash type.** `Digest` implements `encoding.TextMarshaler`/`TextUnmarshaler` (§4.1), so `encoding/json` renders a present reference as **one lowercase-hex JSON string** and decodes one back; an absent field renders as `""` unless it is tagged **`omitzero`** (Go 1.24 floor, still required: an older standard library ignores the unknown tag option and would emit `""` instead of omitting, silently changing the stored bytes and the object's address). An object type therefore writes `Ref cas.Digest \`json:"…,omitzero"\`` and nothing else — no wrapper to construct, no unwrapping call, no hand-written `MarshalJSON` for rendering. See §4.12 for a working object model.
 - **Rationale:** rendering a digest as hex is generic (no algorithm, no JSON), so it belongs to the type in the core rather than to one codec; the core still imports no `encoding/json`. A non-JSON codec carries no hash handling at all — `gob` encodes the `Digest` byte slice directly, and a custom binary codec encodes only the app-defined payload layout the caller supplies.
+- **A codec MAY name the wire format it produces** — the optional `CodecNamer` interface, `CodecName() string`. The tag is written into the envelope (§8 d1) and compared on read, so swapping the codec behind a type is reported as `ErrCodecMismatch` instead of surfacing as a decode failure. It is deliberately **optional**, not a third method on `Codec[T]`: adding one would break every existing implementation, in this repo and in consumers, for a check that only applies when both sides opt in.
+- **Tags are declared, never derived.** The shipped codecs report `json`, `gob`, `cbor` and `binary`, and a codec stacked over another composes the inner tag (`gzip+json` for `gzip.New(json.New[T]())`, `flate+gzip+json` for a deeper stack). A stack whose inner codec declares no tag reports `""`, because nesting an unnamed codec must not manufacture a tag that later reads as a mismatch. Nothing comes from `%T`, reflection or the payload bytes, so renaming a Go type or moving a package is never read as a format change. An empty tag means "unspecified": no comparison is made, which is the pre-existing behaviour and the compatibility rule.
 
 ### 4.7 `Object[T]` — self-describing typed object
 
@@ -428,21 +430,22 @@ type Object[T any] interface {
 
 ```go
 type Store[T Object[T]] struct {
-    backend Backend
-    codec   Codec[T]
-    hasher  Hasher
+    backend   Backend
+    codec     Codec[T]
+    codecName string // resolved once from CodecNamer (or "" when the codec declares no tag)
+    hasher    Hasher
 }
 
 func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 ```
 
-`New` **cannot fail**: the core resolves nothing, registers nothing and knows no algorithm (§4.2). It has no error to report, so the three collaborators MUST be non-nil — `backend`, `codec` and `hasher` are the caller-supplied seams, and a nil one panics at the first use rather than being detected here (v1.2.0's `New` returned an error; the seams are now plain values).
+`New` **cannot fail**: the core resolves nothing, registers nothing and knows no algorithm (§4.2). It has no error to report, so the three collaborators MUST be non-nil — `backend`, `codec` and `hasher` are the caller-supplied seams, and a nil one panics at the first use rather than being detected here (v1.2.0's `New` returned an error; the seams are now plain values). The **codec identity tag is resolved once, here** — a plain type assertion on the codec value the caller already supplied (`CodecNamer`), never reflection and never `any` — so `Put` writes it and `Get` compares it without re-deriving it per operation.
 
 | Method | Behavior |
 |---|---|
 | `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Encode(obj)` → TLV envelope → `hasher.Digest` → `backend.Put` → `d` |
 | `PutDedup` | as `Put`, then `backend.Exists` first; returns `(d, alreadyStored, err)` |
-| `Get` | `backend.Get` → envelope parse → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
+| `Get` | `backend.Get` → envelope parse → codec-tag comparison (both tags present and different → `ErrCodecMismatch`, checked **before** decoding) → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates |
 | `Type` | `backend.Get` → `PeekType` → close: reads the envelope header only, so the payload is never read or allocated. Reports the type as stored (which may be one this store cannot decode — `Get` is what rejects that), `ErrCorrupt` for an unusable header, and the backend's `ErrNotFound` for an absent object |
 | `Exists` | delegates to `backend` |
@@ -452,6 +455,8 @@ func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 - **Every key argument is guarded.** `Store.check` applies `CheckDigest` (present) and `hasher.Validate` (well formed for the client's algorithm) to every digest a caller supplies — `Get`, `GetRaw`, `Exists`, `Delete` — and `Put`/`PutDedup` apply it to the digest the hasher just computed. A key that cannot name an object is rejected with `ErrInvalidDigest` (wrapped with the operation name) instead of silently missing.
 - **Object invariants are enforced on both paths** (`Validator`, §4.7). `Put`/`PutDedup` run `Validate` before encoding, so an invalid object is never written and the object's own error is preserved in the chain (`cas: put: <err>`); `Get` runs it after decoding and reports a violation as `ErrCorrupt` (wrapping the object's error), so a hand-crafted or foreign payload cannot come back in an impossible state. `GetRaw` cannot validate what it does not decode — an inspector must be able to read a broken object.
 - **A nil object is rejected**: `Put`/`PutDedup` refuse one (`cas: put: nil object`) instead of encoding a payload that decodes back to nil, and `Get` reports a payload that decodes to nil as `ErrCorrupt` — checked **before** the decoded type is compared and before `Validate` runs, so no method is ever invoked on a nil receiver. The core decides "there is no value here" with an internal nil check (the only use of reflection in `cas`), so an implementation never has to tolerate a nil receiver.
+- **A codec change is a format change, not damage** (`ErrCodecMismatch`). `Get` compares the codec identity tag stored in the envelope with the tag its own codec declares, after the header is parsed and before `Decode` is called, and reports a difference when both tags are present: never `ErrCorrupt` (the bytes are intact) and never `ErrUnknownType` (the type is known). Either side declaring no tag — a version 1 envelope, a codec without `CodecNamer` — means no check, which is the compatibility rule. The comparison necessarily precedes decoding, so an object that differs in *both* type and codec reports the codec difference; when the codecs agree, a foreign type still reports `ErrUnknownType`.
+- **A tagless object is never guessed.** A version 1 envelope carries no codec identity, so a reader built on another codec cannot *prove* a mismatch — the bytes are indistinguishable from corruption. `ErrCorrupt` stays the answer there, with the message naming the absent identity so the diagnosis is one step from `ErrCodecMismatch`; detection applies to every object written under version 2 and later.
 - Type safety from one store per type: `Store[Blob]` vs `Store[Commit]` distinct — passing a commit digest to a blob store is a **compile-time error**.
 - **Enumerating a store by type is `List` plus `Type`**, not `List` plus `Get`: `Store.Type` reads only the envelope header (§4.6), so "which objects are snapshots" costs a header read per object rather than a decode, and a large object costs the same as a small one.
 - `Get` returns the **concrete `T`** (type name verified); `GetRaw` returns bytes. The constraint `Store[T Object[T]]` keeps the typed layer free of `any`/type assertions; the `Validator` check is a structural interface assertion on the stored value, applied uniformly to every type rather than dispatch on a concrete type.
@@ -625,10 +630,10 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 |---|---|
 | Addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
 | Storage | `Backend`; `fs.Backend` (`fs.New`, `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, and the fs-only `Verify`/`GC`/`Prune`/`Clean`/`Size`); `memory.Backend` (`memory.New`, `memory.WithMaxSize`); shared `cas.Stats` and the `cas/backend` stream helpers `WriteAll`/`ReadAll`/`ReadPayload` |
-| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, `PeekType`; codecs `json.New[T]()` (`cas/codec/json`), `gob.NewRaw[T]()` / `gob.New[T](next)` (`cas/codec/gob`), `binary.New(inner, wrap, unwrap)` / `binary.NewRaw(marshal, unmarshal)` (`cas/codec/binary`) |
+| Typed layer | `Object[T]`, `Validator`, `Codec[T]`, `CodecNamer` (the optional codec-identity interface), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EnvelopeType`, `PeekType`; codecs `json.New[T]()` (`cas/codec/json`), `gob.NewRaw[T]()` / `gob.New[T](next)` (`cas/codec/gob`), `binary.New(inner, wrap, unwrap)` / `binary.NewRaw(marshal, unmarshal)` (`cas/codec/binary`) |
 | Client hasher (not core) | `cas/hash/sha256`: `sha256.New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` (any short/display form is `cas.Digest.Prefix`) |
 | Caching | `memory.CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats` (`cas/cache/mem`); `lru.Cache[T]`, `lru.New` (`cas/cache/lru`) |
-| Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` |
+| Errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch` |
 
 Everything else is internal and MUST NOT be relied upon. The surface stays additive-compatible (library-design §5).
 
@@ -657,12 +662,14 @@ Everything else is internal and MUST NOT be relied upon. The surface stays addit
 Resolved decisions (so implementation never re-litigates them):
 1. **Serialization — RESOLVED: TLV envelope** (`cas/envelope.go`):
    ```text
-   +--------+-----------+------------+-----------+---------+
-   | Version| TypeLen   | Type       | PayloadLen| Payload |
-   | 1 byte | uvarint   | N bytes    | uvarint   | M bytes |
-   +--------+-----------+------------+-----------+---------+
+   +--------+----------+---------+----------+---------+------------+---------+
+   | Version| CodecLen | Codec   | TypeLen  | Type    | PayloadLen | Payload |
+   | 1 byte | uvarint  | N bytes | uvarint  | M bytes | uvarint    | K bytes |
+   +--------+----------+---------+----------+---------+------------+---------+
    ```
-   Version = format version (currently `1`; leading byte makes it versionable). TypeLen = length of the versioned type name (`commit@1`) as `uvarint`. Type = the name bytes (absent major reads as `@1`). PayloadLen = payload length as `uvarint`. Payload = exactly PayloadLen bytes — the `Codec[T]` output. `PayloadLen` makes the frame self-delimiting (a reader locates the payload without scanning to EOF — streaming/range reads). Replaces the earlier JSON envelope: no JSON/base64 overhead, streamable, codec-agnostic, versionable. Makes `parseType`/`ResolveAny` work without a side registry and carries the object-model version with the bytes. Applies everywhere (gitlike, app objects, `parseType`, `ResolveAny`).
+   Version = format version (currently `2`; the leading byte makes it versionable). CodecLen/Codec = the codec identity tag (lowercase ASCII, no `@`) as a uvarint length and bytes; empty is legal and means "unspecified". TypeLen = length of the versioned type name (`commit@1`) as `uvarint`. Type = the name bytes (absent major reads as `@1`). PayloadLen = payload length as `uvarint`. Payload = exactly PayloadLen bytes — the `Codec[T]` output. `PayloadLen` stays **last** so the frame is self-delimiting (a reader locates the payload without scanning to EOF — streaming/range reads), and bytes after the declared payload stay tolerated (a frame extension that appends fields must not break existing objects; the writer emits no trailer). Replaces the earlier JSON envelope: no JSON/base64 overhead, streamable, codec-agnostic, versionable. Makes `parseType`/`ResolveAny` work without a side registry and carries the object-model version with the bytes. Applies everywhere (gitlike, app objects, `parseType`, `ResolveAny`).
+
+   **Version 1 has no codec field and stays readable**: it decodes as "codec unspecified" (`Envelope.Codec == ""`), so it is never reported as a codec mismatch and pre-upgrade objects keep loading. `EnvelopeType`/`PeekType` are header-only and step over the codec field (both header strings are bounded by `maxPeekNameLen`), so a bounded prefix still yields the type. The codec tag also makes a codec change a *format* change: `Store.Get` reports `ErrCodecMismatch` instead of a decode failure (§4.6, §4.8), which is what removes the need to hand-bump every type major on a codec change. **Cost, accepted:** any change to stored bytes changes the digest, so a re-`Put` of identical content under version 2 writes a second object under a new address instead of deduplicating against the version 1 one (stores converge as objects are rewritten); v1 objects stay readable and `Verify` still re-hashes the stored bytes to their own key. A sidecar digest → tag table was rejected: it destroys the self-describing-object property (copy an object to another store and its codec identity is gone) and adds a second source of truth to keep consistent with `Put`.
 2. **Algorithm ownership — RESOLVED: the core is hash-agnostic; the client injects a `Hasher`.** The earlier revision fixed `sha256` at compile time with the algorithm name inside the address; now the address is raw bytes (`Digest`) and `cas` implements no algorithm (§4.1, §4.2). The injected `Hasher` hashes and validates width, so a key that cannot name an object is still rejected at the store boundary, and there is no registry, no init-order coupling, and no algorithm name used as a filesystem path element. Accepted, documented consequences: no algorithm in a reference, no cross-algorithm recognition in the core, no per-algorithm stats, and one format per store (`operations.md` §5 for the transition). Removed with the old model: `ErrUnknownAlgorithm`, `ErrInvalidHash`, `ErrHashMismatch`, `cas.SHA256`, and the JSON codec's `Hash` field type.
 3. **LRU dependency — RESOLVED: in-tree std-lib** (`container/list` + map or equivalent) — no vendored/golang-lru.
 6. **GC reachability — RESOLVED:** mark-and-sweep from application roots with age-based pruning (consistency §4–§5; refcounting rejected).

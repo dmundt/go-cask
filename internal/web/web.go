@@ -294,7 +294,8 @@ func (s *Server) renderPage(w http.ResponseWriter, view string, data any) {
 const previewLimit = 256
 
 // typePrefixLimit bounds the bytes read for envelope type sniffing: only the
-// TLV header ([version][uvarint typeLen][type]) is needed, not the payload.
+// TLV header ([version][uvarint codecLen][codec][uvarint typeLen][type]) is
+// needed, not the payload.
 const typePrefixLimit = 4 << 10
 
 // readN reads at most n bytes from the object at d.

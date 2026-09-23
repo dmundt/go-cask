@@ -90,3 +90,14 @@ func TestCodecPropagatesWrappedErrorsAndRejectsBadInput(t *testing.T) {
 		t.Fatal("valid flate encode should succeed")
 	}
 }
+
+// TestCodecName pins the composed identity tag: compressing changes the stored
+// bytes, so the tag names the stack as well as the inner codec.
+func TestCodecName(t *testing.T) {
+	if got := flatecodec.New(jsoncodec.New[sample]()).CodecName(); got != "flate+json" {
+		t.Fatalf("CodecName() = %q, want flate+json", got)
+	}
+	if got := flatecodec.New(gzipcodec.New(jsoncodec.New[sample]())).CodecName(); got != "flate+gzip+json" {
+		t.Fatalf("stacked CodecName() = %q, want flate+gzip+json", got)
+	}
+}

@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v29
+version: v30
 ---
 
 # Defaults and Behavior — go-cask
@@ -32,15 +32,16 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Default compression codec | `flate` (`cas/codec/flate`) as the default compression wrapper for durable payloads | cas-core §4.6 |
 | Compact binary codec | Optional app-defined payload codec (`binary.New(inner, wrap, unwrap)` or `binary.NewRaw(marshal, unmarshal)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
-| Header-peek ceiling | `PeekType` reads an envelope type name of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
+| Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
 | Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
 | Hash-on-write | one pass, spool + hasher (`io.MultiWriter`) | performance §3 |
 | Cache key | `d.String()` → `*CachedObject[T]` in `sync.Map` | cas-core §4.10 |
 | LRU `maxSize` | MUST be > 0 | cas-core §4.10 |
-| Sentinel errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt` | library-design §2 |
+| Sentinel errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch`, `ErrUnsupported` | library-design §2 |
 | Object type name | `<type>@<major>`; absent version reads as `@1` | object-versioning §2 |
-| Serialization envelope | TLV `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]` | cas-core §8 d1 |
+| Serialization envelope | TLV `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`; a version 1 envelope (no codec field) still reads, as "codec unspecified" | cas-core §8 d1 |
+| Codec identity tags | `json`, `gob`, `cbor`, `binary`; a stacked codec composes the inner tag (`gzip+json`, `flate+gzip+json`); a codec that declares no tag (`cas.CodecNamer`) writes an empty tag and no comparison is made | cas-core §4.6 |
 | `Prune` dry-run default | `true` (delete needs explicit flag) | consistency §5 |
 | `clean` default min-age | 24 h | cli §2 |
 | Object age source | file mtime ≈ first-`Put` time | consistency §5 |

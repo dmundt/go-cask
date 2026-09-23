@@ -166,13 +166,20 @@ func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// TLV envelope: [version][uvarint typeLen][type][payload].
+	// TLV envelope:
+	// [version][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload].
 	env, err := cas.EnvelopeFromBytes(backend)
 	if err != nil {
 		t.Fatalf("EnvelopeFromBytes = %v", err)
 	}
 	if env.Type != "blob@1" {
 		t.Fatalf("stored type = %q, want blob@1", env.Type)
+	}
+	// The test repository's codec declares no identity (it is not a
+	// cas.CodecNamer), so the envelope carries an empty tag — the same bytes a
+	// reader with a named codec accepts without complaint.
+	if env.Codec != "" {
+		t.Fatalf("stored codec = %q, want the empty (unspecified) tag", env.Codec)
 	}
 }
 
@@ -664,13 +671,35 @@ func mustDigest(t *testing.T, hexDigest string) cas.Digest {
 	return d
 }
 
-// marshalEnvelope builds a TLV envelope over payload bytes
-// (test helper: production serialization is the cas Store codec).
+// marshalEnvelope builds a version 1 TLV envelope over payload bytes
+// (test helper: production serialization is the cas Store codec). Version 1 has
+// no codec field, so these bytes are the back-compat evidence — an object
+// written before the codec identity existed still reads.
 func marshalEnvelope(typeName string, payload []byte) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte(1) // version
 	var lenBuf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
+	buf.Write(lenBuf[:n])
+	buf.WriteString(typeName)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
+	buf.Write(lenBuf[:n])
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
+// marshalV2Envelope builds the version 2 envelope the cas Store writes —
+// [version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]
+// (cas-core §8 decision 1) — so an address expectation can still be computed
+// from a payload literal.
+func marshalV2Envelope(codec, typeName string, payload []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte(2) // version
+	var lenBuf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(lenBuf[:], uint64(len(codec)))
+	buf.Write(lenBuf[:n])
+	buf.WriteString(codec)
+	n = binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
 	buf.Write(lenBuf[:n])
 	buf.WriteString(typeName)
 	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
@@ -989,8 +1018,11 @@ func TestDigestFieldsMarshalWithoutCustomCode(t *testing.T) {
 
 // TestStoredAddressesPinned is the compatibility guard for the marshalling
 // change: every expectation below is the historical payload literal, and the
-// address of a stored object is the hash of exactly those bytes. If any of
-// these fail, existing stores no longer resolve.
+// address of a stored object is the hash of exactly those bytes in the current
+// (version 2) envelope. The payload literals are what this test pins, so a
+// payload-shape change is what it catches; the envelope version moved from 1 to
+// 2 when the codec identity tag was added, which changes every address by
+// design (a v1 object is still readable — see marshalEnvelope's other uses).
 func TestStoredAddressesPinned(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, mem.New())
@@ -1051,7 +1083,11 @@ func TestStoredAddressesPinned(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			want := sha256hash.Of(marshalEnvelope(tc.typeName, []byte(tc.payload)))
+			// jsonCodec declares no identity tag (it is a test-local codec, not
+			// a cas.CodecNamer), so the store writes an empty codec field: the
+			// v2 envelope differs from v1 only by that empty length-prefixed
+			// field.
+			want := sha256hash.Of(marshalV2Envelope("", tc.typeName, []byte(tc.payload)))
 			got, err := tc.put()
 			if err != nil {
 				t.Fatal(err)

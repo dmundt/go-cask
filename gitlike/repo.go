@@ -105,9 +105,10 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 }
 
 // envelopeHeaderLimit bounds the prefix read to learn an object's type. The
-// envelope header is [version u8][uvarint typeLen][type] — a few dozen bytes for
-// any realistic type name — so this is generous while keeping the read cost of
-// resolution independent of the object's size.
+// envelope header is
+// [version u8][uvarint codecLen][codec][uvarint typeLen][type] — a few dozen
+// bytes for any realistic codec tag and type name — so this is generous while
+// keeping the read cost of resolution independent of the object's size.
 const envelopeHeaderLimit = 1 << 10
 
 // ResolveAny determines the object's type from the self-describing envelope

@@ -79,6 +79,22 @@ func (c Codec[T]) Decode(data []byte) (T, error) {
 	return c.decode(data)
 }
 
+// CodecName reports the codec identity tag written into the envelope: "cbor"
+// when this codec owns the value's CBOR conversion, and the inner codec's own
+// tag when it only delegates to one (New(next, nil, nil)) — those bytes are the
+// inner codec's, so claiming "cbor" would report a mismatch against an
+// identically encoded object. A delegating stack whose inner codec declares no
+// tag reports "" (unspecified). It satisfies cas.CodecNamer.
+func (c Codec[T]) CodecName() string {
+	if c.encode != nil || c.next == nil {
+		return "cbor"
+	}
+	if namer, ok := c.next.(cas.CodecNamer); ok {
+		return namer.CodecName()
+	}
+	return ""
+}
+
 func encodeAny(v any) ([]byte, error) {
 	return appendEncodedValue(nil, v)
 }

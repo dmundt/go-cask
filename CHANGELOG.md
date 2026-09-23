@@ -48,6 +48,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   envelope header on a stream: the payload is neither read nor allocated,
   whatever its size, so enumerating a store by type is `List` plus `Type`
   instead of a decode per object.
+- `cas.CodecNamer` lets a codec declare the wire format it produces (`json`,
+  `gzip+json`, `""` for none), and `cas.ErrCodecMismatch` reports reading an
+  object that was written with a different codec. The store resolves the tag
+  once at construction, writes it into every envelope, and compares it before
+  decoding, so changing a codec is reported as a format change instead of a
+  decode failure and no longer requires hand-bumping every type's major version.
 - `gob.NewRaw[T]()` builds a gob codec with no inner codec; `gob.New[T](next)`
   now takes the inner codec explicitly.
 - `cas/backend` shares `WriteAll`, `ReadAll` and `ReadPayload` between backend
@@ -78,6 +84,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The stored envelope is version 2 —
+  `[version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
+  — so every object records the codec identity that wrote it. Version 1 objects
+  (no codec field) still load and read as "codec unspecified", and an object
+  whose codec declares no tag is read unchanged. Because the stored bytes
+  changed, the same value now hashes to a new address: re-storing it under
+  version 2 writes a second object instead of deduplicating against its
+  version 1 copy, and stores converge as objects are rewritten.
 - `fs.Backend.Prune` now takes an already-expanded `reachable map[string]bool`,
   matching `fs.Backend.GC`, instead of a bare `roots []cas.Digest` slice.
   Previously `Prune` treated the given roots as the complete reachable set and

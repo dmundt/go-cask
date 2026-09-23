@@ -42,3 +42,23 @@ compressed := gzip.New(inner)
 changing the codec stack changes the digest of otherwise-identical values —
 see the [custom codec recipe](../recipes/custom-codec.md) for a worked
 example.
+
+## Codec identity
+
+A codec may implement the optional `cas.CodecNamer` interface to declare the
+format it produces, and the store writes that tag into every envelope:
+
+```go
+type CodecNamer interface {
+    CodecName() string // "json", "gzip+json", or "" for none
+}
+```
+
+`Store.Get` compares the stored tag with its own codec's tag before decoding
+and reports `cas.ErrCodecMismatch` when both are present and differ, so
+swapping the codec behind a type is a reported format change instead of a
+decode failure — no type major bump required. The tags are declared, never
+derived from the Go type or the payload; a codec without the interface writes
+no tag and reads any tag without complaint. See
+[object format](../specifications/object-format.md#codec-identity) for the full
+rule.

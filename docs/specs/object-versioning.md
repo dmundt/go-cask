@@ -2,7 +2,7 @@
 type: Specification
 title: Object Versioning — go-cask
 description: Semantic versioning for object models — versioned type names carried in the self-describing TLV envelope, resolution without a registry, compatibility rules, and migration; the 4th, independent version space of go-cask.
-version: v6
+version: v7
 ---
 
 # Object Versioning — go-cask
@@ -33,12 +33,13 @@ Object-model versions are a **fourth, independent version space** — separate f
 - Within one MAJOR, old data MUST stay decodable by the new reader (MINOR/PATCH compatibility mirrors library-design §5). New fields are optional with sane zero-value defaults.
 - Across a MAJOR, the app either keeps handling the old major alongside the new one in its own resolver, or migrates data (§5). The store keeps both versions coexisting — it never rewrites or drops old objects on its own.
 - Unknown type/major on read → `ErrUnknownType` (graceful, detectable).
+- **A codec change is NOT a type-version concern** and needs no major bump. The envelope also carries the writing codec's identity tag (`cas.CodecNamer`, cas-core §8 d1), and `Store.Get` compares it before decoding: an object written with another codec is reported as `ErrCodecMismatch` — a format change, distinct from `ErrUnknownType` (unknown type or major) and from `ErrCorrupt` (damaged bytes) — so a `type@1` object read through a different codec fails loudly as a codec difference instead of masquerading as corruption. Object-model majors are for changes to the *value* shape; the codec is a separate, independently declared identity.
 
 ## 4. Resolution — the envelope, not a registry
 
-There is **no `RegisterType`, no registry, and no mutable global** anywhere in the code: the core is registry-free by design (cas-core §4.2, §4.7). A stored object is self-describing — `Store.Put` wraps the codec payload in the TLV envelope `[version u8][uvarint typeLen][type][uvarint payloadLen][payload]`, whose `type` field is the versioned `<type>@<major>` name (`cas/envelope.go`, cas-core §8 decision 1).
+There is **no `RegisterType`, no registry, and no mutable global** anywhere in the code: the core is registry-free by design (cas-core §4.2, §4.7). A stored object is self-describing — `Store.Put` wraps the codec payload in the TLV envelope `[version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`, whose `type` field is the versioned `<type>@<major>` name and whose `codec` field is the writing codec's identity tag (`cas/envelope.go`, cas-core §8 decision 1).
 
-- `cas.EnvelopeFromBytes(data)` returns `Envelope{Type, Data}` (`Type` is the versioned name, `Data` an independent copy of the payload); the internal `parseEnvelope` appends `@1` when the stored name carries no major, so pre-versioning objects read as `@1`.
+- `cas.EnvelopeFromBytes(data)` returns `Envelope{Type, Codec, Data}` (`Type` is the versioned name, `Codec` the writer's identity tag — empty for a version 1 object, `Data` an independent copy of the payload); the internal `parseEnvelope` appends `@1` when the stored name carries no major, so pre-versioning objects read as `@1`.
 - An app's resolver reads that name and dispatches in its **own type switch**: `gitlike.parseType` wraps `cas.EnvelopeFromBytes` and cuts `env.Type` at `@` to get the base name, and `Resolver.ResolveAny` switches on it (`blob`/`tree`/`commit`/`tag` → the matching typed `Resolve*`); an unrecognized name is `ErrUnknownType`. No lookup table is consulted and nothing is registered at startup.
 - Majors coexist because they are distinct stored names, not because they are registered: `blob@1` and `blob@2` are two different `Envelope.Type` values in one store. An app resolver that handles both MAY therefore mix them in one graph (`commit@2` → `tree@1`); one that handles a single major (like `gitlike` today, §6) reports the other as `ErrUnknownType`.
 - The generic core only carries the name through — it never interprets versions (cas-core §4.7).
