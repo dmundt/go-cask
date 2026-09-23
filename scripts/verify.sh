@@ -57,6 +57,11 @@ if ! find . -name '*.go' -print -quit | grep -q .; then
   exit 0
 fi
 
+# Scratch files for the coverage tier check below.
+cas_packages="$(mktemp)"
+tiered_packages="$(mktemp)"
+trap 'rm -f "$cas_packages" "$tiered_packages"' EXIT
+
 echo "== gofmt =="
 unformatted="$(gofmt -l .)"
 if [[ -n "$unformatted" ]]; then
@@ -116,27 +121,90 @@ fi
 
 echo "== test -race + coverage gate =="
 fail=0
+
+# One table, one authority: "<threshold>|<package>|<tier>". Tier 90 holds the
+# foundational storage and reference packages plus everything on the default
+# write or verification path; tier 80 holds the supporting packages that are
+# part of the shipped surface. The tier name in column three is documentation
+# only: the number in column one is what the gate enforces, and
+# docs/specs/testing-strategy.md §5 defines the rule instead of restating this
+# list.
 coverage_targets=(
-  "90|./cas"
-  "90|./cas/backend/fs"
-  "90|./cas/backend/mem"
-  "90|./cas/repo"
-  "80|./cas/cache/mem"
-  "80|./cas/cache/lru"
-  "80|./cas/cache/prefetch"
-  "90|./cas/refs"
-  "80|./cas/codec/json"
-  "80|./cas/codec/gob"
-  "80|./cas/hash/sha256"
-  "80|./cas/hash/sha512_256"
-  "80|./gitlike"
-  "80|./internal/index"
-  "80|./internal/web"
-  "80|./cmd/cask"
+  # Tier 90.
+  "90|./cas|core"
+  "90|./cas/backend|backend"
+  "90|./cas/backend/fs|backend"
+  "90|./cas/backend/mem|backend"
+  "90|./cas/backend/snapshot|backend"
+  "90|./cas/repo|reference"
+  "90|./cas/refs|reference"
+  "90|./cas/pack|reference"
+  "90|./cas/codec/flate|codec"
+  "90|./cas/bloom/persistent|index"
+  "90|./internal/store|seam"
+  # Tier 80.
+  "80|./cas/backend/packfs|backend"
+  "80|./cas/bloom|index"
+  "80|./cas/bloom/counting|index"
+  "80|./cas/bloom/standard|index"
+  "80|./cas/cache|support"
+  "80|./cas/cache/mem|support"
+  "80|./cas/cache/lru|support"
+  "80|./cas/cache/prefetch|support"
+  "80|./cas/codec/binary|codec"
+  "80|./cas/codec/cbor|codec"
+  "80|./cas/codec/gob|codec"
+  "80|./cas/codec/gzip|codec"
+  "80|./cas/codec/json|codec"
+  "80|./cas/codec/zlib|codec"
+  "80|./cas/hash|hash"
+  "80|./cas/hash/sha256|hash"
+  "80|./cas/hash/sha512|hash"
+  "80|./cas/hash/sha512_256|hash"
+  "80|./cas/verify/adler32|verify"
+  "80|./cas/verify/crc32|verify"
+  "80|./cas/verify/crc64|verify"
+  "80|./gitlike|reference"
+  "80|./internal/index|support"
+  "80|./internal/web|viewer"
+  "80|./cmd/cask|command"
 )
+# Deliberately ungated packages, as "<package>|<reason>". The coverage tier
+# check below compares this register against go list ./cas/... , so a package
+# can only be ungated as a written decision, never by omission. It is empty:
+# every package under cas/ carries a numeric gate.
+coverage_exempt=()
+
+echo "== coverage tier check =="
+# The gate is an enumeration, so it can silently fall behind the tree: the cas/
+# packages added since the list was last touched were measured by nothing, and a
+# reader could not tell an exemption from an omission. This check makes both
+# loud. `go list ./cas/...` is the authority on which packages exist, and every
+# one of them must carry a numeric tier or an entry in coverage_exempt with a
+# written reason, so a package that appears in neither fails here instead of
+# passing unnoticed.
+go list ./cas/... \
+  | sed 's|^github.com/dmundt/go-cask/||' \
+  | sort > "$cas_packages"
+{
+  for target in "${coverage_targets[@]}"; do
+    printf '%s\n' "$target" | cut -d'|' -f2 | sed 's|^\./||'
+  done
+  for exempt in ${coverage_exempt[@]+"${coverage_exempt[@]}"}; do
+    printf '%s\n' "$exempt" | cut -d'|' -f1 | sed 's|^\./||'
+  done
+} | sort -u > "$tiered_packages"
+missing="$(comm -23 "$cas_packages" "$tiered_packages")"
+if [[ -n "$missing" ]]; then
+  echo "every package under cas/ needs a coverage tier in scripts/verify.sh:" >&2
+  printf '%s\n' "$missing" >&2
+  echo 'add "<threshold>|./<package>|<tier>" or "<package>|<reason>" to coverage_exempt.' >&2
+  exit 1
+fi
+
 for target in "${coverage_targets[@]}"
  do
-  IFS='|' read -r threshold pkg <<< "$target"
+  IFS='|' read -r threshold pkg tier <<< "$target"
   out="$(go test -race -cover "$pkg" 2>&1)"
   echo "$out"
   cov="$(printf '%s\n' "$out" | grep -oE 'coverage: [0-9.]+%' | tail -n 1 | sed 's/^coverage: //; s/%$//')" || true
