@@ -53,6 +53,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `bloom/persistent.Filter` exposes `IsMapped` (Windows never memory-maps).
 - `lru.Cache.CachedStore()` reaches the wrapped lazy-loading store for observers
   (metrics, key lookups) without touching the cache's recency bookkeeping.
+- `cas.GetMany` streams a batch of digests in one call, and the optional
+  `cas.BatchGetter` interface lets a backend serve that batch its own way:
+  `packfs` now groups the requested objects by pack file and opens each pack
+  once per batch instead of once per object. `GetMany` closes every reader it
+  hands to the callback after the callback returns, and falls back to a
+  sequential `Get` loop for backends that do not batch. The `Backend`/`Store`
+  docs and cas-core §4.13 record the contract and the prefetch recipe for the
+  typed or parallel path (`lru.Cache`/`prefetch.SmartCache`, sized from
+  `Stats`, fed by `Reachable`).
 
 ### Changed
 
