@@ -236,3 +236,42 @@ func TestPrefetchRecursiveHonorsCanceledContext(t *testing.T) {
 		t.Fatal("a canceled context must stop the walk before it fetches references")
 	}
 }
+
+// TestPrefetchDoesNotDieWhenTheCallerCancelsAfterStart pins that the caller's
+// cancellation does not kill the already-launched background walk; a request
+// scope ends, but the prefetch's lifetime should outlive it.
+func TestPrefetchDoesNotDieWhenTheCallerCancelsAfterStart(t *testing.T) {
+	ctx := context.Background()
+	s, cs := internalStore(t)
+	leaf, _ := s.Put(ctx, internalObject{Name: "leaf"})
+	parent, _ := s.Put(ctx, internalObject{Name: "parent", Refs: []cas.Digest{leaf}})
+
+	cctx, cancel := context.WithCancel(ctx)
+	sc := NewSmartCache(cs, 2)
+	if _, err := sc.GetWithPrefetch(cctx, parent); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	waitIdle(t, sc)
+	if co := cs.Lookup(leaf.String()); co == nil || !co.IsLoaded() {
+		t.Fatal("a cancel on the caller's context must not stop a started prefetch")
+	}
+}
+
+// TestPrefetchSkipsAlreadyCanceledContext pins that a request already canceled
+// before the read never starts a background warm-up.
+func TestPrefetchSkipsAlreadyCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s, cs := internalStore(t)
+	leaf, _ := s.Put(context.Background(), internalObject{Name: "leaf"})
+	parent, _ := s.Put(context.Background(), internalObject{Name: "parent", Refs: []cas.Digest{leaf}})
+
+	sc := NewSmartCache(cs, 2)
+	if _, err := sc.GetWithPrefetch(ctx, parent); err == nil {
+		t.Fatal("a canceled ctx must fail the read before it can warm the cache")
+	}
+	if co := cs.Lookup(leaf.String()); co != nil {
+		t.Fatal("a canceled ctx must skip background prefetch before the first load")
+	}
+}
