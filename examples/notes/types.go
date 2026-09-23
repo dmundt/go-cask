@@ -1,13 +1,15 @@
 // Package main implements the notes example: a document-graph app with its
 // own object types (Note, Tag, Attachment) built directly on the generic cas
-// core — proving the "apps build their own repository/resolver" pattern
-// without using gitlike (examples spec §3.3).
+// core and resolved through a cas/repo registry — proving the "apps build their
+// own object model on the supported core APIs" pattern, not using gitlike
+// (examples spec §3.3).
 //
-// Notes reference tags and attachments by hash; attachments are large blobs
-// loaded lazily via CachedObject[T]; SmartCache prefetch warms references;
-// a deliberately dangling reference is detected and reported without
-// crashing; the generic Walker[T] traverses the same-type related-note
-// chain.
+// Notes reference tags and attachments by hash; cas/repo.Registry resolves a
+// digest across all three types and cas/repo.Reachable expands a root to the
+// whole cross-type set; attachments are large blobs loaded lazily via
+// CachedObject[T]; SmartCache prefetch warms references; a deliberately
+// dangling reference is detected and reported without crashing; the generic
+// Walker[T] traverses the same-type related-note chain.
 //
 // Usage:
 //
@@ -15,7 +17,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/dmundt/go-cask/cas"
@@ -85,19 +86,10 @@ func (a *Attachment) Type() string { return typeAttachment }
 // References returns nil because attachments are leaves.
 func (a *Attachment) References() []cas.Digest { return nil }
 
-// parseType extracts the unversioned type name ("note", "tag", ...) from the
-// stored TLV envelope header (see cas.EnvelopeType). Only the header is
-// inspected, so a bounded prefix of the object is enough and the payload is
-// never materialized. It returns an error wrapping cas.ErrUnknownType for a
-// malformed header.
-func parseType(data []byte) (string, error) {
-	versioned, err := cas.EnvelopeType(data)
-	if err != nil {
-		return "", fmt.Errorf("notes: %w", err)
-	}
+// bareType returns an object type's unversioned base name: "note" for typeNote.
+// The model's Type() is versioned ("note@1"); the ResolvedObject union's Type
+// field is the bare name its callers compare against.
+func bareType(versioned string) string {
 	base, _, _ := strings.Cut(versioned, "@")
-	if base == "" {
-		return "", fmt.Errorf("notes: %w: object missing type", cas.ErrUnknownType)
-	}
-	return base, nil
+	return base
 }

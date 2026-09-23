@@ -5,6 +5,8 @@ package web
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +18,58 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
+
+// TestIntegrityOfClassifiesSentinels pins the classification the sweep and the
+// per-object action share: only a digest mismatch is corruption, while an
+// object that is absent or cannot be read was never verified.
+func TestIntegrityOfClassifiesSentinels(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"mismatch", fmt.Errorf("%w: ab", cas.ErrDigestMismatch), "corrupt"},
+		{"absent", fmt.Errorf("cas: get: %w", cas.ErrNotFound), "not-verified"},
+		{"unreadable", errors.New("read failed"), "not-verified"},
+	}
+	for _, tc := range cases {
+		if got := integrityOf(tc.err); got != tc.want {
+			t.Errorf("integrityOf(%s: %v) = %q, want %q", tc.name, tc.err, got, tc.want)
+		}
+	}
+}
+
+// TestVerifyMissingObjectIsNotCorrupt drives the per-object action for a digest
+// that is not stored: an absent object is unverified with "Missing" prose, never
+// corrupted content — the same distinction cas.VerifyAll makes, so the viewer's
+// states and `cask verify --all` agree.
+func TestVerifyMissingObjectIsNotCorrupt(t *testing.T) {
+	ts, _ := newTestServer(t)
+	operator := login(t, ts, "operator-tok")
+	csrf := csrfFromPage(getBody(t, operator, ts.URL+"/viewer/objects"))
+
+	missing := strings.Repeat("11", 32) // well-formed digest, nothing stored at it
+	resp, err := operator.PostForm(ts.URL+"/viewer/objects/"+missing+"/verify",
+		url.Values{"csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verify of a missing object = %d, want 200", resp.StatusCode)
+	}
+	got := string(body)
+	if strings.Contains(got, "viewer-status-corrupt") {
+		t.Fatalf("a missing object must not be reported as corrupt: %.400q", got)
+	}
+	if !strings.Contains(got, "viewer-status-not-verified") {
+		t.Fatalf("missing object = %.400q, want the not-verified state", got)
+	}
+	if !strings.Contains(got, "Missing") {
+		t.Fatalf("missing object = %.400q, want the prose to name it missing", got)
+	}
+}
 
 func TestRemovedGCPostReturnsNotFound(t *testing.T) {
 	ts, _ := newTestServer(t)

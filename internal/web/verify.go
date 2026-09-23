@@ -24,7 +24,7 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := sessionID(r)
-	verified, corrupt := 0, 0
+	verified, corrupt, unchecked := 0, 0, 0
 	for _, h := range digests {
 		if err := r.Context().Err(); err != nil {
 			// The sweep stopped part-way, so its result is incomplete and the
@@ -36,18 +36,23 @@ func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
 		}
 		actual, err := s.verifyObject(r.Context(), h)
 		if err != nil {
+			state := integrityOf(err)
 			outcome := s.describeVerifyFailure(h, err)
 			outcome.Actual = actual
-			outcome.Integrity = "corrupt"
-			outcome.IntegrityLabel = integrityLabel("corrupt")
-			s.sessions.setVerification(id, h.String(), "corrupt", outcome)
-			corrupt++
+			outcome.Integrity = state
+			outcome.IntegrityLabel = integrityLabel(state)
+			s.sessions.setVerification(id, h.String(), state, outcome)
+			if state == "corrupt" {
+				corrupt++
+			} else {
+				unchecked++
+			}
 			continue
 		}
 		s.sessions.setVerification(id, h.String(), "verified", verifiedOutcome(h))
 		verified++
 	}
-	slog.Info("viewer audit", "action", "object.verify-all", "session", sessionHandle(id), "objects", len(digests), "verified", verified, "corrupt", corrupt)
+	slog.Info("viewer audit", "action", "object.verify-all", "session", sessionHandle(id), "objects", len(digests), "verified", verified, "corrupt", corrupt, "not-verified", unchecked)
 	w.Header().Set("HX-Trigger", "object-status-updated")
 	// The label stays "Verify": the per-object status cells already carry the
 	// outcome, so a count on the control would only duplicate them.
@@ -104,10 +109,11 @@ func (s *Server) verifyFragment(w http.ResponseWriter, r *http.Request) {
 		slog.Info("viewer audit", "action", "object.verify", "session", sessionHandle(id), "hash", h, "valid", false)
 		w.Header().Set("HX-Trigger", "object-status-updated")
 		outcome := s.describeVerifyFailure(h, err)
+		state := integrityOf(err)
 		outcome.Actual = actual
-		outcome.Integrity = "corrupt"
-		outcome.IntegrityLabel = integrityLabel("corrupt")
-		s.sessions.setVerification(id, h.String(), "corrupt", outcome)
+		outcome.Integrity = state
+		outcome.IntegrityLabel = integrityLabel(state)
+		s.sessions.setVerification(id, h.String(), state, outcome)
 		outcome.Checked = checkedLabel(s.sessions, id, h.String())
 		s.render(w, "result-swap", outcome)
 		return
@@ -135,6 +141,20 @@ func verifiedOutcome(h cas.Digest) actionOutcome {
 		Integrity:      "verified",
 		IntegrityLabel: integrityLabel("verified"),
 	}
+}
+
+// integrityOf classifies a verification failure the way cas.VerifyAll does:
+// only a digest mismatch means the stored bytes are corrupt. An object that is
+// absent or cannot be read was never verified, so it keeps the neutral
+// "not-verified" state while describeVerifyFailure's prose still says why
+// ("Missing", "Unreadable") — otherwise a file deleted out of band would be
+// reported as corrupted content, and the sweep's counts would disagree with
+// `cask verify --all` on the same store.
+func integrityOf(err error) string {
+	if errors.Is(err, cas.ErrDigestMismatch) {
+		return "corrupt"
+	}
+	return "not-verified"
 }
 
 // describeVerifyFailure turns a verification error into operator-facing prose.
@@ -174,10 +194,13 @@ func (s *Server) verifyObject(ctx context.Context, h cas.Digest) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer rc.Close()
 	actual, err := s.cfg.Hasher.Digest(rc)
 	if err != nil {
+		_ = rc.Close() // the read error is the one worth reporting
 		return "", fmt.Errorf("cas: verify read: %w", err)
+	}
+	if err := rc.Close(); err != nil {
+		return "", fmt.Errorf("cas: verify close: %w", err)
 	}
 	if !actual.Equal(h) {
 		return actual.String(), fmt.Errorf("%w: %s", cas.ErrDigestMismatch, h)

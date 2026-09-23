@@ -5,6 +5,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"time"
@@ -50,6 +51,41 @@ func EnvelopeType(data []byte) string {
 	return typ
 }
 
+// headerPrefixLimit bounds the bytes HeaderType reads. The TLV header is a few
+// dozen bytes for any realistic codec tag and type name, so this is generous;
+// it exists only so a hostile or damaged object cannot make a header read grow
+// with the object (the core's own per-field ceiling is 4 KiB).
+const headerPrefixLimit = 8 << 10
+
+// HeaderType reads only the envelope header of the object at d and returns its
+// versioned type name ("blob@1", …); "" when the bytes are not an envelope.
+//
+// It is the one place the viewer's index, the inspector, and the cask CLI learn
+// an object's type from stored bytes — each used to read its own bounded prefix
+// (4 KiB in two places, 64 KiB in a third) and sniff it.
+//
+// The read is a bounded prefix parsed by the index's best-effort EnvelopeType,
+// not cas.PeekType: a store legitimately holds raw, un-enveloped objects
+// (`cask put` writes the file's own bytes), and PeekType reports anything that
+// is not a valid header as cas.ErrCorrupt — which would relabel every raw object
+// as damaged. A non-nil error here therefore means "the object could not be
+// read", never "these bytes are not an envelope header".
+func HeaderType(ctx context.Context, backend cas.Backend, d cas.Digest) (string, error) {
+	rc, err := backend.Get(ctx, d)
+	if err != nil {
+		return "", err
+	}
+	prefix, err := io.ReadAll(io.LimitReader(rc, headerPrefixLimit))
+	if err != nil {
+		_ = rc.Close() // the read error is the one worth reporting
+		return "", fmt.Errorf("cas: read object header: %w", err)
+	}
+	if err := rc.Close(); err != nil {
+		return "", fmt.Errorf("cas: close object header reader: %w", err)
+	}
+	return EnvelopeType(prefix), nil
+}
+
 // Entry is the immutable metadata used by the viewer query path. Keeping the
 // result of one store walk together avoids re-opening and re-statting every
 // object for each filter, sort, or pagination request.
@@ -79,12 +115,13 @@ type Snapshot struct {
 	Bytes int64
 }
 
+// metadataSource is what the index needs from a backend: the byte contract plus
+// the physical per-object metadata. cas.Statter names exactly Size and ModTime,
+// so the interface embeds it rather than repeating the two signatures — a
+// backend that satisfies the core's optional capability satisfies this too.
 type metadataSource interface {
 	cas.Backend
-	// Size returns the stored byte count for a digest.
-	Size(context.Context, cas.Digest) (int64, error)
-	// ModTime returns the backend modification time for a digest.
-	ModTime(context.Context, cas.Digest) (time.Time, error)
+	cas.Statter
 }
 
 // BuildSnapshot scans source once and records bounded envelope metadata.
@@ -102,17 +139,10 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 			return nil, err
 		}
 		e := Entry{Digest: d}
-		rc, readErr := source.Get(ctx, d)
-		if readErr == nil {
-			prefix, err := io.ReadAll(io.LimitReader(rc, 64<<10))
-			closeErr := rc.Close()
-			if err != nil || closeErr != nil {
-				e.Unreadable = true
-			} else {
-				e.Type = EnvelopeType(prefix)
-			}
-		} else {
+		if typ, err := HeaderType(ctx, source, d); err != nil {
 			e.Unreadable = true
+		} else {
+			e.Type = typ
 		}
 		if e.Size, err = source.Size(ctx, d); err != nil {
 			e.Unreadable = true

@@ -107,7 +107,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		slog.Error("invalid viewer hash algorithm", "algorithm", a.hashAlgorithm, "err", err)
 		return 2
 	}
-	references, err := previewReferences(ctx, backend)
+	references, err := previewReferences(ctx, backend, hasher)
 	if err != nil && !errors.Is(err, errNoPreviewGraph) {
 		slog.Error("build preview references", "err", err)
 		return 1

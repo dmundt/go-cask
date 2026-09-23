@@ -169,7 +169,7 @@ repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
     Commit: jsoncodec.New[*gitlike.Commit](),
     Tag:    jsoncodec.New[*gitlike.Tag](),
 })
-d, _ := repo.Blobs.Put(ctx, andgitlike.Blob{Data: []byte("hello")})
+d, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("hello")})
 blob, _ := repo.Blobs.Get(ctx, d)                 // *gitlike.Blob
 ```
 

@@ -65,7 +65,8 @@ func previewObjectSize(ordinal int) int {
 
 // seedPreviewArgs holds seed-preview's flag values.
 type seedPreviewArgs struct {
-	count int
+	count         int
+	hashAlgorithm string
 }
 
 // seedPreviewFlags registers seed-preview's flags over a; opSeedPreview and the
@@ -74,11 +75,17 @@ type seedPreviewArgs struct {
 func seedPreviewFlags(a *seedPreviewArgs) *flag.FlagSet {
 	flags := newFlagSet("seed-preview")
 	flags.IntVar(&a.count, "count", defaultPreviewObjectCount, "number of preview objects (1-10000)")
+	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
 	return flags
 }
 
 // opSeedPreview writes deterministic, valid envelope objects suitable for
 // exercising the object browser's filtering, sorting, and pagination.
+//
+// The digest algorithm is selectable because the preview graph is addressed by
+// the viewer's hasher: seeding with one algorithm and reading with another
+// yields no graph at all (every probe misses), so `seed-preview -hash-algo`
+// must match `cask web -hash-algo`.
 func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 	var a seedPreviewArgs
 	flags := seedPreviewFlags(&a)
@@ -91,8 +98,12 @@ func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 	if a.count < 1 || a.count > maxPreviewCount {
 		return usagef("count must be between 1 and %d, got %d", maxPreviewCount, a.count)
 	}
+	hasher, err := viewerHasher(a.hashAlgorithm)
+	if err != nil {
+		return usagef("invalid hash algorithm %q: %v", a.hashAlgorithm, err)
+	}
 
-	added, deduplicated, err := seedPreview(ctx, t, a.count)
+	added, deduplicated, err := seedPreview(ctx, t, hasher, a.count)
 	if err != nil {
 		return err
 	}
@@ -100,39 +111,33 @@ func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 	return err
 }
 
-func seedPreview(ctx context.Context, backend cas.Backend, count int) (int, int, error) {
+func seedPreview(ctx context.Context, backend cas.Backend, hasher cas.Hasher, count int) (int, int, error) {
 	added, deduplicated := 0, 0
 	digests := make([]cas.Digest, 0, count)
 	for ordinal := range count {
-		object := previewObjectFor(ordinal, digests)
-		if previewCorruptOrdinal(ordinal) {
-			// Store bytes that do not hash to their own address, so Verify
-			// genuinely fails instead of the viewer faking a corrupt status.
-			exists, err := backend.Exists(ctx, object.digest)
-			if err != nil {
-				return 0, 0, fmt.Errorf("check preview object %d: %w", object.ordinal, err)
-			}
-			if exists {
-				deduplicated++
-			} else {
-				if err := backend.Put(ctx, object.digest, bytes.NewReader(previewTamper(object.data))); err != nil {
-					return 0, 0, fmt.Errorf("seed corrupt preview object %d: %w", object.ordinal, err)
-				}
-				added++
-			}
+		object, err := previewObjectFor(ordinal, digests, hasher)
+		if err != nil {
+			return 0, 0, fmt.Errorf("build preview object %d: %w", ordinal, err)
+		}
+		exists, err := backend.Exists(ctx, object.digest)
+		if err != nil {
+			return 0, 0, fmt.Errorf("check preview object %d: %w", object.ordinal, err)
+		}
+		if exists {
+			deduplicated++
 			digests = append(digests, object.digest)
 			continue
 		}
 		data := object.data
-		_, exists, err := localPut(ctx, backend, bytes.NewReader(data))
-		if err != nil {
+		if previewCorruptOrdinal(ordinal) {
+			// Store bytes that do not hash to their own address, so Verify
+			// genuinely fails instead of the viewer faking a corrupt status.
+			data = previewTamper(data)
+		}
+		if err := backend.Put(ctx, object.digest, bytes.NewReader(data)); err != nil {
 			return 0, 0, fmt.Errorf("seed preview object %d: %w", object.ordinal, err)
 		}
-		if exists {
-			deduplicated++
-		} else {
-			added++
-		}
+		added++
 		digests = append(digests, object.digest)
 	}
 	return added, deduplicated, nil
@@ -161,7 +166,7 @@ type previewObject struct {
 	data       []byte
 }
 
-func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
+func previewObjectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
 	references := previewObjectReferences(ordinal, digests)
 	data := previewEnvelope(
 		previewObjectType(ordinal),
@@ -169,12 +174,16 @@ func previewObjectFor(ordinal int, digests []cas.Digest) previewObject {
 		previewObjectSize(ordinal),
 		references,
 	)
+	digest, err := hasher.Digest(bytes.NewReader(data))
+	if err != nil {
+		return previewObject{}, err
+	}
 	return previewObject{
 		ordinal:    ordinal,
-		digest:     sha256.Of(data),
+		digest:     digest,
 		references: references,
 		data:       data,
-	}
+	}, nil
 }
 
 // previewObjectReferences makes a preview block contain a reachable root at
@@ -253,47 +262,70 @@ func (i *previewReferenceIndex) IsReachable(digest cas.Digest) bool {
 }
 
 // previewReferences rebuilds the known deterministic preview graph over the
-// objects the store holds. It returns errNoPreviewGraph when the store holds
-// none of them, so a caller reads "an ordinary store" from the error instead of
-// having to treat a nil index as a non-error signal. It takes the minimal
-// Backend contract, so the preview graph can be read from any backend.
-func previewReferences(ctx context.Context, backend cas.Backend) (*previewReferenceIndex, error) {
+// objects the store holds, hashing every ordinal with the viewer's hasher (the
+// digests must match the ones seeding wrote; a different algorithm would make
+// every probe miss). It returns errNoPreviewGraph when the store holds none of
+// them, so a caller reads "an ordinary store" from the error instead of having
+// to treat a nil index as a non-error signal. It takes the minimal Backend
+// contract, so the preview graph can be read from any backend.
+//
+// Digest accumulation is dense — every ordinal contributes its digest whether
+// or not its bytes are present — because each object's digest is derived from
+// the preceding ordinals: skipping an absent one would shift every later digest
+// and lose the blocks after it. A missing ordinal therefore only drops that
+// object's own edges, and the probe stops once a whole preview block is absent
+// (a block is the graph's unit, so an empty one ends the graph) rather than at
+// the first hole: `cask gc` removes the detached object of every block, and
+// truncating there used to make the viewer report reachable objects as
+// orphaned.
+func previewReferences(ctx context.Context, backend cas.Backend, hasher cas.Hasher) (*previewReferenceIndex, error) {
 	index := &previewReferenceIndex{
 		inbound:   make(map[string][]cas.Digest),
 		outbound:  make(map[string][]cas.Digest),
 		reachable: make(map[string]bool),
 	}
 	digests := make([]cas.Digest, 0, maxPreviewCount)
+	missingInBlock := 0
 	for ordinal := range maxPreviewCount {
-		object := previewObjectFor(ordinal, digests)
+		object, err := previewObjectFor(ordinal, digests, hasher)
+		if err != nil {
+			return nil, fmt.Errorf("build preview object %d: %w", ordinal, err)
+		}
+		digests = append(digests, object.digest) // dense: later digests depend on it
 		exists, err := backend.Exists(ctx, object.digest)
 		if err != nil {
 			return nil, fmt.Errorf("check preview object %d: %w", object.ordinal, err)
 		}
 		if !exists {
-			break
+			missingInBlock++
+			if missingInBlock >= previewBlockSize {
+				break // an entire block is gone: the graph ends here
+			}
+			continue
 		}
+		missingInBlock = 0
 		index.outbound[object.digest.String()] = append([]cas.Digest(nil), object.references...)
 		for _, target := range object.references {
 			index.inbound[target.String()] = append(index.inbound[target.String()], object.digest)
 		}
-		digests = append(digests, object.digest)
 	}
 	if len(index.outbound) == 0 {
 		return nil, errNoPreviewGraph
 	}
-	var visit func(cas.Digest)
-	visit = func(digest cas.Digest) {
-		if index.reachable[digest.String()] {
-			return
-		}
-		index.reachable[digest.String()] = true
-		for _, reference := range index.outbound[digest.String()] {
-			visit(reference)
-		}
-	}
+	// The reachable closure is cas.Reachable: the same root-seeded expansion the
+	// core documents for building the set Backend.GC/Backend.Prune require, so
+	// seed-preview does not carry a second implementation of it (and the core's
+	// is iterative, so a deep preview graph cannot recurse without bound).
+	roots := make([]cas.Digest, 0, len(digests)/previewBlockSize+1)
 	for root := previewRootOffset; root < len(digests); root += previewBlockSize {
-		visit(digests[root])
+		roots = append(roots, digests[root])
 	}
+	reachable, err := cas.Reachable(ctx, cas.RefListerFunc(func(_ context.Context, digest cas.Digest) ([]cas.Digest, error) {
+		return index.outbound[digest.String()], nil
+	}), roots)
+	if err != nil {
+		return nil, err
+	}
+	index.reachable = reachable
 	return index, nil
 }

@@ -178,18 +178,11 @@ func (g *Tag) References() []cas.Digest {
 	return nil
 }
 
-// parseType extracts the unversioned type name ("blob", "tree", ...) from a
-// stored object's TLV envelope header (see cas.EnvelopeType). Only the header is
-// inspected, so a bounded object prefix is enough and the payload is never
-// materialized. It returns ErrUnknownType for a malformed object.
-func parseType(data []byte) (string, error) {
-	versioned, err := cas.EnvelopeType(data)
-	if err != nil {
-		return "", fmt.Errorf("gitlike: %w", err)
-	}
+// bareType returns an object type's unversioned base name: "blob" for TypeBlob,
+// "commit" for TypeCommit. The model's Type() is versioned ("blob@1"); the
+// ResolvedObject union's Type field is the bare name, which is what its
+// callers and PrintObject compare against.
+func bareType(versioned string) string {
 	base, _, _ := strings.Cut(versioned, "@")
-	if base == "" {
-		return "", fmt.Errorf("gitlike: %w: object missing type", cas.ErrUnknownType)
-	}
-	return base, nil
+	return base
 }

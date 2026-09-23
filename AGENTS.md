@@ -409,15 +409,15 @@ func main() {
     //    A reference field is a plain cas.Digest: the zero value is "absent",
     //    it renders itself as one hex string, and a field tagged omitzero is
     //    left out of the encoding when absent.
-    blobHash, _ := repo.Blobs.Put(ctx, andgitlike.Blob{Data: []byte("Hello, World!")})
-    treeHash, _ := repo.Trees.Put(ctx, andgitlike.Tree{Entries: []gitlike.TreeEntry{
+    blobHash, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("Hello, World!")})
+    treeHash, _ := repo.Trees.Put(ctx, &gitlike.Tree{Entries: []gitlike.TreeEntry{
         {Name: "hello.txt", Hash: blobHash, Mode: "file"},
     }})
-    commitHash, _ := repo.Commits.Put(ctx, andgitlike.Commit{
+    commitHash, _ := repo.Commits.Put(ctx, &gitlike.Commit{
         Tree: treeHash, Author: "Alice",
         Message: "Initial commit", Time: time.Now(),
     })
-    tagHash, _ := repo.Tags.Put(ctx, andgitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
+    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
 
     // 3. Type-safe reads — no casts, no any: the fields ARE the addresses
     //    (IsZero reports an absent one). Each step uses the resolver method
@@ -482,12 +482,17 @@ backend := mem.New() // in-memory: fast, deterministic, not persistent
    after decoding on `Get`, so it holds under any codec (`cas.Validator`,
    cas-core §4.7/§4.8). Never express an invariant as codec-specific JSON
    methods: those stop applying the moment a client picks another codec.
-5. If you need a repository/resolver for your types (per-type stores,
-   `Resolve*` methods, `ResolvedObject` union, `WalkGraph`), copy the
-   `gitlike` reference pattern into your own package; do NOT add your types to
-   `cas` or extend `gitlike`. `gitlike.NewRepository` takes the caller's
-   `Codecs` set (`gitlike.Codecs{...}`), so the copied pattern must inject its
-   codec too rather than hardcoding one.
+5. If you need cross-type resolution or a repository for your types (per-type
+   stores, `Resolve*` methods, a `ResolvedObject` union), use the supported
+   `cas/repo` package: `repo.NewRegistry` + `repo.RegisterStore[T]` for the
+   dispatch, `repo.LookupStore[T]` to get a store back typed, and `repo.Walk` /
+   `repo.Reachable` for traversal and the GC root set. Copy the `gitlike`
+   reference pattern into your own package only when you need something
+   `cas/repo` does not express; do NOT add your types to `cas`, and do NOT
+   extend `gitlike` (it is a reference library, and it now delegates its own
+   traversal to `cas/repo`). `gitlike.NewRepository` takes the caller's `Codecs`
+   set (`gitlike.Codecs{...}`), so any copied pattern must inject its codec too
+   rather than hardcoding one.
 6. Never add `any` or reflection to do this — add explicit typed methods.
 
 **Change the hash algorithm:** the core names no algorithm — it stores whatever
@@ -554,8 +559,9 @@ gofmt -l .
   `fs.WithNamespace` option (extensions §3).
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
-  (cas-core §8 decision 1, `cas/envelope.go`), enabling `parseType`/`ResolveAny`
-  without a side registry. The codec field is the writing codec's identity tag
+  (cas-core §8 decision 1, `cas/envelope.go`), enabling type-directed resolution
+  (`cas.EnvelopeType`/`PeekType`, `cas/repo.Registry`) without a side
+  registry. The codec field is the writing codec's identity tag
   (`cas.CodecNamer`): `Store.Get` compares it and reports `ErrCodecMismatch` for
   a codec change instead of a decode failure, so a codec change needs no type
   major bump. A version 1 envelope has no codec field and still reads (as "codec

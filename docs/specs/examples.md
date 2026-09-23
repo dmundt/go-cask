@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v19
+version: v20
 ---
 
 # Examples — go-cask
@@ -19,7 +19,7 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 2. **Runnable:** `go build ./...`, `go run ./examples/<name>`, and `go test ./examples/...` MUST pass (except `gitlike`, a library). The demo prints meaningful output (hashes, stats, traversal results).
 3. **Std-lib only:** no external deps (coding-guidelines §3). Compression via `compress/gzip`; hashing is the client's job (`cas/hash/sha256`: `sha256.New()` for a store, `sha256.NewHasher()`/`sha256.Of` for hash-on-write) — the core names no algorithm and there is no registry to extend.
 4. **Public APIs only:** documented exported API of `cas`/`gitlike`; never reach into unexported internals.
-5. **No `any` in example APIs:** define own typed objects/repositories/resolvers (copy the `gitlike` pattern; never extend `cas`/`gitlike`).
+5. **No `any` in example APIs:** define your own typed objects; for cross-type resolution use the supported `cas/repo` registry (or copy the `gitlike` pattern into your own package when you need something it does not express) — never extend `cas`/`gitlike`.
 6. **One focus per example, real-world shape:** clear primary aspect (§4), small believable program — not a kitchen sink, not a toy.
 7. **Idiomatic Go:** `gofmt`, doc comments on exports, `context.Context` first, wrapped errors, table-driven tests (coding-guidelines §2, §7).
 8. **`README.md` is REQUIRED** in the example folder (in addition to the package comment) teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `cas.Digest` reference fields, the `sha256.New()`/`sha256.Of` hasher, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `memory.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (a custom `Codec[T]`, an own `Object[T]`/repo/resolver, an HTTP surface — never a custom hash algorithm, since the client merely injects `cas.Hasher`) and explicitly what it does NOT modify (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused and concrete — docs for app authors.
@@ -34,25 +34,27 @@ Serve three audiences: **doc readers** (a runnable program beats API signatures;
 
 **Goal:** a small CLI storing file trees as content-addressable objects and committing them over the `gitlike` layer end-to-end (a miniature Git). Also demonstrates the derived object-state report: every object classified verified/orphaned/corrupt/unverified from existing ops (`Verify` + reachability from `HEAD`) — proving those states are scan results, never stored metadata.
 
-**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `Verify`, `Stats`, derived-state audit (`List` + reachability mark + per-object `Verify`), CLI (`flag`-based `-store` parsing).
+**Aspects:** `gitlike` model (`Blob`/`Tree`/`Commit`/`Tag`), `Repository`, `Resolver`/`ResolvedObject`, `WalkGraph`, `Store[T]`+JSON codec, `fs` fan-out, `cas/refs` for `HEAD`/`INDEX`, `cas.Verify`/`cas.VerifyAll`, `Stats`, derived-state audit (`List` + `cas.Reachable` + per-object `Verify`), CLI (`flag`-based `-store` parsing).
 **Structure:** `main.go` (CLI: add, commit, log, cat, graph, audit, verify, stats), `audit.go` (derived-state report), `main_test.go`, `README.md`.
-**Behaviors:** `add` stores blobs + builds a tree (identical content dedups); `commit -m` creates a `Commit` pointing at the tree + parent head (head = a `cas.Digest` in a small ref file); `log` walks parents via `WalkGraph`/`References()`; `cat` resolves+prints blob bytes; `graph` prints reachable graph with types; `audit [-no-verify]` lists all objects, marks reachable from `HEAD`, `Verify`s each, prints per-object state — `verified` (intact+reachable), `orphaned` (intact, unreachable — GC candidate), `corrupt` (Verify failed), `unverified` (reachable, skipped under `-no-verify`); states derived at scan time, never persisted (consistency §8); `verify` recomputes every digest; `stats` prints `N objects, M bytes`.
+**Layout:** the `-store` root holds two disjoint trees — `objects/` (the `fs.Backend` base) and `refs/` (`cas/refs`) — because a ref inside a store base would be reported by `List`/`Stats` (digest-named files) and swept by `Clean` (`*.tmp`); cas-core §4.4's "one base = one store" rule is what the split teaches.
+**Behaviors:** `add` stores blobs + builds a tree (identical content dedups); `commit -m` creates a `Commit` pointing at the tree + parent head (head is the `HEAD` ref in `cas/refs`, which also records a reflog); `log` walks parents via `WalkGraph`/`References()`; `cat` resolves+prints blob bytes; `graph` prints reachable graph with types; `audit [-no-verify]` lists all objects, expands the set reachable from `HEAD` with `cas.Reachable`, `Verify`s each, prints per-object state — `verified` (intact+reachable), `orphaned` (intact, unreachable — GC candidate), `corrupt` (Verify failed), `unverified` (reachable, skipped under `-no-verify`); states derived at scan time, never persisted (consistency §8); `verify` recomputes every digest through `cas.VerifyAll`; `stats` prints `N objects, M bytes`.
 **Acceptance:** add→commit→log→cat round-trips; identical content across commits doesn't duplicate blobs; `verify` passes after a clean commit and reports a mismatch after on-disk corruption; `audit` reports clean=all `verified`, an uncommitted add's objects=`orphaned`, corrupted=`corrupt`, and under `-no-verify` reachable=`unverified`.
 
 ### 3.2 `examples/artifacts` — content-addressable build artifact cache
 
 **Goal:** cache build outputs under their content digest with an opt-in gzip codec wrapper, bounded caching, metrics, mark-and-sweep GC.
-**Aspects:** `cas/codec/gzip` (gzip-wrapped JSON), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), `GC` (reachable = manifest-referenced), `Stats`.
-**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `codec.go` (the example-local gzip wrapper or the generic `cas/codec/gzip` package usage), `main_test.go`, `README.md`.
-**Behaviors:** `put` stores the artifact under the client's `sha256` digest, prints it with `deduplicated: true/false`; manifests reference artifact digests (`[]cas.Digest`). `get` serves from `lru.Cache`, `CacheMonitor` prints hit rate on exit. `gc` mark-and-sweeps (unreferenced-from-any-manifest objects deleted); `stats` before/after shows it.
-**Acceptance:** same bytes → same digest → `deduplicated: true`; second `get` hits cache (hit rate > 0); `gc` deletes only unreferenced artifacts, leaves manifest-referenced intact.
+**Aspects:** `cas/codec/gzip` (the shipped gzip wrapper over the JSON codec), `PutDedup`, caching (`lru.Cache`), cache metrics (`CacheMonitor`), named manifest refs (`cas/refs`), `cas.Reachable`/`cas.Sweep` for GC, `Stats`.
+**Structure:** `main.go` (the `Artifact`/`Manifest` types + put/get/gc/stats/monitor CLI), `fuzz_test.go` (codec round-trip over the real stack), `main_test.go`, `README.md`.
+**Layout:** like `examples/files`, the `-store` root holds `objects/` (the `fs` base) and `refs/` (`cas/refs`) — a manifest name is a ref, not a manifest object found by decoding the store.
+**Behaviors:** `put <name> <file>` stores the artifact under the client's `sha256` digest with `deduplicated: true/false`, writes the manifest, points the `name` ref at it, and deletes the manifest it replaced (the ref is published before that delete, so a crash leaves a live pointer rather than a dangling one). Manifests reference artifact digests (`[]cas.Digest`). `get <hash|name>` serves from `lru.Cache`, `CacheMonitor` prints hit rate on exit. `gc` takes `refs.Roots()`, expands it with `cas.Reachable` over the manifest store, and reclaims the rest with `cas.Sweep`, reporting the sweep's own deleted count; a manifest whose stored type cannot be read **aborts** the sweep instead of having its artifacts deleted; `stats` before/after shows it.
+**Acceptance:** same bytes → same digest → `deduplicated: true`; second `get` hits cache (hit rate > 0); `gc` deletes only unreferenced artifacts, leaves manifest-referenced intact, and fails without deleting anything when a manifest is damaged.
 
 ### 3.3 `examples/notes` — document graph with its own object types
 
-**Goal:** an app with **its own** object model (`Note`, `Tag`, `Attachment`) not using `gitlike` — proving the "apps build their own repository/resolver" pattern, with lazy loading and prefetching.
-**Aspects:** custom `Object[T]` types on the generic core, own `Repository`/`Resolver`/`ResolvedObject` (copied from `gitlike`), generic `Walker[T]`, lazy loading via `CachedObject[T]`, prefetch-on-access (`SmartCache`), broken-reference detection.
-**Structure:** `types.go` (Note/Tag/Attachment), `repo.go` (own Repository/Resolver/ResolvedObject/parseType), `main.go` (demo), `main_test.go`, `README.md`.
-**Behaviors:** notes reference tags+attachments by digest; attachments are large blobs loaded lazily (`CachedObject.Load` only on access). Own `Resolver` resolves any digest to the right concrete type via `ResolvedObject` (no `any`). `SmartCache.GetWithPrefetch` warms references; metrics show hits after prefetch; a deliberately dangling reference is flagged as broken.
+**Goal:** an app with **its own** object model (`Note`, `Tag`, `Attachment`) resolved through the supported `cas/repo` registry — proving the "apps build their own object model on the core APIs" pattern without `gitlike`, with lazy loading and prefetching.
+**Aspects:** custom `Object[T]` types on the generic core, `cas/repo.Registry`/`RegisterStore`/`Resolve` for cross-type resolution, `cas/repo.Reachable` for the cross-type root set, generic `Walker[T]`, lazy loading via `CachedObject[T]`, prefetch-on-access (`SmartCache`), broken-reference detection.
+**Structure:** `types.go` (Note/Tag/Attachment), `repo.go` (the app's Repository + `cas/repo` registry, plus its typed Resolver/ResolvedObject), `main.go` (demo), `main_test.go`, `README.md`.
+**Behaviors:** notes reference tags+attachments by digest; attachments are large blobs loaded lazily (`CachedObject.Load` only on access). The registry resolves any digest to the right concrete type via the app's `ResolvedObject` (no `any`), and `cas/repo.Reachable` expands a root across all three types. `SmartCache.GetWithPrefetch` warms references; metrics show hits after prefetch; a deliberately dangling reference is flagged as broken.
 **Acceptance:** notes resolve across all three types; attachments not loaded until accessed; after prefetch the cache reports hits; broken references detected/reported without crashing.
 
 ### 3.4 `examples/api` — HTTP-exposure pattern (server over `cas`)
@@ -73,11 +75,13 @@ Covered by the **product object browser** in `internal/web/` (nested Go template
 |---|---|:--:|:--:|:--:|:--:|
 | `Digest` + client hasher (`sha256`) | ✓ | ✓ | ✓ | ✓ | product |
 | `fs` fan-out (`WithFanOut`/`WithFanLevels`) | ✓ | ✓ | ✓ | ✓ | product |
-| `Codec[T]` (custom) | ✓ JSON | ✓ gzip | ✓ | ✓ JSON | product |
+| `Codec[T]` (JSON, or the shipped gzip wrapper) | ✓ JSON | ✓ gzip+JSON | ✓ JSON | ✓ JSON | product |
 | `Object[T]`/`Store[T]` | ✓ | ✓ | ✓ | ✓ | product |
 | Dedup (`PutDedup`) | ✓ | ✓ | | ✓ | |
 | `gitlike` (Repository/Resolver/WalkGraph) | ✓ | | | | |
-| Custom app object model (own repo/resolver) | | | ✓ | | |
+| Custom app object model + `cas/repo` registry | | | ✓ | | |
+| Named refs (`cas/refs`: atomic pointers + reflog) | ✓ | ✓ | | | |
+| Root-set closure (`cas.Reachable` / `cas/repo.Reachable`) | ✓ | ✓ | ✓ | | |
 | Generic `Walker[T]` | ✓ | | ✓ | | |
 | Lazy loading (`CachedObject[T]`) | | | ✓ | | product |
 | Caching (`memory.CachedStore[T]`/`lru.Cache`) | | ✓ | ✓ | | |
