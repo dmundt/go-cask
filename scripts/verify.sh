@@ -57,10 +57,17 @@ if ! find . -name '*.go' -print -quit | grep -q .; then
   exit 0
 fi
 
-# Scratch files for the coverage tier check below.
+# Scratch files for the coverage tier check below. One EXIT trap owns every
+# scratch file this script creates: bash keeps a single EXIT trap per shell, so a
+# second `trap` would replace this one and leak whatever it does not name, and
+# the ${var:-} defaults keep the handler valid when the run ends before a later
+# file is assigned. The captured status is restored after the removals so the
+# cleanup cannot decide the script's exit status: under `set -e` an unguarded
+# failure inside the trap exits 1, and a bare `exit 0` there would turn a failed
+# run into a passing one.
 cas_packages="$(mktemp)"
 tiered_packages="$(mktemp)"
-trap 'rm -f "$cas_packages" "$tiered_packages"' EXIT
+trap 'exit_status=$?; rm -f "${cas_packages:-}" "${tiered_packages:-}" "${tidy_errors:-}" "${mod_snapshot:-}" || true; exit "$exit_status"' EXIT
 
 echo "== gofmt =="
 unformatted="$(gofmt -l .)"
@@ -89,7 +96,6 @@ go build ./...
 
 echo "== module graph =="
 mod_snapshot="$(mktemp)"
-trap 'rm -f "$mod_snapshot"' EXIT
 
 go list -m -json all > "$mod_snapshot"
 if ! grep -q '"Path": "github.com/dmundt/go-cask"' "$mod_snapshot"; then
