@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v30
+version: v31
 ---
 
 # Defaults and Behavior — go-cask
@@ -33,6 +33,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Compact binary codec | Optional app-defined payload codec (`binary.New(inner, wrap, unwrap)` or `binary.NewRaw(marshal, unmarshal)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
+| Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; the byte is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
 | Read concurrency | lock-free (`Get`/`Exists`/`List`/`Stats`) | cas-core §4.4 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
 | Hash-on-write | one pass, spool + hasher (`io.MultiWriter`) | performance §3 |

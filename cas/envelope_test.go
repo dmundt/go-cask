@@ -524,6 +524,94 @@ func TestPeekTypeKeepsReadErrorCause(t *testing.T) {
 	}
 }
 
+// TestPeekVersionReadsExactlyOneByte pins the point of the version peek: one
+// byte, whatever the payload size and whichever envelope layout follows it, and
+// the same answer for a version this build writes and one it does not know —
+// reporting an unknown version is the call's purpose, never an error.
+func TestPeekVersionReadsExactlyOneByte(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		frame func(size int) []byte
+		want  byte
+	}{
+		{"current version", func(size int) []byte {
+			return encodeEnvelope("json", "note@1", bytes.Repeat([]byte("x"), size))
+		}, EnvelopeVersion},
+		{"v1 stream", func(size int) []byte {
+			return v1Envelope("note@1", bytes.Repeat([]byte("x"), size))
+		}, envelopeVersionV1},
+		{"unknown version", func(int) []byte { return []byte{0xff, 0x01, 'a'} }, 0xff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, size := range []int{0, 7, 1 << 20} {
+				frame := tc.frame(size)
+				cr := &countingReader{r: bytes.NewReader(frame)}
+
+				got, err := PeekVersion(cr)
+				if err != nil {
+					t.Fatalf("payload %d: PeekVersion = %v", size, err)
+				}
+				if got != tc.want {
+					t.Fatalf("payload %d: version = %d, want %d", size, got, tc.want)
+				}
+				if cr.n != 1 {
+					t.Fatalf("payload %d: read %d bytes, want exactly one", size, cr.n)
+				}
+				// Nothing was consumed past the version byte: the rest of the same
+				// stream is still the frame, byte for byte.
+				rest, err := io.ReadAll(cr)
+				if err != nil {
+					t.Fatalf("payload %d: read rest = %v", size, err)
+				}
+				if want := frame[1:]; !bytes.Equal(rest, want) {
+					t.Fatalf("payload %d: %d bytes left, want the %d-byte rest of the frame", size, len(rest), len(want))
+				}
+			}
+		})
+	}
+}
+
+// TestEnvelopeVersionMatchesTheWriter keeps the exported constant honest: the
+// version byte a caller compares PeekVersion's answer against is the byte the
+// writer actually emits, so the constant cannot drift from encodeEnvelope.
+func TestEnvelopeVersionMatchesTheWriter(t *testing.T) {
+	if got := encodeEnvelope("json", "note@1", []byte("x"))[0]; got != EnvelopeVersion {
+		t.Fatalf("encodeEnvelope wrote version %d, EnvelopeVersion is %d", got, EnvelopeVersion)
+	}
+	if encoded := encodeEnvelope("", "blob@1", nil); encoded[0] != EnvelopeVersion {
+		t.Fatalf("encodeEnvelope(empty codec, empty payload) wrote version %d, want %d", encoded[0], EnvelopeVersion)
+	}
+}
+
+// TestPeekVersionRejectsAnEmptyStream covers the one way the version peek fails:
+// there is no byte to report. The error is ErrCorrupt and names the field, at
+// the same shape PeekType uses.
+func TestPeekVersionRejectsAnEmptyStream(t *testing.T) {
+	_, err := PeekVersion(bytes.NewReader(nil))
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("PeekVersion(empty) = %v, want ErrCorrupt", err)
+	}
+	if !strings.Contains(err.Error(), "envelope version") {
+		t.Fatalf("error %q does not name the envelope version field", err)
+	}
+}
+
+// TestPeekVersionKeepsReadErrorCause keeps a real read failure on the chain, so
+// a caller can tell a broken stream from a truncated one.
+func TestPeekVersionKeepsReadErrorCause(t *testing.T) {
+	want := errors.New("device gone")
+	_, err := PeekVersion(failingReader{err: want})
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("PeekVersion(read failure) = %v, want ErrCorrupt", err)
+	}
+	if !errors.Is(err, want) {
+		t.Fatalf("PeekVersion(read failure) = %v, want the cause %v on the chain", err, want)
+	}
+	if !strings.Contains(err.Error(), "envelope version") {
+		t.Fatalf("error %q does not name the envelope version field", err)
+	}
+}
+
 // failAfterReader serves n bytes from data and then fails with err, so a header
 // read can break in the middle of a field rather than at end of stream.
 type failAfterReader struct {

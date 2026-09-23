@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v29
+version: v30
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -559,6 +559,10 @@ gofmt -l .
   (`cas.CodecNamer`): `Store.Get` compares it and reports `ErrCodecMismatch` for
   a codec change instead of a decode failure, so a codec change needs no type
   major bump. A version 1 envelope has no codec field and still reads (as "codec
-  unspecified").
+  unspecified"). The version this build writes is exported as
+  `cas.EnvelopeVersion`, and `cas.PeekVersion` (or `Store.Version`) reports a
+  frame's leading version byte verbatim — including a version this build does
+  not know — so a reader chooses a header layout from data instead of
+  string-matching an error.
 - Follow the sibling spec `docs/specs/viewer-security.md`
   for anything touching the embedded viewer (`internal/web/`).

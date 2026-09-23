@@ -443,6 +443,7 @@ func TestStoreCanceledOps(t *testing.T) {
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
 		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
 		{"Type", func() error { _, err := st.Type(ctx, h); return err }},
+		{"Version", func() error { _, err := st.Version(ctx, h); return err }},
 		{"Exists", func() error { _, err := st.Exists(ctx, h); return err }},
 		{"Delete", func() error { return st.Delete(ctx, h) }},
 	} {
@@ -619,6 +620,125 @@ func TestStoreTypeRejectsMissingAndCorruptKeys(t *testing.T) {
 	}
 	if _, err := s.Type(ctx, d); !errors.Is(err, cas.ErrCorrupt) {
 		t.Fatalf("Type(damaged header) = %v, want ErrCorrupt", err)
+	}
+}
+
+// TestStoreVersionDoesNotAllocateThePayload states the version peek's cost in
+// bytes allocated: reading the frame's leading byte must not grow with the
+// object, exactly as Store.Type's header read does not.
+func TestStoreVersionDoesNotAllocateThePayload(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t, mem.New())
+	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	if _, err := s.Version(ctx, d); err != nil {
+		t.Fatalf("Version = %v", err)
+	}
+	runtime.ReadMemStats(&after)
+
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 1<<16 {
+		t.Fatalf("Version allocated %d bytes, want a one-byte cost (the payload is %d bytes)", grew, 1<<20)
+	}
+}
+
+// TestStoreVersionReadsExactlyOneByte pins the same property in bytes read: the
+// version peek stops after the leading byte, so a store can choose a header
+// layout before paying for the header.
+func TestStoreVersionReadsExactlyOneByte(t *testing.T) {
+	ctx := context.Background()
+	counted := &countingBackend{Backend: mem.New()}
+	s := newTestStore(t, counted)
+
+	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPut := counted.read
+
+	version, err := s.Version(ctx, d)
+	if err != nil {
+		t.Fatalf("Version = %v", err)
+	}
+	if version != cas.EnvelopeVersion {
+		t.Fatalf("Version = %d, want %d", version, cas.EnvelopeVersion)
+	}
+	if peeked := counted.read - afterPut; peeked != 1 {
+		t.Fatalf("Version read %d bytes, want exactly one (the payload is %d bytes)", peeked, 1<<20)
+	}
+
+	// The counter is live: a Get over the same backend does read the payload.
+	if _, err := s.Get(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if got := counted.read - afterPut - 1; got < 1<<20 {
+		t.Fatalf("Get read %d bytes, want the whole payload", got)
+	}
+}
+
+// TestStoreVersionReportsTheStoredVersion shows the peek is honest about what is
+// on disk: it reports the stored byte, including a version this build cannot
+// read, and leaves the rejection to Get.
+func TestStoreVersionReportsTheStoredVersion(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	s := newTestStore(t, backend)
+
+	// A v1 object stays readable, and its frame says so.
+	v1 := readV1Fixture(t)
+	v1Digest := test.DigestData(v1)
+	if err := backend.Put(ctx, v1Digest, bytes.NewReader(v1)); err != nil {
+		t.Fatal(err)
+	}
+	if version, err := s.Version(ctx, v1Digest); err != nil || version != 1 {
+		t.Fatalf("Version(v1 object) = %d, %v, want 1", version, err)
+	}
+
+	// A frame written by a newer format is reported as itself, not as damage.
+	future := append([]byte{0xff}, v1[1:]...)
+	futureDigest := test.DigestData(future)
+	if err := backend.Put(ctx, futureDigest, bytes.NewReader(future)); err != nil {
+		t.Fatal(err)
+	}
+	version, err := s.Version(ctx, futureDigest)
+	if err != nil {
+		t.Fatalf("Version(unknown version) = %v, want the byte reported verbatim", err)
+	}
+	if version != 0xff {
+		t.Fatalf("Version(unknown version) = %d, want 0xff", version)
+	}
+	if _, err := s.Get(ctx, futureDigest); !errors.Is(err, cas.ErrUnknownType) {
+		t.Fatalf("Get(unknown version) = %v, want ErrUnknownType", err)
+	}
+}
+
+// TestStoreVersionRejectsMissingAndCorruptKeys covers the version peek's failure
+// modes: an absent object is ErrNotFound, an absent digest is rejected before
+// any read, and a frame with no version byte at all is ErrCorrupt.
+func TestStoreVersionRejectsMissingAndCorruptKeys(t *testing.T) {
+	ctx := context.Background()
+	backend := mem.New()
+	s := newTestStore(t, backend)
+
+	if _, err := s.Version(ctx, sha256.Of([]byte("absent"))); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Version(missing) = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Version(ctx, cas.Digest{}); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("Version(absent digest) = %v, want ErrInvalidDigest", err)
+	}
+
+	// An empty object: there is no version byte to report.
+	empty := sha256.Of(nil)
+	if err := backend.Put(ctx, empty, bytes.NewReader(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Version(ctx, empty); !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Version(empty object) = %v, want ErrCorrupt", err)
 	}
 }
 

@@ -43,7 +43,8 @@ type CodecNamer interface {
 //	+--------+----------+---------+----------+---------+------------+---------+
 //
 // where:
-//   - Version is the envelope format version (currently envelopeVersion).
+//   - Version is the envelope format version this build writes
+//     (EnvelopeVersion), or the older version a legacy frame carries.
 //   - CodecLen is the length of the codec identity tag, encoded as a uvarint.
 //     Zero is legal and means "unspecified".
 //   - Codec is the codec identity tag bytes (CodecNamer). Version 1 of the
@@ -79,6 +80,16 @@ const envelopeVersion byte = 2
 // field. It stays readable: such an envelope decodes with an empty Codec, i.e.
 // "codec unspecified", and is never reported as a codec mismatch.
 const envelopeVersionV1 byte = 1
+
+// EnvelopeVersion is the envelope format version this build writes: the leading
+// byte of every frame Store.Put produces. It is exported so a consumer that
+// inspects stored bytes can compare PeekVersion's answer against the version its
+// own build writes instead of declaring a copy of the constant that a format
+// bump would silently leave behind.
+//
+// It is not the type major version: "commit@1" names the object model, while
+// this byte names the layout of the frame that carries it.
+const EnvelopeVersion byte = envelopeVersion
 
 // encodeEnvelope writes codec, typ and payload as
 // [version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload].
@@ -286,6 +297,34 @@ func PeekType(r io.Reader) (string, error) {
 		typeName += "@1" // legacy unversioned type name
 	}
 	return typeName, nil
+}
+
+// PeekVersion reads only the envelope's leading version byte from r and returns
+// it verbatim, whether or not this build knows that version. Reporting an
+// unknown version is the point of the call, so a version this build cannot read
+// is NOT an error here: the caller compares the byte against EnvelopeVersion and
+// decides for itself which header layout to parse. That is what makes "written by
+// a newer format" distinguishable from "damaged bytes" without string-matching
+// an error.
+//
+// Exactly one byte is read, whatever the object's size: a store can decide
+// between two envelope layouts before paying for a header, and reading it leaves
+// the stream positioned at the rest of the frame.
+//
+// It is the counterpart of PeekType, which reports the versioned type name. It
+// returns ErrCorrupt, naming the field, when the stream carries no byte at all
+// or the read fails; a read failure other than end of stream keeps its cause on
+// the chain (peekError).
+func PeekVersion(r io.Reader) (byte, error) {
+	br, ok := r.(io.ByteReader)
+	if !ok {
+		br = byteReader{r: r}
+	}
+	version, err := br.ReadByte()
+	if err != nil {
+		return 0, peekError("envelope version", err)
+	}
+	return version, nil
 }
 
 // skipPeekName consumes a length-prefixed header string field from a peek
