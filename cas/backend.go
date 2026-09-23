@@ -49,6 +49,18 @@ import (
 //
 // This keeps the backend contract stable while allowing codecs, envelopes,
 // caches, object models and hash algorithms to evolve independently.
+//
+// Reading many objects: Get is one object per call, and the measured cost of
+// loading a store is per open rather than per byte, so a caller loading a whole
+// revision should not loop over Get. The package-level GetMany (batch.go)
+// serves a batch of digests and dispatches to the optional BatchGetter
+// interface — packfs, for example, opens one pack file for many adjacent
+// objects — and falls back to a sequential Get loop for every other backend.
+// A caller that wants the typed or parallel path uses the caching layer
+// instead: memory.CachedStore[T] (cas/cache/mem), lru.Cache[T] (cas/cache/lru)
+// and prefetch.SmartCache[T] (cas/cache/prefetch), sized from Stats. cas-core
+// §4.13 records the recipe. Neither GetMany nor this interface changes the
+// Backend method set.
 type Backend interface {
 	// Put stores bytes from r under d.
 	Put(ctx context.Context, d Digest, r io.Reader) error

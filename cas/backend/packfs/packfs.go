@@ -235,6 +235,7 @@ type Backend struct {
 var _ cas.Backend = (*Backend)(nil)
 var _ cas.Cleaner = (*Backend)(nil)
 var _ cas.Statter = (*Backend)(nil)
+var _ cas.BatchGetter = (*Backend)(nil)
 
 // New creates a pack-backed filesystem backend. It stays opt-in: without
 // WithEnabled, the backend behaves like the regular loose fs backend.
@@ -523,6 +524,156 @@ func (b *Backend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) 
 		}
 	}
 	return b.op.getDo(ctx, b.loose, d)
+}
+
+// GetMany serves a batch of digests, opening each pack file at most once for
+// the whole batch: the requested digests are grouped by the pack file that
+// holds them, every group is opened a single time, and each object in it is
+// served from that one open. A digest without a usable pack record falls back
+// to the loose backend, one open each, exactly as Get does. GetMany satisfies
+// cas.BatchGetter, so cas.GetMany dispatches to it, and it follows that
+// function's contract — any order, one call per served object, the reader
+// closed after fn returns, and the first error from a read, from fn or from a
+// canceled ctx stops the batch.
+//
+// Each object's reader is a view onto its group's shared open: Close on the
+// view releases nothing, because this method owns the file and closes it once
+// the group has been served. fn must therefore consume what it needs before
+// returning and must not retain the view.
+//
+// The pack index is consulted under the mutex, so the batch works from one
+// consistent snapshot of the records, but the opens and the calls to fn run
+// without it — a slow consumer never blocks Put or Delete.
+func (b *Backend) GetMany(ctx context.Context, digests []cas.Digest, fn func(cas.Digest, io.ReadCloser) error) error {
+	if fn == nil {
+		return fmt.Errorf("cas: get many: nil fn")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	groups, loose, err := b.planGetMany(digests)
+	if err != nil {
+		return err
+	}
+	for _, group := range groups {
+		if err := b.servePackGroup(ctx, group, fn); err != nil {
+			return err
+		}
+	}
+	for _, d := range loose {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		reader, err := b.op.getDo(ctx, b.loose, d)
+		if err != nil {
+			return fmt.Errorf("cas: get many: %s: %w", d, err)
+		}
+		if err := callBatchFn(fn, d, reader); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// packGroup is one pack file's share of a GetMany batch: the file path plus the
+// objects to serve from a single open of it, in requested order.
+type packGroup struct {
+	path    string
+	records []packRequest
+}
+
+// packRequest locates one requested object inside its group's pack file.
+type packRequest struct {
+	digest cas.Digest
+	offset int64
+	size   int64
+}
+
+// planGetMany resolves the requested digests against the pack index in one
+// consistent pass: objects with a live pack record are grouped by pack file,
+// and the rest are returned as loose digests. A stale record is dropped and its
+// object served from the loose backend, exactly as Get does, and the pruned
+// index is persisted.
+func (b *Backend) planGetMany(digests []cas.Digest) ([]packGroup, []cas.Digest, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	var groups []packGroup
+	var loose []cas.Digest
+	groupIndex := make(map[string]int)
+	stale := false
+	for _, d := range digests {
+		if err := cas.CheckDigest(d, "pack: get many"); err != nil {
+			return nil, nil, err
+		}
+		rec, ok := b.index[string(d)]
+		if !ok {
+			loose = append(loose, d)
+			continue
+		}
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cas: validate pack record: %w", err)
+		}
+		if !valid {
+			delete(b.index, string(d))
+			stale = true
+			loose = append(loose, d)
+			continue
+		}
+		i, ok := groupIndex[rec.Pack]
+		if !ok {
+			i = len(groups)
+			groupIndex[rec.Pack] = i
+			groups = append(groups, packGroup{path: rec.Pack})
+		}
+		groups[i].records = append(groups[i].records, packRequest{digest: d, offset: rec.Offset, size: rec.Size})
+	}
+	if stale {
+		if err := b.persistIndex(); err != nil {
+			return nil, nil, err
+		}
+	}
+	return groups, loose, nil
+}
+
+// servePackGroup opens one pack file, serves every record in the group from
+// that single open, and closes the file when the group is done. A reader it
+// hands to fn is a no-op closable view onto that shared open, so N objects in
+// one pack cost exactly one open.
+func (b *Backend) servePackGroup(ctx context.Context, group packGroup, fn func(cas.Digest, io.ReadCloser) error) (err error) {
+	f, err := b.op.openDo(group.path)
+	if err != nil {
+		return fmt.Errorf("cas: open pack file: %w", err)
+	}
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("cas: close pack file: %w", closeErr)
+		}
+	}()
+	for _, req := range group.records {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		view := io.NopCloser(io.NewSectionReader(f, req.offset, req.size))
+		if fnErr := fn(req.digest, view); fnErr != nil {
+			return fnErr
+		}
+	}
+	return nil
+}
+
+// callBatchFn calls fn with the reader and closes the reader exactly once,
+// whether fn returned an error or panicked. fn's error wins; a failing Close is
+// reported only when fn itself succeeded, so a close failure never masks the
+// real cause.
+func callBatchFn(fn func(cas.Digest, io.ReadCloser) error, d cas.Digest, reader io.ReadCloser) (err error) {
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("cas: get many: close %s: %w", d, closeErr)
+		}
+	}()
+	return fn(d, reader)
 }
 
 // Exists reports whether the object is present in either the pack index or the loose backend.

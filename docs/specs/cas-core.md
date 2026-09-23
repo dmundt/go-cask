@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v57
+version: v58
 ---
 
 # CAS Core — go-cask
@@ -554,6 +554,39 @@ type ResolvedObject struct {
 - **`WalkGraph`** — whole-graph traversal over unknown types: `WalkGraph(ctx, resolver, d, visit func(*ResolvedObject) error)`; its type-switch makes it example-specific (generic, several-type alternative: `cas/repo.Walk`, which follows the same at-most-once/explicit-stack rule over a caller-registered `Registry` instead of gitlike's fixed four types). It visits each digest **at most once** and uses an explicit stack, exactly like `Walker[T]`: a diamond-shaped history costs one visit per object instead of one per path (a 12-level diamond is 13 visits, not 2¹³−1), and a store this library did not write — the `Backend` stores bytes without re-verifying their digest — cannot make the walk loop.
 - **`CachedRepository`** — per-type `lru.Cache` wrappers + an internal `Resolver`; convenience `GetCommit`/`GetTree`/`GetBlob` serve from the caches, while `ResolveAny` reads through the shared resolver (raw bytes + per-type stores) and is therefore *not* cache-served.
 - **`Preloader`** — background worker pool on a `chan cas.Digest`, running `Commits.PreloadRecursive(ctx, d, 2)`; non-blocking `Preload`, `Stop()` cancels and drains.
+
+### 4.13 Batching and prefetching — loading many objects
+
+Loading a store is a loop of `Get`s, and the measured cost of the loop is per **open**, not per byte: a reported measurement put 217 opens at ≈ 7 ms, and the same 217 opens moving 15.3 MB also at ≈ 7 ms. The win is therefore fewer or overlapped opens.
+
+**`cas.GetMany`** is the batch read at the byte layer:
+
+```go
+type BatchGetter interface {
+    GetMany(ctx context.Context, digests []Digest, fn func(Digest, io.ReadCloser) error) error
+}
+
+func GetMany(ctx context.Context, raw Backend, digests []Digest, fn func(Digest, io.ReadCloser) error) error
+```
+
+- **`Backend` does not change.** `GetMany` is a package-level function plus the optional `BatchGetter` interface, exactly like `Cleaner`/`Statter` (§4.11): the interface is a structural opt-in, never a seventh `Backend` method. The default implementation is a sequential `Get` loop, so **every** backend already satisfies the contract without implementing anything.
+- **Ownership is explicit.** `GetMany` closes each reader it hands to `fn`, after `fn` returns — a caller cannot leak a reader, and `fn` MUST consume everything it needs before returning, because the reader is closed as soon as it does.
+- **Order and call count are unspecified.** Every requested digest the backend can serve is served, but a `BatchGetter` MAY serve a different order than requested and MAY coalesce a digest that appears more than once; the default loop keeps the requested order and makes one call per appearance. Callers must not assume the requested order.
+- **Errors stop the batch.** The first error from a read or from `fn` is returned — `fn`'s own error unwrapped, a read error wrapped with `%w` and the digest it failed on. `ctx` is checked before each object, and a canceled `ctx` stops the loop and returns `ctx.Err()`. An absent digest fails the batch with `ErrInvalidDigest` (`CheckDigest`), a digest that is not stored fails it with the backend's `ErrNotFound`: `GetMany` does not skip missing objects.
+- **No client-side concurrency is baked in.** `GetMany` sequences the batch, because the point is that a *backend* can batch opens, not that the core grows a worker pool. Parallel and typed loading is the caching layer's job (recipe below).
+
+**`packfs.Backend` overrides it** as the reference batching backend: it groups the requested digests by the pack file that holds them, opens each pack **once** for the whole group, and serves every record in that group from the single open; a digest with no usable pack record still falls back to the loose backend, exactly as `Get` does. `TestPackfsGetManyOpensOnePackForAdjacentObjects` counts opens through the backend's own injected file-open seam (`ops.open`, not a global) and asserts one open for N adjacent packed objects, where the sequential `Get` baseline opens N times. `BenchmarkPackfsGetManyVersusSequentialGet` measures the same difference end to end over 4000 objects in one pack: ≈ 6.0 ms and one open per batch versus ≈ 13.7 ms and 4000 opens for the sequential `Get` loop on the reference machine (a local SSD, where an open costs a couple of microseconds — the gap grows with open latency).
+
+**Client-side prefetch is not automatically a win, and the benchmark says so.** `BenchmarkPrefetchVersusSequentialLoad` loads the same 4000-object packed revision twice through a cache — sequentially, and with `Preload` — doing identical per-object work in both arms. On the reference machine the prefetched load was ≈ 20 % *slower* (≈ 26 ms versus ≈ 21 ms): a local filesystem has no open latency for a worker pool to hide, so the pool's contention is pure cost. Prefetching pays when the same objects are read repeatedly or when an open is expensive enough that overlapping it beats the contention (network storage, object storage); measure it for the backend at hand instead of assuming it. The reliable win measured here is the backend's own batching.
+
+**Prefetch recipe — loading a whole revision:**
+
+1. **Get the digest set.** `cas.Reachable` (§4.11) expands a revision's roots to the transitively-closed digest set — with `RefLister`/`RefListerFunc` for one type, or `cas/repo.Reachable` across several registered types. This is the set to prefetch.
+2. **Warm a cache before the traversal.** `memory.CachedStore.Preload`/`PreloadRecursive` (`cas/cache/mem`), `lru.Cache` with its bounded recency policy (`cas/cache/lru`, `lru.New(store, maxSize)`), `prefetch.SmartCache` for prefetch-on-access (`cas/cache/prefetch`, `prefetch.NewSmartCache(store, depth)`), or `gitlike.Preloader` for a background worker pool over a `CachedRepository` (non-blocking `Preload`, `Stop`). A prefetch is best-effort and must never block or fail the hot read path.
+3. **Size the cache from `Stats`.** `Backend.Stats` reports `ObjectCount` and `TotalSize` (§4.11); a cache smaller than the revision thrashes and re-opens objects the traversal already visited, while a vastly larger one only holds memory. Both cache packages take `maxSize` entries at construction.
+4. **Read through the warm cache**, and let the typed layer decode. `GetMany` is the raw-byte batch path underneath for callers that do not need the typed layer, and a `BatchGetter` backend needs no cache to avoid the per-object open.
+
+The batch and prefetch layers therefore compose rather than compete: `GetMany` removes the backend's per-object opens, and the caches remove the repeated reads a traversal would otherwise make.
 
 ## 5. Data flows
 

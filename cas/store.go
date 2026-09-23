@@ -27,6 +27,14 @@ import (
 // system therefore proves that every value a Store handles is an object —
 // Store[plain] does not compile, Put takes the concrete T, and no runtime
 // type assertions exist anywhere in the typed layer.
+//
+// Store.Get reads one object per call. Loading many objects — a whole revision,
+// a traversal — is a caching problem rather than a store method: warm a cache
+// with memory.CachedStore[T] (cas/cache/mem), lru.Cache[T] (cas/cache/lru) or
+// prefetch.SmartCache[T] (cas/cache/prefetch), size it from the backend's
+// Stats, and read through it; at the raw byte layer the package-level GetMany
+// (batch.go) does the same for a batch of digests in one call. cas-core §4.13
+// records the prefetch recipe.
 type Store[T Object[T]] struct {
 	backend   Backend
 	codec     Codec[T]
