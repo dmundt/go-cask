@@ -87,7 +87,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. Viewer enforces it wi
 ## 9. Validation
 
 - Every `{hash}`: `sha256.Parse` first (it accepts `sha256:hexdigest` and bare hex) → 400 on malformed.
-- Query params: reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0.
+- Query params (JSON surfaces, `examples/api`): reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0. The viewer's HTML object list is the documented exception and follows `viewer-design` §5 instead: its own allowed limits (25/50/100/250) and clamping rather than a 400, because a hypermedia page must still render.
 - Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible).
 - Credentials ride in the documented carrier only: a login token must be presented same-origin (viewer-security §5.1), and the viewer's CSRF token comes from the POST body or the `X-CSRF-Token` header — a query value is never accepted, because URLs are captured by logs, bookmarks, proxies, and `Referer` chains.
 - Never trust client input — header, query, and body all validated (viewer-security).

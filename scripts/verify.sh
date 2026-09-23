@@ -232,16 +232,18 @@ echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
 
 echo "== doc integrity =="
-cd docs/specs
+# Mermaid balance is checked in every tracked Markdown file, not only the specs
+# folder: AGENTS.md, the READMEs, website/ and benchmarks/ render diagrams too,
+# and §9 of docs/specs/AGENT.md applies to all of them.
 fail_doc=0
-for f in *.md; do
+while IFS= read -r f; do
   m="$(grep -c '^```mermaid$' "$f" || true)"
   c="$(grep -c '^```$' "$f" || true)"
   if [[ "$c" -lt "$m" ]]; then
     echo "unbalanced mermaid in $f" >&2
     fail_doc=1
   fi
-done
+done < <(git ls-files '*.md')
 python3 - "$repo_root" <<'PY'
 import pathlib
 import re

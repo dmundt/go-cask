@@ -212,7 +212,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.27 (toolchain self-managing; library baseline Go 1.24+, needed for the `omitzero` JSON tags used by `cas.Digest` reference fields). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and [benchmarks/README.md](benchmarks/README.md) for running/reading the benchmarks.
+Requires Go 1.24 or newer: the module declares `go 1.24` with a self-managing `toolchain go1.27.1`, and the 1.24 floor is what the `omitzero` JSON tags used by `cas.Digest` reference fields need (AGENTS.md "Constraints and conventions", coding-guidelines §1). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and [benchmarks/README.md](benchmarks/README.md) for running/reading the benchmarks.
 
 ## License
 

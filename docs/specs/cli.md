@@ -24,7 +24,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
   selected backend and reports its `cas.Capabilities`, so `put`/`get`/`list`/
   `meta`/`stats`/`verify`/`gc`/`prune`/`clean` work over either backend
   (backend-architecture §5). Without the flag the CLI behaves exactly as before.
-- The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). There is no `-algo` flag — the core names no algorithm (cas-core §4.2).
+- The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). No **store operation** takes an algorithm flag — the core names no algorithm (cas-core §4.2). The two viewer subcommands do take `-hash-algo` (`sha256`, `sha512`, `sha512_256`), because a reader must be told which algorithm to validate and decode with: `web` for the viewer, `seed-preview` for the preview graph it seeds, and the two MUST agree or the viewer finds no graph (§2, §4).
 - `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). The startup admin token is generated and shown once on **stdout** — on an interactive stdout, or in any run that asks for it with `-show-token` — or supplied by the operator with `-token-file`/`CASK_VIEWER_TOKEN`; it is never logged at any level (§4, viewer-security §5.1, §9, §11). A non-loopback bind prints no login link, because the session cookie is always `Secure` (viewer-security §7); the notice names the bind and the `https://` expectation instead. A config file is deferred.
 
 ## 2. Subcommands
@@ -121,7 +121,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 5. Checklist
 
-- [x] Local-only: `-store` mode; no `-algo` flag (the CLI digests with the client's sha256); no remote flags
+- [x] Local-only: `-store` mode; no `-algo` flag on store operations (the CLI digests with the client's sha256); the viewer subcommands take `-hash-algo` (§1, §2); no remote flags
 - [x] `web` starts the embedded viewer per backend-architecture §3; no separate server binary; `-no-open` skips the browser launch
 - [x] `seed-preview` creates idempotent local viewer data with valid envelopes
 - [x] Maintenance sweeps (`gc`/`prune`/`clean`) hold the store lock; a second sweep refused with the holder's PID (exit 1); writers (`put`) and reads never lock
