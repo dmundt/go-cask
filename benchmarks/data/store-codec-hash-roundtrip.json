@@ -1,6 +1,6 @@
 {
   "schema": "go-cask-benchmark-v1",
-  "benchmark": "BenchmarkStoreCodecHashRoundTrip",
+  "benchmark": "BenchmarkCodecPackageRoundTrip",
   "generated_at": "2026-09-16T11:59:54Z",
   "statistic": "median_of_1_run",
   "runner": {

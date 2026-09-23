@@ -24,7 +24,7 @@
     },
     "benchmark": {
       "type": "string",
-      "const": "BenchmarkStoreCodecHashRoundTrip"
+      "const": "BenchmarkCodecPackageRoundTrip"
     },
     "generated_at": {
       "type": "string",

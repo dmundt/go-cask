@@ -23,7 +23,7 @@ All files in this folder. [`AGENT.md`](AGENT.md) governs them. Start at [`docs/i
 | HTTP conventions (status codes, errors, streaming) | [`api-design.md`](api-design.md) |
 | Example rules + five proposed examples | [`examples.md`](examples.md) |
 | Extension contract + implemented/deferred catalog | [`extensions.md`](extensions.md) |
-| Performance (benchmarks, allocations, CI gates) | [`performance.md`](performance.md) |
+| Performance (benchmarks, allocations, profiling) | [`performance.md`](performance.md) |
 | Testing (CAS laws, fuzz, race, coverage gates) | [`testing-strategy.md`](testing-strategy.md) |
 | Operations (durability, fsync, observability) | [`operations.md`](operations.md) |
 | Defaults (constants, hash algo, fan-out, limits) | [`defaults.md`](defaults.md) |

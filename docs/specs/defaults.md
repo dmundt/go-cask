@@ -97,13 +97,13 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 
 | Metric | Default target | Defined in |
 |---|---|---|
-| Memory-backend small (64 B) **byte-layer** Put/Get | ≥100k obj/s; p99 ≤1 ms; ≤5 allocs/op — measured by `BenchmarkMemBackendPut/Get` (2026-09: Put/64 B ≈ 5 allocs, Get ≈ 2 allocs; the Store-level path adds codec + envelope + hashing and is not held to this number) | performance §11 |
+| Memory-backend small (64 B) **byte-layer** Put/Get round trip | target ≥100k obj/s and ≤5 allocs/op — **aspirational**, nothing enforces it; the closest real record is `BenchmarkBackendWriteRead/mem/steady-state/64B` in `benchmarks/data/baseline.txt` (2026-09: 512.7 ns/op ≈ 1.95M ops/s, 10 allocs/op for the combined Put+Get round trip; the Store-level path adds codec + envelope + hashing and is not held to this number) | performance §11 |
 | FS-backend small Put/Get (warm) | ≥10k obj/s; p99 ≤5 ms | performance §11 |
 | Large-object streaming (1 GiB) | RSS ≤64 MiB above baseline | performance §11 |
 | `List` at 1M objects (fs, (2,2)) | ≤30 s | performance §11 |
 | Packfile rotation (`packfs`) | no size threshold — every `Put` is mirrored loose **and** into the active pack; rotation at `PackMaxBytes` = 64 MiB or `PackMaxEntries` = 10 000 (`0` = unlimited) | cas-core §4.14, performance §9 |
 
-Baselines are calibratable on CI hardware (performance §11.4) — default targets, not absolutes.
+These are default targets, not absolutes, and they are **aspirational**: nothing enforces them today (performance §11.3 — there is no CI gate and no scenario harness, performance §5). Duration and RSS rows have no measuring harness at all; only the `benchmarks/` suite's `ns/op` and `allocs/op` numbers are recorded, in `benchmarks/data/baseline.txt`.
 
 ## 7. Go and project defaults
 
