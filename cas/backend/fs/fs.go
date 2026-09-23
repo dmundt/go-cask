@@ -471,9 +471,11 @@ func (s *Backend) List(ctx context.Context) ([]cas.Digest, error) {
 	return digests, nil
 }
 
-// Stats walks the tree and returns the object count and total size. A file that
-// cannot be stat'ed fails the walk: an error is returned rather than silently
-// undercounting the store.
+// Stats walks the tree and returns the object count and total size. An object
+// that vanishes mid-walk — a concurrent Delete — is skipped rather than failing
+// the walk, because the store allows deletion while readers run and a walk
+// cannot assume the tree holds still. Any other stat failure still fails the
+// walk instead of silently undercounting the store.
 func (s *Backend) Stats(ctx context.Context) (*cas.Stats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
