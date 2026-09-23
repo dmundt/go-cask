@@ -3,10 +3,22 @@
 A codec defines how a Go value becomes bytes and back:
 
 ```go
+package codecs
+
+import "github.com/dmundt/go-cask/cas"
+
+// Codec is the two-method serialization contract for one type.
 type Codec[T any] interface {
     Encode(v T) ([]byte, error)
     Decode(data []byte) (T, error)
 }
+
+// The contract above and the shipped cas.Codec accept exactly each other's
+// implementations, so this listing cannot drift from the real interface.
+var (
+    _ cas.Codec[string] = Codec[string](nil)
+    _ Codec[string]     = cas.Codec[string](nil)
+)
 ```
 
 The contract is a round trip: `Decode(Encode(v)) == v` for every storable
@@ -33,8 +45,20 @@ JSON for readability, a compact format for size — entirely with the caller.
 A compression wrapper takes an inner codec and re-encodes its output:
 
 ```go
-inner := jsoncodec.New[*Note]()
-compressed := gzip.New(inner)
+package codecs
+
+import (
+    "github.com/dmundt/go-cask/cas/codec/gzip"
+    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+)
+
+type Note struct {
+    Text string `json:"text"`
+}
+
+// gzip wraps any inner Codec[T]: Encode runs the inner codec first and then
+// compresses the result, and Decode reverses the order.
+var compressed = gzip.New(jsoncodec.New[*Note]())
 ```
 
 `compressed.Encode` runs the inner codec first, then compresses the result;
@@ -49,9 +73,21 @@ A codec may implement the optional `cas.CodecNamer` interface to declare the
 format it produces, and the store writes that tag into every envelope:
 
 ```go
+package codecs
+
+import "github.com/dmundt/go-cask/cas"
+
+// CodecNamer declares the wire format a codec produces.
 type CodecNamer interface {
     CodecName() string // "json", "gzip+json", or "" for none
 }
+
+// The contract above and the shipped cas.CodecNamer accept exactly each
+// other's implementations.
+var (
+    _ cas.CodecNamer = CodecNamer(nil)
+    _ CodecNamer     = cas.CodecNamer(nil)
+)
 ```
 
 `Store.Get` compares the stored tag with its own codec's tag before decoding

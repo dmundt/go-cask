@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v2
+version: v3
 ---
 
 # Scripts — go-cask
@@ -13,7 +13,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 
 | Script | Purpose |
 |---|---|
-| [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, helper-script behaviour, and doc integrity. Run before commits and before release decisions. |
+| [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, helper-script behaviour, doc integrity, and the website example build plus shipped-package inventory check. Run before commits and before release decisions. |
 | [`security.sh`](./security.sh) | Installs the pinned `govulncheck` version and runs the repository security scan. |
 | [`docs-only.sh`](./docs-only.sh) | Classifies a Git diff as documentation-only for CI scope selection. |
 | [`release.sh`](./release.sh) | Release wrapper that coordinates the consistent release flow from the repo root. |

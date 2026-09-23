@@ -55,10 +55,16 @@ The default layout is the Git-like `FanOut=2`, `FanLevels=1` (`aa/<full hex>`).
 Both are configurable:
 
 ```go
-backend, err := fsbackend.New("./repo",
-    fsbackend.WithFanOut(2),
-    fsbackend.WithFanLevels(1),
-)
+package layout
+
+import fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
+
+func newBackend() (*fsbackend.Backend, error) {
+    return fsbackend.New("./repo",
+        fsbackend.WithFanOut(2),
+        fsbackend.WithFanLevels(1),
+    )
+}
 ```
 
 ## Good fit
