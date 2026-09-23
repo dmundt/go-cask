@@ -758,7 +758,7 @@ func TestConcurrentPutGetDelete(t *testing.T) {
 					errs <- err
 					return
 				}
-				content := []byte(fmt.Sprintf("obj-%d-%d", w, i))
+				content := fmt.Appendf(nil, "obj-%d-%d", w, i)
 				h := digestOf(content)
 				if err := s.Put(ctx, h, bytes.NewReader(content)); err != nil {
 					errs <- err
