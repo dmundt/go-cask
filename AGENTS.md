@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v27
+version: v28
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -57,6 +57,16 @@ resulting head commit with `git verify-commit`, and push with
 `./scripts/verify.sh` and confirm all configured coverage thresholds pass.
 Enable auto-merge or merge only after signature verification, required checks,
 and coverage checks pass.
+
+On Windows, run `./scripts/verify.sh` under WSL with a Linux Go toolchain: the
+race and coverage gate needs cgo and a C compiler, which the Windows toolchain
+cannot take from WSL's `gcc`, and coverage measured on Windows does not predict
+the gate. Never duplicate the gate's steps in PowerShell. The rootless WSL setup
+and the exact command are in [`scripts/AGENT.md`](scripts/AGENT.md), section
+"Running the scripts on Windows".
+
+On any platform, a gate run is green only when it ends with `verification
+passed`; a run that stops earlier failed even if nothing was echoed about it.
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
