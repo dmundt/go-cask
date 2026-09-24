@@ -67,6 +67,54 @@ check "the clone's repo id is its own" "distinct" \
 ./scripts/land-lane.sh release >/dev/null
 check "release empties the lane" "1" "$(./scripts/land-lane.sh status >/dev/null 2>&1; echo $?)"
 
+# ---- 2b. acquiring the lane is atomic -----------------------------------------
+# A check followed by a write let two waiters retry into the same free slot and
+# both claim it, so two landings gated and pushed at once (#299). Claiming is an
+# exclusive create now, so of any number of simultaneous acquirers exactly one
+# holds the lane and the rest refuse. Contenders need distinct identities, and an
+# identity names its worktree, so they are linked worktrees of this clone: they
+# share its lane file but not its identity.
+lane_owner="$(git rev-parse --path-format=absolute --git-common-dir)/dsh-land-lane/owner"
+mkdir -p "$scratch/race"
+race_dirs=()
+for i in 1 2 3 4; do
+  d="$scratch/race/wt$i"
+  git worktree add -q "$d" -b "race$i"
+  cp "$root/scripts/land-lane.sh" "$d/scripts/land-lane.sh"
+  chmod +x "$d/scripts/land-lane.sh"
+  race_dirs+=("$d")
+done
+clean_rounds=0
+for _round in 1 2 3; do
+  # The test clears the slot directly: release is the holder's call, and the
+  # holder here is whichever contender won the previous round.
+  rm -f "$lane_owner" "$scratch/go"
+  : >"$scratch/wins"
+  : >"$scratch/losses"
+  pids=()
+  for d in "${race_dirs[@]}"; do
+    (
+      cd "$d"
+      while [[ ! -e "$scratch/go" ]]; do :; done
+      if ./scripts/land-lane.sh acquire race >/dev/null 2>&1; then
+        echo won >>"$scratch/wins"
+      else
+        echo lost >>"$scratch/losses"
+      fi
+    ) &
+    pids+=($!)
+  done
+  touch "$scratch/go"
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  winners="$(grep -c won "$scratch/wins" || true)"
+  losers="$(grep -c lost "$scratch/losses" || true)"
+  if [[ "$winners" == "1" && "$losers" == "3" ]]; then
+    clean_rounds=$((clean_rounds + 1))
+  fi
+done
+rm -f "$lane_owner"
+check "three rounds of four simultaneous acquirers leave exactly one holder" "3" "$clean_rounds"
+
 # ---- 3. the gate stamp is a ledger, not a single slot -------------------------
 # The hook's own code decides here: a real commit is pushed to a bare remote with
 # the real `.githooks/pre-push` installed, and the ledger is the only variable.
