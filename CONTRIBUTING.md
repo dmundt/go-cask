@@ -72,8 +72,9 @@ Rules from the specs that always apply:
 
 ### Making a change
 
-1. Branch from `main` with a type prefix:
-   `git checkout -b feat/<description>` (see `branch-naming` §2).
+1. Open (or find) the issue the work serves, then branch from `main` with a
+   type prefix and that issue number:
+   `git checkout -b feat/<NNN>-<kebab-description>` (see `branch-naming` §2).
 2. Implement, keeping the relevant spec as the contract. If the change is
    **material** (new requirement, contract change), bump the owning
    instruction file's frontmatter `version` by one (AGENT.md §3) and update
