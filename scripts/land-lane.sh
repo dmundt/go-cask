@@ -15,6 +15,10 @@
 # The slot lives in the shared git dir ($(git rev-parse --git-common-dir)), so
 # every worktree of this repository sees the same one. A lock older than
 # LAND_LANE_STALE_MINUTES (90) is treated as abandoned. Nothing here is committed.
+#
+# The slot is claimed with an exclusive create (`set -C`), never with a check
+# followed by a write: two waiters retrying on the same cadence both used to find
+# it absent and both claim it (#299), which defeats the whole point of the lane.
 set -euo pipefail
 
 stale_minutes=${LAND_LANE_STALE_MINUTES:-90}
@@ -83,23 +87,52 @@ acquire)
     force=true
     shift
   fi
-  label=${1:-}
-  if [[ -z "$label" ]]; then
+  # The caller's label, kept apart from `label`: show() below overwrites `label`
+  # with the holder's, and the slot must be written with the caller's.
+  my_label=${1:-}
+  if [[ -z "$my_label" ]]; then
     echo "usage: land-lane.sh acquire [--force] <label>" >&2
     exit 2
   fi
   mkdir -p "$lane"
-  if [[ -f "$owner" ]]; then
-    show
+  # Claim the slot by CREATING it, never by checking and then writing: two waiters
+  # that retry on the same cadence both found the owner file absent and both wrote
+  # one, so two landings held the lane and gated at the same time (#299). `set -C`
+  # (noclobber) turns the redirection into an O_EXCL create, so of any number of
+  # simultaneous acquirers exactly one can win it; every loser re-reads the
+  # winner's metadata and decides again.
+  attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    if (set -C; printf '%s\t%s\t%s\t%s\n' "$$" "$(date -u +%s)" "$my_label" "$me" >"$owner") 2>/dev/null; then
+      echo "land lane: acquired by $my_label ($me)"
+      exit 0
+    fi
+    if [[ ! -f "$owner" ]]; then
+      # The holder released between the create attempt and this read; try again.
+      if [[ "$attempt" -ge 5 ]]; then
+        echo "land lane: could not claim the slot; retry" >&2
+        exit 1
+      fi
+      continue
+    fi
+    show # sets pid, epoch, label, who from the holder's file
+    if [[ "$who" == "$me" ]]; then
+      echo "land lane: already held by $label ($me)"
+      exit 0
+    fi
     age=$((($(date -u +%s) - epoch) / 60))
-    if [[ "$who" != "$me" && "$force" != true && "$age" -lt "$stale_minutes" ]]; then
+    if [[ "$force" != true && "$age" -lt "$stale_minutes" ]]; then
       echo "land lane: held by $label — $who for ${age}m; wait for it, or use --force when you know it is dead" >&2
       exit 1
     fi
+    if [[ "$attempt" -ge 5 ]]; then
+      echo "land lane: $label — $who keeps winning the takeover race; retry" >&2
+      exit 1
+    fi
     echo "land lane: taking over from $label — $who (${age}m)" >&2
-  fi
-  printf '%s\t%s\t%s\t%s\n' "$$" "$(date -u +%s)" "$label" "$me" >"$owner"
-  echo "land lane: acquired by $label ($me)"
+    rm -f "$owner"
+  done
   ;;
 release)
   if [[ ! -f "$owner" ]]; then
