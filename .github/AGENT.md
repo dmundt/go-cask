@@ -14,11 +14,15 @@ wrappers, or embedded HTML blocks.
 `main` accepts changes through pull requests only. Keep these protections
 enabled:
 
-- Require one approving review, dismiss stale approvals, and require approval
-  after the last push.
-- Require resolved review conversations.
-- Require current (`strict`) status checks: `verify`, `security`, `platforms`,
-  `Analyze (actions)`, and `Analyze (go)`.
+- Require resolved review conversations, and keep stale-review dismissal on.
+- Require these status checks: `verify`, `security`, `platforms`,
+  `Analyze (actions)`, and `Analyze (go)`. Keep `strict` off: an up-to-date
+  branch is not required, because the land lane serializes landings instead
+  (root `AGENTS.md`, "Serialized landing, worktrees and gates").
+- Keep the approving-review count at zero and approval-after-last-push off: in
+  this single-account repository the pull-request author and the only possible
+  reviewer are the same account, so a required approval would deadlock every
+  pull request.
 - Enforce protections for administrators, require signed commits, and require
   linear history.
 - Reject force-pushes and branch deletion.
