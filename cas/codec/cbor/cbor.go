@@ -1,8 +1,13 @@
 // Package cbor provides a compact CBOR codec layer for CAS payloads.
 //
-// The package follows the repo's codec-stack model: a CBOR codec can wrap an
-// inner codec and also define the explicit value-to-bytes conversion for the
-// concrete T being serialized.
+// The caller supplies the conversion between the concrete T and the compact CBOR
+// subset this package encodes, so a codec is built in exactly one of two ways:
+// with that conversion (NewRaw, NewMap, NewValue — the stored bytes are this
+// package's CBOR and the identity tag is "cbor"), or with an inner codec it
+// delegates to (New(next, nil, nil) — the stored bytes are the inner codec's and
+// the tag is that codec's). It is not a byte-level stack: to transform another
+// codec's bytes, compose cas/codec/binary, whose transform/restore pair is that
+// seam.
 package cbor
 
 import (
@@ -18,8 +23,9 @@ import (
 // Codec encodes and decodes values using a compact CBOR subset without runtime
 // reflection. The caller decides the exact value shape for each concrete T and
 // provides the small encode/decode functions that map T to/from the supported
-// scalar, array, string, byte-string, and map forms. It may also wrap an inner
-// codec when the payload should pass through a lower layer first.
+// scalar, array, string, byte-string, and map forms. An inner codec may be given
+// instead of those functions — never as well as them: the codec then delegates
+// every call to it, and reports that codec's identity tag.
 type Codec[T any] struct {
 	next   cas.Codec[T]
 	encode func(T) ([]byte, error)
@@ -29,11 +35,27 @@ type Codec[T any] struct {
 var (
 	errNilEncode = errors.New("cbor: encode func is nil")
 	errNilDecode = errors.New("cbor: decode func is nil")
+	// errCodecStack reports the one constructor combination that has no meaning:
+	// an inner codec together with conversion functions. The conversion already
+	// produces the stored bytes, so the inner codec could never run; New used to
+	// ignore it silently (go-cask#270).
+	errCodecStack = errors.New("cbor: an inner codec and conversion functions cannot both be set; use NewRaw for the conversion, or cas/codec/binary to transform an inner codec's bytes")
 )
 
-// New wraps an inner codec and preserves the repo's stack model: the next codec
-// defines the inner serialization, while this CBOR codec acts as the outermost
-// representational layer. The caller still supplies the CBOR conversion logic.
+// New builds a CBOR codec from either an inner codec or the caller's conversion
+// functions:
+//
+//   - New(next, nil, nil) delegates to next: that codec serializes and
+//     deserializes, and CodecName reports next's own identity tag, because the
+//     stored bytes are next's.
+//   - New(nil, encode, decode) — the same as NewRaw — owns the conversion: the
+//     stored bytes are this package's CBOR and the tag is "cbor".
+//
+// Passing an inner codec together with conversion functions is refused by Encode
+// and Decode with errCodecStack rather than silently ignoring the inner codec.
+// CBOR is not a byte-level stack over another codec: for that, compose
+// cas/codec/binary, whose transform/restore pair applies to an inner codec's
+// bytes.
 func New[T any](next cas.Codec[T], encode func(T) ([]byte, error), decode func([]byte) (T, error)) Codec[T] {
 	return Codec[T]{next: next, encode: encode, decode: decode}
 }
@@ -56,35 +78,47 @@ func NewMap() Codec[map[string]any] {
 	return NewRaw[map[string]any](encodeMapValue, decodeMapValue)
 }
 
-// Encode encodes v using the configured CBOR conversion functions.
+// Encode encodes v using the configured CBOR conversion functions, or delegates
+// to the inner codec when one was given. A codec built with both is refused: see
+// New.
 func (c Codec[T]) Encode(v T) ([]byte, error) {
-	if c.next != nil && c.encode == nil {
+	switch {
+	case c.encode != nil && c.next != nil:
+		return nil, errCodecStack
+	case c.encode != nil:
+		return c.encode(v)
+	case c.next != nil:
 		return c.next.Encode(v)
-	}
-	if c.encode == nil {
+	default:
 		return nil, errNilEncode
 	}
-	return c.encode(v)
 }
 
-// Decode decodes data using the configured CBOR conversion functions.
+// Decode decodes data using the configured CBOR conversion functions, or
+// delegates to the inner codec when one was given. A codec built with both is
+// refused: see New.
 func (c Codec[T]) Decode(data []byte) (T, error) {
-	if c.next != nil && c.decode == nil {
+	var zero T
+	switch {
+	case c.decode != nil && c.next != nil:
+		return zero, errCodecStack
+	case c.decode != nil:
+		return c.decode(data)
+	case c.next != nil:
 		return c.next.Decode(data)
-	}
-	if c.decode == nil {
-		var zero T
+	default:
 		return zero, errNilDecode
 	}
-	return c.decode(data)
 }
 
 // CodecName reports the codec identity tag written into the envelope: "cbor"
-// when this codec owns the value's CBOR conversion, and the inner codec's own
-// tag when it only delegates to one (New(next, nil, nil)) — those bytes are the
-// inner codec's, so claiming "cbor" would report a mismatch against an
-// identically encoded object. A delegating stack whose inner codec declares no
-// tag reports "" (unspecified). It satisfies cas.CodecNamer.
+// when this codec owns the value's CBOR conversion (NewRaw, NewValue, NewMap, or
+// New with conversion functions), and the inner codec's own tag when it only
+// delegates to one (New(next, nil, nil)) — those bytes are the inner codec's, so
+// claiming "cbor" would report a mismatch against an identically encoded object.
+// A delegating stack whose inner codec declares no tag reports "" (unspecified).
+// A codec built with both an inner codec and conversion functions reports "cbor"
+// but cannot encode or decode at all (New). It satisfies cas.CodecNamer.
 func (c Codec[T]) CodecName() string {
 	if c.encode != nil || c.next == nil {
 		return "cbor"

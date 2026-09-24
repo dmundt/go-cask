@@ -1,6 +1,7 @@
 package cbor
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -238,9 +239,21 @@ func TestCBORRawHelperExhaustion(t *testing.T) {
 	if _, err := decodeAny([]byte{0x01, 0x02}); err == nil {
 		t.Fatal("decodeAny trailing data should error")
 	}
-	if _, err := New[[]string](jsoncodec.New[[]string](), func(v []string) ([]byte, error) {
+	// The two valid constructor forms, and the one combination that has no
+	// meaning: an inner codec together with conversion functions is refused
+	// rather than silently ignoring the inner codec (go-cask#270).
+	stacked := New[[]string](jsoncodec.New[[]string](), func([]string) ([]byte, error) {
 		return appendArrayValue(nil, []any{"a", "b"})
-	}, func(data []byte) ([]string, error) { return []string{"a", "b"}, nil }).Encode([]string{"a", "b"}); err != nil {
-		t.Fatal("New should allow wrapped encode path")
+	}, func([]byte) ([]string, error) { return []string{"a", "b"}, nil })
+	if _, err := stacked.Encode([]string{"a", "b"}); !errors.Is(err, errCodecStack) {
+		t.Fatalf("New(inner, encode, decode).Encode = %v, want errCodecStack", err)
+	}
+	if _, err := stacked.Decode([]byte{0x80}); !errors.Is(err, errCodecStack) {
+		t.Fatalf("New(inner, encode, decode).Decode = %v, want errCodecStack", err)
+	}
+	if out, err := NewRaw[[]string](func([]string) ([]byte, error) {
+		return appendArrayValue(nil, []any{"a", "b"})
+	}, func([]byte) ([]string, error) { return []string{"a", "b"}, nil }).Encode([]string{"a", "b"}); err != nil || len(out) == 0 {
+		t.Fatalf("NewRaw encode = %x, %v", out, err)
 	}
 }

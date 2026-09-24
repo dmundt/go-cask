@@ -216,6 +216,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cas/codec/cbor`'s `New` no longer silently ignores its inner codec when the
+  caller also passes conversion functions: `encode`/`decode` already produce the
+  stored bytes, so the inner codec could never run, and the combination is now
+  reported by `Encode`/`Decode` instead of changing what a caller thought they
+  had composed. The documentation states what the parameter does —
+  `New(next, nil, nil)` delegates and reports the inner codec's identity tag,
+  `New(nil, encode, decode)` owns the CBOR conversion and reports `cbor` — and
+  points at `cas/codec/binary` for a byte-level layer over another codec.
 - A `cas/pack` manifest write is atomic — a temp file in the target directory,
   fsynced, then renamed — instead of one `os.WriteFile`, so a crash or a full
   disk mid-write leaves the previous manifest intact rather than a truncated
