@@ -129,7 +129,7 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
 	flags.StringVar(&a.trustedProxy, "trusted-proxy", "", "comma-separated IPs/CIDRs whose forwarded client address the login throttle may believe (e.g. 10.0.0.0/8); empty trusts none")
 	flags.BoolVar(&a.allowInsecure, "allow-insecure-bind", false, "allow a non-loopback bind without HTTPS")
-	flags.Var(&a.showToken, "show-token", "show the generated startup token's one-time login hint even when stdout is not an interactive terminal (default: only on an interactive stdout; -show-token=false never shows it)")
+	flags.Var(&a.showToken, "show-token", "show the generated startup token's one-time login hint even when stdout is not an interactive terminal (default: only on an interactive stdout; -show-token=false never shows it and never opens the browser; a loopback -bind is required in every case)")
 	flags.BoolVar(&a.noOpen, "no-open", false, "do not open the default browser")
 	return flags
 }
@@ -279,17 +279,20 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	addr := listener.Addr().String()
 	// The notice goes to stdout, the stream that carries command output, and
 	// may be requested without a terminal; the deep link it prints is the one
-	// that can log in (noticeOrigin). Opening the browser keeps the bind's
-	// plain http:// origin it always used.
+	// that can log in (noticeOrigin). The browser launch carries the same token
+	// deep link, so it follows the notice's two conditions rather than opening
+	// unconditionally (#260).
+	bindOrigin := noticeOrigin(addr)
+	display := a.showToken.resolve(stdoutIsTerminal())
 	announceLogin(os.Stdout, loginNotice{
 		bind:      addr,
-		baseURL:   noticeOrigin(addr),
+		baseURL:   bindOrigin,
 		token:     token,
 		generated: generated,
-		display:   a.showToken.resolve(stdoutIsTerminal()),
+		display:   display,
 	})
-	if !a.noOpen {
-		openBrowser(loginURL("http://"+addr, token))
+	if browserLaunchAllowed(a.noOpen, display, bindOrigin) {
+		openBrowser(loginURL(bindOrigin, token))
 	}
 
 	exitCode := 0
@@ -398,28 +401,44 @@ func stdoutIsTerminal() bool {
 // belongs on the stream that carries command output while stderr stays reserved
 // for errors (cli.md §3, §4).
 //
-// The token is written only when this run generated it AND display allows it; an
-// operator-supplied token is not repeated. A deep link is written only when the
-// bind can hold a login (loginNotice.baseURL); otherwise the notice names the
-// bind and the https:// expectation, so a link that cannot log anyone in is
-// never printed. A generated token that stays hidden logs the remedy — never the
-// token, and never the link (viewer-security §5.1, §9, §11); the tests assert
-// exactly that.
+// The token is written only when this run generated it, display allows it, AND
+// the bind is loopback: viewer-security §11 permits the one-time display only
+// for a loopback bind, whose printed link can hold the always-Secure session
+// cookie (§5.1, §7), while a viewer reachable from the network must not write
+// its admin credential into a stdout that scrollback, a tee, or a captured
+// session file retains. loginNotice.baseURL is the loopback origin, so it is
+// also the test (noticeOrigin). An operator-supplied token is never repeated. A
+// generated token that stays hidden logs the remedy — never the token, and never
+// the link — and names which reason applied (viewer-security §5.1, §9, §11);
+// the tests assert exactly that.
 func announceLogin(w io.Writer, n loginNotice) {
-	shown := n.generated && n.display == displayShown
-	switch {
-	case shown && n.baseURL != "":
+	shown := n.generated && n.display == displayShown && n.baseURL != ""
+	if shown {
 		fmt.Fprintf(w, "cask web: log in once at %s (shown here only; the startup token is never logged)\n", loginURL(n.baseURL, n.token))
-	case shown:
-		fmt.Fprintf(w, "cask web: startup token %s (shown here only; the startup token is never logged)\n", n.token)
-		fmt.Fprintf(w, "cask web: %s\n", viewerLocation(n))
-	default:
+	} else {
 		fmt.Fprintf(w, "cask web: %s — the startup token is never logged or echoed\n", viewerLocation(n))
 	}
-	if n.generated && n.display == displayHidden {
+	switch {
+	case n.generated && n.baseURL == "" && n.display != displaySuppressed:
+		// The operator asked for the hint, or is on a terminal, but this bind
+		// may not show it. Say why — without the token and without the link.
+		slog.Warn("viewer startup token was generated but not shown: it may be displayed only for a loopback bind",
+			"bind", n.bind,
+			"remedy", "log in over the viewer's own origin, or supply the token with -token-file or "+viewerTokenEnv)
+	case n.generated && n.display == displayHidden:
 		slog.Warn("viewer startup token was generated but not shown: the notice stream is not an interactive terminal",
 			"remedy", "run with -show-token to display the one-time login hint, or supply the token with -token-file or "+viewerTokenEnv)
 	}
+}
+
+// browserLaunchAllowed reports whether the token deep link may be handed to the
+// default browser. The link carries the raw startup token in another process's
+// argument vector, where any process listing can read it, so the launch follows
+// the notice's two conditions exactly: a bind whose origin can hold a login
+// (loopback) and an operator who did not suppress the display with
+// -show-token=false. -no-open skips it in any case (viewer-security §4, §11).
+func browserLaunchAllowed(noOpen bool, display displayChoice, baseURL string) bool {
+	return !noOpen && display != displaySuppressed && baseURL != ""
 }
 
 // viewerLocation names where the operator reaches the viewer: the deep link's

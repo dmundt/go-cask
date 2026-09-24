@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v13
+version: v14
 ---
 
 # Viewer Security — go-cask
@@ -55,7 +55,8 @@ Everything else stays off by default (loopback §4, auth required §5).
 - Startup token: cryptographically secure random; supplied out of band with
   `-token-file`/`CASK_VIEWER_TOKEN`, or displayed once on **standard output** —
   an interactive terminal, or any run whose operator explicitly requests the
-  display with `cask web -show-token` —
+  display with `cask web -show-token` — and only for a loopback bind, whose
+  printed link can hold a session (§5.1, §7, §11);
   never through the logging package at any level (cli.md §4, §9, §11); not
   stored in plaintext config; regenerated each restart unless the operator
   supplied it.
@@ -228,7 +229,11 @@ with `-token-file` or `CASK_VIEWER_TOKEN`, and MAY be displayed once on standard
 output (§5) — only for a loopback bind, whose printed link can hold a session
 (§5.1, §7). Outside that it MUST NOT appear in
 the process log at any level, in the output of a process not asked to display
-it, or in an API response.
+it, or in an API response. The browser launch follows the same two conditions as
+the display, because it hands the login deep link to another process: `cask web`
+opens the browser only when the bind is loopback and the operator has not
+suppressed the display with `-show-token=false`, so the raw token cannot reach
+an argument vector that any process listing can read.
 
 ## 12. Production deployments
 
@@ -273,8 +278,9 @@ implementation.
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
 - [x] Auth required; login throttled (5/caller-address/min, backoff, audit-logged without the token) (§5)
 - [x] A forwarded client address is believed only from a configured trusted proxy; with none, the peer address keys the throttle and the header is ignored (§5.2)
-- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on stdout (interactive terminal, or a run passing `-show-token`), or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)
+- [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on stdout for a loopback bind only (interactive terminal, or a run passing `-show-token`), or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)
 - [x] No login link is printed for a non-loopback bind; the notice names the bind and the `https://` expectation instead (§4, §5.1)
+- [x] No token is displayed for a non-loopback bind, whatever the display choice, and the browser launch is skipped when the bind is not loopback or the display is suppressed, so the token cannot reach another process's argument vector (§11)
 - [x] Both token-accepting endpoints refuse a request that is not same-origin (403, empty body, audit line); no cross-site request mints a session (§5.1)
 - [x] CSRF token accepted from the POST body or the `X-CSRF-Token` header only; `?_csrf=` never validates (§5)
 - [x] Sessions: idle 30 min / max 8 h; re-auth on expiry/restart (§6)

@@ -287,6 +287,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- A viewer bound to a non-loopback address no longer displays its generated
+  startup token, whatever `-show-token` asks for: the one-time hint is permitted
+  only for a loopback bind, so that run prints the bind and the `https://`
+  expectation instead and logs the reason without the token. The browser launch
+  that carries the token deep link is skipped for a non-loopback bind and when
+  `-show-token=false` suppresses the display, so the admin credential can no
+  longer reach another process's argument vector either.
 - The viewer's HTTP responses are hygienic: a throttled login answers `429` with
   the `Retry-After` delay it is actually enforcing, a rejected token is answered
   `401` with no body — the reason appears on the login page, never in the

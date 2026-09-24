@@ -72,7 +72,7 @@ no config file.
 | `-token-file` | empty | file holding the startup admin token; used instead of generating one, and never displayed |
 | `-trusted-proxy` | empty | IPs, `ip:port` values, or CIDR blocks whose forwarded client address the login throttle may believe; empty trusts none, and a malformed entry fails startup |
 | `-allow-insecure-bind` | `false` | allow a non-loopback bind; startup then logs a prominent warning |
-| `-show-token` | terminal heuristic | `-show-token` forces the one-time login hint, `-show-token=false` never shows it, and an absent flag shows it only on an interactive stdout |
+| `-show-token` | terminal heuristic | `-show-token` forces the one-time login hint, `-show-token=false` never shows it and never opens the browser, and an absent flag shows it only on an interactive stdout; a loopback bind is required in every case |
 | `-no-open` | `false` | do not open the default browser |
 
 Exit codes match every other subcommand: `0` success, `1` runtime error, `2`
@@ -87,13 +87,18 @@ The startup token grants `admin` and is resolved in this order:
 3. a per-run `crypto/rand` token, regenerated on every restart.
 
 A token the operator supplied is never displayed. A generated one is shown once
-on **stdout** — on an interactive stdout, or when `-show-token` asks for it —
-and never through the logger at any level; when it is not shown, the log names
-the remedy, not the token.
+on **stdout** — on an interactive stdout, or when `-show-token` asks for it, and
+only for a loopback bind — and never through the logger at any level; when it is
+not shown, the log names the remedy and the reason, not the token. A bind that is
+not loopback displays no token at all: the notice names the bind and the
+`https://` expectation instead.
 
 Unless `-no-open` is given, `cask web` opens the default browser at the one-time
 deep link `http://<bind>/viewer/?token=<token>` and prints the same link in the
-startup notice. The token is accepted only from the viewer's own origin — a
+startup notice. The link carries the raw token in the browser process's command
+line, so the launch is skipped for a non-loopback bind and when
+`-show-token=false` suppresses the display. The token is accepted only from the
+viewer's own origin — a
 same-origin form post, link, or htmx request, or a top-level navigation with no
 initiator — and only once: the session cookie carries the session afterwards. A
 non-loopback bind prints no link at all, because an always-`Secure` cookie

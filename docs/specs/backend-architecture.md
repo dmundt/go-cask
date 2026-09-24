@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v23
+version: v24
 ---
 
 # Backend Architecture — go-cask
@@ -66,7 +66,7 @@ viewer:
   roles: {}           # role=token pairs for viewer login
 ```
 
-- **Startup:** validate config → construct the store (create dirs, validate fan-out bounds) → generate the viewer startup token, or take the operator's from `-token-file`/`CASK_VIEWER_TOKEN` (never logged at any level; the one-time notice goes to stdout — an interactive terminal, or a run passing `-show-token` — cli §4, viewer-security §11; a non-loopback bind prints the bind and the `https://` expectation instead of a login link) → start serving.
+- **Startup:** validate config → construct the store (create dirs, validate fan-out bounds) → generate the viewer startup token, or take the operator's from `-token-file`/`CASK_VIEWER_TOKEN` (never logged at any level; the one-time notice goes to stdout — an interactive terminal, or a run passing `-show-token` — **for a loopback bind only**, cli §4, viewer-security §11; a non-loopback bind displays no token and prints the bind and the `https://` expectation instead of a login link, and the browser launch carries the token deep link only under the same conditions) → start serving.
 - **Shutdown:** graceful — `signal.NotifyContext`, stop accepting, drain in-flight, close the store; no mid-write corruption (atomic-rename contract).
 - Config-file support (`-config`) is deferred — flags only (cli §2).
 
