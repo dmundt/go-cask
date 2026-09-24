@@ -2,6 +2,19 @@ site_name: go-cask
 site_description: Content-addressable storage for Go
 site_url: https://go-cask.dev/
 
+# The footer's copyright line. The theme renders this value verbatim, and
+# website/macros.py completes it before any page renders: the year after
+# `&copy;` and the `docs from <short revision> (<commit date>)` fragment,
+# both read from the checked-out revision. Keep it one line and keep the
+# `&copy;` token — that token is where the hook inserts the year, and
+# `python3 website/macros.py --selftest` pins both the line and the
+# insertion. With no readable revision the line renders exactly as
+# written here: no year and no fragment.
+copyright: >-
+  &copy; Daniel Mundt &middot; <a href="/impressum/">Impressum</a> &middot;
+  <a href="/privacy/">Privacy</a> &middot;
+  <a href="https://github.com/dmundt/go-cask">GitHub</a>
+
 docs_dir: website
 site_dir: site
 exclude_docs: |
@@ -33,7 +46,6 @@ nav:
 
 theme:
   name: material
-  custom_dir: website/overrides
   font: false
   features:
     - navigation.sections
@@ -79,10 +91,3 @@ extra_css:
 
 extra:
   generator: false
-  # Filled in by website/macros.py before any page or template renders, from
-  # the SITE_BUILD_DATE and SITE_REVISION environment variables with a git
-  # fallback; empty here so `mkdocs build --strict` accepts a configuration
-  # that has not been through the hook yet. The footer partial overrides this
-  # pair and omits whichever value is empty.
-  SITE_BUILD_DATE: ''
-  SITE_REVISION: ''

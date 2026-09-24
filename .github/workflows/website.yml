@@ -44,37 +44,9 @@ jobs:
           sys.exit(0 if os.environ['IMPRESSUM'].strip()
           else 'IMPRESSUM_HTML secret must not be empty.')"
 
-      - name: Resolve site build provenance
-        id: provenance
-        env:
-          HEAD_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-          HEAD_COMMIT_ID: ${{ github.event.head_commit.id }}
-          EVENT_SHA: ${{ github.sha }}
-        run: |
-          # The deployed revision, not the clock: a push event already carries
-          # the commit, while workflow_dispatch does not, so fall back to the
-          # checked-out revision. Two builds of one revision therefore produce
-          # the same footer.
-          build_date="$HEAD_COMMIT_TIMESTAMP"
-          if [ -z "$build_date" ]; then
-            build_date="$(git log -1 --format=%cI)"
-          fi
-          revision="$(printf '%s' "$HEAD_COMMIT_ID" | cut -c1-7)"
-          if [ -z "$revision" ]; then
-            revision="$(printf '%s' "$EVENT_SHA" | cut -c1-7)"
-          fi
-          printf 'REVISION=%s\n' "$revision"
-          printf 'BUILD_DATE=%s\n' "$build_date"
-          {
-            printf 'date=%s\n' "$build_date"
-            printf 'revision=%s\n' "$revision"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build site
         env:
           IMPRESSUM: ${{ secrets.IMPRESSUM_HTML }}
-          SITE_BUILD_DATE: ${{ steps.provenance.outputs.date }}
-          SITE_REVISION: ${{ steps.provenance.outputs.revision }}
         run: mkdocs build --strict
 
       - name: Upload artifact
