@@ -16,7 +16,7 @@ architecture pattern.
 - Keep `cas` codec-agnostic. The caller chooses serialization format.
 - Keep the byte layer and typed layer separate.
 - Prefer explicit, typed APIs over reflection or `any` in exported code.
-- Go reflection is forbidden in `cas` and `cas/*` packages; use explicit typed methods, type switches, and codec-specific conversion functions instead.
+- Go reflection is forbidden in `cas` and `cas/*` packages; use explicit typed methods, type switches, and codec-specific conversion functions instead. The one recorded exception is `isNilValue` in `cas/store.go` — the internal nil check every `Put`/`Get` runs, which cannot be expressed generically without `reflect.ValueOf` (cas-core §4.7, performance P-04). A new use of reflection needs that same explicit ratification, not a quiet addition.
 - Keep default policy documents consistent with the repo root summary: `SHA-256` is the default recommendation, `SHA-512/256` is the supported fast alternative, and gob is compatibility-only.
 
 ## Documentation rules
