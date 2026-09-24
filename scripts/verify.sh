@@ -73,6 +73,28 @@ if ! find . -name '*.go' -print -quit | grep -q .; then
   exit 0
 fi
 
+# ---- worktree locks -------------------------------------------------------
+# Every linked worktree must carry git's `locked` file. `git worktree prune`
+# deletes any registration whose admin `gitdir` cannot be resolved, and that link
+# holds one absolute path form, so every worktree the *other* toolchain created
+# looks prunable to this one — deleting the registration and with it the index.
+# Prune skips locked worktrees, and locking is additive and idempotent, so the
+# gate locks rather than fails: nothing to decide, nothing to remember.
+common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+newly_locked=""
+if [[ -n "$common_dir" && -d "$common_dir/worktrees" ]]; then
+  for adm in "$common_dir"/worktrees/*/; do
+    [[ -d "$adm" ]] || continue
+    [[ -e "$adm/locked" ]] && continue
+    printf 'locked by scripts/verify.sh — never run git worktree prune\n' >"$adm/locked"
+    newly_locked="$newly_locked $(basename "$adm")"
+  done
+fi
+if [[ -n "$newly_locked" ]]; then
+  echo "== worktree locks =="
+  echo "locked unprotected:$newly_locked — a stray 'git worktree prune' would have deleted them"
+fi
+
 # ---- scope ----------------------------------------------------------------
 # A documentation-only change runs the documentation gate only — the same scope
 # CI applies (ci.yml runs just `git diff --check` for a docs-only PR), plus the

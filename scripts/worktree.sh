@@ -16,11 +16,16 @@
 # reverse link, <common>/worktrees/wt-<name>/gitdir, holds one toolchain's path
 # form, so the *other* toolchain's `git worktree list` reports the worktree as
 # prunable and `git worktree prune` would delete a live registration — which also
-# deletes its index. Locked worktrees are never pruned. Never run
-# `git worktree prune` in this repository.
+# deletes its index. Locked worktrees are never pruned, from either toolchain
+# (measured, not assumed: an unlocked registration with an unresolvable `gitdir`
+# is removed by `prune`, an otherwise identical locked one survives). `add` locks
+# what it creates, `verify.sh` locks anything else it finds, and `prune` below
+# refuses. Never run `git worktree prune` in this repository.
 #
 #   scripts/worktree.sh add <name> [<type>/<kebab>]   # from origin/main
 #   scripts/worktree.sh remove <name>
+#   scripts/worktree.sh lock [<name>...]              # all registered, if none named
+#   scripts/worktree.sh prune                         # refuses; see the message
 #   scripts/worktree.sh list
 set -euo pipefail
 
@@ -88,11 +93,65 @@ remove)
   fi
   echo "worktree removed: wt-$name"
   ;;
+lock)
+  # Lock one, several, or every registered worktree. git skips locked worktrees in
+  # `prune`; that is the whole protection, because a worktree created by plain
+  # `git worktree add` has no `locked` file and the other toolchain sees it as
+  # prunable. Written directly rather than via `git worktree lock`, which itself
+  # has to read the admin `gitdir` back and so only works from the creating
+  # toolchain.
+  names="$*"
+  if [[ -z "$names" ]]; then
+    for adm in "$common"/worktrees/*/; do
+      [[ -d "$adm" ]] || continue
+      names="$names $(basename "$adm")"
+    done
+  fi
+  if [[ -z "$names" ]]; then
+    echo "worktree.sh: no linked worktrees to lock"
+    exit 0
+  fi
+  for name in $names; do
+    [[ "$name" == wt-* ]] || name="wt-$name"
+    adm="$common/worktrees/$name"
+    if [[ ! -d "$adm" ]]; then
+      echo "worktree.sh: no such worktree: $name" >&2
+      continue
+    fi
+    if [[ -e "$adm/locked" ]]; then
+      echo "already locked: $name"
+      continue
+    fi
+    printf 'locked by scripts/worktree.sh — the .git link is toolchain-relative; never run git worktree prune\n' \
+      >"$adm/locked"
+    echo "locked: $name"
+  done
+  ;;
+prune)
+  cat >&2 <<'EOF'
+worktree.sh: refusing to prune.
+
+`git worktree prune` deletes every registration whose admin `gitdir` file points
+at a path this toolchain cannot resolve — and that link can only hold one absolute
+path form, so it is unresolvable for every worktree the *other* toolchain created.
+That is how three live worktrees lost their registrations and their indexes here.
+
+git has no pre-command hook, so nothing can intercept `git worktree prune` and no
+alias can shadow a built-in; git's own `locked` file is the only real protection,
+and it does hold: prune skips a locked worktree from either toolchain, while an
+identical unlocked one is deleted.
+
+  scripts/worktree.sh lock [<name>...]   # lock one, several, or all worktrees
+  scripts/worktree.sh list               # what is registered, and whether locked
+  scripts/worktree.sh remove <name>      # remove exactly one, on purpose
+EOF
+  exit 2
+  ;;
 list)
   git -C "$primary" worktree list
   ;;
 *)
-  echo "usage: worktree.sh [add <name> [<branch>] | remove <name> | list]" >&2
+  echo "usage: worktree.sh [add <name> [<branch>] | remove <name> | lock [<name>...] | prune | list]" >&2
   exit 2
   ;;
 esac
