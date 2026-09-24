@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in go-cask behaves differently from its specification.
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        go-cask is specified, not guessed: `docs/specs/` is the source of truth.
+        Fill in what you can, but a report that names the rule it violates is
+        the one that can be acted on.
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: The observed behavior, with the exact command or call that produces it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: The behavior the specification requires. Name the rule file and section if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: A complete program or command sequence, trimmed to the smallest case that still fails.
+      render: go
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The go-cask release or commit SHA, and the output of `go version`.
+      placeholder: v1.6.5 or 42b39b0, go1.27.1 linux/amd64
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      description: The storage backend the reproduction uses.
+      options:
+        - fs
+        - mem
+        - packfs
+        - snapshot
+        - not backend-specific
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: rule
+    attributes:
+      label: Rule or spec section violated
+      description: "`docs/index.md` maps a path to its rule file."
+    validations:
+      required: false
+  - type: checkboxes
+    id: before
+    attributes:
+      label: Before you file
+      options:
+        - label: "This is not a suspected security vulnerability: those go through the private reporting process in `SECURITY.md`, never a public issue."
+          required: true
