@@ -79,22 +79,24 @@ The footer is one line, and `website/macros.py` is the only thing that completes
 it: the hook reads the checked-out revision with one call — `git log -1
 --format=%h %cs` — and writes the result back to `env.conf["copyright"]`, the
 value the theme's own footer partial renders, so the site needs no theme
-override and no provenance environment variable. The two values are that
-revision's short form and its own date as `YYYY-MM-DD`: they are
-revision-derived and never wall-clock, so two builds of one revision render the
-same footer, and the date carries no zone label because at day granularity no
-zone is more correct than the offset the commit records. The `©` year comes
-from that same date instead of a literal. The line degrades rather than
-guesses: with no readable revision the footer renders the `copyright` value
+override and no provenance environment variable. The line shows one provenance
+value: that revision's own date as `YYYY-MM-DD`, linked to the commit, so the
+visible text answers "how current are these docs" and the revision stays in the
+link target. The date is revision-derived and never wall-clock, so two builds of
+one revision render the same footer, and it carries no zone label because at day
+granularity no zone is more correct than the offset the commit records. The `©`
+year comes from that same date instead of a literal. The line degrades rather
+than guesses: with no readable revision the footer renders the `copyright` value
 `mkdocs.yml` declares — no fragment and no year — and the build still succeeds.
 `website/privacy.md`'s final line is the privacy policy's own revision date, not
 the site's; keep that wording so the two cannot be read as one.
 
-`python3 website/macros.py --selftest` pins the rendered line, the `©` year and
-the omitted fragment for fixed inputs, and `scripts/verify.sh` runs it in the
-gate; `go test ./internal/website` checks the same text and the shipped
-artifacts (the config line, the deleted override, the absent plumbing) without
-MkDocs, and re-runs the module self-test when a Python interpreter is available.
+`python3 website/macros.py --selftest` pins the rendered line, the `©` year, the
+omitted fragment and the fact that the revision is not visible text, for fixed
+inputs, and `scripts/verify.sh` runs it in the gate; `go test ./internal/website`
+checks the same text and the shipped artifacts (the config line, the deleted
+override, the absent plumbing) without MkDocs, and re-runs the module self-test
+when a Python interpreter is available.
 
 ## Signed pull-request workflow
 
