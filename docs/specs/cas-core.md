@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v63
+version: v64
 ---
 
 # CAS Core — go-cask
@@ -62,9 +62,9 @@ Dependency rule: byte depends on nothing; typed depends on byte; application dep
 
 ### 3.2 How the core fits together
 
-**Storing an object.** An app defines `Note` implementing `Object[Note]` (knows its versioned type name and referenced digests), then a `Store[Note]` over a `Backend`, with a `Codec[Note]` and the client's `Hasher`. `Store.Put(ctx, note)`: (1) serializes via `Codec.Marshal` and wraps in the TLV envelope built by `Store.Put` itself — the codec is the single serialization authority (objects never serialize themselves); (2) hashes with the injected `Hasher` → content address `d`; (3) streams via `Backend.Put(ctx, d, r)`; (4) returns the `Digest` (stored inside other objects to build a graph). Identical bytes ⇒ identical digest ⇒ dedup. The core never hashes anything itself — it only asks the `Hasher`.
+**Storing an object.** An app defines `Note` implementing `Object[Note]` (knows its versioned type name and referenced digests), then a `Store[Note]` over a `Backend`, with a `Codec[Note]` and the client's `Hasher`. `Store.Put(ctx, note)`: (1) serializes via `Codec.Encode` and wraps in the TLV envelope built by `Store.Put` itself — the codec is the single serialization authority (objects never serialize themselves); (2) hashes with the injected `Hasher` → content address `d`; (3) streams via `Backend.Put(ctx, d, r)`; (4) returns the `Digest` (stored inside other objects to build a graph). Identical bytes ⇒ identical digest ⇒ dedup. The core never hashes anything itself — it only asks the `Hasher`.
 
-**Reading an object.** `Store.Get(ctx, d)`: `Backend.Get` streams bytes, `Codec.Unmarshal` reconstructs the value, and the decoded `Type()` MUST match the envelope's type name (`ErrUnknownType` otherwise). Result is the concrete `T` — no casts.
+**Reading an object.** `Store.Get(ctx, d)`: `Backend.Get` streams bytes, `Codec.Decode` reconstructs the value, and the decoded `Type()` MUST match the envelope's type name (`ErrUnknownType` otherwise). Result is the concrete `T` — no casts.
 
 **Why three layers.** The non-generic byte layer lets any backend swap in without touching app code; the generic typed layer lets any app type work without touching the core; the injection seam lets any hash algorithm work without touching either; the application layer owns the domain model. Extensions/clients interact mostly with the typed layer and the stable surface (§7.1).
 
@@ -448,7 +448,7 @@ func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 |---|---|
 | `Put` | reject a nil object (including a nil interface value) → reject a `Type()` that is empty or unversioned (`<type>@<major>` is the contract; an unversioned name would be stored as `@1` and never read back) → `obj.Validate()` when T declares it → `codec.Encode(obj)` → TLV envelope → `hasher.Digest` → `backend.Put` → `d` |
 | `PutDedup` | as `Put`, then `backend.Exists` first; returns `(d, alreadyStored, err)` |
-| `Get` | `backend.Get` → envelope parse (**a frame that does not parse → `ErrCorrupt`**, naming the offending field) → codec-tag comparison (both tags present and different → `ErrCodecMismatch`, checked **before** decoding) → `codec.Unmarshal` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
+| `Get` | `backend.Get` → envelope parse (**a frame that does not parse → `ErrCorrupt`**, naming the offending field) → codec-tag comparison (both tags present and different → `ErrCodecMismatch`, checked **before** decoding) → `codec.Decode` → concrete `T`; decoded `Type()` MUST match the stored type name (else `ErrUnknownType`); a payload the codec cannot decode, that decodes to nil, or whose object fails `Validate` → `ErrCorrupt` |
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so it never validates — and never parses the frame, so it reports no envelope-level error: a damaged object comes back as its bytes, and `EnvelopeFromBytes` (or `Get`) is the reader that reports `ErrCorrupt` |
 | `Type` | `backend.Get` → `PeekType` → close: reads the envelope header only, so the payload is never read or allocated. Reports the type as stored (which may be one this store cannot decode — `Get` is what rejects that), `ErrCorrupt` for an unusable header, and the backend's `ErrNotFound` for an absent object |
 | `Version` | `backend.Get` → `PeekVersion` → close: reads the frame's leading version byte and nothing else, so the cost is one byte whatever the object's size. Reports the byte as stored — including a version this build does not know, which is the point: a caller compares it against `EnvelopeVersion` to tell "written by a newer format" from corrupt bytes without matching an error string. `ErrCorrupt` (naming the field) for a stream with no byte at all, and the backend's `ErrNotFound` for an absent object |
