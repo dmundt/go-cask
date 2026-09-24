@@ -1,10 +1,14 @@
-// Package crc32 provides a lightweight maintenance-layer integrity checker for
-// go-cask.
+// Package crc32 provides a CRC-32/IEEE cas.Hasher for go-cask.
 //
-// This package is intentionally not the default content-address algorithm. The
-// core storage model stays boring and stable: object identity remains a cas.Digest
-// produced by the caller's hasher, and the backend only stores raw bytes. This
-// helper is for cheap, explicit consistency validation layered above that model.
+// It is a checksum, not a strong content address: it is the addressing hasher of
+// a store that is deliberately keyed by CRC-32 (fixtures, benchmarks, data
+// imported from systems that key by checksum), and it verifies those same
+// objects. It cannot validate an object addressed by another algorithm, because
+// cas.Verify recomputes the digest with the hasher it is given and compares it to
+// the object's address: Validate rejects a digest of another width with
+// cas.ErrInvalidDigest before any bytes are read. A cheap check above a
+// strongly-addressed store would need a per-object checksum stored beside the
+// object, which go-cask does not implement (cas/verify/README.md, extensions §3.1).
 package crc32
 
 import (
@@ -24,10 +28,10 @@ const Name = "crc32"
 // Size is the checksum width in bytes.
 const Size = 4
 
-// Hasher implements cas.Hasher with CRC32-IEEE for maintenance-only integrity
-// checks. It is not a recommended content-address algorithm for durable object
-// identity; it is a cheap validation layer, and callers should still choose their
-// own stable addressing hash for object keys.
+// Hasher implements cas.Hasher with CRC-32/IEEE. It addresses and validates the
+// objects of a store that is deliberately keyed by CRC-32; it cannot verify an
+// object addressed by another algorithm, because Verify compares the recomputed
+// checksum to the object's address.
 type Hasher struct{}
 
 // New returns a CRC32 hasher for maintenance checks.
