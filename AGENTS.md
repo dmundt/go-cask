@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v35
+version: v36
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -74,7 +74,7 @@ makes the others "behind", each rebuild costs a gate run, and the rebuild window
 is long enough for the next merge to arrive first. The landing lane is therefore
 serialized **mechanically**, not by intention.
 
-- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in the relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `scripts/worktree.sh prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
+- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<NNN>-<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in the relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `scripts/worktree.sh prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
 - **Never `git add -A` and never `git commit -a`.** Stage the paths you touched: a shared tree otherwise sweeps another session's untracked files into your commit.
 - **Claim before you start.** Comment on the issue ("taking #NNN"), then check `gh issue view NNN --json state` and `gh pr list --state all --limit 15`: a closed issue or an open PR means stop. Re-read the owning spec immediately before asking a question — parallel PRs make premises stale within minutes.
 - **Hold the land lane for the whole landing.** `./scripts/land-lane.sh acquire <issue>` before the first push and `release` after the merge; `status` names the holder (exit 0 yours, 1 free, 2 someone else). One slot in the shared git dir; an abandoned lock older than 90 minutes is taken over automatically, `--force` overrides deliberately.
@@ -226,7 +226,7 @@ Related specs that also constrain work in this repo:
   semver tags, Go module v2+ path-suffix rules, branches, changelog, release
   process; distinct from HTTP API and doc versions.
 - `docs/specs/branch-naming.md` — the simple Git
-  branch concept: one permanent `main`, short-lived `<type>/<kebab>` branches,
+  branch concept: one permanent `main`, short-lived `<type>/<NNN>-<kebab>` branches,
   on-demand `release/vX.Y`; patterns, examples, lifecycle.
 - `docs/specs/cli.md` — the `cmd/cask` CLI contract:
   subcommands, flags, output format, exit codes, local (`-store`) ops and the `web` viewer subcommand.

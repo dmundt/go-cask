@@ -2,7 +2,7 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v4
+version: v5
 ---
 
 # Branch Naming — go-cask
@@ -18,12 +18,13 @@ Git branch rules: **one permanent branch, short-lived typed branches, optional r
 
 ## 2. Naming pattern
 
-Grammar: `<type>/<description>`.
+Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the name, not decoration.
 
 - `<type>` ∈ {`feat` (new feature/additive), `fix` (bug fix, pre-release), `hotfix` (urgent fix for a shipped release, PATCH), `refactor` (no behavior change), `perf` (performance), `docs`, `chore` (tooling/CI/deps/maintenance), `release` (`release/vX.Y`), `experiment` (throwaway spike/prototype)}.
-- `<description>`: kebab-case, lowercase, ASCII-only, hyphens between words, no trailing punctuation. MAY prefix an optional numeric ticket reference (`feat/1234-memory-backend`).
+- `<NNN>`: the issue the branch serves, as a bare number (`245`). Every branch starts from an issue, so a branch can never exist before the problem it addresses does; the number is what makes the branch traceable to the discussion that justifies it.
+- `<kebab-description>`: kebab-case, lowercase, ASCII-only, hyphens between words, no trailing punctuation (`feat/1234-memory-backend`).
 - Whole branch ≤ 50 characters.
-- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix or description is invalid (`new-branch`, `fix/1234`). `release` requires the `v` (`release/vX.Y`, never `release/1.2`).
+- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix, issue number, or description is invalid (`new-branch`, `fix/1234`, `fix/memory-backend`). `release` requires the `v` (`release/vX.Y`, never `release/1.2`); it is the one exception to the issue number, because it is cut from `main` on a schedule rather than opened for an issue.
 
 ## 3. Lifecycle
 
@@ -46,7 +47,7 @@ Grammar: `<type>/<description>`.
 ## 5. Checklist
 
 - [x] `main` is the only permanent branch; everything else short-lived
-- [x] Branch names match `<type>/<kebab-description>` (type from §2)
+- [x] Branch names match `<type>/<NNN>-<kebab-description>` (type from §2, `NNN` the issue)
 - [x] ≤ 50 chars, lowercase/ASCII/hyphens; no forbidden names
 - [x] Feature/fix/hotfix branches merged via PR and deleted
 - [x] `release/vX.Y` created on demand, PATCH-only, deleted when unmaintained
