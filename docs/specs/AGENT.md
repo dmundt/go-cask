@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v26
+version: v27
 tags: [go-cask]
 status: stable
 ---
@@ -50,7 +50,7 @@ version: v5
 ---
 ```
 
-- `type` is the OKF concept type (`docs/AGENT.md` §1.2): `Specification` for every topic file here, `Agent Instructions` for this meta-guide. `title` matches the H1 exactly (minus `# `). `description` is one line. `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not on cosmetic fixes (typos, formatting, wording, line endings). No blank line before `---`.
+- `type` is the OKF concept type (`docs/AGENT.md` §1.2): `Specification` for every topic file here, `Agent Instructions` for this meta-guide. `title` matches the H1 exactly (minus `# `). `description` is one line. `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not on cosmetic fixes (typos, formatting, wording, line endings). The gate checks that the field of a changed versioned file moved and nothing more: `./scripts/verify.sh` runs `scripts/check-version-fields.sh` and names the file, while whether the change was material stays a reviewer's call. No blank line before `---`.
 - Index files are the exception: this folder's `index.md` carries `okf_version: "0.2"` and **no** `type` (`docs/AGENT.md` §1.3), so its four keys are `okf_version`/`title`/`description`/`version`.
 - `tags:` and `status:` are the only optional keys, and only where applicable (this meta-guide carries `tags: [go-cask]`, `status: stable`). No other keys.
 
@@ -125,7 +125,7 @@ Fix the **more specific** document to match the more general one, unless the spe
 
 Before committing any change to a file in this folder:
 - [x] Frontmatter present; `title` == H1; one-line `description`
-- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic
+- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic — the gate enforces the bump's presence: `scripts/check-version-fields.sh` from `./scripts/verify.sh` names a changed versioned file whose `version` did not move, and never judges materiality
 - [x] Structure per §4 (no body `---` separators); checklist where applicable
 - [x] Terminology matches §6 (no "debug UI", "go-coding-guidelines", "Repository in core")
 - [x] Normative language per §5
