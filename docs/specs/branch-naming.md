@@ -2,7 +2,7 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v5
+version: v6
 ---
 
 # Branch Naming — go-cask
@@ -14,17 +14,17 @@ Git branch rules: **one permanent branch, short-lived typed branches, optional r
 - `main` is the ONLY permanent branch; always releasable; all version tags land on it (versioning §3). Never force-pushed, never deleted.
 - Everything else is short-lived: branched from `main`, merged via PR, deleted after merge.
 - Forbidden concepts: `develop`, `trunk`, per-developer branches, long-running integration branches. A branch living longer than a few days is too big — split it.
-- A branch name's type prefix is the contract: it states what the branch is for.
+- A branch name's type prefix is the contract, stating the branch's purpose.
 
 ## 2. Naming pattern
 
 Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the name, not decoration.
 
 - `<type>` ∈ {`feat` (new feature/additive), `fix` (bug fix, pre-release), `hotfix` (urgent fix for a shipped release, PATCH), `refactor` (no behavior change), `perf` (performance), `docs`, `chore` (tooling/CI/deps/maintenance), `release` (`release/vX.Y`), `experiment` (throwaway spike/prototype)}.
-- `<NNN>`: the issue the branch serves, as a bare number (`245`). Every branch starts from an issue, so a branch can never exist before the problem it addresses does; the number is what makes the branch traceable to the discussion that justifies it.
+- `<NNN>`: the issue the branch serves, as a bare number (`245`). Every branch starts from an issue — a branch can never exist before the problem it addresses — and the number makes it traceable to the discussion that justifies it.
 - `<kebab-description>`: kebab-case, lowercase, ASCII-only, hyphens between words, no trailing punctuation (`feat/1234-memory-backend`).
 - Whole branch ≤ 50 characters.
-- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix, issue number, or description is invalid (`new-branch`, `fix/1234`, `fix/memory-backend`). `release` requires the `v` (`release/vX.Y`, never `release/1.2`); it is the one exception to the issue number, because it is cut from `main` on a schedule rather than opened for an issue.
+- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix, issue number, or description is invalid (`new-branch`, `fix/1234`, `fix/memory-backend`). `release` requires the `v` (`release/vX.Y`, never `release/1.2`); it is the one exception to the issue number, cut from `main` on a schedule rather than opened for an issue.
 
 ## 3. Lifecycle
 
@@ -40,7 +40,7 @@ Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the 
 
 ## 4. Interaction with versioning
 
-- Version tags (`vX.Y.Z`) land on `main`; the release process (versioning §5) starts from `main`.
+- Version tags (`vX.Y.Z`) land on `main`; the release process (versioning §5) starts there.
 - `release/vX.Y` carries only PATCH versions (`vX.Y.1`, …); MAJOR/MINOR work happens on `main`.
 - A `hotfix/` branch becomes a PATCH release through the same process.
 

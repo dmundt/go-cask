@@ -4,19 +4,19 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/go-cask.svg)](https://pkg.go.dev/github.com/dmundt/go-cask)
 [![License](https://img.shields.io/github/license/dmundt/go-cask)](LICENSE)
 
-CASK is a Git-like, content-addressable store for Go: bytes are keyed by their content digest, objects stay immutable, and typed application models sit on top of the generic core.
+CASK is a Git-like, content-addressable store for Go: bytes keyed by content digest, immutable objects, typed application models on a generic core.
 
-- **Deduplicated by content** — identical bytes map to the same digest and are stored once.
+- **Deduplicated by content** — identical bytes share one digest and one stored copy.
 - **Typed on top** — the `cas` core stays generic; each app defines its own `Object[T]` and `Store[T]` model.
-- **Composable** — backends and codecs plug in behind the `Backend` and `Codec[T]` contracts; the client supplies the hash algorithm (`sha256` is the default).
-- **Fast by default** — lock-free reads (`fs`; the opt-in packfile backend serializes its index), streaming I/O, atomic writes, and GC from roots keep the core simple and efficient.
-- **Optional acceleration** — `cas/bloom` adds hot-path absence checks; the stdlib-style `gzip`, `zlib`, and `flate` codec wrappers compress payloads when the workload benefits.
-- **Policy-aware** — the project default is `SHA-256` + `flate` for durable data, with `SHA-512/256` as a fast secure alternative; JSON and compact binary remain valid application-level choices.
+- **Composable** — backends and codecs plug in behind `Backend` and `Codec[T]`; the client supplies the hash algorithm (`sha256` default).
+- **Fast by default** — lock-free reads (`fs`; the opt-in packfile backend serializes its index), streaming I/O, atomic writes, GC from roots.
+- **Optional acceleration** — `cas/bloom` adds hot-path absence checks; stdlib-style `gzip`, `zlib` and `flate` wrappers compress payloads when the workload benefits.
+- **Policy-aware** — project default is `SHA-256` + `flate` for durable data, `SHA-512/256` as the fast secure alternative; JSON and compact binary remain valid app-level choices.
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
-- **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
-- **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate object identity from validation, re-reading the bytes with the caller-supplied `Hasher` while the backend itself stays a storage-only `Digest -> bytes` layer.
-- **Cheap checks are opt-in** — `cas/verify/sidecar` records a per-object checksum (`crc32`, `adler32` or `crc64`) at `<base>/.meta/<hex>.json` beside objects still addressed by `SHA-256`, and `cask verify -checksums` checks the stored bytes against it; deleting the records loses the cheap check, never an object.
-- **Compatibility stays explicit** — `gob` remains Go-only; no MD5 or SHA-1 hasher ships with this module, so a legacy algorithm means a client-supplied `cas.Hasher` (`Digest` + `Validate`), and neither is for new data.
+- **Layering stays clear** — canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+- **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate identity from validation, re-reading bytes with the caller-supplied `Hasher` while the backend stays a storage-only `Digest -> bytes` layer.
+- **Cheap checks are opt-in** — `cas/verify/sidecar` records a per-object checksum (`crc32`, `adler32` or `crc64`) at `<base>/.meta/<hex>.json` beside objects still addressed by `SHA-256`, and `cask verify -checksums` checks stored bytes against it; deleting records loses the cheap check, never an object.
+- **Compatibility stays explicit** — `gob` remains Go-only, and no MD5 or SHA-1 hasher ships: a legacy algorithm needs a client-supplied `cas.Hasher` (`Digest` + `Validate`), and neither is for new data.
 
 ## Table of contents
 
@@ -25,19 +25,21 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - [Core interfaces at a glance](#core-interfaces-at-a-glance)
 - [Recommended defaults](#recommended-defaults)
 - [Security note](#security-note)
-- [Getting started](#getting-started)
-- [Documentation map](#documentation-map)
+- [Quick start](#quick-start)
+- [The specification set](#the-specification-set)
+- [Building and testing](#building-and-testing)
+- [License](#license)
 
 ## Design decisions
 
 A **single-host content-addressable store**. Each named spec is the normative contract:
-- **No network surface ships.** Product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK, or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
+- **No network surface ships** — product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports [examples/](examples/) (viewer-design §7, coding-guidelines §9).
 - **Dependencies one-directional** — [cas/](cas/), [internal/](internal/), [cmd/](cmd/) never import [examples/](examples/); examples are self-contained except the shared `gitlike` library.
-- **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends plus the opt-in `packfs`, and a JSON codec; only the cas-core §7.1 surface is stable.
+- **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends plus opt-in `packfs`, and a JSON codec; only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).
-- **Examples teach; the `gitlike` package is the shared reference** — the runnable examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
+- **Examples teach; the `gitlike` package is the shared reference** — examples teach seams (`artifacts` = compression codec, `api` = HTTP exposure); gitlike is a reference/copy-source object model apps import or copy.
 
 ## Repository layout
 
@@ -51,7 +53,6 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - [docs/design/](docs/design/) — non-normative design/background material.
 - [AGENTS.md](AGENTS.md) — repo-root agent instructions and rule index entry point.
 - [.github/](.github/) — CI configuration and automation only.
-
 
 ## Core interfaces at a glance
 
@@ -111,16 +112,16 @@ classDiagram
 - Default compression codec: `flate` (`cas/codec/flate`) for compressed object payloads
 - Recommended object format: JSON (`cas/codec/json`) for readability and portability, layered behind the default `flate` compression when size reduction matters
 - Fast secure alternative: `SHA-512/256` (`cas/hash/sha512_256`)
-- Additional supported compression codecs: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for workloads that prefer a different compression profile
+- Additional supported compression codecs: `gzip` and `zlib` (`cas/codec/gzip`, `cas/codec/zlib`) for a different compression profile
 - Shared pack helper: `cas/pack` for fixed-size chunking and sidecar metadata workflows in app-level storage patterns
 - Compact custom option: binary payloads via `cas/codec/binary` when a stable per-type binary layout is required
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 
-Legacy hashes do not ship for new content-addressed data: this module provides `SHA-256`, `SHA-512`, and `SHA-512/256`, so neither MD5 nor SHA-1 can address a new store without a client-supplied `cas.Hasher` — a migration bridge for a legacy store, not a supported default.
+This module ships `SHA-256`, `SHA-512` and `SHA-512/256` only: neither MD5 nor SHA-1 can address a new store without a client-supplied `cas.Hasher` — a migration bridge for a legacy store, not a supported default.
 
 ## Security note
 
-Use cryptographic hashes for object identity and integrity. For new data, prefer `SHA-256` or `SHA-512/256`. Do not use `MD5` or `SHA-1` for new content-addressed data, even when a legacy system still emits them; they are not recommended for new objects or new interoperability contracts, and this module ships no hasher for either — a legacy source needs a client-supplied `cas.Hasher`, which does not make the algorithm a default.
+Use cryptographic hashes for object identity and integrity. For new data, prefer `SHA-256` or `SHA-512/256`. Do not use `MD5` or `SHA-1` for new content-addressed data, even when a legacy system still emits them; they are not recommended for new objects or interoperability contracts, and this module ships no hasher for either — a legacy source needs a client-supplied `cas.Hasher`, which does not make the algorithm a default.
 
 ## Upgrading
 
@@ -163,17 +164,14 @@ backend := mem.New() // fast, deterministic, not persistent
 
 [docs/specs/](docs/specs/) is the complete design contract: core architecture, coding guidelines, library design, performance, testing, consistency (GC/pruning), viewer HTTP surface, viewer design and security, versioning, defaults, examples, and extensions.
 
-Published developer documentation is available at
-[dmundt.github.io/go-cask](https://dmundt.github.io/go-cask/).
+Published developer documentation: [dmundt.github.io/go-cask](https://dmundt.github.io/go-cask/).
 
-Note: the documentation tree under [docs/](docs/) follows the OKF frontmatter layout (`type`, `title`, `description`, `version` for each document, with `docs/index.md` as the top-level rule index).
+The [docs/](docs/) tree follows the OKF frontmatter layout (`type`, `title`, `description`, `version` per document, with `docs/index.md` as the top-level rule index).
 
 Key references:
-- [docs/index.md](docs/index.md) — path-to-spec lookup and rule mapping
+- [docs/index.md](docs/index.md) — path-to-spec lookup and rule mapping; use it to find the matching spec for a change area
 - [docs/design/](docs/design/) — background and design notes
 - [benchmarks/README.md](benchmarks/README.md) — benchmark suite guide and results
-
-Use [docs/index.md](docs/index.md) to find the matching spec for a change area.
 
 ## Building and testing
 

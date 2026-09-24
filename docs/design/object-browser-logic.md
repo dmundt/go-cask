@@ -2,16 +2,16 @@
 type: Design Document
 title: Object Browser Logic — go-cask
 description: Formal server-side state, transition, rendering, and invariants contract for the viewer object browser.
-version: v10
+version: v11
 ---
 
 # Object Browser Logic — go-cask
 
-This document translates the interaction logic in
+Translates the interaction logic in
 [`go-cask-viewer.html`](go-cask-viewer.html) into the server-rendered viewer
-architecture. It complements the visual brief and records the behavior that
-the HTML mockup expresses through JavaScript. The normative viewer requirements
-remain in `docs/specs/viewer-design.md`.
+architecture. Complements the visual brief and records the behavior the HTML
+mockup expresses through JavaScript. Normative viewer requirements remain in
+`docs/specs/viewer-design.md`.
 
 ## 1. Model and authority
 
@@ -19,7 +19,7 @@ The viewer derives each object-browser response from the authoritative
 `fs.Backend` at request time. It MUST NOT keep a browser-side copy of objects,
 store view state in browser storage, or infer typed application references.
 
-The server creates a normalized record for each listed digest:
+The server normalizes one record per listed digest:
 
 | Field | Source | Rule |
 |---|---|---|
@@ -29,34 +29,32 @@ The server creates a normalized record for each listed digest:
 | Size | `Backend.Size` | Exact byte count |
 | Integrity | session-scoped verification result | `not verified` until verified |
 | Written | filesystem object modification time | Physical metadata rendered as whole `m ago`/`h ago`/`d ago`; not object creation time |
-| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source is supplied; also the source for the `Root`/`Detached` refinement of Reachability below |
+| References | optional viewer `ReferenceIndex` | Host-supplied inbound count; `0` when no source supplied; also the source for the `Root`/`Detached` refinement of Reachability below |
 | Reachability | optional viewer `ReachabilityIndex` | Host-supplied root reachability; only source for Orphaned |
 | Timestamp | filesystem object modification time | Same physical metadata in UTC RFC 3339; not object creation time |
 
 The viewer MUST NOT expose generated reference counts, object ages, or
 deterministic digest-derived byte preview. The filesystem modification time is
-allowed only when supplied by the active backend; it is physical metadata, not
-an immutable object timestamp. `References` and reference rows use a
-host-supplied complete viewer reference source. Inbound and outbound
-rows are sorted by digest, link to the selected object, and show its stored
-envelope type when readable.
+allowed only when the active backend supplies it: physical metadata, not an
+immutable object timestamp. `References` and reference rows use a host-supplied
+complete viewer reference source; inbound and outbound rows sort by digest, link
+to the selected object, and show its stored envelope type when readable.
 
 Integrity and reachability are separate facts rendered as separate pills in one
 status cell: an integrity pill (`not-verified` / `verified` / `corrupt`) and a
-reference-state pill for reachable objects with no inbound reference (`Root`)
-or unreachable objects (`Orphaned`, or `Detached` when they also have no
-inbound reference). Interior reachable objects (reachable, inbound > 0) show
-only the integrity pill. The inspector renders both axes as pills. Verify stays
-enabled for orphaned and detached objects, because they are both the likeliest
-to rot and the next candidates for reclamation.
+reference-state pill showing `Root` (reachable, no inbound), `Orphaned`, or
+`Detached` (unreachable, no inbound). Interior reachable objects (reachable,
+inbound > 0) show only the integrity pill. The inspector renders both axes as
+pills. Verify stays enabled for orphaned and detached objects: the likeliest to
+rot and the next candidates for reclamation.
 
 Every recorded verification stores its check time. The Metadata tab's Integrity
-section reports the
-last result with that timestamp and its age, so a stale result reads as stale.
-The top bar's Verify control sweeps the whole store in one request, records
-each result, and reports the verified/corrupt counts on the control. A failed
-action renders as a classified state pill plus prose, and a digest mismatch
-shows both the expected address and the digest the stored bytes hash to.
+section reports the last result with that timestamp and its age, so a stale
+result reads as stale. The top bar's Verify control sweeps the whole store in
+one request, records each result, and reports the verified/corrupt counts on
+the control. A failed action renders as a classified state pill plus prose; a
+digest mismatch shows both the expected address and the digest the stored bytes
+hash to.
 
 ## 2. URL state
 
@@ -74,7 +72,7 @@ The object browser has one canonical state representation:
 | `type` | empty | type present in the current result domain | Exact envelope type |
 | `size` | empty | `small`, `medium`, `large` | `<1 KiB`, `1 KiB–1 MiB`, `>1 MiB` |
 | `status` | empty | `not-verified`, `verified`, `corrupt` | Integrity axis; exclusive states, empty means every state |
-| `reach` | empty | `reachable`, `orphaned` | Reachability axis; combines with `status` by AND and requires configured reachability |
+| `reach` | empty | `reachable`, `orphaned` | Reachability axis; ANDs with `status` and requires configured reachability |
 | `sort` | `hash` | `hash`, `type`, `size`, `status`, `written` | Primary order |
 | `dir` | `asc` | `asc`, `desc` | Sort direction |
 | `limit` | `25` | `25`, `50`, `100`, `250` | Maximum rows per response |
@@ -89,14 +87,14 @@ set returns the empty result page with a valid pager state.
 
 ## 3. Derivation pipeline
 
-Each `GET /viewer/objects` response applies the following deterministic steps:
+Each `GET /viewer/objects` response applies these deterministic steps:
 
 1. Parse and validate URL state.
 2. List digests and form normalized records, including host reachability when
    configured.
 3. Apply `q`, `type`, `size`, and `status` filters.
-4. Sort records using the requested key/direction. Digest/type comparisons use
-   lexical order; size comparisons use exact integer bytes; written comparisons
+4. Sort records using the requested key/direction: digest/type comparisons use
+   lexical order, size comparisons use exact integer bytes, written comparisons
    use backend modification time.
 5. Calculate matched count and total matched bytes.
 6. When `offset` is absent from the request and `selected` names a matched
@@ -109,7 +107,7 @@ Each `GET /viewer/objects` response applies the following deterministic steps:
    present but empty the operator deselected explicitly, so no inspector
    selection exists and the empty inspector is rendered.
 9. Render the object-list component containing table, result summary, and
-   pager. Render the inspector component independently from the selected
+   pager, plus the inspector component independently from the selected
    normalized record.
 
 Each rendered selection is appended to a session-scoped visit trail that backs
@@ -118,12 +116,12 @@ which moves the cursor without extending the trail; any other selection
 truncates the forward entries, as browser history does. The trail is capped,
 lives only in the server session, and never reaches storage.
 
-The bytes inspector reads at most the first 256 bytes. It renders a truncation
-note containing both the 256-byte limit and formatted stored size when more
-bytes exist.
+The bytes inspector reads at most the first 256 bytes, and renders a truncation
+note containing both that limit and the formatted stored size when more bytes
+exist.
 
 The result summary reports the shown range, matched count, and IEC-formatted
-total bytes over the complete matched set, never only the visible page.
+total bytes across the complete matched set, not the visible page alone.
 
 ## 4. State transitions
 
@@ -141,16 +139,16 @@ total bytes over the complete matched set, never only the visible page.
 | Delete form | Perform existing authorized mutation; audit log | Existing result fragment |
 
 All filter/sort/pager/row/panel controls are ordinary GET links or forms first.
-htmx enhances them through `hx-get`, `hx-target`, and `hx-push-url`; the
+htmx enhances them through `hx-get`, `hx-target`, and `hx-push-url`, but the
 destination URL always reconstructs the same state without htmx.
 
 ## 5. Rendering boundaries
 
 ### 5.1 Composition tree
 
-The viewer follows a composable-template philosophy. Pages own document
-assembly only; components own one semantic responsibility and are reused by
-both full pages and htmx fragments.
+The viewer follows a composable-template philosophy: pages own document
+assembly only, while components own one semantic responsibility and are reused
+by both full pages and htmx fragments.
 
 ```text
 viewer-page
@@ -180,7 +178,7 @@ viewer-page
 `object-list` and `object-inspector` are the only independently swappable
 workspace components. A child component MUST NOT issue a duplicate request for
 data owned by its parent. Each component receives a typed, pre-shaped view
-model rather than reaching into request state or storage.
+model, never request state or storage.
 
 ### 5.2 Component boundaries
 
@@ -199,7 +197,7 @@ model rather than reaching into request state or storage.
 | `integrity` | session verification state | `#integrity` |
 | `hexdump-table` | bounded raw preview | `#hexdump` |
 
-A direct browser request receives a complete document. An `HX-Request: true`
+A direct browser request receives a complete document; an `HX-Request: true`
 request receives only the named component appropriate to its target. The same
 template components produce both forms.
 
@@ -224,8 +222,8 @@ template components produce both forms.
 - No response fabricates backend facts.
 - Table, result count, and pager derive from one filtered/sorted sequence.
 - A selected object is never rendered when it is absent from the matched set.
-- A missing selection renders explicit empty inspector content, and an
-  explicit deselection is never overridden by the first-row default.
+- A missing selection renders explicit empty inspector content, and the
+  first-row default never overrides an explicit deselection.
 - 401/403 behavior, roles, CSRF, and audit logging remain governed by
   `viewer-security.md`.
 - Raw bytes remain bounded by the existing 256-byte preview limit.

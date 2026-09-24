@@ -2,13 +2,13 @@
 type: Design
 title: Viewer Template Index — go-cask
 description: Concrete component relationships and composition rules for the embedded viewer templates.
-version: v3
+version: v4
 ---
 
 # Viewer Template Index — go-cask
 
-This index maps the viewer's named Go templates to their component
-responsibilities and composition relationships. It is an implementation guide;
+Maps the viewer's named Go templates to their component responsibilities and
+composition relationships. Implementation guide;
 [`../specs/viewer-design.md`](../specs/viewer-design.md) remains normative.
 
 ## 1. Ownership rules
@@ -99,8 +99,8 @@ The server executes components directly only for htmx fragments:
 ## 5. Change procedure
 
 1. Add or change a leaf component before changing its parent composite.
-2. Keep a page content component thin: compose children; do not duplicate
-   child markup.
+2. Keep a page content component thin: compose children, never duplicate child
+   markup.
 3. Add a new `shell` branch only for a new full page. Do not add another
    document shell.
 4. Preserve fragment targets and progressive full-page links/forms.

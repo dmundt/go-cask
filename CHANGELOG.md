@@ -112,6 +112,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The user-facing documentation reads leaner without losing a rule: the README
+  and the normative specs under `docs/` (including `docs/specs/cas-core.md`)
+  state the same contracts, defaults, sentinel errors and measured numbers in
+  shorter prose, and the README's table of contents matches its sections again.
+  Every code fence, table row, heading and inline identifier is unchanged.
+
 - The viewer's one-time login hint is printed to **stdout** — the stream that
   carries command output, not the error stream a supervisor or a log shipper
   retains — and `cask web -show-token` displays it in any run: a bare

@@ -2,17 +2,17 @@
 type: Design Document
 title: Viewer Design Brief — go-cask
 description: Extracted visual and component brief for translating the object-browser mockup into the server-rendered go-cask viewer.
-version: v7
+version: v8
 ---
 
 # Viewer Design Brief — go-cask
 
-This brief extracts the visual language and component anatomy from
+Extracts the visual language and component anatomy of
 [`go-cask-viewer.html`](go-cask-viewer.html) and
 [`go-cask-object-browser.design.json`](go-cask-object-browser.design.json).
-It guides implementation of the viewer in `internal/web/`. The normative
-contract is `docs/specs/viewer-design.md`; where the prototype conflicts with
-that contract, the prototype is adapted to server-rendered URL state.
+Guides the viewer implementation in `internal/web/`. The normative contract is
+`docs/specs/viewer-design.md`; where the prototype conflicts with that
+contract, the prototype is adapted to server-rendered URL state.
 
 ## 1. Product shape
 
@@ -24,14 +24,14 @@ filter bar:   search | type | size | integrity state | reset
 workspace:    object table + pager  |  selected-object inspector
 ```
 
-The top and filter bars are deliberately compact. The list is dense,
-hash-first, and scrollable. The inspector preserves context beside the list on
-desktop and follows it as a full-width section on narrow screens.
+Top and filter bars are compact. The list is deliberately dense, hash-first, and scrollable.
+The inspector preserves context beside the list on desktop and follows it as a
+full-width section on narrow screens.
 
 ## 2. Extracted visual grammar
 
-Use the mockup's token values exactly in the one central
-`internal/web/viewer.css` file:
+Use the mockup's token values exactly in the one central `internal/web/viewer.css`
+file:
 
 - near-white background/surface, dark blue-gray foreground, muted metadata,
   hairline borders, green accent, blue reference accent;
@@ -45,8 +45,8 @@ Use the mockup's token values exactly in the one central
 - responsive transition at 900px: horizontal filter scrolling, list first,
   then inspector, ordinary document scroll.
 
-No inline styles, remote fonts, imports, images, or additional stylesheets.
-The CSS never supplies content needed for navigation, state, labels, or
+No inline styles, remote fonts, imports, images, or additional stylesheets; the
+CSS never supplies content needed for navigation, state, labels, or
 accessibility.
 
 ## 3. Component map
@@ -64,9 +64,9 @@ accessibility.
 | Metadata/bytes/actions | `inspector-panels` | panel is `tab` URL state; bytes lazy-load through htmx |
 | Integrity pill/result | `integrity` | only server-known on-demand result; never fabricated |
 
-`object-list` composes the object table and pager and is one htmx swap target.
+`object-list` composes the object table and pager and is one htmx swap target;
 `object-inspector` is a distinct target. Components are named templates with
-pre-shaped Go data, so full pages and fragments reuse identical markup.
+pre-shaped Go data, so fragments and full pages share identical markup.
 
 ## 4. Prototype reconciliation
 
@@ -87,15 +87,15 @@ JavaScript or unsupported CAS data. Translate them as follows:
 | Global Verify | not shown until an authorized bounded server operation exists |
 
 This preserves the mockup's information density, hierarchy, and visual
-language without shipping a second client application.
+language, without shipping a second client application.
 
 ## 5. Implementation sequence
 
-1. Add and embed central `viewer.css`; add stylesheet link to the shared head.
+1. Add and embed central `viewer.css`; add the stylesheet link to the shared head.
 2. Split templates into composition-level components: shell/top bar, filter
    bar, table/sort header/row, pager, inspector/panels, and result fragments.
 3. Add validated server-side filter, sort, pagination, selection, and panel
-   state; return the list and inspector as reusable fragments.
+   state; return list and inspector as reusable fragments.
 4. Move current object/detail markup onto composed components.
 5. Add route/template tests for direct loads, htmx swaps, pagination bounds,
    query preservation, roles/CSRF, and narrow/desktop semantic structure.
