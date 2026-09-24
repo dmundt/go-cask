@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/cas/repo"
@@ -61,9 +61,9 @@ func (r root) References() []cas.Digest {
 }
 
 // testStores bundles the three per-type stores plus a Registry with all three
-// registered, over a shared mem.Backend.
+// registered, over a shared backmem.Backend.
 type testStores struct {
-	backend  *mem.Backend
+	backend  *backmem.Backend
 	leaves   *cas.Store[leaf]
 	branches *cas.Store[branch]
 	roots    *cas.Store[root]
@@ -72,7 +72,7 @@ type testStores struct {
 
 func newTestStores(t *testing.T) *testStores {
 	t.Helper()
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 	ts := &testStores{
 		backend:  backend,
@@ -150,7 +150,7 @@ func TestWalkVisitsEveryObjectOnceAcrossThreeTypes(t *testing.T) {
 // walk stop after each digest once instead of looping forever.
 func TestWalkTerminatesOnCycle(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(backend, hasher)
 	branches := cas.New(backend, jsoncodec.New[branch](), hasher)
@@ -177,7 +177,7 @@ func TestWalkTerminatesOnCycle(t *testing.T) {
 }
 
 func TestRegisterDuplicateTypeNameFails(t *testing.T) {
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(backend, hasher)
 	leaves := cas.New(backend, jsoncodec.New[leaf](), hasher)
@@ -448,7 +448,7 @@ func TestLookupStoreUnknownTypeReturnsErrUnknownType(t *testing.T) {
 // boundary: Register records a Decoder but no store, so LookupStore has
 // nothing to hand back and reports the same typed error an unknown name does.
 func TestLookupStoreRegisterOnlyTypeReturnsErrUnknownType(t *testing.T) {
-	reg := repo.NewRegistry(mem.New(), sha256.New())
+	reg := repo.NewRegistry(backmem.New(), sha256.New())
 	if err := reg.Register("x@1", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) {
 		return nil, nil
 	}); err != nil {
@@ -484,7 +484,7 @@ func TestLookupStoreWrongTypeReturnsNamingError(t *testing.T) {
 }
 
 func TestRegisterRejectsEmptyNameAndNilDecoder(t *testing.T) {
-	reg := repo.NewRegistry(mem.New(), sha256.New())
+	reg := repo.NewRegistry(backmem.New(), sha256.New())
 	if err := reg.Register("", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) { return nil, nil }); err == nil {
 		t.Fatal("Register with an empty type name = nil, want an error")
 	}
@@ -547,7 +547,7 @@ func TestUnknownObjectMethods(t *testing.T) {
 }
 
 func TestRegisterStoreRejectsNilStore(t *testing.T) {
-	reg := repo.NewRegistry(mem.New(), sha256.New())
+	reg := repo.NewRegistry(backmem.New(), sha256.New())
 	if err := repo.RegisterStore[leaf](reg, "leaf@1", nil); err == nil {
 		t.Fatal("RegisterStore with a nil store = nil, want an error")
 	}
@@ -625,7 +625,7 @@ func TestResolveKeepsUnknownTypeForAnIntactEnvelope(t *testing.T) {
 // that errors, and one that returns a nil Object with a nil error.
 func TestResolvePropagatesDecoderError(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(backend, hasher)
 	wantErr := errors.New("decode exploded")
@@ -643,7 +643,7 @@ func TestResolvePropagatesDecoderError(t *testing.T) {
 
 func TestResolveRejectsNilObjectFromDecoder(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(backend, hasher)
 	if err := reg.Register("empty@1", func(context.Context, cas.Backend, cas.Digest) (repo.Object, error) {
@@ -696,7 +696,7 @@ func (b erroringBackend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, 
 func TestResolveWrapsReadHeaderFailure(t *testing.T) {
 	ctx := context.Background()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(erroringBackend{Backend: mem.New(), failRead: true}, hasher)
+	reg := repo.NewRegistry(erroringBackend{Backend: backmem.New(), failRead: true}, hasher)
 	d := mustDigest(t, strings.Repeat("55", 32))
 	if _, err := reg.Resolve(ctx, d); err == nil || !contains(err.Error(), "read object header") {
 		t.Fatalf("Resolve error = %v, want a wrapped read-header failure", err)
@@ -706,7 +706,7 @@ func TestResolveWrapsReadHeaderFailure(t *testing.T) {
 func TestResolveWrapsCloseHeaderFailure(t *testing.T) {
 	ctx := context.Background()
 	hasher := sha256.New()
-	reg := repo.NewRegistry(erroringBackend{Backend: mem.New(), failClose: true}, hasher)
+	reg := repo.NewRegistry(erroringBackend{Backend: backmem.New(), failClose: true}, hasher)
 	d := mustDigest(t, strings.Repeat("66", 32))
 	if _, err := reg.Resolve(ctx, d); err == nil || !contains(err.Error(), "close object header reader") {
 		t.Fatalf("Resolve error = %v, want a wrapped close-header failure", err)

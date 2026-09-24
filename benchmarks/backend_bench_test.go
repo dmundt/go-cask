@@ -9,14 +9,14 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 )
 
 func BenchmarkBackendWriteRead(b *testing.B) {
 	ctx := context.Background()
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("mem/steady-state/%s", sz.name), func(b *testing.B) {
-			m := mem.New()
+			m := backmem.New()
 			b.SetBytes(int64(sz.size))
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -78,7 +78,7 @@ func BenchmarkBackendWriteRead(b *testing.B) {
 
 func BenchmarkBackendWriteReadBaseline(b *testing.B) {
 	ctx := context.Background()
-	m := mem.New()
+	m := backmem.New()
 	payload := benchText(1024, 0)
 	h := digestData([]byte(payload))
 	b.SetBytes(1024)
@@ -92,7 +92,7 @@ func BenchmarkBackendWriteReadBaseline(b *testing.B) {
 	benchmarkSummary(b, "backend-write-read/baseline/mem-1KiB", 1024)
 }
 
-func memBenchmarkRoundTripWithBackend(ctx context.Context, m *mem.Backend, payload string, h cas.Digest) error {
+func memBenchmarkRoundTripWithBackend(ctx context.Context, m *backmem.Backend, payload string, h cas.Digest) error {
 	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func fsBenchmarkRoundTripWithBackend(ctx context.Context, m *fs.Backend, payload
 }
 
 func memBenchmarkRoundTrip(ctx context.Context, payload string, h cas.Digest) error {
-	m := mem.New()
+	m := backmem.New()
 	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
 		return err
 	}

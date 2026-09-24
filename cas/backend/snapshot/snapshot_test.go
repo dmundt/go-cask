@@ -14,14 +14,14 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
-	membackend "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	packbackend "github.com/dmundt/go-cask/cas/backend/packfs"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 func TestExportDeterministicAndImportAcrossBackends(t *testing.T) {
 	ctx := context.Background()
-	source := membackend.New()
+	source := backmem.New()
 	objects := map[string]cas.Digest{
 		"alpha": sha256.Of([]byte("alpha")),
 		"beta":  sha256.Of([]byte("beta")),
@@ -85,7 +85,7 @@ func importAndCompare(t *testing.T, destination cas.Backend, archive []byte, obj
 
 func TestImportRejectsMalformedArchiveWithoutWritingInvalidRecord(t *testing.T) {
 	ctx := context.Background()
-	source := membackend.New()
+	source := backmem.New()
 	digest := sha256.Of([]byte("payload"))
 	if err := source.Put(ctx, digest, strings.NewReader("payload")); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestImportRejectsMalformedArchiveWithoutWritingInvalidRecord(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	destination := membackend.New()
+	destination := backmem.New()
 	data := slices.Clone(archive.Bytes())
 	binary.BigEndian.PutUint64(data[10:18], 2)
 	if err := Import(ctx, destination, bytes.NewReader(data)); err == nil {
@@ -114,14 +114,14 @@ func TestImportRejectsLargeDeclaredCountWithoutPreallocating(t *testing.T) {
 	binary.BigEndian.PutUint16(data[8:10], version)
 	binary.BigEndian.PutUint64(data[10:], uint64(math.MaxInt))
 
-	if err := Import(context.Background(), membackend.New(), bytes.NewReader(data)); err == nil {
+	if err := Import(context.Background(), backmem.New(), bytes.NewReader(data)); err == nil {
 		t.Fatal("Import with missing records must fail")
 	}
 }
 
 func TestImportRejectsDuplicateDigest(t *testing.T) {
 	ctx := context.Background()
-	source := membackend.New()
+	source := backmem.New()
 	digest := sha256.Of([]byte("payload"))
 	if err := source.Put(ctx, digest, strings.NewReader("payload")); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestImportRejectsDuplicateDigest(t *testing.T) {
 	binary.BigEndian.PutUint64(data[10:18], 2)
 	data = append(data, archive.Bytes()[18:]...)
 
-	if err := Import(ctx, membackend.New(), bytes.NewReader(data)); err == nil {
+	if err := Import(ctx, backmem.New(), bytes.NewReader(data)); err == nil {
 		t.Fatal("duplicate digest must fail")
 	}
 }
@@ -151,14 +151,14 @@ func TestImportDoesNotAllocateDeclaredPayloadSize(t *testing.T) {
 	binary.BigEndian.PutUint64(data[headerSize+8:headerSize+16], 1<<40)
 	data = append(data, digest...)
 
-	err := Import(context.Background(), membackend.New(), bytes.NewReader(data))
+	err := Import(context.Background(), backmem.New(), bytes.NewReader(data))
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("Import(oversized declared payload) error = %v, want io.ErrUnexpectedEOF", err)
 	}
 }
 
 func TestExportAndImportHonorCanceledContext(t *testing.T) {
-	source := membackend.New()
+	source := backmem.New()
 	digest := sha256.Of([]byte("payload"))
 	if err := source.Put(context.Background(), digest, strings.NewReader("payload")); err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestExportAndImportHonorCanceledContext(t *testing.T) {
 	if err := Export(ctx, source, &bytes.Buffer{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Export error = %v, want context.Canceled", err)
 	}
-	if err := Import(ctx, membackend.New(), bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
+	if err := Import(ctx, backmem.New(), bytes.NewReader(nil)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Import error = %v, want context.Canceled", err)
 	}
 }
@@ -191,7 +191,7 @@ func (w *failAtWriter) Write(p []byte) (int, error) {
 }
 
 func TestExportReportsWriterFailure(t *testing.T) {
-	source := membackend.New()
+	source := backmem.New()
 	digest := sha256.Of([]byte("payload"))
 	if err := source.Put(context.Background(), digest, strings.NewReader("payload")); err != nil {
 		t.Fatal(err)
@@ -450,7 +450,7 @@ func TestImportInputValidation(t *testing.T) {
 	validDigest := sha256.Of([]byte("payload"))
 	validArchive := func() []byte {
 		var buf bytes.Buffer
-		source := membackend.New()
+		source := backmem.New()
 		if err := source.Put(ctx, validDigest, strings.NewReader("payload")); err != nil {
 			t.Fatal(err)
 		}
@@ -503,7 +503,7 @@ func TestImportInputValidation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var destination cas.Backend = membackend.New()
+			var destination cas.Backend = backmem.New()
 			if test.name == "nil destination" {
 				destination = nil
 			}
@@ -521,7 +521,7 @@ func TestImportInputValidation(t *testing.T) {
 
 func TestImportBackendPutAndTrailingReaderErrors(t *testing.T) {
 	ctx := context.Background()
-	source := membackend.New()
+	source := backmem.New()
 	digest := sha256.Of([]byte("payload"))
 	if err := source.Put(ctx, digest, strings.NewReader("payload")); err != nil {
 		t.Fatal(err)
@@ -534,17 +534,17 @@ func TestImportBackendPutAndTrailingReaderErrors(t *testing.T) {
 		t.Fatalf("Import Put error = %v, want io.ErrClosedPipe", err)
 	}
 
-	if err := Import(ctx, membackend.New(), trailingReadError{}); !errors.Is(err, io.ErrClosedPipe) {
+	if err := Import(ctx, backmem.New(), trailingReadError{}); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("Import trailing read error = %v, want io.ErrClosedPipe", err)
 	}
-	if err := Import(ctx, membackend.New(), &archiveThenErrorReader{reader: bytes.NewReader(archive.Bytes())}); !errors.Is(err, io.ErrClosedPipe) {
+	if err := Import(ctx, backmem.New(), &archiveThenErrorReader{reader: bytes.NewReader(archive.Bytes())}); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("Import post-archive read error = %v, want io.ErrClosedPipe", err)
 	}
-	if err := Import(ctx, membackend.New(), &archiveThenNilReader{reader: bytes.NewReader(archive.Bytes())}); err == nil || !strings.Contains(err.Error(), "trailing data") {
+	if err := Import(ctx, backmem.New(), &archiveThenNilReader{reader: bytes.NewReader(archive.Bytes())}); err == nil || !strings.Contains(err.Error(), "trailing data") {
 		t.Fatalf("Import nil-progress reader error = %v, want trailing data", err)
 	}
 	canceled, cancel := context.WithCancel(context.Background())
-	if err := Import(canceled, membackend.New(), &cancelAfterReadReader{
+	if err := Import(canceled, backmem.New(), &cancelAfterReadReader{
 		reader: bytes.NewReader(archive.Bytes()),
 		cancel: cancel,
 	}); !errors.Is(err, context.Canceled) {

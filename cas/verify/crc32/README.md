@@ -25,7 +25,7 @@ The record lives at `<base>/.meta/<hex>.json`, the address is untouched, and an 
 ## Typical use: a checksum-addressed store
 
 ```go
-backend := mem.New()
+backend := backmem.New()
 h := crc32.New()
 
 d, err := h.Digest(bytes.NewReader(payload)) // the object's address IS its crc32

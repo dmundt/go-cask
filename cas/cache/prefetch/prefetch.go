@@ -1,6 +1,6 @@
 // Package prefetch provides SmartCache, a prefetch-on-access cache for the cas
 // core. It is not part of the stable cas surface (cas-core §4.10); SmartCache[T]
-// wraps a memory.CachedStore[T] and is an example recipe (see examples/notes).
+// wraps a cachemem.CachedStore[T] and is an example recipe (see examples/notes).
 //
 // NewSmartCache(store, depth) returns a cache whose reads load an object and
 // then, in the background, warm the cache with its references (prefetchDepth
@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 const (
@@ -30,12 +30,12 @@ const (
 	prefetchConcurrency = 8
 )
 
-// SmartCache[T] wraps a memory.CachedStore[T] and adds prefetch-on-access:
+// SmartCache[T] wraps a cachemem.CachedStore[T] and adds prefetch-on-access:
 // GetWithPrefetch loads the requested object and then asynchronously
 // prefetches its references (to prefetchDepth levels) so later reads hit the
 // cache. Prefetching never blocks or fails the caller.
 type SmartCache[T cas.Object[T]] struct {
-	store         *mem.CachedStore[T]
+	store         *cachemem.CachedStore[T]
 	prefetchDepth int
 	// sem bounds the concurrent prefetches. GetWithPrefetch takes a slot
 	// without blocking and drops the prefetch when none is free, so the hot
@@ -45,7 +45,7 @@ type SmartCache[T cas.Object[T]] struct {
 
 // NewSmartCache wraps store with reference prefetching to prefetchDepth
 // levels. A depth <= 0 disables prefetching.
-func NewSmartCache[T cas.Object[T]](store *mem.CachedStore[T], prefetchDepth int) *SmartCache[T] {
+func NewSmartCache[T cas.Object[T]](store *cachemem.CachedStore[T], prefetchDepth int) *SmartCache[T] {
 	return &SmartCache[T]{
 		store:         store,
 		prefetchDepth: prefetchDepth,

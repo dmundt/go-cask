@@ -7,7 +7,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	adler32 "github.com/dmundt/go-cask/cas/verify/adler32"
@@ -151,7 +151,7 @@ func BenchmarkParseDigest(b *testing.B) {
 
 func BenchmarkParallelPutGet(b *testing.B) {
 	ctx := context.Background()
-	store := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+	store := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 	const objects = 64
 	const hotSetSize = benchmarkHotSetSize
 	const coldRatio = benchmarkMixedColdRatio

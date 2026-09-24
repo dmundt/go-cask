@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/cache/lru"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -20,7 +20,7 @@ func (item) References() []cas.Digest { return nil }
 
 func newStore(t *testing.T) *cas.Store[item] {
 	t.Helper()
-	return cas.New(mem.New(), jsoncodec.New[item](), sha256.New())
+	return cas.New(backmem.New(), jsoncodec.New[item](), sha256.New())
 }
 
 func putItem(t *testing.T, s *cas.Store[item], id string) cas.Digest {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
@@ -27,7 +27,7 @@ func (note) References() []cas.Digest { return nil }
 // concrete type.
 func Example() {
 	ctx := context.Background()
-	s := cas.New(memory.New(), jsoncodec.New[note](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[note](), sha256.New())
 	h, err := s.Put(ctx, note{Body: "hi"})
 	if err != nil {
 		fmt.Println("error:", err)
@@ -53,7 +53,7 @@ func ExampleCodec() {
 	ctx := context.Background()
 	codec := gzipCodec[note]{inner: jsoncodec.New[note]()}
 
-	inMemory := cas.New(memory.New(), codec, sha256.New())
+	inMemory := cas.New(backmem.New(), codec, sha256.New())
 
 	dir, err := os.MkdirTemp("", "cas-example")
 	if err != nil {

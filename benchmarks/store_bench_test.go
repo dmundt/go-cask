@@ -7,7 +7,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
@@ -17,7 +17,7 @@ func BenchmarkStorePut(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-put/steady-state/%s", sz.name), func(b *testing.B) {
 			ctx := context.Background()
-			s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+			s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 			b.SetBytes(int64(sz.size))
 			b.ReportAllocs()
 			benchmarkWarmup(func() {
@@ -38,14 +38,14 @@ func BenchmarkStorePut(b *testing.B) {
 			b.SetBytes(int64(sz.size))
 			b.ReportAllocs()
 			benchmarkWarmup(func() {
-				s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+				s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 				if _, err := s.Put(ctx, benchNoteWithSeed(sz.size, 0)); err != nil {
 					b.Fatal(err)
 				}
 			})
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
-				s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+				s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 				if _, err := s.Put(ctx, benchNoteWithSeed(sz.size, i)); err != nil {
 					b.Fatal(err)
 				}
@@ -59,7 +59,7 @@ func BenchmarkStoreGetHot(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-get/steady-state/hot/%s", sz.name), func(b *testing.B) {
 			ctx := context.Background()
-			s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+			s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 			h, err := s.Put(ctx, benchNoteWithSeed(sz.size, 0))
 			if err != nil {
 				b.Fatal(err)
@@ -85,7 +85,7 @@ func BenchmarkStoreGetCold(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
-				s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+				s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 				h, err := s.Put(ctx, benchNoteWithSeed(sz.size, i))
 				if err != nil {
 					b.Fatal(err)
@@ -103,7 +103,7 @@ func BenchmarkStoreGetMixed(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-get/steady-state/mixed-hot-cold/%s", sz.name), func(b *testing.B) {
 			ctx := context.Background()
-			s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+			s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 			hot := make([]cas.Digest, benchmarkHotSetSize)
 			for i := range hot {
 				h, err := s.Put(ctx, benchNoteWithSeed(sz.size, i))
@@ -221,7 +221,7 @@ func BenchmarkStoreGraphTraversal(b *testing.B) {
 	ctx := context.Background()
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-graph/steady-state/%s", sz.name), func(b *testing.B) {
-			backend := mem.New()
+			backend := backmem.New()
 			repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
 				Blob:   jsoncodec.New[*gitlike.Blob](),
 				Tree:   jsoncodec.New[*gitlike.Tree](),
@@ -262,7 +262,7 @@ func BenchmarkStoreGraphTraversal(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[testNote](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 	b.SetBytes(1024)
 	b.ReportAllocs()
 	b.ResetTimer()

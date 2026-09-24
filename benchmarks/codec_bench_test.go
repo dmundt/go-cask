@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
@@ -49,7 +49,7 @@ func BenchmarkCodecPackageRoundTrip(b *testing.B) {
 				}
 				b.Run(fmt.Sprintf("%s/%s/%s", name, hasher.name, sz.name), func(b *testing.B) {
 					ctx := context.Background()
-					s := cas.New(mem.New(), codec.new(), hasher.new())
+					s := cas.New(backmem.New(), codec.new(), hasher.new())
 					b.SetBytes(int64(sz.size))
 					b.ReportAllocs()
 					b.ResetTimer()
@@ -73,7 +73,7 @@ func BenchmarkCodecPackageRoundTrip(b *testing.B) {
 func BenchmarkCodecRoundTripBaseline(b *testing.B) {
 	ctx := context.Background()
 	c := jsoncodec.New[testNote]()
-	s := cas.New(mem.New(), c, sha256.New())
+	s := cas.New(backmem.New(), c, sha256.New())
 	b.SetBytes(1024)
 	b.ReportAllocs()
 	b.ResetTimer()

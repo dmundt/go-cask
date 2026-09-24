@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v21
+version: v22
 ---
 
 # Examples — go-cask
@@ -22,7 +22,7 @@ Three audiences: **doc readers** (a runnable program beats API signatures and ma
 5. **No `any` in example APIs:** define your own typed objects; for cross-type resolution use the supported `cas/repo` registry (or copy the `gitlike` pattern into your own package when you need something it does not express) — never extend `cas`/`gitlike`.
 6. **One focus per example, real-world shape:** clear primary aspect (§4), a small believable program — not a kitchen sink, not a toy.
 7. **Idiomatic Go:** `gofmt`, doc comments on exports, `context.Context` first, wrapped errors, table-driven tests (coding-guidelines §2, §7).
-8. **`README.md` is REQUIRED** in the example folder (plus the package comment), teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `cas.Digest` reference fields, the `sha256.New()`/`sha256.Of` hasher, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `memory.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (a custom `Codec[T]`, an own `Object[T]`/repo/resolver, an HTTP surface — never a custom hash algorithm: the client merely injects `cas.Hasher`) and what it does NOT modify (stated explicitly) (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused, concrete — docs for app authors.
+8. **`README.md` is REQUIRED** in the example folder (plus the package comment), teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `cas.Digest` reference fields, the `sha256.New()`/`sha256.Of` hasher, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `cachemem.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (a custom `Codec[T]`, an own `Object[T]`/repo/resolver, an HTTP surface — never a custom hash algorithm: the client merely injects `cas.Hasher`) and what it does NOT modify (stated explicitly) (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused, concrete — docs for app authors.
 9. **Coverage:** the example set MUST keep covering the aspect matrix (§4); a duplicate-aspect example is discouraged unless it is a better teaching vehicle.
 10. **Never modify the libraries for an example's sake:** a missing feature is a spec/library change — raise it separately, never hack around it in the example.
 11. **Self-contained:** an example MUST NOT import another example's package, except `gitlike` (which `files` imports). Examples never depend on `files`/`artifacts`/`notes`/`api`, and those never on each other.
@@ -84,7 +84,7 @@ Covered by the **product object browser** in `internal/web/` (nested Go template
 | Root-set closure (`cas.Reachable` / `cas/repo.Reachable`) | ✓ | ✓ | ✓ | | |
 | Generic `Walker[T]` | ✓ | | ✓ | | |
 | Lazy loading (`CachedObject[T]`) | | | ✓ | | product |
-| Caching (`memory.CachedStore[T]`/`lru.Cache`) | | ✓ | ✓ | | |
+| Caching (`cachemem.CachedStore[T]`/`lru.Cache`) | | ✓ | ✓ | | |
 | Prefetch-on-access (`SmartCache`) | | | ✓ | | |
 | Cache metrics (`CacheMonitor`) | | ✓ | | | |
 | Background `Preloader` | | | ✓ | | |

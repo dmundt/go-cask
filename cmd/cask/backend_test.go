@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/internal/store"
 )
 
@@ -196,7 +196,7 @@ func (b *recordingBackend) Close() error {
 // a backend holding a handle open for appends (packfs keeps its active pack
 // file) is released before the command returns (cli.md §2).
 func TestWritePathClosesStore(t *testing.T) {
-	backend := &recordingBackend{Backend: memory.New()}
+	backend := &recordingBackend{Backend: backmem.New()}
 	st := &store.Store{Backend: backend, Kind: store.KindFS}
 	spec, ok := command("put")
 	if !ok {
@@ -211,7 +211,7 @@ func TestWritePathClosesStore(t *testing.T) {
 
 	// An operation failure is still reported, and that store is still closed —
 	// Close is idempotent, so each opened store gets its own backend.
-	failing := &recordingBackend{Backend: memory.New()}
+	failing := &recordingBackend{Backend: backmem.New()}
 	failingStore := &store.Store{Backend: failing, Kind: store.KindFS}
 	if err := runTargetOp(context.Background(), spec, failingStore, nil); err == nil {
 		t.Fatal("put without an operand = nil, want a usage error")

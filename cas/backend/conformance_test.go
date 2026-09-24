@@ -10,7 +10,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/backend/packfs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
@@ -77,7 +77,7 @@ func conformanceBackends() []backendCase {
 			name: "memory",
 			open: func(t *testing.T, dir string) cas.Backend {
 				t.Helper()
-				return memory.New()
+				return backmem.New()
 			},
 		},
 	}

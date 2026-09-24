@@ -8,7 +8,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
-	mem "github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -36,10 +36,10 @@ func (o testObject) References() []cas.Digest {
 	return refs
 }
 
-func newStore(t *testing.T) (*cas.Store[testObject], *mem.CachedStore[testObject]) {
+func newStore(t *testing.T) (*cas.Store[testObject], *cachemem.CachedStore[testObject]) {
 	t.Helper()
 	s := cas.New(backmem.New(), jsoncodec.New[testObject](), sha256.New())
-	return s, mem.New(s)
+	return s, cachemem.New(s)
 }
 
 func TestSmartCache(t *testing.T) {
@@ -82,7 +82,7 @@ func TestSmartCacheMissing(t *testing.T) {
 
 // waitCached polls until the given digest is loaded into the store's cache or
 // the deadline passes. It lets the asynchronous prefetch goroutine finish.
-func waitCached(t *testing.T, cs *mem.CachedStore[testObject], d cas.Digest) {
+func waitCached(t *testing.T, cs *cachemem.CachedStore[testObject], d cas.Digest) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

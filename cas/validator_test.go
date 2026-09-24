@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
@@ -45,7 +45,7 @@ func (o *ptrObj) Validate() error {
 
 func newStrictStore(t *testing.T) (*cas.Store[strictObj], cas.Backend) {
 	t.Helper()
-	backend := mem.New()
+	backend := backmem.New()
 	return cas.New(backend, jsoncodec.New[strictObj](), sha256.New()), backend
 }
 
@@ -126,7 +126,7 @@ func TestGetEnforcesValidateOnDecode(t *testing.T) {
 // encoded as a payload that decodes back to nil.
 func TestPutRejectsNilObject(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[*ptrObj](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[*ptrObj](), sha256.New())
 	if _, err := s.Put(ctx, nil); err == nil {
 		t.Fatal("Put(nil) must fail")
 	}
@@ -139,7 +139,7 @@ func TestPutRejectsNilObject(t *testing.T) {
 // corrupt: there is no object there to return.
 func TestGetRejectsNilDecodedObject(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := cas.New(backend, jsoncodec.New[*ptrObj](), sha256.New())
 
 	d := storeRaw(t, backend, "ptr@1", `null`)
@@ -159,7 +159,7 @@ func TestGetRejectsNilDecodedObject(t *testing.T) {
 // store stores and reads it with no extra rule.
 func TestValidatorIsOptional(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
 	d, err := s.Put(ctx, test.Note{})
 	if err != nil {
 		t.Fatalf("Put of an object without Validate = %v", err)
@@ -187,7 +187,7 @@ func (implIface) References() []cas.Digest { return nil }
 // after decoding a payload that is literally null).
 func TestNilObjectWithInterfaceType(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := cas.New[ifaceObj](backend, jsoncodec.New[ifaceObj](), sha256.New())
 
 	err := error(nil)
@@ -225,7 +225,7 @@ func (unversionedObj) References() []cas.Digest { return nil }
 // Type() is refused instead of producing an object Get can never read.
 func TestPutRejectsUnversionedTypeName(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[unversionedObj](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[unversionedObj](), sha256.New())
 	if _, err := s.Put(ctx, unversionedObj{Name: "x"}); !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("Put(unversioned type) = %v, want ErrUnknownType", err)
 	}

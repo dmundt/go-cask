@@ -12,7 +12,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -102,7 +102,7 @@ func TestVerifierDetectsCorruption(t *testing.T) {
 // to report. A nil *Verifier is a programming error, not a state the method
 // handles, and callers therefore never need a nil check.
 func TestVerifierHasNoNilReceiver(t *testing.T) {
-	if v := cas.NewVerifier(mem.New(), sha256.New()); v == nil {
+	if v := cas.NewVerifier(backmem.New(), sha256.New()); v == nil {
 		t.Fatal("NewVerifier returned nil; callers would need a nil check Verify does not implement")
 	}
 }
@@ -116,17 +116,17 @@ func TestVerifyRejectsInvalidInputs(t *testing.T) {
 	if err := cas.Verify(context.Background(), nil, sha256.Of([]byte("x")), sha256.New()); err == nil || !strings.Contains(err.Error(), "nil backend") {
 		t.Fatalf("Verify(nil backend) = %v, want nil-backend error", err)
 	}
-	if err := cas.Verify(context.Background(), mem.New(), nil, sha256.New()); err == nil || !errors.Is(err, cas.ErrInvalidDigest) {
+	if err := cas.Verify(context.Background(), backmem.New(), nil, sha256.New()); err == nil || !errors.Is(err, cas.ErrInvalidDigest) {
 		t.Fatalf("Verify(absent digest) = %v, want ErrInvalidDigest", err)
 	}
-	if err := cas.Verify(context.Background(), mem.New(), sha256.Of([]byte("x")), nil); err == nil || !strings.Contains(err.Error(), "nil hasher") {
+	if err := cas.Verify(context.Background(), backmem.New(), sha256.Of([]byte("x")), nil); err == nil || !strings.Contains(err.Error(), "nil hasher") {
 		t.Fatalf("Verify(nil hasher) = %v, want nil-hasher error", err)
 	}
 }
 
 func TestVerifyPropagatesHasherErrors(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	d := sha256.Of([]byte("hello"))
 	if err := backend.Put(ctx, d, bytes.NewReader([]byte("hello"))); err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestVerifyReportsBackendCloseFailure(t *testing.T) {
 
 func TestVerifyAllOverMinimalBackend(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New() // implements neither Cleaner nor Statter
+	backend := backmem.New() // implements neither Cleaner nor Statter
 	good := sha256.Of([]byte("good"))
 	if err := backend.Put(ctx, good, bytes.NewReader([]byte("good"))); err != nil {
 		t.Fatal(err)
@@ -204,13 +204,13 @@ func TestVerifyAllReportsCorruption(t *testing.T) {
 func TestVerifyAllRejectsInvalidInputs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := cas.VerifyAll(ctx, mem.New(), sha256.New()); !errors.Is(err, context.Canceled) {
+	if _, err := cas.VerifyAll(ctx, backmem.New(), sha256.New()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("VerifyAll(canceled ctx) = %v, want context.Canceled", err)
 	}
 	if _, err := cas.VerifyAll(context.Background(), nil, sha256.New()); err == nil || !strings.Contains(err.Error(), "nil backend") {
 		t.Fatalf("VerifyAll(nil backend) = %v, want nil-backend error", err)
 	}
-	if _, err := cas.VerifyAll(context.Background(), mem.New(), nil); err == nil || !strings.Contains(err.Error(), "nil hasher") {
+	if _, err := cas.VerifyAll(context.Background(), backmem.New(), nil); err == nil || !strings.Contains(err.Error(), "nil hasher") {
 		t.Fatalf("VerifyAll(nil hasher) = %v, want nil-hasher error", err)
 	}
 }

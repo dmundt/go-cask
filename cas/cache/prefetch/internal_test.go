@@ -9,7 +9,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
-	mem "github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
@@ -47,10 +47,10 @@ func (zeroRefObject) Type() string { return "zeroref@1" }
 
 func (o zeroRefObject) References() []cas.Digest { return []cas.Digest{nil, o.Child} }
 
-func internalStore(t *testing.T) (*cas.Store[internalObject], *mem.CachedStore[internalObject]) {
+func internalStore(t *testing.T) (*cas.Store[internalObject], *cachemem.CachedStore[internalObject]) {
 	t.Helper()
 	s := cas.New(backmem.New(), jsoncodec.New[internalObject](), sha256.New())
-	return s, mem.New(s)
+	return s, cachemem.New(s)
 }
 
 // waitIdle waits until every prefetch slot is free, which means the walk started
@@ -136,7 +136,7 @@ func TestPrefetchSelfReferenceTerminates(t *testing.T) {
 	ctx := context.Background()
 	backend := backmem.New()
 	s := cas.New(backend, jsoncodec.New[internalObject](), sha256.New())
-	cs := mem.New(s)
+	cs := cachemem.New(s)
 
 	cyclic := sha256.Of([]byte("cyclic root"))
 	h, err := s.Put(ctx, internalObject{Name: "self", Refs: []cas.Digest{cyclic}})
@@ -191,7 +191,7 @@ func TestPrefetchSkipsAbsentReferences(t *testing.T) {
 	ctx := context.Background()
 	backend := backmem.New()
 	zs := cas.New(backend, jsoncodec.New[zeroRefObject](), sha256.New())
-	cs := mem.New(zs)
+	cs := cachemem.New(zs)
 
 	child, err := zs.Put(ctx, zeroRefObject{})
 	if err != nil {

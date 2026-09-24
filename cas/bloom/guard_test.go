@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/bloom"
 	stdfilter "github.com/dmundt/go-cask/cas/bloom/standard"
 )
@@ -17,7 +17,7 @@ var _ cas.Backend = (*bloom.Guard)(nil)
 
 func TestGuardPutAddsDigestToFilter(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	filter, err := stdfilter.New(256, 0.01)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestGuardPutAddsDigestToFilter(t *testing.T) {
 
 func TestGuardExistsShortCircuitsOnNegativeBloomResult(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	filter, err := stdfilter.New(256, 0.01)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func (f *countingLikeFilter) Remove(d cas.Digest) {
 
 func TestGuardDeleteRemovesFromFilterWhenSupported(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	filter := &countingLikeFilter{present: map[string]bool{}}
 	guard, err := bloom.NewGuard(backend, filter)
 	if err != nil {

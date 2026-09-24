@@ -57,7 +57,7 @@ import (
 // interface — packfs, for example, opens one pack file for many adjacent
 // objects — and falls back to a sequential Get loop for every other backend.
 // A caller that wants the typed or parallel path uses the caching layer
-// instead: memory.CachedStore[T] (cas/cache/mem), lru.Cache[T] (cas/cache/lru)
+// instead: cachemem.CachedStore[T] (cas/cache/mem), lru.Cache[T] (cas/cache/lru)
 // and prefetch.SmartCache[T] (cas/cache/prefetch), sized from Stats. cas-core
 // §4.13 records the recipe. Neither GetMany nor this interface changes the
 // Backend method set.

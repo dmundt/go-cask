@@ -14,7 +14,7 @@ const DefaultMaxRecordBytes = 4096
 
 // basePathReporter is the optional interface a backend implements when its
 // objects live under a path the caller can name. fs.Backend and packfs.Backend
-// implement it; a backend without durable bytes of its own (mem.Backend) does
+// implement it; a backend without durable bytes of its own (backmem.Backend) does
 // not, and gets its base from WithBase.
 type basePathReporter interface {
 	BasePath() string

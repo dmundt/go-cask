@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 )
 
 type fuzzFilter struct {
@@ -45,7 +45,7 @@ func FuzzGuardRoundTrip(f *testing.F) {
 			in = []byte{0x42}
 		}
 		ctx := context.Background()
-		backend := mem.New()
+		backend := backmem.New()
 		filter := &fuzzFilter{items: map[string]bool{}}
 		guard, err := NewGuard(backend, filter)
 		if err != nil {

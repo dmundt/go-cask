@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/gitlike"
 )
@@ -36,7 +36,7 @@ func (jsonCodec[T]) Decode(data []byte) (T, error) {
 // the client supplies both.
 func Example() {
 	ctx := context.Background()
-	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
+	repo := gitlike.NewRepository(backmem.New(), sha256.New(), gitlike.Codecs{
 		Blob:   jsonCodec[*gitlike.Blob]{},
 		Tree:   jsonCodec[*gitlike.Tree]{},
 		Commit: jsonCodec[*gitlike.Commit]{},
@@ -63,7 +63,7 @@ func Example() {
 // inspected without any type assertion.
 func ExampleRepository() {
 	ctx := context.Background()
-	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
+	repo := gitlike.NewRepository(backmem.New(), sha256.New(), gitlike.Codecs{
 		Blob:   jsonCodec[*gitlike.Blob]{},
 		Tree:   jsonCodec[*gitlike.Tree]{},
 		Commit: jsonCodec[*gitlike.Commit]{},
@@ -93,7 +93,7 @@ func ExampleRepository() {
 // graph is exhausted.
 func ExampleWalkGraph() {
 	ctx := context.Background()
-	repo := gitlike.NewRepository(memory.New(), sha256.New(), gitlike.Codecs{
+	repo := gitlike.NewRepository(backmem.New(), sha256.New(), gitlike.Codecs{
 		Blob:   jsonCodec[*gitlike.Blob]{},
 		Tree:   jsonCodec[*gitlike.Tree]{},
 		Commit: jsonCodec[*gitlike.Commit]{},

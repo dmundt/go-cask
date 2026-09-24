@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v39
+version: v40
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -355,7 +355,7 @@ flowchart TB
 | `Validator`      | Optional object invariant (`Validate() error`): the store calls it on `Put` and `Get`, so it holds under any codec |
 | `Backend`       | Raw byte storage interface (non-generic)                    |
 | `fs` backend    | Filesystem backend (`cas/backend/fs`, `fs.New`): n-way fan-out paths (Git-like default), atomic writes, locking |
-| `mem` backend   | In-memory backend (`cas/backend/mem`, `mem.New`) for tests/benchmarks (no disk I/O, not persistent) |
+| `mem` backend   | In-memory backend (`cas/backend/mem`, imported as `backmem`) for tests/benchmarks (no disk I/O, not persistent) |
 | `packfs` backend | Opt-in packfile backend (`cas/backend/packfs`, `packfs.New` + `packfs.WithEnabled`): the loose tree plus append-only packs and a JSON index, selected by `cask -backend packfs`. Shipped, but no pack compaction — a sweep reclaims correctness, not space (cas-core §4.14) |
 | `Codec[T]`       | Serialization contract for a type `T`                       |
 | `Object[T]`      | Self-describing, typed object with `References()`           |
@@ -506,9 +506,9 @@ For tests and ephemeral use, swap the backend — everything above works
 unchanged:
 
 ```go
-import mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
+import backmem "github.com/dmundt/go-cask/cas/backend/mem" // package memory, aliased per cas/AGENT.md
 
-backend := mem.New() // in-memory: fast, deterministic, not persistent
+backend := backmem.New() // in-memory: fast, deterministic, not persistent
 ```
 
 ---
@@ -597,7 +597,7 @@ gofmt -l .
   typed layer is constrained (`Store[T Object[T]]`); reads return the concrete
   `T` via `Store[T].Get` — no type assertions anywhere.
 - **Constructors:** use plain `New()` when a package exposes one primary type
-  (`fs.New`, `mem.New`, `json.New[T]`, `sha256.New`); use `NewType()` when it
+  (`fs.New`, `backmem.New`, `json.New[T]`, `sha256.New`); use `NewType()` when it
   exposes several important types or the type isn't the package's primary one
   (`cas.NewWalker`, `prefetch.NewSmartCache`) — coding-guidelines
   §1 "Constructors".
