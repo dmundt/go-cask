@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v23
+version: v24
 ---
 
 # Testing Strategy — go-cask
@@ -41,7 +41,7 @@ Every ID'd requirement and every named contract MUST have ≥ one test. Traceabi
 |---|---|
 | `examples/api` HTTP pattern (`server_test.go`) | httptest round-trip, roles, streaming, 429 |
 | `performance` P-01…P-05 | the benchmark suite in `benchmarks/` covers each P-ID's subject (one-pass hashing/serialization, lock-free reads, bounded allocations, streaming); the benchmarks carry `ReportAllocs` and the P-IDs live in the spec, not in test names |
-| Sentinel errors (five) | one positive `errors.Is` per error |
+| Sentinel errors (every one `cas` declares — the list in `library-design.md` §2) | one positive `errors.Is` per error |
 | Maintenance ops (`Stats`/`Verify`/`GC`/`Prune`) | one test per op, incl. dry-run + destructive |
 | Object versioning | versioned `Type()` names, coexisting majors, `ErrUnknownType` |
 | Object invariants (`cas.Validator`) | `Put`/`PutDedup` reject an invalid object, `Get` reports `ErrCorrupt`, `GetRaw` does not validate, nil object/payload rejected (`cas/validator_test.go`) |
