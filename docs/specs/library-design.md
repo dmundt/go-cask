@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v38
+version: v39
 ---
 
 # Library Design — go-cask
@@ -57,7 +57,7 @@ var (
 2. Functional options for optional configuration — each backend declares its own `Option func(*itsConfig)` (`fs.Option`, `mem.Option`, `packfs.Option`), so an option built for one backend is a compile error against another instead of a silent no-op. Never positional `bool`/`int` soup.
 3. Zero values are usable where meaningful (the zero `Digest` is the absent reference, an empty store).
 4. Accept interfaces, return concrete types.
-5. No `any`/`interface{}` in the exported API: no exported value, parameter or result type may be `any`. An unconstrained type parameter (`Codec[T any]`, `Object[T any]`) is Go's constraint syntax rather than a value type, so it is not what this rule is about. One recorded exception (go-cask#191): the low-level CBOR codec is a dynamic value model by design, so `cas/codec/cbor` exports `NewValue() Codec[any]` and `NewMap() Codec[map[string]any]`; every other exported signature in the repo is `any`-free, and new `any` in an exported API needs the same explicit ratification.
+5. No `any`/`interface{}` in the exported API: no exported value, parameter or result type may be `any`. An unconstrained type parameter (`Codec[T any]`, `Object[T any]`) is Go's constraint syntax rather than a value type, so it is not what this rule is about. One recorded exception (go-cask#191): the low-level CBOR codec is a dynamic value model by design, so `cas/codec/cbor` exports `NewValue() Codec[any]` and `NewMap() Codec[map[string]any]`; every other exported signature in the repo is `any`-free, and new `any` in an exported API needs the same explicit ratification. That ratification is mechanical: `internal/design` walks the module's exported declarations and fails on a value-position `any` outside its allow-list, which names exactly the two CBOR symbols above; the check fails on a stale entry too, so an exemption cannot outlive the `any` it was granted for.
 6. Names: no stutter (`cas.Store`, never `cas.CasStore`); initialisms correct (`URL`, `ID`, `HTTP`).
 7. Minimal method sets; prefer functions over methods when no state is involved.
 8. Streaming types (`io.Reader`/`io.ReadCloser`) used consistently; ownership ("caller MUST Close") documented.

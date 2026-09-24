@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v21
+version: v22
 ---
 
 # go-cask Rules Index
@@ -31,6 +31,7 @@ version: v21
 | `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + the [viewer page](../website/viewer.md) for the user-facing explanation of the reference states |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
+| `internal/design/` (design-rule checks the gate runs, starting with the no-`any` rule) | [`library-design.md`](specs/library-design.md) §5 |
 | `gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
