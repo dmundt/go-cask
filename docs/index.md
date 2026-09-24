@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v23
+version: v24
 ---
 
 # go-cask Rules Index
@@ -12,7 +12,7 @@ version: v23
 | Path | Rule file |
 |---|---|
 | `cas/digest.go`, `cas/hasher.go`; `TestDigest*` / `FuzzParseDigest` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
-| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` / `cas/backend/snapshot` / `cas/backend/stream.go` / `cas/backend/context.go` / `cas/backend/options.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 (`packfs` is a shipped backend, not a deferred extension) + architecture boundary rule: backends stay storage-only; the shared `cas/backend` contract (options, context, stream helpers) is what every backend builds on; helper packages must not become implicit backends |
+| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` / `cas/backend/snapshot` / `cas/backend/stream.go` / `cas/backend/context.go` / `cas/backend/options.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 (`packfs` is a shipped backend, not a deferred extension) + architecture boundary rule: backends stay storage-only; the shared `cas/backend` contract is the streaming/context plumbing only (`ContextReader`, `WriteAll`, `ReadAll`, `ReadPayload`) — **each backend declares its own `Option` and there is no shared one**, so a cross-backend option is a compile error rather than a silent no-op ([`library-design.md`](specs/library-design.md) §4.2); helper packages must not become implicit backends |
 | `cas/hash/` (the hasher helpers), `cas/hash/sha256/`, `cas/hash/sha512/`, `cas/hash/sha512_256/` (the shipped client hashers) | [`cas-core.md`](specs/cas-core.md) §4.2 + [`defaults.md`](specs/defaults.md) (the shipped default is `sha256`; the core names no algorithm) |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
 | `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11, §4.13 + architecture boundary rule: verification/sweep/reachability are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
