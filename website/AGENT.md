@@ -18,6 +18,15 @@ developer-facing companion to the authoritative repository documentation under
 - Distinguish the generic `cas` core from the `gitlike` reference package.
 - Keep one concept per page. Prefer headings, prose, tables, lists, and
   runnable examples over landing-page components or promotional copy.
+- Budget the page, not the topic. The site is a landing layer: keep a page under
+  roughly **120 lines** and prefer linking the owning spec over restating it.
+  Material that needs more room than that is reference, and reference belongs to
+  the spec that owns it under `docs/specs/` — or to the non-normative
+  `docs/design/` area when it explains rather than specifies. Leave the page as
+  the short path into that material, and never let a normative fact live only on
+  the site. The viewer page was slimmed from 269 lines to ~65 under this rule
+  (#289): flags to `cli.md`, sessions and throttling to `viewer-security.md`, the
+  query contract and the states to `viewer-design.md`.
 
 ## Examples and links
 
