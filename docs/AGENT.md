@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v13
+version: v14
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -87,7 +87,7 @@ Go examples in these docs MUST name constructors per `coding-guidelines.md` §1:
 
 Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] OKF frontmatter present (`type`, `title`, `description`, `version`; `okf_version: "0.2"` for indexes)
-- [ ] `version` bumped on material change
+- [x] `version` bumped on material change — enforced by `scripts/check-version-fields.sh` from `verify.sh` (it detects a missing bump, not a cosmetic one)
 - [ ] No duplication — check `defaults.md` and owning specs first
 - [ ] Cross-references updated in ALL files mentioning the changed term
 - [ ] Ampersand used only where required by code, literal symbol text, or diagram syntax
