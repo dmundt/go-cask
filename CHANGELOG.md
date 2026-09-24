@@ -217,6 +217,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cask verify` takes the `-hash-algo` the viewer and `seed-preview` already
+  accept, so a store addressed by `sha512` or `sha512_256` can be verified
+  instead of failing every object on digest width before a byte is read:
+  `cask verify -hash-algo sha512 <hash>`, `--all` and `--checksums` all use it,
+  and an unknown name is a usage error. The other local subcommands
+  (`put`/`get`/`list`/`meta`/`stats`/`gc`/`prune`/`clean`) still speak the
+  client constant `sha256`, and `cli.md` now says so.
 - `cas/codec/cbor`'s `New` no longer silently ignores its inner codec when the
   caller also passes conversion functions: `encode`/`decode` already produce the
   stored bytes, so the inner codec could never run, and the combination is now

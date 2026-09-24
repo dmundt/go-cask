@@ -19,6 +19,8 @@ cask -store ./objects list -limit 20      # list objects
 cask -store ./objects meta <hash>         # size, envelope type, algorithm
 cask -store ./objects stats               # N objects, M bytes
 cask -store ./objects verify <hash>       # recompute the address
+cask -store ./objects verify --all -hash-algo sha512
+                                          # ... for a store addressed by another algorithm
 cask -store ./objects gc --min-age 1h <roots...>
 cask -store ./objects prune --min-age 1h <roots...>
 cask -store ./objects clean
@@ -30,8 +32,11 @@ cask -store ./objects seed-preview -count 500
   creating anything.
 - `-backend fs` (the default) or `-backend packfs` selects the storage backend.
   Every store operation runs over either; the viewer does not.
-- The CLI digests with `cas/hash/sha256`, and no store operation takes an
-  algorithm flag — the core names no algorithm.
+- Every store operation except `verify` digests with `cas/hash/sha256` — the
+  core names no algorithm, and the CLI's own default is that constant.
+  `verify -hash-algo <name>` selects the algorithm its addresses are expressed
+  in, so a store addressed by `sha512` or `sha512_256` is still checkable; the
+  viewer path (`web`, `seed-preview`) takes the same flag.
 - `gc`, `prune`, and `clean` are the destructive commands. `gc` and `prune` are
   grace-gated: they reclaim only objects absent from `<roots...>` **and** older
   than `--min-age` (default `1h`). `<roots...>` must already be the complete

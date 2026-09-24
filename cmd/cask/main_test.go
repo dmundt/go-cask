@@ -22,15 +22,45 @@ import (
 	"github.com/dmundt/go-cask/internal/index"
 )
 
-func TestViewerHasher(t *testing.T) {
+// TestLookupDigestAlgorithm pins the CLI's algorithm seam: every shipped
+// algorithm resolves, each one parses and formats its own printable form, a
+// digest of one algorithm is refused as another's, and an unknown name is an
+// error rather than a silent fallback to the default (cli.md §1, §2).
+func TestLookupDigestAlgorithm(t *testing.T) {
 	for _, name := range []string{sha256.Name, sha512.Name, sha512256.Name} {
-		hasher, err := viewerHasher(name)
-		if err != nil || hasher == nil {
-			t.Fatalf("viewerHasher(%q) = (%T, %v), want hasher", name, hasher, err)
+		algorithm, err := lookupDigestAlgorithm(name)
+		if err != nil {
+			t.Fatalf("lookupDigestAlgorithm(%q) = %v, want algorithm", name, err)
+		}
+		if algorithm.hasher == nil {
+			t.Fatalf("lookupDigestAlgorithm(%q) has no hasher", name)
+		}
+		d, err := algorithm.hasher.Digest(strings.NewReader("payload"))
+		if err != nil {
+			t.Fatalf("%s hasher: %v", name, err)
+		}
+		rendered := algorithm.Format(d)
+		if !strings.HasPrefix(rendered, name+":") {
+			t.Fatalf("%s Format = %q, want the %s: prefix", name, rendered, name)
+		}
+		parsed, err := algorithm.Parse(rendered)
+		if err != nil {
+			t.Fatalf("%s Parse(%q) = %v", name, rendered, err)
+		}
+		if !bytes.Equal(parsed, d) {
+			t.Fatalf("%s round trip = %x, want %x", name, parsed, d)
+		}
+		if name != sha256.Name {
+			if _, err := lookupDigestAlgorithm(sha256.Name); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := sha256.Parse(rendered); err == nil {
+				t.Errorf("sha256.Parse accepted a %s digest %q", name, rendered)
+			}
 		}
 	}
-	if _, err := viewerHasher("unknown"); err == nil {
-		t.Fatal("viewerHasher(unknown) accepted unsupported algorithm")
+	if _, err := lookupDigestAlgorithm("unknown"); err == nil {
+		t.Fatal("lookupDigestAlgorithm(unknown) accepted an unsupported algorithm")
 	}
 }
 
@@ -143,6 +173,48 @@ func TestSeedPreviewFollowsHashAlgorithm(t *testing.T) {
 	}
 	if got := references.Outbound(objects[3]); len(got) != 3 {
 		t.Fatalf("sha512 preview outbound = %v, want 3 references", got)
+	}
+}
+
+// TestVerifyFollowsHashAlgorithm pins that `cask verify` speaks the algorithm
+// the store is addressed by. A store seeded with `seed-preview -hash-algo
+// sha512` could not be verified at all before the flag existed: the sha256
+// hasher refuses a 64-byte digest on width before reading a byte, so the scan
+// aborts without checking anything. The default still refuses another
+// algorithm's address as a usage error rather than guessing, and with the flag
+// the scan runs and reports the seed's deliberately tampered objects exactly
+// (preview_seed.go tampers ordinal 1 of every eight-object block, so a
+// sixteen-object seed holds two of them).
+func TestVerifyFollowsHashAlgorithm(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "seed-preview", "-count", "16", "-hash-algo", sha512.Name); code != 0 {
+		t.Fatalf("seed-preview -hash-algo %s exit = %d, want 0", sha512.Name, code)
+	}
+	// The first preview object is intact by construction, so its digest is the
+	// address the single-object check must accept.
+	first, err := previewObjectFor(0, nil, sha512.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := sha512.Format(first.digest)
+
+	if _, code := run(t, mf, "verify", address); code != 2 {
+		t.Errorf("verify %s without -hash-algo exit = %d, want 2 (usage)", address, code)
+	}
+	out, code := run(t, mf, "verify", "--all")
+	if code != 1 || strings.Contains(out, "verified") {
+		t.Errorf("verify --all without -hash-algo = (%q, %d), want a non-zero exit and no scan summary", out, code)
+	}
+	out, code = run(t, mf, "verify", "-hash-algo", sha512.Name, address)
+	if code != 0 || !strings.Contains(out, address+" ok") {
+		t.Errorf("verify -hash-algo %s %s = (%q, %d), want %q at exit 0", sha512.Name, address, out, code, address+" ok")
+	}
+	out, code = run(t, mf, "verify", "--all", "-hash-algo", sha512.Name)
+	if code != 1 || !strings.Contains(out, "verified 16 objects, 2 corrupt") {
+		t.Errorf("verify --all -hash-algo %s = (%q, %d), want the seed's 16 objects and 2 tampered ones", sha512.Name, out, code)
+	}
+	if _, code := run(t, mf, "verify", "--all", "-hash-algo", "unknown"); code != 2 {
+		t.Errorf("verify --all -hash-algo unknown exit = %d, want 2 (usage)", code)
 	}
 }
 

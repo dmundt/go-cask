@@ -75,7 +75,7 @@ type seedPreviewArgs struct {
 func seedPreviewFlags(a *seedPreviewArgs) *flag.FlagSet {
 	flags := newFlagSet("seed-preview")
 	flags.IntVar(&a.count, "count", defaultPreviewObjectCount, "number of preview objects (1-10000)")
-	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
+	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, hashAlgoUsage)
 	return flags
 }
 
@@ -98,12 +98,12 @@ func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 	if a.count < 1 || a.count > maxPreviewCount {
 		return usagef("count must be between 1 and %d, got %d", maxPreviewCount, a.count)
 	}
-	hasher, err := viewerHasher(a.hashAlgorithm)
+	algorithm, err := lookupDigestAlgorithm(a.hashAlgorithm)
 	if err != nil {
 		return usagef("invalid hash algorithm %q: %v", a.hashAlgorithm, err)
 	}
 
-	added, deduplicated, err := seedPreview(ctx, t, hasher, a.count)
+	added, deduplicated, err := seedPreview(ctx, t, algorithm.hasher, a.count)
 	if err != nil {
 		return err
 	}
