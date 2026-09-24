@@ -30,7 +30,7 @@ library, not to the internal maintenance/process files.
 - compatibility and migration guarantees
 - versioning and release design
 - viewer architecture, its reference states, and its security requirements —
-  see the [viewer page](../viewer.md) for the operator-facing explanation and
+  see the [CLI README](https://github.com/dmundt/go-cask/blob/main/cmd/cask/README.md) for the operator-facing explanation and
   the specs it links for the normative contracts
 
 ## Why the website also includes a summary

@@ -46,5 +46,5 @@ answers `400`. `cmd/cask web` supplies both from the deterministic preview graph
   partial a full page composes, so there is one source of truth per component.
 
 The user-facing explanation of the viewer — what it is, how to start it, what
-an operator sees, and what the reference states mean — is the
-[viewer page](https://go-cask.dev/viewer/) on the documentation site.
+an operator sees, and what the reference states mean — is
+[`cmd/cask/README.md`](../cmd/cask/README.md), next to the command that starts it.

@@ -24,9 +24,13 @@ developer-facing companion to the authoritative repository documentation under
   the spec that owns it under `docs/specs/` — or to the non-normative
   `docs/design/` area when it explains rather than specifies. Leave the page as
   the short path into that material, and never let a normative fact live only on
-  the site. The viewer page was slimmed from 269 lines to ~65 under this rule
-  (#289): flags to `cli.md`, sessions and throttling to `viewer-security.md`, the
-  query contract and the states to `viewer-design.md`.
+  the site. A tool that ships in the binary does not get a page here at all:
+  operator documentation lives next to the tool, and the viewer is documented in
+  [`cmd/cask/README.md`](../cmd/cask/README.md). It arrived on the site at 269
+  lines, was slimmed to ~65 under this rule (#289 / PR #290), and was retired
+  from the landing layer entirely in #301. Flags, sessions and throttling, the
+  query contract, and the reference states stay with `cli.md`,
+  `viewer-security.md`, and `viewer-design.md`, which own them.
 
 ## Examples and links
 

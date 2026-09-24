@@ -24,7 +24,6 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - [Repository layout](#repository-layout)
 - [Core interfaces at a glance](#core-interfaces-at-a-glance)
 - [Recommended defaults](#recommended-defaults)
-- [Viewer reference states](#viewer-reference-states)
 - [Security note](#security-note)
 - [Getting started](#getting-started)
 - [Documentation map](#documentation-map)
@@ -47,7 +46,7 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs.
 - [examples/](examples/) — runnable example programs showing how to use the core and the reference model.
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
-- [cmd/](cmd/) — CLI entry point: `cask` store operations and the embedded viewer (`cask web`).
+- [cmd/](cmd/) — CLI entry point: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md).
 - [docs/specs/](docs/specs/) — the normative specification set; start at [docs/specs/AGENT.md](docs/specs/AGENT.md) and [docs/index.md](docs/index.md).
 - [docs/design/](docs/design/) — non-normative design/background material.
 - [AGENTS.md](AGENTS.md) — repo-root agent instructions and rule index entry point.
@@ -118,34 +117,6 @@ classDiagram
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 
 Legacy hashes do not ship for new content-addressed data: this module provides `SHA-256`, `SHA-512`, and `SHA-512/256`, so neither MD5 nor SHA-1 can address a new store without a client-supplied `cas.Hasher` — a migration bridge for a legacy store, not a supported default.
-
-## Viewer reference states
-
-The embedded viewer (`cask web`) is the product's only HTTP surface: a
-server-rendered object browser for inspecting objects, bytes, sizes, and
-integrity. When a host supplies both a `ReachabilityIndex` and a
-`ReferenceIndex`, it also renders two independent axes per object — root
-reachability (is it reachable from a configured root?) and inbound reference
-count (how many other objects point to it?) — which cross into four reference
-states, shown as the `References` column and matched by the `reach` filter:
-
-| State | Reachable? | Inbound refs | Pill color | Meaning |
-|---|---|---|---|---|
-| `Resolved` | yes | > 0 | green | Interior node of a reachable subtree |
-| `Root` | yes | 0 | blue | Entry point of a reachable subtree — structurally consistent with being a configured root, but the viewer never sees the host's actual root list, only these two indexes |
-| `Orphaned` | no | > 0 | amber | Unreachable but still pointed to by something else |
-| `Detached` | no | 0 | violet | Fully isolated — the true garbage-collection candidate |
-
-`Root` and `Detached` require both indexes (`reach=root`/`reach=detached`
-return 400 without a `ReferenceIndex`); `Resolved`/`Orphaned` only require a
-`ReachabilityIndex`.
-
-That table is the front-page overview. The [viewer page](website/viewer.md)
-explains the viewer for the person who runs it — starting it, the startup
-token, what the screens show, the object and blob inspection surface, and what
-each state means operationally — while
-[docs/specs/viewer-design.md](docs/specs/viewer-design.md) remains the
-normative contract that defines them.
 
 ## Security note
 
