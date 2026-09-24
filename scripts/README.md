@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v4
+version: v5
 ---
 
 # Scripts — go-cask
@@ -23,6 +23,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 | [`bench-baseline.sh`](./bench-baseline.sh) | Captures benchmark output and is the only writer of the canonical `benchmarks/data/baseline.txt` reference dump. |
 | [`bench-compare.sh`](./bench-compare.sh) | Captures a fresh run and diffs it against a reference with `benchstat`; never writes the canonical baseline. |
 | [`test-bench-scripts.sh`](./test-bench-scripts.sh) | Regression test for the benchmark helpers' baseline ownership (stubbed `go`/`benchstat` in throwaway git repositories). |
+| [`check-version-fields.sh`](./check-version-fields.sh) | Reports versioned files (frontmatter `version:`) whose change did not move that field. Called by `verify.sh` in both scopes, so a documentation-only branch is covered too. |
+| [`test-version-fields.sh`](./test-version-fields.sh) | Behaviour test for `check-version-fields.sh` against a throwaway repository: unbumped, bumped, unversioned, mixed, new and missing paths. |
 | [`run-examples.sh`](./run-examples.sh) | Runs the example programs that terminate on their own in one command from the repo root; `--list` also names the manual two-process `api` example. |
 
 ## Rules

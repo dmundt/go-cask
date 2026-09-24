@@ -103,18 +103,26 @@ fi
 # landing lane cheap. The patterns mirror scripts/docs-only.sh: keep them in
 # sync. VERIFY_SCOPE=full forces the whole gate; VERIFY_SCOPE=docs asserts the
 # documentation scope and fails loudly if the tree is not docs-only.
+# The commits and uncommitted paths this run is asked to cover: the branch's own
+# commits measured from the merge base with origin/main, plus anything staged or
+# unstaged. The scope decision and the version-field check below share this set.
+gate_base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+gate_changed=""
+if [[ -n "$gate_base" ]]; then
+  gate_changed="$(
+    {
+      git diff --name-only "$gate_base" HEAD
+      git diff --name-only
+      git diff --name-only --cached
+    } | sort -u
+  )"
+fi
+
 scope="${VERIFY_SCOPE:-auto}"
 if [[ "$scope" == "auto" || "$scope" == "docs" ]]; then
   detected=full
-  base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
-  if [[ -n "$base" ]]; then
-    changed="$(
-      {
-        git diff --name-only "$base" HEAD
-        git diff --name-only
-        git diff --name-only --cached
-      } | sort -u
-    )"
+  if [[ -n "$gate_base" ]]; then
+    changed="$gate_changed"
     if [[ -n "$changed" ]]; then
       detected=docs
       while IFS= read -r changed_path; do
@@ -146,6 +154,27 @@ fi
 echo "== scope: $scope =="
 if [[ "$scope" == "docs" ]]; then
   echo "documentation-only change: running the documentation gate (VERIFY_SCOPE=full runs the whole gate)"
+fi
+
+# ---- version fields -------------------------------------------------------
+# A versioned file that changed must have its frontmatter `version:` moved with
+# it (docs/AGENT.md). This runs in both scopes, because a documentation-only
+# change is exactly where the bump is owed, and it judges only that a bump
+# happened — never whether the change deserved one.
+if [[ -n "$gate_base" && -n "$gate_changed" ]]; then
+  echo "== version fields =="
+  # shellcheck disable=SC2086 # paths are repository-relative and never contain spaces
+  unbumped="$(./scripts/check-version-fields.sh "$gate_base" $gate_changed || true)"
+  if [[ -n "$unbumped" ]]; then
+    cat >&2 <<EOF
+verify.sh: versioned file changed without a version bump:
+$(echo "$unbumped" | sed 's/^/  /')
+  Bump the frontmatter \`version:\` of each file above (docs/AGENT.md, "version
+  starts at v1; increment by one on material change"). The gate checks that a
+  bump happened, not that the change was material.
+EOF
+    exit 2
+  fi
 fi
 
 if [[ "$scope" == "full" ]]; then
@@ -330,6 +359,7 @@ go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
 ./scripts/test-land-lane.sh
+./scripts/test-version-fields.sh
 
 fi # scope == full
 
