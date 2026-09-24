@@ -1,5 +1,9 @@
-// Package crc64 provides a maintenance-layer integrity checker for go-cask based
-// on CRC-64/ECMA-182.
+// Package crc64 provides a CRC-64/ECMA-182 cas.Hasher for go-cask.
+//
+// Use it as the addressing hasher of a store that is deliberately keyed by
+// CRC-64, or not at all: cas.Verify compares the recomputed digest to the
+// object's address, so this hasher cannot validate an object addressed by
+// another algorithm (cas/verify/README.md).
 package crc64
 
 import (
@@ -19,7 +23,9 @@ const Name = "crc64"
 // Size is the CRC-64 digest size in bytes.
 const Size = 8
 
-// Hasher implements cas.Hasher with CRC-64/ECMA-182 for maintenance-only checks.
+// Hasher implements cas.Hasher with CRC-64/ECMA-182. It addresses and validates
+// the objects of a store deliberately keyed by CRC-64; it cannot verify an object
+// addressed by another algorithm.
 type Hasher struct{}
 
 // New returns a CRC-64/ECMA CAS hasher.

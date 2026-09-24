@@ -1,5 +1,9 @@
-// Package adler32 provides a maintenance-layer integrity checker for go-cask
-// based on Adler-32.
+// Package adler32 provides an Adler-32 (RFC 1950) cas.Hasher for go-cask.
+//
+// Use it as the addressing hasher of a store that is deliberately keyed by
+// Adler-32, or not at all: cas.Verify compares the recomputed digest to the
+// object's address, so this hasher cannot validate an object addressed by
+// another algorithm (cas/verify/README.md).
 package adler32
 
 import (
@@ -19,7 +23,9 @@ const Name = "adler32"
 // Size is the Adler-32 digest size in bytes.
 const Size = 4
 
-// Hasher implements cas.Hasher with Adler-32 for maintenance-only checks.
+// Hasher implements cas.Hasher with Adler-32 (RFC 1950). It addresses and
+// validates the objects of a store deliberately keyed by Adler-32; it cannot
+// verify an object addressed by another algorithm.
 type Hasher struct{}
 
 // New returns an Adler-32 CAS hasher.

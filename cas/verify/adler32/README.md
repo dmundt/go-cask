@@ -1,5 +1,5 @@
 # adler32
 
-`adler32` is a lightweight maintenance-only integrity helper built on Adler-32.
+`adler32` is an Adler-32 (RFC 1950, zlib's checksum) helper for go-cask. It implements `cas.Hasher`, so it can be the hasher a store is addressed with — and then verifies those same objects; it cannot validate an object addressed by another algorithm ([the constraint](../README.md#the-constraint-these-helpers-live-under)).
 
-It is designed for cheap corruption checks and local validation workflows, while the object-address layer remains defined by the caller's stronger content hash.
+Adler-32 is computed from two modulo-65521 sums and needs no polynomial table, which makes it the cheapest of the three shipped checksums and the weakest of them. Choose it when the corruption to catch is accidental and the computation cost matters; choose `crc32` for interoperability and `crc64` for a wider digest ([selection rule](../README.md#choosing-among-the-three)).
