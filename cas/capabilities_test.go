@@ -5,7 +5,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	packfs "github.com/dmundt/go-cask/cas/backend/packfs"
 )
 
@@ -26,11 +26,11 @@ func TestCapabilitiesOfFS(t *testing.T) {
 	var _ cas.Statter = backend
 }
 
-// TestCapabilitiesOfMem pins mem.Backend as the minimal-interface reference:
+// TestCapabilitiesOfMem pins backmem.Backend as the minimal-interface reference:
 // it implements neither Cleaner nor Statter, so VerifyAll/Sweep (which need
 // only List/Get/Delete) are its only supported maintenance operations.
 func TestCapabilitiesOfMem(t *testing.T) {
-	got := cas.CapabilitiesOf(mem.New())
+	got := cas.CapabilitiesOf(backmem.New())
 	want := cas.Capabilities{Verify: true, Sweep: true, Clean: false, Stat: false}
 	if got != want {
 		t.Fatalf("CapabilitiesOf(mem) = %+v, want %+v", got, want)

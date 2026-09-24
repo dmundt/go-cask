@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v68
+version: v69
 ---
 
 # CAS Core — go-cask
@@ -51,7 +51,7 @@ flowchart TB
         DIGEST["Digest — raw digest bytes · NewDigest · ParseDigest · CheckDigest"]
         SEAM["Hasher — the algorithm seam (interface only)"]
         RAW["Backend interface"]
-        BACKENDS["fs.Backend (reference), memory.Backend (tests),\nS3, BadgerDB, PostgreSQL"]
+        BACKENDS["fs.Backend (reference), backmem.Backend (tests),\nS3, BadgerDB, PostgreSQL"]
     end
     APP --> TYPED
     CLIENTHASH -. "implements Hasher" .-> SEAM
@@ -98,7 +98,7 @@ classDiagram
         +Stats(ctx) (*Stats, error)
     }
     class fsBackend["fs.Backend (filesystem)"]
-    class memBackend["memory.Backend (in-memory)"]
+    class memBackend["backmem.Backend (in-memory)"]
     Backend <|.. fsBackend : implements
     Backend <|.. memBackend : implements
     class sha256Hasher["sha256.Hasher (cas/hash/sha256)"]
@@ -164,7 +164,7 @@ classDiagram
     fsBackend : +Prune(ctx, roots, minAge, dryRun)
     fsBackend : +Size(ctx, d)
     fsBackend : +Clean(ctx, olderThan)
-    class memBackend["memory.Backend (cas/backend/mem)"]
+    class memBackend["backmem.Backend (cas/backend/mem)"]
     memBackend : +objects map[string][]byte
     memBackend : +Stats() *cas.Stats
     Backend <|.. fsBackend : implements
@@ -209,12 +209,12 @@ classDiagram
     class CachedStore~T~ {
         +store *Store~T~
         +cache sync.Map
-        +metrics memory.CacheMetrics
+        +metrics cachemem.CacheMetrics
         +Proxy(ctx, d) (*CachedObject~T~, error)
         +Get(ctx, d) (T, error)
         +Preload(ctx, digests) error
         +PreloadRecursive(ctx, d, depth) error
-        +CacheStats() memory.CacheStats
+        +CacheStats() cachemem.CacheStats
     }
     class LRUCache~T~ {
         +maxSize int
@@ -337,7 +337,7 @@ Per-method contracts (every backend MUST honor):
 
 Every implementation rejects an absent digest with `ErrInvalidDigest` rather than address an object that cannot exist; none recomputes a digest: content addressing makes conflict impossible by construction, so an explicit integrity check is the caller's job (`cas.Verify(ctx, raw, d, hasher)` / `cas.NewVerifier(raw, hasher).Verify(ctx, d)`, §4.11). **`Verify` is deliberately NOT part of this interface** — a separate maintenance-layer concern reading backend bytes and taking the client's `Hasher` explicitly.
 
-This interface is the **backend extension point**: any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2). Shipped: `fs.Backend` (§4.4), `memory.Backend` (§4.5), opt-in `packfs.Backend` (§4.14).
+This interface is the **backend extension point**: any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2). Shipped: `fs.Backend` (§4.4), `backmem.Backend` (§4.5), opt-in `packfs.Backend` (§4.14).
 
 Portable state transfer is intentionally a helper above this interface: `cas/backend/snapshot.Export` writes a deterministic archive of raw digests and payloads; `snapshot.Import` loads it into any backend. These helpers add no `Backend` methods, invoke no hasher or typed codec, and cannot promise atomic replacement for arbitrary implementations. Backend-specific APIs may offer stronger atomic restore guarantees; e.g. `mem.Backend.Restore` validates the complete archive before swapping its map.
 
@@ -378,7 +378,7 @@ MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync
 - **Several stores under one root:** give each its own directory and pass it as the base — `fs.New(filepath.Join(root, name))`, then `cask -store root/name`. Deliberately **no** `WithNamespace` option: exactly that `filepath.Join` plus a validator for a client-supplied path element (separators, `..`, absolute paths, Windows reserved names, case/NFC folding) — reintroducing the runtime-chosen path name §4.2 removed — and it isolates nothing a separate base does not already isolate, because isolation comes from the exclusivity rule above, not the option (extensions §3).
 - **Base pre-flight is public API for callers owning the path.** `fs.ValidateBase(base) error` is the check `fs.New` runs, exported for a caller holding a base before any backend exists — a CLI flag, a config value, a path assembled from user input — so an unusable path is reported before a directory is created; no I/O, no context. `fs.EnsureBase(ctx, base) error` validates then creates the base directory, for a caller preparing the path before handing it to something other than the `fs` constructor. `fs.CleanupTemp(ctx, base) error` is the same sweep as `Backend.Clean(ctx, 0)`, for a caller reclaiming crash leftovers on a base it has not opened yet; like `Clean` it removes **every** matching `*.tmp`/`*.tmp.<n>` beneath `base`, so `base` MUST be the caller's own store directory (both run `ValidateBase` first for that reason). A caller that only opens a store needs none of the three: `fs.New` validates, `Backend.Clean` sweeps.
 
-### 4.5 `memory.Backend` — in-memory backend (`cas/backend/mem`)
+### 4.5 `memory.Backend` — in-memory backend (`cas/backend/mem`, imported as `backmem`)
 
 Keeps objects in `map[string][]byte` keyed by **raw digest bytes** (`string(d)`) — no hex form, no algorithm — under a `sync.RWMutex`.
 - **Purpose:** fast, dependency-free, deterministic storage for unit/property/fuzz tests and benchmarks; **not persistent**.
@@ -386,7 +386,7 @@ Keeps objects in `map[string][]byte` keyed by **raw digest bytes** (`string(d)`)
 - **Buffering:** `Put` buffers the whole stream (`io.ReadAll`) through a context-checking reader, so a `Put` canceled mid-read stops and stores nothing (the guarantee fs gets from its streaming copy); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`). With `WithMaxSize` the read is bounded to the remaining budget first, so an oversized `Put` is rejected without allocating past the cap.
 - **Concurrency:** `RWMutex` (lock-free rename trick doesn't apply; still far faster than disk).
 - **Stats/listing:** implements `Backend.Stats` (`*cas.Stats`) and `List`, rebuilding digests from map keys with `cas.NewDigest` (empty key skipped — `CheckDigest` makes it unreachable) and recomputing total bytes/object count per call — no desynchronized counter. No backend-native `Verify`/`GC`/`Prune`/`Clean`/`Size`/`ModTime` — but `cas.VerifyAll` and `cas.Sweep` (§4.11) work against it directly, needing only the minimal `Backend` interface.
-- **Construction:** `memory.New(...)` (package `memory`, directory `cas/backend/mem`; optional `memory.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.
+- **Construction:** `backmem.New(...)` (package `memory`, directory `cas/backend/mem`, imported as `backmem` because `cas/cache/mem` declares the same clause — go-cask#269; optional `backmem.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.
 
 ### 4.6 `Codec[T]` — serialization contract
 
@@ -475,9 +475,9 @@ func (w *Walker[T]) Walk(ctx context.Context, d Digest) error
 
 ### 4.10 Caching and lazy loading
 
-**`memory.CachedObject[T]`** — lazy proxy for one digest (`cas/cache/mem`): fields `digest`, a pointer to the underlying `Store[T]`, a metrics pointer, `sync.RWMutex`, `obj`, `loaded`, `err`. `Load(ctx)` uses **double-checked locking**, loading exactly once and memoizing object AND error. `IsLoaded()` reports state without loading; `Digest()` returns the address it is memoized for.
+**`cachemem.CachedObject[T]`** — lazy proxy for one digest (`cas/cache/mem`, imported as `cachemem` because `cas/backend/mem` declares the same clause — go-cask#269): fields `digest`, a pointer to the underlying `Store[T]`, a metrics pointer, `sync.RWMutex`, `obj`, `loaded`, `err`. `Load(ctx)` uses **double-checked locking**, loading exactly once and memoizing object AND error. `IsLoaded()` reports state without loading; `Digest()` returns the address it is memoized for.
 
-**`memory.CachedStore[T]`** — wraps `Store[T]`, built with `memory.New(store)`. Cache: `sync.Map` keyed by `d.String()` → `*CachedObject[T]`. Metrics: `memory.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic): `Hits`/`Misses` count `Proxy` lookups, `Loads` counts store fetches by `CachedObject.Load` (at most one per cached object, including a fetch that returns an error), `Evicts` counts removals by a policy or `Evict`. `OnNew(fn)` installs the insert hook; stored atomically, so settable or clearable at any time, and runs synchronously on the inserting goroutine — keep it cheap, do not re-enter `Proxy`. `Proxy(ctx, d)` returns a not-yet-loaded `*CachedObject[T]` (verifies existence first); `Get` = `Proxy` + `Load`. `Preload(ctx, digests)` loads in parallel through a bounded worker pool, returning `errors.Join` of every failure; `PreloadRecursive(ctx, d, depth)` preloads the graph, **skipping** references this store cannot decode (a commit pointing at a tree, another store's type) and dangling ones so a per-type cache is not blocked by them; `Warmup(ctx, digests)` tolerates missing objects but reports any other failure, including a canceled context. `CacheStats()`/`Evict(d)`/`Clear()`/`Warmup(ctx, digests)`.
+**`cachemem.CachedStore[T]`** — wraps `Store[T]`, built with `cachemem.New(store)`. Cache: `sync.Map` keyed by `d.String()` → `*CachedObject[T]`. Metrics: `cachemem.CacheMetrics{Hits, Misses, Loads, Evicts}` (atomic): `Hits`/`Misses` count `Proxy` lookups, `Loads` counts store fetches by `CachedObject.Load` (at most one per cached object, including a fetch that returns an error), `Evicts` counts removals by a policy or `Evict`. `OnNew(fn)` installs the insert hook; stored atomically, so settable or clearable at any time, and runs synchronously on the inserting goroutine — keep it cheap, do not re-enter `Proxy`. `Proxy(ctx, d)` returns a not-yet-loaded `*CachedObject[T]` (verifies existence first); `Get` = `Proxy` + `Load`. `Preload(ctx, digests)` loads in parallel through a bounded worker pool, returning `errors.Join` of every failure; `PreloadRecursive(ctx, d, depth)` preloads the graph, **skipping** references this store cannot decode (a commit pointing at a tree, another store's type) and dangling ones so a per-type cache is not blocked by them; `Warmup(ctx, digests)` tolerates missing objects but reports any other failure, including a canceled context. `CacheStats()`/`Evict(d)`/`Clear()`/`Warmup(ctx, digests)`.
 
 **`lru.Cache[T]`** — size-bounded LRU (`cas/cache/lru`): owns a `CachedStore[T]` in an unexported field, adds LRU with `maxSize` (in-tree std-lib, §8 d3), re-declares `Proxy`/`Get` to track/promote, and exposes only the methods it means to own (`Get`, `Proxy`, `Lookup`, `CacheStats`, `Preload`, `PreloadRecursive`, `Warmup`, `Clear`, `Evict`, `EvictKey`) — no method promotion. The wrapped store stays reachable for observers through `CachedStore()`, which deliberately bypasses the recency bookkeeping. `lru.New(store, maxSize)` returns `(*lru.Cache[T], error)`; rejects `maxSize <= 0`.
 
@@ -588,7 +588,7 @@ func GetMany(ctx context.Context, raw Backend, digests []Digest, fn func(Digest,
 **Prefetch recipe — loading a whole revision:**
 
 1. **Get the digest set.** `cas.Reachable` (§4.11) expands a revision's roots to the transitively-closed digest set — `RefLister`/`RefListerFunc` for one type, or `cas/repo.Reachable` across several registered types. This is the set to prefetch.
-2. **Warm a cache before the traversal.** `memory.CachedStore.Preload`/`PreloadRecursive` (`cas/cache/mem`), `lru.Cache` with bounded recency policy (`cas/cache/lru`, `lru.New(store, maxSize)`), `prefetch.SmartCache` for prefetch-on-access (`cas/cache/prefetch`, `prefetch.NewSmartCache(store, depth)`), or `gitlike.Preloader` for a background worker pool over a `CachedRepository` (non-blocking `Preload`, `Stop`). A prefetch is best-effort and must never block or fail the hot read path.
+2. **Warm a cache before the traversal.** `cachemem.CachedStore.Preload`/`PreloadRecursive` (`cas/cache/mem`), `lru.Cache` with bounded recency policy (`cas/cache/lru`, `lru.New(store, maxSize)`), `prefetch.SmartCache` for prefetch-on-access (`cas/cache/prefetch`, `prefetch.NewSmartCache(store, depth)`), or `gitlike.Preloader` for a background worker pool over a `CachedRepository` (non-blocking `Preload`, `Stop`). A prefetch is best-effort and must never block or fail the hot read path.
 3. **Size the cache from `Stats`.** `Backend.Stats` reports `ObjectCount` and `TotalSize` (§4.11); a cache smaller than the revision thrashes and re-opens objects the traversal already visited, while a vastly larger one only holds memory. Both cache packages take `maxSize` entries at construction.
 4. **Read through the warm cache**, and let the typed layer decode. `GetMany` is the raw-byte batch path underneath for callers that do not need the typed layer; a `BatchGetter` backend needs no cache to avoid the per-object open.
 
@@ -649,13 +649,13 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | `cas` — byte layer | `Backend`, `Stats` |
 | `cas/backend` | the stream helpers `WriteAll`, `ReadAll`, `ReadPayload` and the `ContextReader` adapter |
 | `cas/backend/fs` | `Backend` (its `Backend` methods plus the fs-native `Verify`/`GC`/`Prune`, the `Cleaner`/`Statter` methods `Clean`/`Size`/`ModTime`, and `BasePath` — the directory its objects live under, which a maintenance layer above it needs), `Option`, `New`, `WithFanOut`, `WithFanLevels`, `WithDirSync`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`, and the base pre-flight `ValidateBase`/`EnsureBase`/`CleanupTemp` (§4.4) |
-| `cas/backend/mem` (`package memory`) | `Backend` (its `Backend` methods plus `Snapshot`/`Restore`), `Option`, `New`, `WithMaxSize` (§4.5) |
+| `cas/backend/mem` (`package memory`, imported as `backmem`) | `Backend` (its `Backend` methods plus `Snapshot`/`Restore`), `Option`, `New`, `WithMaxSize` (§4.5) |
 | `cas/backend/packfs` | `Backend` (its `Backend` methods plus `GetMany`, `Close`, `BasePath` — the loose tree its objects live under — and the `Cleaner`/`Statter` methods `Clean`/`Size`/`ModTime`), `Option`, `New`, `WithEnabled`, `WithPackMaxBytes`, `WithPackMaxEntries` |
 | `cas/backend/snapshot` | `Export`, `Import` (§4.3) |
 | `cas/codec/*` | `json.New[T]`; `gob.New[T]`, `gob.NewRaw[T]`; `binary.New[T](next, transform, restore)`, `binary.NewRaw[T](encode, decode)`; `cbor.New[T]`, `cbor.NewRaw[T]`, `cbor.NewValue`, `cbor.NewMap`; `flate.New[T]`, `gzip.New[T]`, `zlib.New[T]` with `MaxDecodedBytes` and `ErrDecodedTooLarge`; each package exposes its `Codec[T]`, and there is no `JSONCodec`/`GobCodec`/`BinaryCodec` type (§4.6) |
 | Client hashers (not core) | `cas/hash/sha256`, `cas/hash/sha512`, `cas/hash/sha512_256`, and the maintenance hashers `cas/verify/adler32`/`crc32`/`crc64`: `Hasher`, `New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size`, over the shared `cas/hash` helpers `FormatDigest`/`ParseDigest`/`ValidateDigestSize`; any short/display form is `cas.Digest.Prefix` (§4.2) |
 | Sidecar checksums (not core) | `cas/verify/sidecar`: `Backend` (a `cas.Backend` decorator that records a per-object checksum), `New`, `WithBase`, `WithChecksum`, `WithDirSync`, `WithMaxRecordBytes`, `Record`, `RecordVersion`, `DefaultMaxRecordBytes`, `Verifier` (via `Backend.Verifier`), `VerifyReport`, `ReconcileReport`, `ErrChecksumAlgorithm`, `ErrUnrecorded` (operations §6) |
-| Caching | `cas/cache`: `ValidateMaxSize`; `cas/cache/mem` (`package memory`): `CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats`, `New`; `cas/cache/lru`: `Cache[T]`, `New`; `cas/cache/prefetch`: `SmartCache[T]`, `NewSmartCache` (§4.10) |
+| Caching | `cas/cache`: `ValidateMaxSize`; `cas/cache/mem` (`package memory`, imported as `cachemem`): `CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats`, `New`; `cas/cache/lru`: `Cache[T]`, `New`; `cas/cache/prefetch`: `SmartCache[T]`, `NewSmartCache` (§4.10) |
 | Named refs | `cas/refs`: `Store` (`Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`), `Ref`, `Entry`, `Option`, `Open`, `WithClock`, `ValidateName`, `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName` (library-design §1) |
 | Typed registry | `cas/repo`: `Object`, `Decoder`, `Resolver`, `Registry` (`Register`/`Resolve`), `NewRegistry`, `RegisterStore[T]`, `LookupStore[T]`, `Walk`, `Reachable`, `UnknownObject`, `UnknownTypeError` (library-design §1) |
 | `cas` — errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch`, `ErrUnsupported` |
@@ -672,7 +672,7 @@ With the exported methods of the types named above, this table is the whole froz
 
 **Add a codec:** implement `Codec[T]` (e.g. wrap `json.New[T]` with compression/encryption) and pass it to `cas.New`; do not change the byte layer.
 
-**Add a cache policy:** wrap or extend `memory.CachedStore[T]`; keep the `CachedObject[T]` lazy-load contract and metrics counters.
+**Add a cache policy:** wrap or extend `cachemem.CachedStore[T]`; keep the `CachedObject[T]` lazy-load contract and metrics counters.
 
 **Add maintenance ops:** add methods on `fs.Backend`; keep `Stats`/`Verify`/`GC` semantics from §4.11.
 

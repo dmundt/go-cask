@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -48,7 +48,7 @@ func put(t *testing.T, s *cas.Store[testObject], name string, refs ...cas.Digest
 
 func newStore(t *testing.T) *cas.Store[testObject] {
 	t.Helper()
-	return cas.New(mem.New(), jsoncodec.New[testObject](), sha256.New())
+	return cas.New(backmem.New(), jsoncodec.New[testObject](), sha256.New())
 }
 
 // otherObject is a second object type on the same backend, so a testObject can
@@ -83,7 +83,7 @@ func TestWarmupReportsCanceledContext(t *testing.T) {
 // reference stopped the walk before the parent commit was ever reached.
 func TestPreloadRecursiveSkipsForeignAndMissingRefs(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := cas.New(backend, jsoncodec.New[testObject](), sha256.New())
 	other := cas.New(backend, jsoncodec.New[otherObject](), sha256.New())
 
@@ -112,7 +112,7 @@ func TestPreloadRecursiveSkipsForeignAndMissingRefs(t *testing.T) {
 // graph it could not read.
 func TestPreloadRecursiveReportsCorruptReference(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := cas.New(backend, jsoncodec.New[testObject](), sha256.New())
 
 	damaged := []byte{0x02, 0x00} // version 2, empty codec, truncated type length

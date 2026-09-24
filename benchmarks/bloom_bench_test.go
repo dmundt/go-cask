@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/bloom"
 	"github.com/dmundt/go-cask/cas/bloom/counting"
 	"github.com/dmundt/go-cask/cas/bloom/persistent"
@@ -149,7 +149,7 @@ func BenchmarkBloomPersistentContains(b *testing.B) {
 
 func BenchmarkBloomGuardExists(b *testing.B) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	items := bloomDigests(128 * 1024)
 	filter, err := standard.New(uint64(len(items)), 0.01)
 	if err != nil {

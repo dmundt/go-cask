@@ -58,7 +58,7 @@ type BatchGetter interface {
 // Concurrency is deliberately not part of GetMany: the function sequences the
 // batch, because the win the issue is after is fewer opens in the backend, not
 // more goroutines in the core. A caller that wants parallel loads uses the
-// caching layer instead — warm a cache with memory.CachedStore.Preload
+// caching layer instead — warm a cache with cachemem.CachedStore.Preload
 // (cas/cache/mem), lru.Cache (cas/cache/lru) or prefetch.SmartCache
 // (cas/cache/prefetch), and size it from the backend's Stats before a large
 // traversal. cas-core §4.13 records the prefetch recipe.

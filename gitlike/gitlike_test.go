@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -85,7 +85,7 @@ func putBlob(t *testing.T, repo *Repository, data string) cas.Digest {
 
 func TestObjectRoundTrips(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 
 	hb := putBlob(t, repo, "hello")
 	blob, err := repo.Blobs.Get(ctx, hb)
@@ -159,7 +159,7 @@ func TestVersionedTypeNames(t *testing.T) {
 
 func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	h := putBlob(t, repo, "x")
 	backend, err := repo.Blobs.GetRaw(ctx, h)
 	if err != nil {
@@ -213,7 +213,7 @@ func TestReferences(t *testing.T) {
 
 func TestResolverTyped(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "data")
@@ -232,7 +232,7 @@ func TestResolverTyped(t *testing.T) {
 }
 
 func TestResolverResolveAnyMissing(t *testing.T) {
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveAny(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
@@ -242,7 +242,7 @@ func TestResolverResolveAnyMissing(t *testing.T) {
 
 func TestResolverResolveAny(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "data")
@@ -289,7 +289,7 @@ func TestResolverResolveAny(t *testing.T) {
 // the @1 default (object-versioning §2).
 func TestResolveAnyLegacyUnversioned(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	// Store a blob object at the byte layer using the legacy unversioned
@@ -312,7 +312,7 @@ func TestResolveAnyLegacyUnversioned(t *testing.T) {
 
 func TestResolveAnyUnknownType(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	// Store an object with an unknown type name as a TLV envelope.
 	envelopeBytes := marshalEnvelope("mystery@9", []byte(`{}`))
@@ -333,7 +333,7 @@ func TestResolveAnyUnknownType(t *testing.T) {
 // @1 model.
 func TestObjectTypeReturnsVersionedName(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	// Stored type+payload bytes directly (no Store.Put) so we can probe the
 	// header reader on its own.
 	env := marshalEnvelope("blob@1", []byte{})
@@ -355,7 +355,7 @@ func TestObjectTypeReturnsVersionedName(t *testing.T) {
 // decoded through it.
 func TestResolveUnknownMajor(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	h := mustStoreEnv(t, repo, "blob@2", `{"data":""}`)
 	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
@@ -385,7 +385,7 @@ func TestPrintObject(t *testing.T) {
 
 func TestWalkGraph(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	hb := putBlob(t, repo, "content")
@@ -447,7 +447,7 @@ func TestWalkGraph(t *testing.T) {
 // 13 objects and a per-path walk would make 2^13-1 = 8191 visit calls.
 func TestWalkGraphVisitsSharedSubgraphOnce(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 
 	d := putBlob(t, repo, "shared leaf")
 	for range 12 {
@@ -479,7 +479,7 @@ func TestWalkGraphVisitsSharedSubgraphOnce(t *testing.T) {
 // stop after each digest once instead of looping forever.
 func TestWalkGraphTerminatesOnCycle(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	repo := newRepo(t, backend)
 	dA := mustDigest(t, strings.Repeat("aa", 32))
 	dB := mustDigest(t, strings.Repeat("bb", 32))
@@ -533,7 +533,7 @@ func TestPrintObjectTagTarget(t *testing.T) {
 // A visit error must stop the walk and propagate.
 func TestWalkGraphVisitError(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	hb := putBlob(t, repo, "x")
 	sentinel := errors.New("stop walking")
@@ -547,7 +547,7 @@ func TestWalkGraphVisitError(t *testing.T) {
 
 func TestCachedRepository(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	cached, err := NewCachedRepository(repo, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -594,7 +594,7 @@ func TestCachedRepository(t *testing.T) {
 
 func TestCachedRepositoryMissing(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	cached, err := NewCachedRepository(repo, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -613,7 +613,7 @@ func TestCachedRepositoryMissing(t *testing.T) {
 
 func TestPreloaderDefaultWorkers(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	cached, err := NewCachedRepository(repo, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -639,7 +639,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 
 func TestPreloader(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	cached, err := NewCachedRepository(repo, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -735,7 +735,7 @@ func mustStoreEnv(t *testing.T, repo *Repository, typeName, payloadJSON string) 
 
 func TestGetRejectsInvalidDigestPayloads(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 
 	// Tree with an invalid reference string.
 	h := mustStoreEnv(t, repo, "tree@1", `{"entries":[{"name":"f","hash":"nope:zz","mode":"m"}]}`)
@@ -766,7 +766,7 @@ func TestGetRejectsInvalidDigestPayloads(t *testing.T) {
 // instead of being silently misread as a different address.
 func TestLegacyAlgoPrefixedReferenceFailsLoudly(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	legacy := "sha256:" + strings.Repeat("ab", 32)
 
 	h := mustStoreEnv(t, repo, TypeTree, `{"entries":[{"name":"f","hash":"`+legacy+`","mode":"m"}]}`)
@@ -784,7 +784,7 @@ func TestLegacyAlgoPrefixedReferenceFailsLoudly(t *testing.T) {
 }
 
 func TestRepositoryErrorPaths(t *testing.T) {
-	backend := mem.New()
+	backend := backmem.New()
 	repo := NewRepository(backend, sha256hash.New(), jsonCodecs())
 	if _, err := NewCachedRepository(repo, 0); err == nil {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
@@ -821,7 +821,7 @@ func TestPrintObjectNilDigest(t *testing.T) {
 // an absent-digest tree entry).
 func TestNilOptionalFieldRoundTrips(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 
 	tree := &Tree{Entries: []TreeEntry{{Name: "f", Mode: "m"}}} // absent Hash reference
 	th, err := repo.Trees.Put(ctx, tree)
@@ -901,7 +901,7 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 // A malformed reference still fails earlier, inside the codec.
 func TestRepositoryCorruptionRecovery(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	blob := putBlob(t, repo, "hello")
 	tree, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "hello.txt", Hash: ref(blob), Mode: "100644"}}})
 	if err != nil {
@@ -931,7 +931,7 @@ func TestRepositoryCorruptionRecovery(t *testing.T) {
 
 func TestCommitRequiredTreeDecode(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	h := mustDigest(t, strings.Repeat("ab", 32))
 
 	// Malformed references fail while decoding (cas.Digest.UnmarshalText).
@@ -977,7 +977,7 @@ func TestCommitRequiredTreeDecode(t *testing.T) {
 // store: the parent is serialized by the codec and re-parsed back to a digest.
 func TestCommitWithParentRoundTrip(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 
 	hb := putBlob(t, repo, "a")
 	ht, err := repo.Trees.Put(ctx, &Tree{Entries: []TreeEntry{{Name: "a.txt", Hash: ref(hb), Mode: "m"}}})
@@ -1036,7 +1036,7 @@ func TestDigestFieldsMarshalWithoutCustomCode(t *testing.T) {
 // design (a v1 object is still readable — see marshalEnvelope's other uses).
 func TestStoredAddressesPinned(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	hb := putBlob(t, repo, "hello")
 	treeHash := mustDigest(t, strings.Repeat("ab", 32))
 	parentHash := mustDigest(t, strings.Repeat("cd", 32))
@@ -1148,7 +1148,7 @@ func TestValidate(t *testing.T) {
 // method.
 func TestRepositoryWithAnotherCodec(t *testing.T) {
 	ctx := context.Background()
-	repo := NewRepository(mem.New(), sha256hash.New(), Codecs{
+	repo := NewRepository(backmem.New(), sha256hash.New(), Codecs{
 		Blob:   gobCodec[*Blob]{},
 		Tree:   gobCodec[*Tree]{},
 		Commit: gobCodec[*Commit]{},
@@ -1198,7 +1198,7 @@ func TestRepositoryWithAnotherCodec(t *testing.T) {
 // calls Commit.Validate before encoding, so a tree-less commit is never written
 // (this used to live in a hand-written Commit.MarshalJSON).
 func TestPutRejectsCommitWithoutTree(t *testing.T) {
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	if _, err := repo.Commits.Put(context.Background(), &Commit{Author: "a"}); err == nil {
 		t.Fatal("Put of a commit without a tree must fail")
 	}
@@ -1212,7 +1212,7 @@ func TestPutRejectsCommitWithoutTree(t *testing.T) {
 // an intact envelope naming a type outside its four-type model.
 func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
 	ctx := context.Background()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	// Version byte 0 is not a known envelope version.
 	env := []byte{0x00}
 	h := sha256hash.Of(env)
@@ -1235,7 +1235,7 @@ func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
 // ErrUnknownType (TestResolveAnyUnknownType, TestResolveUnknownMajor).
 func TestResolveAnyDistinguishesDamageFromAnUnknownType(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	env := []byte{0x02, 0x00} // version 2, empty codec, truncated type length
 	h := sha256hash.Of(env)
@@ -1269,7 +1269,7 @@ func TestResolveAnyDistinguishesDamageFromAnUnknownType(t *testing.T) {
 // dispatching to a decoder that would fail later.
 func TestResolveAnyRejectsEmptyBase(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	h := mustStoreEnv(t, repo, "@1", `{}`)
 	if _, err := res.ResolveAny(ctx, h); !errors.Is(err, cas.ErrUnknownType) {
@@ -1281,7 +1281,7 @@ func TestResolveAnyRejectsEmptyBase(t *testing.T) {
 // (repo.go's error return after the envelope is decoded).
 func TestResolveAnySurfacesBadEnvelope(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 	h := mustStoreEnv(t, repo, "@1", `{}`)
 	if _, err := res.ResolveAny(ctx, h); err == nil {
@@ -1294,7 +1294,7 @@ func TestResolveAnySurfacesBadEnvelope(t *testing.T) {
 // decode the payload.
 func TestResolveAnyTypeDecodeErrors(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	cases := []struct {
@@ -1329,7 +1329,7 @@ func TestPrintObjectAbsentTargetTag(t *testing.T) {
 
 func TestWalkGraphDanglingReference(t *testing.T) {
 	ctx := ctxBackground()
-	repo := newRepo(t, mem.New())
+	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
 	missing := mustDigest(t, strings.Repeat("00", 32))

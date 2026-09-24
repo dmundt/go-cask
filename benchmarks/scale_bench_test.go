@@ -36,7 +36,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
 	sha512_256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
@@ -73,7 +73,7 @@ type scaleBackend struct {
 
 func scaleBackends() []scaleBackend {
 	return []scaleBackend{
-		{"Memory", func(tb testing.TB) cas.Backend { return mem.New() }},
+		{"Memory", func(tb testing.TB) cas.Backend { return backmem.New() }},
 		{"FS", func(tb testing.TB) cas.Backend {
 			s, err := fs.New(tb.TempDir())
 			if err != nil {

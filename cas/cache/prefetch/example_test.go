@@ -6,7 +6,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
-	memcache "github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -23,7 +23,7 @@ func Example() {
 		fmt.Println("error:", err)
 		return
 	}
-	sc := prefetch.NewSmartCache(memcache.New(s), 2)
+	sc := prefetch.NewSmartCache(cachemem.New(s), 2)
 	got, err := sc.GetWithPrefetch(ctx, h)
 	if err != nil {
 		fmt.Println("error:", err)

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	membackend "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/cache/lru"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
@@ -14,7 +14,7 @@ import (
 
 func BenchmarkCacheMemoryGet(b *testing.B) {
 	ctx := context.Background()
-	store := cas.New(membackend.New(), jsoncodec.New[testNote](), sha256.New())
+	store := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 	count := 256
 	digests := make([]cas.Digest, 0, count)
 	for i := range count {
@@ -37,7 +37,7 @@ func BenchmarkCacheMemoryGet(b *testing.B) {
 
 func BenchmarkCacheMemoryGetBaseline(b *testing.B) {
 	ctx := context.Background()
-	store := cas.New(membackend.New(), jsoncodec.New[testNote](), sha256.New())
+	store := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 	d, err := store.Put(ctx, testNote{Title: "cache-baseline"})
 	if err != nil {
 		b.Fatal(err)
@@ -55,7 +55,7 @@ func BenchmarkCacheMemoryGetBaseline(b *testing.B) {
 
 func BenchmarkCacheLRUGet(b *testing.B) {
 	ctx := context.Background()
-	store := cas.New(membackend.New(), jsoncodec.New[testNote](), sha256.New())
+	store := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
 	count := 256
 	digests := make([]cas.Digest, 0, count)
 	for i := range count {

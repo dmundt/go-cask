@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	crc64 "github.com/dmundt/go-cask/cas/verify/crc64"
 )
 
@@ -57,7 +57,7 @@ func TestFormatParse(t *testing.T) {
 
 func TestVerifyIntegration(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	data := []byte("hello world")
 	d := crc64.Of(data)
 	if err := backend.Put(ctx, d, bytes.NewReader(data)); err != nil {

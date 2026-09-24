@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/bloom"
 	stdfilter "github.com/dmundt/go-cask/cas/bloom/standard"
 )
@@ -27,7 +27,7 @@ func customIndexHash(data []byte, i int) uint64 {
 
 func demo() error {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 
 	// We keep the object hash algorithm independent from the Bloom index. The CAS
 	// object identity is still the digest bytes returned by the store's hasher.

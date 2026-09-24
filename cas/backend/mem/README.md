@@ -2,6 +2,8 @@
 
 Package `mem` provides the in-memory backend for the generic `cas` core.
 
+Its clause is `memory`, which `cas/cache/mem` also declares, so this repository imports it as `backmem` and the cache as `cachemem` (`cas/AGENT.md`); no file imports either one unaliased.
+
 It is intended for tests, benchmarks, examples, and short-lived workloads. It is fast and deterministic, but it is not persistent and does not replace a durable backend.
 
 ## Policy
@@ -13,7 +15,7 @@ It is intended for tests, benchmarks, examples, and short-lived workloads. It is
 ## Typical use
 
 ```go
-backend := mem.New()
+backend := backmem.New()
 ```
 
 This backend is excellent for local experiments, benchmark baselines, and unit tests that need a clean store without disk I/O.

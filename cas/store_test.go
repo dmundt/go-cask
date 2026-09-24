@@ -14,7 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	gzipcodec "github.com/dmundt/go-cask/cas/codec/gzip"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -33,7 +33,7 @@ func (untypedObj) References() []cas.Digest { return nil }
 
 func TestStoreRejectsEmptyTypeName(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[untypedObj](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[untypedObj](), sha256.New())
 	if _, err := s.Put(ctx, untypedObj{}); !errors.Is(err, cas.ErrUnknownType) {
 		t.Fatalf("Put(empty type) = %v, want ErrUnknownType", err)
 	}
@@ -47,7 +47,7 @@ func TestStoreRejectsEmptyTypeName(t *testing.T) {
 // compression wrapper stacked over JSON (cas-core §4.6, §7.2).
 func TestStoreWithJSONCodecStack(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 
 	jsonStore := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	jsonDigest, err := jsonStore.Put(ctx, test.Note{Title: "json"})
@@ -75,7 +75,7 @@ func TestStoreWithJSONCodecStack(t *testing.T) {
 
 func TestStoreCloseIsIdempotent(t *testing.T) {
 	wantErr := errors.New("close failed")
-	base := &closeTrackingBackend{Backend: mem.New(), closeErr: wantErr}
+	base := &closeTrackingBackend{Backend: backmem.New(), closeErr: wantErr}
 	st := cas.New(base, jsoncodec.New[test.Note](), sha256.New())
 
 	if err := st.Close(); !errors.Is(err, wantErr) {
@@ -110,7 +110,7 @@ func fsFactory(t *testing.T) cas.Backend {
 	return s
 }
 
-func memFactory(t *testing.T) cas.Backend { return mem.New() }
+func memFactory(t *testing.T) cas.Backend { return backmem.New() }
 
 // testBackendContract exercises the Backend contract (Put/Get round-trip)
 // against any backend implementation.
@@ -154,7 +154,7 @@ func TestBackendContract(t *testing.T) {
 }
 
 func TestStoreRoundTrip(t *testing.T) {
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 	ctx := context.Background()
 
@@ -221,7 +221,7 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestStoreDedup(t *testing.T) {
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 	ctx := context.Background()
 
@@ -265,7 +265,7 @@ func TestStoreDedup(t *testing.T) {
 }
 
 func TestStoreEmptyStore(t *testing.T) {
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	ctx := context.Background()
 	missing := sha256.Of([]byte("never stored"))
 
@@ -282,7 +282,7 @@ func TestStoreEmptyStore(t *testing.T) {
 
 func TestStoreRecoveryAfterCorruption(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 	obj := test.Note{Title: "before", Body: "payload"}
 
@@ -312,7 +312,7 @@ func TestStoreRecoveryAfterCorruption(t *testing.T) {
 func TestStoreTypeSafety(t *testing.T) {
 	// A node store must NOT decode a note object as a node: wrong-type
 	// payloads fail loudly rather than producing garbage.
-	backend := mem.New()
+	backend := backmem.New()
 	ctx := context.Background()
 	notes := newTestStore(t, backend)
 	h, err := notes.Put(ctx, test.Note{Title: "t"})
@@ -326,7 +326,7 @@ func TestStoreTypeSafety(t *testing.T) {
 }
 
 func TestStoreCancelledContext(t *testing.T) {
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := s.Put(ctx, test.Note{Title: "t"}); err == nil {
@@ -344,7 +344,7 @@ func TestEnvelopeFormat(t *testing.T) {
 	// authority — objects no longer serialize themselves). The codec identity
 	// tag in it is the version 2 addition this test pins.
 	ctx := context.Background()
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	h, err := s.Put(ctx, test.Note{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +374,7 @@ func TestEnvelopeFormat(t *testing.T) {
 
 func TestStorePutDedup(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
 	h, dedup, err := s.PutDedup(ctx, test.Note{Title: "dedup"})
 	if err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestStorePutDedup(t *testing.T) {
 // @major) decodes (reads as @1) and round-trips through Get.
 func TestStoreGetLegacyEnvelope(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	st := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	payload, err := (jsoncodec.New[test.Note]()).Encode(test.Note{Title: "legacy"})
 	if err != nil {
@@ -430,7 +430,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
 // contexts on Put, PutDedup, GetRaw, Get, Exists, Delete and Type.
 func TestStoreCanceledOps(t *testing.T) {
-	st := cas.New(mem.New(), jsoncodec.New[test.Note](), sha256.New())
+	st := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	h := test.DigestData([]byte("x"))
@@ -490,7 +490,7 @@ func (c *countingReadCloser) Close() error { return c.rc.Close() }
 // by type, where Get would decode every object.
 func TestStoreTypePeekDoesNotReadThePayload(t *testing.T) {
 	ctx := context.Background()
-	counted := &countingBackend{Backend: mem.New()}
+	counted := &countingBackend{Backend: backmem.New()}
 	s := newTestStore(t, counted)
 
 	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
@@ -524,7 +524,7 @@ func TestStoreTypePeekDoesNotReadThePayload(t *testing.T) {
 // allocated: the peek's cost must not grow with the object.
 func TestStoreTypeDoesNotAllocateThePayload(t *testing.T) {
 	ctx := context.Background()
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
 	if err != nil {
 		t.Fatal(err)
@@ -576,7 +576,7 @@ func TestStoreTypeAcrossBackends(t *testing.T) {
 // leaves the rejection to Get.
 func TestStoreTypeReportsTheStoredType(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	notes := newTestStore(t, backend)
 	d, err := notes.Put(ctx, test.Note{Title: "n"})
 	if err != nil {
@@ -601,7 +601,7 @@ func TestStoreTypeReportsTheStoredType(t *testing.T) {
 // and a damaged header is ErrCorrupt rather than a payload decode failure.
 func TestStoreTypeRejectsMissingAndCorruptKeys(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 
 	if _, err := s.Type(ctx, sha256.Of([]byte("absent"))); !errors.Is(err, cas.ErrNotFound) {
@@ -628,7 +628,7 @@ func TestStoreTypeRejectsMissingAndCorruptKeys(t *testing.T) {
 // object, exactly as Store.Type's header read does not.
 func TestStoreVersionDoesNotAllocateThePayload(t *testing.T) {
 	ctx := context.Background()
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
 	if err != nil {
 		t.Fatal(err)
@@ -652,7 +652,7 @@ func TestStoreVersionDoesNotAllocateThePayload(t *testing.T) {
 // layout before paying for the header.
 func TestStoreVersionReadsExactlyOneByte(t *testing.T) {
 	ctx := context.Background()
-	counted := &countingBackend{Backend: mem.New()}
+	counted := &countingBackend{Backend: backmem.New()}
 	s := newTestStore(t, counted)
 
 	d, err := s.Put(ctx, test.Note{Title: "large", Body: strings.Repeat("x", 1<<20)})
@@ -686,7 +686,7 @@ func TestStoreVersionReadsExactlyOneByte(t *testing.T) {
 // read, and leaves the rejection to Get.
 func TestStoreVersionReportsTheStoredVersion(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 
 	// A v1 object stays readable, and its frame says so.
@@ -726,7 +726,7 @@ func TestStoreVersionReportsTheStoredVersion(t *testing.T) {
 // any read, and a frame with no version byte at all is ErrCorrupt.
 func TestStoreVersionRejectsMissingAndCorruptKeys(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 
 	if _, err := s.Version(ctx, sha256.Of([]byte("absent"))); !errors.Is(err, cas.ErrNotFound) {
@@ -808,7 +808,7 @@ func TestStoreReadsV1Fixture(t *testing.T) {
 	ctx := context.Background()
 	data := readV1Fixture(t)
 
-	backend := mem.New()
+	backend := backmem.New()
 	h := test.DigestData(data)
 	if err := backend.Put(ctx, h, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
@@ -845,7 +845,7 @@ func TestStoreV1ObjectThroughADifferentCodecIsCorrupt(t *testing.T) {
 	ctx := context.Background()
 	data := readV1Fixture(t)
 
-	backend := mem.New()
+	backend := backmem.New()
 	h := test.DigestData(data)
 	if err := backend.Put(ctx, h, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
@@ -870,7 +870,7 @@ func TestStoreV1ObjectThroughADifferentCodecIsCorrupt(t *testing.T) {
 // versioned type name, so a codec change needs no major bump.
 func TestStoreReportsCodecMismatch(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	jsonStore := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	gzipStore := cas.New(backend, gzipcodec.New(jsoncodec.New[test.Note]()), sha256.New())
 
@@ -930,7 +930,7 @@ func TestStoreReportsCodecMismatch(t *testing.T) {
 // never ErrCodecMismatch. The codec check must not fire for a type difference.
 func TestStoreForeignTypeStaysUnknownType(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	notes := newTestStore(t, backend)
 	d, err := notes.Put(ctx, test.Note{Title: "n"})
 	if err != nil {
@@ -952,7 +952,7 @@ func TestStoreForeignTypeStaysUnknownType(t *testing.T) {
 // — and then reads any tag without complaint, in both directions.
 func TestStoreCodecTags(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 
 	// A stack reports "<outer>+<inner>", both through the interface and in the
 	// envelope it writes.

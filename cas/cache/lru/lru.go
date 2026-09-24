@@ -1,6 +1,6 @@
 // Package lru provides a size-bounded LRU cache for the cas core. It is not
 // part of the stable cas surface (cas-core §4.10); Cache[T] wraps a
-// memory.CachedStore[T] and adds a most-recently-used eviction policy over the
+// cachemem.CachedStore[T] and adds a most-recently-used eviction policy over the
 // cached objects.
 //
 // New(store, maxSize) builds a cache and rejects maxSize <= 0. The access path
@@ -25,11 +25,11 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	cachepkg "github.com/dmundt/go-cask/cas/cache"
-	"github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 )
 
 // Cache[T] is a size-bounded cache with LRU eviction: it owns a
-// memory.CachedStore[T] (lazy CachedObject[T] semantics) and adds a
+// cachemem.CachedStore[T] (lazy CachedObject[T] semantics) and adds a
 // most-recently-used eviction policy with a maximum number of entries.
 //
 // The wrapped store is an unexported named field, not an embedded one, so
@@ -38,7 +38,7 @@ import (
 // with the map. Reading the wrapped store directly bypasses that bookkeeping,
 // which is why observers reach it deliberately through CachedStore().
 type Cache[T cas.Object[T]] struct {
-	cached  *memory.CachedStore[T]
+	cached  *cachemem.CachedStore[T]
 	mu      sync.Mutex
 	maxSize int
 	list    *list.List
@@ -50,7 +50,7 @@ func New[T cas.Object[T]](store *cas.Store[T], maxSize int) (*Cache[T], error) {
 	if err := cachepkg.ValidateMaxSize(maxSize, "cache/lru"); err != nil {
 		return nil, err
 	}
-	cs := memory.New(store)
+	cs := cachemem.New(store)
 	c := &Cache[T]{
 		cached:  cs,
 		maxSize: maxSize,
@@ -65,7 +65,7 @@ func New[T cas.Object[T]](store *cas.Store[T], maxSize int) (*Cache[T], error) {
 // that need the underlying value — a metrics monitor reading CacheStats, or a
 // Lookup of a key — not as the cache's data path: reading through it records no
 // use and enforces no bound. Use Get or Proxy for that.
-func (c *Cache[T]) CachedStore() *memory.CachedStore[T] { return c.cached }
+func (c *Cache[T]) CachedStore() *cachemem.CachedStore[T] { return c.cached }
 
 func (c *Cache[T]) note(key string) {
 	c.mu.Lock()
@@ -77,7 +77,7 @@ func (c *Cache[T]) note(key string) {
 			break
 		}
 		c.list.Remove(last)
-		evicted := last.Value.(*memory.CachedObject[T])
+		evicted := last.Value.(*cachemem.CachedObject[T])
 		evictedKey := evicted.Digest().String()
 		delete(c.index, evictedKey)
 		// note holds c.mu, so use the wrapped (unlocked) removal.
@@ -119,7 +119,7 @@ func (c *Cache[T]) Clear() {
 	c.index = make(map[string]*list.Element)
 }
 
-func (c *Cache[T]) touchLocked(key string, co *memory.CachedObject[T]) {
+func (c *Cache[T]) touchLocked(key string, co *cachemem.CachedObject[T]) {
 	if el, ok := c.index[key]; ok {
 		c.list.MoveToFront(el)
 		return
@@ -136,13 +136,13 @@ func (c *Cache[T]) touchLocked(key string, co *memory.CachedObject[T]) {
 // Lookup returns the cached object for key, or nil if absent. It does not
 // promote the entry, so it neither records a use nor changes what the next
 // eviction picks; use Proxy or Get to record a use.
-func (c *Cache[T]) Lookup(key string) *memory.CachedObject[T] {
+func (c *Cache[T]) Lookup(key string) *cachemem.CachedObject[T] {
 	return c.cached.Lookup(key)
 }
 
 // CacheStats returns a snapshot of the cache counters and the current number of
 // cached entries; the eviction policy keeps that size at or below maxSize.
-func (c *Cache[T]) CacheStats() memory.CacheStats {
+func (c *Cache[T]) CacheStats() cachemem.CacheStats {
 	return c.cached.CacheStats()
 }
 
@@ -167,7 +167,7 @@ func (c *Cache[T]) Warmup(ctx context.Context, digests []cas.Digest) error {
 
 // Proxy returns the (possibly not-yet-loaded) CachedObject for d, promoting
 // it to the most-recent position.
-func (c *Cache[T]) Proxy(ctx context.Context, d cas.Digest) (*memory.CachedObject[T], error) {
+func (c *Cache[T]) Proxy(ctx context.Context, d cas.Digest) (*cachemem.CachedObject[T], error) {
 	co, err := c.cached.Proxy(ctx, d)
 	if err != nil {
 		return nil, err

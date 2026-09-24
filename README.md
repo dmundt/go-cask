@@ -156,8 +156,8 @@ blob, _ := repo.Blobs.Get(ctx, d)                 // *gitlike.Blob
 For tests/ephemeral use, swap the backend:
 
 ```go
-mem "github.com/dmundt/go-cask/cas/backend/mem" // declares package memory
-backend := mem.New() // fast, deterministic, not persistent
+backmem "github.com/dmundt/go-cask/cas/backend/mem" // package memory; aliased per cas/AGENT.md
+backend := backmem.New() // fast, deterministic, not persistent
 ```
 
 ## The specification set

@@ -15,7 +15,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	packfs "github.com/dmundt/go-cask/cas/backend/packfs"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -575,7 +575,7 @@ func TestNewRefusesUnresolvableOrMismatchedBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sidecar.New(mem.New()); err == nil {
+	if _, err := sidecar.New(backmem.New()); err == nil {
 		t.Error("New with a base-less backend and no WithBase succeeded, want an error")
 	}
 	if _, err := sidecar.New(backend, sidecar.WithBase(filepath.Join(base, "elsewhere"))); err == nil {

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
@@ -27,7 +27,7 @@ func (l nodeLister) References(ctx context.Context, d cas.Digest) ([]cas.Digest,
 
 func TestReachableExpandsRootsAcrossTheGraph(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[test.Node](), sha256.New())
 
 	// a -> b -> c (leaf); a shared leaf d reachable from both a and b.
 	hd, err := s.Put(ctx, test.Node{Name: "d"})
@@ -64,7 +64,7 @@ func TestReachableExpandsRootsAcrossTheGraph(t *testing.T) {
 
 func TestReachableVisitsSharedDigestOnce(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[test.Node](), sha256.New())
 
 	hc, err := s.Put(ctx, test.Node{Name: "c"})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestReachableVisitsSharedDigestOnce(t *testing.T) {
 
 func TestReachableIgnoresAbsentReferences(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), jsoncodec.New[test.Node](), sha256.New())
+	s := cas.New(backmem.New(), jsoncodec.New[test.Node](), sha256.New())
 	ha, err := s.Put(ctx, test.Node{Name: "a"})
 	if err != nil {
 		t.Fatal(err)

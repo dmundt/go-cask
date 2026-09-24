@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	"github.com/dmundt/go-cask/cas/cache/prefetch"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
@@ -16,7 +16,7 @@ import (
 
 func newTestRepo(t *testing.T) (*Repository, *Resolver) {
 	t.Helper()
-	repo, err := newRepository(mem.New(), sha256.New())
+	repo, err := newRepository(backmem.New(), sha256.New())
 	if err != nil {
 		t.Fatal(err)
 	}

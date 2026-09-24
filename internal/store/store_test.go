@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -288,7 +288,7 @@ func TestCleanOnSelectableBackends(t *testing.T) {
 // though the CLI does not expose it.
 func TestUnsupportedNamesOperationAndBackend(t *testing.T) {
 	ctx := context.Background()
-	st := &Store{Backend: memory.New(), Kind: Kind("memory")}
+	st := &Store{Backend: backmem.New(), Kind: Kind("memory")}
 	object := sha256.Of([]byte("unsupported"))
 
 	for _, tc := range []struct {
@@ -342,7 +342,7 @@ func (b *closingBackend) Close() error {
 // returns the backend's error, and tolerates a backend (or store) that holds
 // nothing.
 func TestStoreClose(t *testing.T) {
-	backend := &closingBackend{Backend: memory.New(), err: errors.New("close exploded")}
+	backend := &closingBackend{Backend: backmem.New(), err: errors.New("close exploded")}
 	st := &Store{Backend: backend}
 	for range 3 {
 		if err := st.Close(); err == nil || err.Error() != "close exploded" {

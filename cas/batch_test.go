@@ -13,9 +13,9 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	packfs "github.com/dmundt/go-cask/cas/backend/packfs"
-	memory "github.com/dmundt/go-cask/cas/cache/mem"
+	cachemem "github.com/dmundt/go-cask/cas/cache/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -371,7 +371,7 @@ func TestGetManyWorksWithShippedBackends(t *testing.T) {
 		t.Fatal(err)
 	}
 	backends := map[string]cas.Backend{
-		"mem": mem.New(),
+		"mem": backmem.New(),
 		"fs":  fsBackend,
 	}
 	for name, backend := range backends {
@@ -427,7 +427,7 @@ func equalStrings(got, want []string) bool {
 func BenchmarkGetManyVersusSequentialGet(b *testing.B) {
 	ctx := context.Background()
 	const objects = 4000
-	backend := mem.New()
+	backend := backmem.New()
 	digests := make([]cas.Digest, 0, objects)
 	for i := range objects {
 		d := cas.NewDigest([]byte("benchmark-object-" + strconv.Itoa(i)))
@@ -520,7 +520,7 @@ func BenchmarkPrefetchVersusSequentialLoad(b *testing.B) {
 		}
 		digests = append(digests, d)
 	}
-	cached := memory.New(store)
+	cached := cachemem.New(store)
 
 	b.Run("SequentialLoad", func(b *testing.B) {
 		b.ReportAllocs()

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/cas/refs"
@@ -30,7 +30,7 @@ func (l nodeLister) References(ctx context.Context, d cas.Digest) ([]cas.Digest,
 // in turn, so the first digest lives only in the reflog.
 type reflogSweepFixture struct {
 	ctx       context.Context
-	backend   *mem.Backend
+	backend   *backmem.Backend
 	store     *cas.Store[test.Node]
 	refs      *refs.Store
 	oldDigest cas.Digest
@@ -41,7 +41,7 @@ func newReflogSweepFixture(t *testing.T) reflogSweepFixture {
 	t.Helper()
 	f := reflogSweepFixture{
 		ctx:     context.Background(),
-		backend: mem.New(),
+		backend: backmem.New(),
 	}
 	f.store = cas.New(f.backend, jsoncodec.New[test.Node](), sha256.New())
 

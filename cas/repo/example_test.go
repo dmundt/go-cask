@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/cas/repo"
@@ -44,7 +44,7 @@ func (c collection) References() []cas.Digest {
 // root set Backend.GC/Backend.Prune require.
 func ExampleRegistry() {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	hasher := sha256.New()
 
 	notes := cas.New(backend, jsoncodec.New[note](), hasher)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/test"
@@ -66,7 +66,7 @@ func TestBackendCancelledContext(t *testing.T) {
 
 func TestStoreEncodeError(t *testing.T) {
 	ctx := context.Background()
-	s := cas.New(mem.New(), test.FailingCodec[test.ErrorObj]{}, sha256.New())
+	s := cas.New(backmem.New(), test.FailingCodec[test.ErrorObj]{}, sha256.New())
 	if _, err := s.Put(ctx, test.ErrorObj{}); err == nil {
 		t.Fatal("Put with failing codec must error")
 	}
@@ -76,7 +76,7 @@ func TestStoreEncodeError(t *testing.T) {
 }
 
 func TestStorePutDedupCancelled(t *testing.T) {
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, _, err := s.PutDedup(ctx, test.Note{Title: "t"}); err == nil {
@@ -88,7 +88,7 @@ func TestStorePutDedupCancelled(t *testing.T) {
 // codec cannot decode surfaces as ErrCorrupt from Get.
 func TestGetCorruptPayload(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	store := cas.New(backend, jsoncodec.New[test.Note](), sha256.New())
 	// TLV envelope: [version][uvarint typeLen][type][uvarint payloadLen][payload].
 	// A payload that is not valid JSON for test.Note will cause the codec
@@ -115,7 +115,7 @@ func TestGetCorruptPayload(t *testing.T) {
 
 func TestStoreBadEnvelope(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	s := newTestStore(t, backend)
 	// Every case must fail Get with ErrCorrupt: version byte is not 1 or 2,
 	// empty bytes, or truncated. ErrUnknownType would mean "not my type" and
@@ -150,7 +150,7 @@ func TestStoreBadEnvelope(t *testing.T) {
 // delete.
 func TestGetDistinguishesDamageFromAnUnknownType(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	notes := newTestStore(t, backend)
 
 	// Unknown-type half: the bytes are intact, the type is one this reader does
@@ -200,7 +200,7 @@ func TestVerifyCancelled(t *testing.T) {
 }
 
 func TestStoreGetRawMissing(t *testing.T) {
-	s := newTestStore(t, mem.New())
+	s := newTestStore(t, backmem.New())
 	missing := sha256.Of([]byte("never stored"))
 	if _, err := s.GetRaw(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetRaw = %v, want ErrNotFound", err)

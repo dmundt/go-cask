@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/bloom"
 	stdfilter "github.com/dmundt/go-cask/cas/bloom/standard"
 )
 
 func TestBloomExample(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	custom := func(data []byte, i int) uint64 {
 		var h uint64
 		for _, b := range data {

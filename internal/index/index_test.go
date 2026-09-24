@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	memory "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
@@ -91,7 +91,7 @@ func TestEnvelopeType(t *testing.T) {
 // is untyped, not damaged), and only an unreadable object returns an error.
 func TestHeaderType(t *testing.T) {
 	ctx := context.Background()
-	backend := memory.New()
+	backend := backmem.New()
 	put := func(data []byte) cas.Digest {
 		t.Helper()
 		d := sha256.Of(data)
@@ -125,7 +125,7 @@ func TestHeaderType(t *testing.T) {
 }
 
 type snapshotSource struct {
-	*memory.Backend
+	*backmem.Backend
 	getErr  error
 	sizeErr error
 	modErr  error
@@ -155,7 +155,7 @@ func (s *snapshotSource) ModTime(context.Context, cas.Digest) (time.Time, error)
 
 func TestBuildSnapshot(t *testing.T) {
 	ctx := context.Background()
-	backend := &snapshotSource{Backend: memory.New(), modTime: time.Unix(42, 0)}
+	backend := &snapshotSource{Backend: backmem.New(), modTime: time.Unix(42, 0)}
 	typed := tlvEnvelope("blob@1", []byte("payload"))
 	untyped := []byte("backend")
 	for _, object := range []struct {
@@ -193,9 +193,9 @@ func TestBuildSnapshotRecordsMetadataErrors(t *testing.T) {
 		name   string
 		source *snapshotSource
 	}{
-		{"get", &snapshotSource{Backend: memory.New(), getErr: errors.New("read failed")}},
-		{"size", &snapshotSource{Backend: memory.New(), sizeErr: errors.New("stat failed")}},
-		{"modtime", &snapshotSource{Backend: memory.New(), modErr: errors.New("time failed")}},
+		{"get", &snapshotSource{Backend: backmem.New(), getErr: errors.New("read failed")}},
+		{"size", &snapshotSource{Backend: backmem.New(), sizeErr: errors.New("stat failed")}},
+		{"modtime", &snapshotSource{Backend: backmem.New(), modErr: errors.New("time failed")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -213,7 +213,7 @@ func TestBuildSnapshotRecordsMetadataErrors(t *testing.T) {
 func TestBuildSnapshotHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := BuildSnapshot(ctx, &snapshotSource{Backend: memory.New()})
+	_, err := BuildSnapshot(ctx, &snapshotSource{Backend: backmem.New()})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("BuildSnapshot(canceled) = %v, want context.Canceled", err)
 	}

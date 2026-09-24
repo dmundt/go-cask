@@ -15,6 +15,7 @@ architecture pattern.
 - Keep `cas` algorithm-agnostic. Do not add a default hash algorithm to the core package.
 - Keep `cas` codec-agnostic. The caller chooses serialization format.
 - Keep the byte layer and typed layer separate.
+- Two packages are both declared `package memory`: `cas/backend/mem` (the byte-layer backend) and `cas/cache/mem` (the cache). Import them under the canonical aliases `backmem` and `cachemem` — never unaliased, and never as `mem`, `memory`, `membackend` or `memcache` — so an import block and every selector in a file say which half of the store they mean. Renaming either package clause is a breaking change to the frozen surface (cas-core §7.1) and waits for a major version. `internal/design` enforces the aliases: `go test ./internal/design` fails on any other spelling.
 - Prefer explicit, typed APIs over reflection or `any` in exported code.
 - Go reflection is forbidden in `cas` and `cas/*` packages; use explicit typed methods, type switches, and codec-specific conversion functions instead. The one recorded exception is `isNilValue` in `cas/store.go` — the internal nil check every `Put`/`Get` runs, which cannot be expressed generically without `reflect.ValueOf` (cas-core §4.7, performance P-04). A new use of reflection needs that same explicit ratification, not a quiet addition.
 - Keep default policy documents consistent with the repo root summary: `SHA-256` is the default recommendation, `SHA-512/256` is the supported fast alternative, and gob is compatibility-only.

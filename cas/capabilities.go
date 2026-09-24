@@ -53,7 +53,7 @@ func CapabilitiesOf(backend Backend) Capabilities {
 //
 // Clean is backend-specific because "orphaned scratch state" is not a concept
 // the minimal Backend interface exposes; a backend that never leaves any
-// (e.g. mem.Backend) simply does not implement Cleaner.
+// (e.g. backmem.Backend) simply does not implement Cleaner.
 type Cleaner interface {
 	Clean(ctx context.Context, olderThan time.Duration) (int, error)
 }

@@ -13,21 +13,21 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
-	mem "github.com/dmundt/go-cask/cas/backend/mem"
+	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-// statMemBackend wraps mem.Backend and adds a Statter implementation backed
+// statMemBackend wraps backmem.Backend and adds a Statter implementation backed
 // by caller-assigned timestamps, so age-based Sweep can be exercised
 // deterministically without a real filesystem clock.
 type statMemBackend struct {
-	*mem.Backend
+	*backmem.Backend
 	mu       sync.Mutex
 	modTimes map[string]time.Time
 }
 
 func newStatMemBackend() *statMemBackend {
-	return &statMemBackend{Backend: mem.New(), modTimes: make(map[string]time.Time)}
+	return &statMemBackend{Backend: backmem.New(), modTimes: make(map[string]time.Time)}
 }
 
 func (b *statMemBackend) putAt(ctx context.Context, d cas.Digest, data []byte, at time.Time) error {
@@ -62,7 +62,7 @@ func (b *statMemBackend) ModTime(ctx context.Context, d cas.Digest) (time.Time, 
 
 func TestSweepUnconditionalOverMinimalBackend(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New() // implements neither Cleaner nor Statter
+	backend := backmem.New() // implements neither Cleaner nor Statter
 	live := sha256.Of([]byte("live"))
 	dead := sha256.Of([]byte("dead"))
 	if err := backend.Put(ctx, live, bytes.NewReader([]byte("live"))); err != nil {
@@ -90,7 +90,7 @@ func TestSweepUnconditionalOverMinimalBackend(t *testing.T) {
 
 func TestSweepDryRunDoesNotDelete(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	dead := sha256.Of([]byte("dead"))
 	if err := backend.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestSweepDryRunDoesNotDelete(t *testing.T) {
 
 func TestSweepRejectsAgeWithoutStatter(t *testing.T) {
 	ctx := context.Background()
-	backend := mem.New()
+	backend := backmem.New()
 	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour}); !errors.Is(err, cas.ErrUnsupported) {
 		t.Fatalf("Sweep(MinAge, non-Statter) = %v, want ErrUnsupported", err)
 	}
@@ -148,16 +148,16 @@ func TestSweepRejectsNilBackend(t *testing.T) {
 func TestSweepRespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	backend := mem.New()
+	backend := backmem.New()
 	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Sweep(canceled ctx) = %v, want context.Canceled", err)
 	}
 }
 
-// deleteErrorBackend wraps mem.Backend and fails every Delete, so Sweep's
+// deleteErrorBackend wraps backmem.Backend and fails every Delete, so Sweep's
 // delete-propagation path can be exercised deterministically.
 type deleteErrorBackend struct {
-	*mem.Backend
+	*backmem.Backend
 	err error
 }
 
@@ -165,7 +165,7 @@ func (b deleteErrorBackend) Delete(context.Context, cas.Digest) error { return b
 
 func TestSweepPropagatesDeleteError(t *testing.T) {
 	ctx := context.Background()
-	inner := mem.New()
+	inner := backmem.New()
 	dead := sha256.Of([]byte("dead"))
 	if err := inner.Put(ctx, dead, bytes.NewReader([]byte("dead"))); err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestSweepSkipsUnaddressableDigestName(t *testing.T) {
 func TestSweepSkipsConcurrentlyDeletedDuringAgeCheck(t *testing.T) {
 	ctx := context.Background()
 	backend := newStatMemBackend()
-	// Put directly on the underlying mem.Backend so List reports the digest,
+	// Put directly on the underlying backmem.Backend so List reports the digest,
 	// but never register a mod time for it: ModTime then reports
 	// cas.ErrNotFound, simulating a concurrent delete racing the age check.
 	gone := sha256.Of([]byte("gone"))
