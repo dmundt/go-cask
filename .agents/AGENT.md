@@ -1,8 +1,8 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (agent skills)
-description: The guide for .agents/ — how a repository skill is discovered, how its SKILL.md is authored and budgeted, when third-party material needs a NOTICE, and the validation checklist a new skill must pass.
-version: v1
+description: The guide for .agents/ — how a repository skill is discovered, how its SKILL.md is authored and budgeted, what belongs in user scope instead, when vendored material needs a NOTICE, and the validation checklist a new skill must pass.
+version: v2
 tags: [go-cask]
 status: stable
 ---
@@ -25,7 +25,7 @@ formatting. Related: [`docs/index.md`](/docs/index.md),
 - [The SKILL.md contract](#4-the-skillmd-contract)
 - [Authoring rules](#5-authoring-rules)
 - [Budget and trimming](#6-budget-and-trimming)
-- [Third-party material and NOTICE](#7-third-party-material-and-notice)
+- [Vendored provenance and NOTICE](#7-vendored-provenance-and-notice)
 - [Adding, changing, removing a skill](#8-adding-changing-removing-a-skill)
 - [Checklist](#9-checklist)
 
@@ -106,6 +106,11 @@ description: >
 7. Do not restate the session style rules of a communication skill as technical
    requirements. A style skill governs how a session talks, not how the
    repository is built.
+8. A personal communication preference — how a session talks, not how this
+   repository is built — does not ship here. It belongs to the contributor's own
+   agent configuration: user-scope skills or a profile prompt patch. This
+   directory ships practices that any contributor of this repository should
+   follow, and a taste preference is not one of them.
 
 ## 6. Budget and trimming
 
@@ -120,7 +125,7 @@ A loaded skill enters the context budget of every session that triggers it.
 - Re-read the skill when the files it points at materially change, and update
   the paths in the same change that moves them.
 
-## 7. Third-party material and NOTICE
+## 7. Vendored provenance and NOTICE
 
 A skill that is copied or adapted from outside this repository is vendored
 material and MUST carry a `NOTICE` file in its bundle directory recording:
