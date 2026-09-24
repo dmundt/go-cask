@@ -103,17 +103,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   completes the cached getters, and `(*ResolvedObject).References()` reports the
   union's outgoing references so callers stop re-deriving them.
 
-### Security
-
-- The viewer's HTTP responses are hygienic: a throttled login answers `429` with
-  the `Retry-After` delay it is actually enforcing, a rejected token is answered
-  `401` with no body — the reason appears on the login page, never in the
-  refusal — every response is `Cache-Control: no-store` and names `Cookie` in
-  `Vary` so a proxy between the browser and the viewer cannot serve one
-  session's page to another, and a verification failure renders only the
-  viewer's own prose: the underlying error, which can name the store's
-  filesystem paths, now goes to the audit line instead of the operator's screen.
-
 ### Changed
 
 - The viewer's one-time login hint is printed to **stdout** — the stream that
@@ -285,6 +274,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- The viewer's HTTP responses are hygienic: a throttled login answers `429` with
+  the `Retry-After` delay it is actually enforcing, a rejected token is answered
+  `401` with no body — the reason appears on the login page, never in the
+  refusal — every response is `Cache-Control: no-store` and names `Cookie` in
+  `Vary` so a proxy between the browser and the viewer cannot serve one
+  session's page to another, and a verification failure renders only the
+  viewer's own prose: the underlying error, which can name the store's
+  filesystem paths, now goes to the audit line instead of the operator's screen.
+
 - The viewer's startup token is no longer written to the process log: `cask web`
   emitted it with `slog.Warn("viewer startup token", "admin_token", …)`, so
   under systemd/journald, Docker, or a log shipper the admin credential was
@@ -294,8 +292,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the new `-token-file <path>` flag or the `CASK_VIEWER_TOKEN` environment
   variable, and a generated token that cannot be shown is reported as such
   without its value (cli.md §4, viewer-security §5.1, §9, §11).
-
-### Security
 
 - The viewer mints a session only from a request it can attribute to its own
   origin: a token-bearing login (the `POST /viewer/login` form and the
@@ -526,7 +522,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Initial public design and prototype APIs.
 
-[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.6.5...HEAD
+[v1.6.5]: https://github.com/dmundt/go-cask/compare/v1.6.4...v1.6.5
+[v1.6.4]: https://github.com/dmundt/go-cask/compare/v1.6.3...v1.6.4
+[v1.6.3]: https://github.com/dmundt/go-cask/compare/v1.6.2...v1.6.3
 [v1.6.2]: https://github.com/dmundt/go-cask/compare/v1.6.1...v1.6.2
 [v1.6.1]: https://github.com/dmundt/go-cask/compare/v1.6.0...v1.6.1
 [v1.6.0]: https://github.com/dmundt/go-cask/compare/v1.5.0...v1.6.0
