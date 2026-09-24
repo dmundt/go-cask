@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v36
+version: v37
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -150,23 +150,36 @@ the same physical store by layering their own typed objects on top.
 The repo layout is:
 
 ```text
-cas/       core library (package cas) — generic only; this spec defines it
+cas/       core library (package cas) — generic only; this spec defines it.
+           Subpackages are routed row by row in docs/index.md, not listed
+           here: backend/* (fs, mem, packfs), bloom, cache, codec, hash,
+           pack, refs, repo, verify
 internal/  implementation detail (web — the viewer —, index, store, test,
            website, design — the repo-wide design-rule checks);
            not importable outside this module
 gitlike/  shared reference library (package gitlike) — Git-like object model
-                 on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
-                 WalkGraph
+           on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
+           WalkGraph
 examples/  runnable example programs (per examples.md)
 cmd/       command-line entry points
+benchmarks/  benchmark suite and operator docs (benchmarks/AGENT.md)
+scripts/   gate, landing and release tooling (scripts/AGENT.md)
 docs/specs/  the specification set (21 files: 19 specs + AGENT.md + index.md)
-docs/design/  non-normative design docs (core-overview pointer, viewer-brief)
+docs/design/  non-normative design docs — briefs, audits, mockups and
+           implementation plans (docs/design/index.md)
 docs/index.md  rule file index — read this first, then the matching spec
+website/   public site sources, built with MkDocs Material (policy below)
+.github/   CI configuration and automation only; no product code
 AGENTS.md  this file — the repo-root agent aggregator; points at the
            specs in docs/specs/
 .agents/skills/  agent skills discovered at the project root, one directory
            bundle per skill (cask-change: the change playbook)
 ```
+
+This block stays top-level on purpose: the per-package routing is
+[`docs/index.md`](docs/index.md) (longest path match wins) and the
+one-line-per-tree list in [README.md](README.md) "Repository layout". Route
+through those instead of growing the block again.
 
 Website and docs policy: the public site lives under `website/` and is built with
 MkDocs Material. It is a companion documentation layer, not the source of truth
@@ -362,9 +375,14 @@ build their own equivalents for their own types.
 
 ## Design Principles (Non-Negotiables)
 
-1. **Hash-addressed and immutable.** The key is the digest of the content; objects
-   are never mutated in place. Same content ⇒ same digest ⇒ stored once
-   (deduplication is automatic).
+1. **Hash-addressed and immutable.** The key is the digest of the stored bytes;
+   objects are never mutated in place. Same bytes ⇒ same digest ⇒ stored once
+   (deduplication is automatic). The address covers the whole envelope — the
+   frame version, the writing codec's identity tag and the type name, not just
+   the payload (cas-core §8 decision 1) — so dedup is deliberately **per type and
+   per codec**: identical logical content encoded with another codec, or written
+   under a later frame version, takes a different address and is stored a second
+   time.
 2. **References are content digests; the client owns the algorithm.** `Digest` is
    raw digest bytes (rendered as one lowercase-hex string), and the core names no
    algorithm: the client injects a `Hasher` (go-cask's own clients use
@@ -600,9 +618,14 @@ gofmt -l .
 - **The store base belongs to exactly one store** (cas-core §4.4): `List`/`Stats`
   report any digest-named file beneath it at any depth, and `Clean` reclaims any
   `*.tmp` beneath it. So never nest one store inside another's base or its parent
-  (an old `<base>/<algo>/…` tree included), and never keep app scratch `*.tmp`
-  files there — the examples' `HEAD`/`INDEX` refs are safe only because they are
-  neither digest-named nor `.tmp`. Several stores under one root are separate
+  (an old `<base>/<algo>/…` tree included), and keep no application state there
+  at all — not scratch `*.tmp` files, and no refs under a careful name either.
+  App refs live **outside** the base: the examples use `<root>/objects` as the
+  `fs.Backend` base and `<root>/refs` as the refs directory (`examples/files`,
+  `examples/artifacts`), because `refs.Store` writes `<name>.tmp` temp files next
+  to each ref, so refs inside the base would have those temps reclaimed under
+  them and a digest-shaped ref name would be listed and swept as an object.
+  Several stores under one root are separate
   base directories, `fs.New(filepath.Join(root, name))`; there is no
   `fs.WithNamespace` option (extensions §3). `fs.New` (and `packfs.New`) runs
   `fs.ValidateBase` before creating the base, so an empty path, `.`, a
