@@ -16,6 +16,16 @@ import (
 // result from Contains must be definitive for absence, while a true result is
 // only a hint that still requires a backend lookup. Implementations must be safe
 // for concurrent use, because a Guard may be shared by multiple goroutines.
+//
+// "Definitive for absence" holds only while the filter indexes bit positions the
+// same way it did when it recorded them. A filter whose bits outlive the process
+// — a persistent one, or any filter reloaded from disk — MUST therefore derive
+// its positions deterministically (cas/bloom/persistent persists an index key
+// beside its bitset and derives its default hash from it). A filter backed by
+// bloom.DefaultIndexHash is process-local and may only back a Guard whose bits
+// live and die with that process, because a reopened filter would report every
+// recorded digest as absent and the Guard would turn that into an authoritative
+// "absent" (performance §5.1, go-cask#254).
 type Filter interface {
 	// Add records a digest as (probably) present in the filter.
 	Add(cas.Digest)
