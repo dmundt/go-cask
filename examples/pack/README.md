@@ -6,7 +6,7 @@ The `cas/pack` package is intentionally small and reusable:
 
 - `pack.Split` breaks a payload into fixed-size chunks
 - `pack.Join` rebuilds the original bytes in order
-- `pack.SaveWith` and `pack.LoadWith` let callers persist typed data with their own codec
+- `pack.SaveWith` and `pack.LoadWith` let callers persist typed data with their own codec, and take the caller's `context.Context` first
 
 ## What this example demonstrates
 
@@ -52,10 +52,10 @@ manifest := Manifest{
     TotalSize: len(payload),
 }
 
-if err := pack.SaveWith("/tmp/demo-pack.json", manifest, json.New[Manifest]()); err != nil {
+if err := pack.SaveWith(ctx, "/tmp/demo-pack.json", manifest, json.New[Manifest]()); err != nil {
     panic(err)
 }
-loaded, err := pack.LoadWith("/tmp/demo-pack.json", json.New[Manifest]())
+loaded, err := pack.LoadWith(ctx, "/tmp/demo-pack.json", json.New[Manifest]())
 if err != nil {
     panic(err)
 }

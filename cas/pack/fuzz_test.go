@@ -32,16 +32,16 @@ func FuzzEncodeDecodeRoundTrip(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, key, value string) {
 		in := pack.Data{"key": key, "value": value}
-		b, err := pack.Encode(in)
+		b, err := pack.EncodeJSON(in)
 		if err != nil {
-			t.Fatalf("Encode() error = %v", err)
+			t.Fatalf("EncodeJSON() error = %v", err)
 		}
-		out, err := pack.Decode(b)
+		out, err := pack.DecodeJSON(b)
 		if err != nil {
-			t.Fatalf("Decode() error = %v", err)
+			t.Fatalf("DecodeJSON() error = %v", err)
 		}
 		if out["key"] != key || out["value"] != value {
-			t.Fatalf("Decode(Encode(data)) mismatch: got %#v, want %#v", out, in)
+			t.Fatalf("DecodeJSON(EncodeJSON(data)) mismatch: got %#v, want %#v", out, in)
 		}
 	})
 }

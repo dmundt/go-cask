@@ -1,6 +1,7 @@
 package pack_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ func ExampleSplit() {
 	// hello world
 }
 
-func ExampleSave() {
+func ExampleSaveJSON() {
 	dir, err := os.MkdirTemp("", "pack-example")
 	if err != nil {
 		panic(err)
@@ -27,10 +28,10 @@ func ExampleSave() {
 
 	metaPath := filepath.Join(dir, "meta.json")
 	meta := pack.Data{"kind": "artifact", "owner": "team-a"}
-	if err := pack.Save(metaPath, meta); err != nil {
+	if err := pack.SaveJSON(context.Background(), metaPath, meta); err != nil {
 		panic(err)
 	}
-	loaded, err := pack.Load(metaPath)
+	loaded, err := pack.LoadJSON[pack.Data](context.Background(), metaPath)
 	if err != nil {
 		panic(err)
 	}

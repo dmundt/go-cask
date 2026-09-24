@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,13 +10,13 @@ import (
 
 func TestPackExampleCommands(t *testing.T) {
 	t.Run("split", func(t *testing.T) {
-		if err := run([]string{"split", "8", "hello world"}); err != nil {
+		if err := run(context.Background(), []string{"split", "8", "hello world"}); err != nil {
 			t.Fatalf("split command failed: %v", err)
 		}
 	})
 
 	t.Run("roundtrip", func(t *testing.T) {
-		if err := run([]string{"roundtrip", "8", "hello world"}); err != nil {
+		if err := run(context.Background(), []string{"roundtrip", "8", "hello world"}); err != nil {
 			t.Fatalf("roundtrip command failed: %v", err)
 		}
 	})
@@ -23,10 +24,10 @@ func TestPackExampleCommands(t *testing.T) {
 	t.Run("save and load", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "manifest.json")
-		if err := run([]string{"save", path, "artifact", "alice"}); err != nil {
+		if err := run(context.Background(), []string{"save", path, "artifact", "alice"}); err != nil {
 			t.Fatalf("save command failed: %v", err)
 		}
-		if err := run([]string{"load", path}); err != nil {
+		if err := run(context.Background(), []string{"load", path}); err != nil {
 			t.Fatalf("load command failed: %v", err)
 		}
 	})
@@ -34,7 +35,7 @@ func TestPackExampleCommands(t *testing.T) {
 	t.Run("save with payload", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "payload.json")
-		if err := run([]string{"save", path, "artifact", "alice", "hello world"}); err != nil {
+		if err := run(context.Background(), []string{"save", path, "artifact", "alice", "hello world"}); err != nil {
 			t.Fatalf("save with payload failed: %v", err)
 		}
 	})
@@ -56,26 +57,26 @@ func TestPackExampleCommands(t *testing.T) {
 		if err := os.WriteFile(parentFile, []byte("x"), 0o644); err != nil {
 			t.Fatalf("prepare file parent: %v", err)
 		}
-		if err := saveManifest(filepath.Join(parentFile, "manifest.json"), Manifest{Kind: "artifact"}); err == nil {
+		if err := saveManifest(context.Background(), filepath.Join(parentFile, "manifest.json"), Manifest{Kind: "artifact"}); err == nil {
 			t.Fatal("saveManifest should fail when parent is a file")
 		}
 		if err := roundTripWithPrint("hello", []Chunk{{Data: "goodbye"}}); err == nil {
 			t.Fatal("roundTripWithPrint should fail on mismatched chunk data")
 		}
-		if _, err := loadManifest("bad\x00path"); err == nil {
+		if _, err := loadManifest(context.Background(), "bad\x00path"); err == nil {
 			t.Fatal("loadManifest should fail on invalid path")
 		}
-		if _, err := saveAndLoad("bad\x00path", Manifest{Kind: "artifact"}); err == nil {
+		if _, err := saveAndLoad(context.Background(), "bad\x00path", Manifest{Kind: "artifact"}); err == nil {
 			t.Fatal("saveAndLoad should fail on invalid path")
 		}
 	})
 
 	t.Run("invalid usage", func(t *testing.T) {
-		if err := run(nil); err == nil {
+		if err := run(context.Background(), nil); err == nil {
 			t.Fatal("expected usage error")
 		}
 		for _, args := range [][]string{{"bogus"}, {"split"}, {"split", "bad", "hello"}, {"roundtrip"}, {"roundtrip", "bad", "hello"}, {"save", "path", "kind"}, {"save", "path", "kind", "owner", "payload", "extra"}, {"load"}, {"load", "x", "extra"}, {"save", "bad\x00path", "kind", "owner"}, {"load", "bad\x00path"}} {
-			if err := run(args); err == nil {
+			if err := run(context.Background(), args); err == nil {
 				t.Fatalf("expected error for args %#v", args)
 			}
 		}
@@ -85,7 +86,7 @@ func TestPackExampleCommands(t *testing.T) {
 func TestPackExampleFileOutput(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "artifact.json")
-	if err := run([]string{"save", path, "artifact", "bob"}); err != nil {
+	if err := run(context.Background(), []string{"save", path, "artifact", "bob"}); err != nil {
 		t.Fatalf("save command failed: %v", err)
 	}
 	data, err := os.ReadFile(path)

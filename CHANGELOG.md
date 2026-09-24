@@ -112,6 +112,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The `cas/pack` manifest helpers take the caller's `context.Context` first, and
+  they never substitute a codec: a nil codec is `pack.ErrNilCodec` instead of a
+  silent switch to JSON, so the codec that decides what is on disk is always the
+  caller's. The JSON convenience is now explicit — `SaveJSON`/`LoadJSON` (and
+  `EncodeJSON`/`DecodeJSON`) replace the old `Save`/`Load`/`Encode`/`Decode`, and
+  `Store` is built with `pack.New(path, codec) (*Store[T], error)`. Migration:
+  pass a context and name the JSON helpers, or hand your own codec to
+  `SaveWith`/`LoadWith`. `cas/pack` is a helper layer outside the frozen surface
+  (cas-core §7.1), so the rename ships in `v1`.
 - The user-facing documentation reads leaner without losing a rule: the README
   and the normative specs under `docs/` (including `docs/specs/cas-core.md`)
   state the same contracts, defaults, sentinel errors and measured numbers in
@@ -207,6 +216,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A `cas/pack` manifest write is atomic — a temp file in the target directory,
+  fsynced, then renamed — instead of one `os.WriteFile`, so a crash or a full
+  disk mid-write leaves the previous manifest intact rather than a truncated
+  file that no longer decodes. It is the publish path every other writer in the
+  repository already used.
 - The portable sweep (`cas.Sweep` — the path `cask -backend packfs gc|prune`
   takes, since the packfile backend has no native sweep) no longer fails halfway
   on a stray digest-named file that its store's layout cannot address: `List`
