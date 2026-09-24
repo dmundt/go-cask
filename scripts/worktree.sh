@@ -41,7 +41,12 @@ add)
     echo "worktree.sh: $dir already exists" >&2
     exit 1
   fi
-  git -C "$primary" fetch --quiet --all 2>/dev/null || true
+  # A failed fetch (for example WSL git without a usable SSL backend) would
+  # silently base the new worktree on a stale origin/main — say so instead.
+  if ! git -C "$primary" fetch --quiet --all 2>/dev/null; then
+    echo "worktree.sh: 'git fetch' failed — using the local origin/main, which may be stale" >&2
+  fi
+  base="$(git -C "$primary" rev-parse --short origin/main 2>/dev/null || echo unknown)"
   if [[ -n "$branch" ]]; then
     git -C "$primary" worktree add "$dir" -b "$branch" origin/main
   else
@@ -53,13 +58,18 @@ add)
   # able to remove this registration (and with it the worktree's index).
   printf 'locked by scripts/worktree.sh — the .git link is toolchain-relative; never run git worktree prune\n' \
     >"$common/worktrees/wt-$name/locked"
-  # Prove it: git must resolve the worktree to itself, not to the primary checkout.
-  resolved="$(git -C "$dir" rev-parse --path-format=absolute --show-toplevel)"
-  if [[ "$resolved" != "$(cd "$dir" && pwd)" ]]; then
-    echo "worktree.sh: $dir resolves to '$resolved' — refusing to leave a broken worktree" >&2
+  # Prove it: git inside the worktree must resolve to the worktree's own git dir,
+  # never to the primary checkout's. Both paths are produced by the same git, so
+  # the comparison holds whatever path form that toolchain prints (D:/… or /mnt/d/…)
+  # — comparing `--show-toplevel` against `pwd` does not, because the shell's path
+  # and git's path disagree between Git Bash and WSL.
+  expected_git_dir="$common/worktrees/wt-$name"
+  resolved_git_dir="$(git -C "$dir" rev-parse --path-format=absolute --git-dir)"
+  if [[ "$resolved_git_dir" != "$expected_git_dir" ]]; then
+    echo "worktree.sh: $dir resolves to '$resolved_git_dir', expected '$expected_git_dir' — refusing to leave a broken worktree" >&2
     exit 2
   fi
-  echo "worktree ready: $dir (${branch:-detached}) — .git normalized and locked"
+  echo "worktree ready: $dir (${branch:-detached}) on $base — .git normalized and locked"
   ;;
 remove)
   name="${1:?usage: worktree.sh remove <name> [--force]}"
