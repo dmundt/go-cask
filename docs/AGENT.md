@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v12
+version: v13
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -95,6 +95,11 @@ Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] Mermaid blocks balanced; all code fences tagged
 - [ ] No raw HTML, HTML comments, or HTML/XML/SVG fences
 - [ ] LF endings, UTF-8
+
+The same item list applies, with the shape adapted to the artifact, when adding
+or changing a repository skill under `.agents/skills/`; that directory's own
+[`AGENT.md`](../.agents/AGENT.md) governs the OKF fields a skill replaces with
+its two-key frontmatter, its size budget, and its provenance requirement.
 
 ## 9. Signed pull-request workflow
 
