@@ -74,27 +74,38 @@ func installRecorder(t *testing.T) *recordingHandler {
 // token. It fails if any log call in the announcement carries either — the code
 // before the #179 fix did exactly that with
 // slog.Warn("viewer startup token", "admin_token", token).
+//
+// The matrix now crosses the bind with the display choice: #260 established that
+// a non-loopback bind displays no token at all, whatever the display choice,
+// because viewer-security §11 permits the one-time display only for a loopback
+// bind.
 func TestAnnounceLoginNeverLogsToken(t *testing.T) {
 	const token = "AAAA-BBBB-CCCC"
-	baseURL := "http://127.0.0.1:8080"
+	loopback := "http://127.0.0.1:8080"
 	for _, tc := range []struct {
 		name      string
+		bind      string
+		baseURL   string
 		generated bool
 		display   displayChoice
 		wantShown bool
 	}{
-		{"generated, display chosen", true, displayShown, true},
-		{"generated, hidden by default", true, displayHidden, false},
-		{"generated, suppressed by the operator", true, displaySuppressed, false},
-		{"supplied, display chosen", false, displayShown, false},
-		{"supplied, hidden", false, displayHidden, false},
+		{"loopback, generated, display chosen", "127.0.0.1:8080", loopback, true, displayShown, true},
+		{"loopback, generated, hidden by default", "127.0.0.1:8080", loopback, true, displayHidden, false},
+		{"loopback, generated, suppressed by the operator", "127.0.0.1:8080", loopback, true, displaySuppressed, false},
+		{"loopback, supplied, display chosen", "127.0.0.1:8080", loopback, false, displayShown, false},
+		{"loopback, supplied, hidden", "127.0.0.1:8080", loopback, false, displayHidden, false},
+		{"non-loopback, generated, display chosen", "0.0.0.0:8080", "", true, displayShown, false},
+		{"non-loopback, generated, hidden", "0.0.0.0:8080", "", true, displayHidden, false},
+		{"non-loopback, generated, suppressed", "0.0.0.0:8080", "", true, displaySuppressed, false},
+		{"non-loopback, supplied, display chosen", "0.0.0.0:8080", "", false, displayShown, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := installRecorder(t)
 			var out strings.Builder
 			announceLogin(&out, loginNotice{
-				bind:      "127.0.0.1:8080",
-				baseURL:   baseURL,
+				bind:      tc.bind,
+				baseURL:   tc.baseURL,
 				token:     token,
 				generated: tc.generated,
 				display:   tc.display,
@@ -103,7 +114,7 @@ func TestAnnounceLoginNeverLogsToken(t *testing.T) {
 			if strings.Contains(logged, token) {
 				t.Fatalf("the process log contains the startup token:\n%s", logged)
 			}
-			if strings.Contains(logged, loginURL(baseURL, token)) {
+			if strings.Contains(logged, loginURL(loopback, token)) {
 				t.Fatalf("the process log contains the login link:\n%s", logged)
 			}
 			if shown := strings.Contains(out.String(), token); shown != tc.wantShown {
@@ -195,22 +206,26 @@ func TestNoticeOrigin(t *testing.T) {
 
 // TestAnnounceLoginNonLoopbackPrintsNoLink is the non-loopback half of the
 // printing rule: a bind whose plain http:// origin cannot hold a session gets no
-// login link at all, and the notice names the bind and the https:// expectation
-// instead (cli.md §2, viewer-security §7).
+// login link at all, the notice names the bind and the https:// expectation
+// instead, and — since #260 — it displays no token either, whatever the display
+// choice, because viewer-security §11 permits the one-time display only for a
+// loopback bind (cli.md §2, viewer-security §7, §11).
 func TestAnnounceLoginNonLoopbackPrintsNoLink(t *testing.T) {
 	const (
 		bind  = "0.0.0.0:8080"
 		token = "AAAA-BBBB-CCCC"
 	)
 	for _, tc := range []struct {
-		name      string
-		generated bool
-		display   displayChoice
-		wantToken bool
+		name       string
+		generated  bool
+		display    displayChoice
+		wantToken  bool
+		wantRemedy bool
 	}{
-		{"generated, display chosen", true, displayShown, true},
-		{"generated, hidden", true, displayHidden, false},
-		{"supplied, display chosen", false, displayShown, false},
+		{"generated, display chosen", true, displayShown, false, true},
+		{"generated, hidden", true, displayHidden, false, true},
+		{"generated, suppressed", true, displaySuppressed, false, false},
+		{"supplied, display chosen", false, displayShown, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := installRecorder(t)
@@ -238,6 +253,41 @@ func TestAnnounceLoginNonLoopbackPrintsNoLink(t *testing.T) {
 			logged := logs.String()
 			if strings.Contains(logged, token) || strings.Contains(logged, "?token=") {
 				t.Fatalf("the process log contains the token or the login link:\n%s", logged)
+			}
+			// A run that wanted the hint is told why it cannot have it; a run
+			// that suppressed it asked for silence and gets no remedy.
+			remedy := strings.Contains(logged, "only for a loopback bind")
+			if remedy != tc.wantRemedy {
+				t.Errorf("loopback remedy logged = %v, want %v:\n%s", remedy, tc.wantRemedy, logged)
+			}
+		})
+	}
+}
+
+// TestBrowserLaunchAllowed is the other half of #260: the token deep link is
+// handed to the browser only when the operator did not suppress the display and
+// the bind is loopback, so the raw token cannot reach another process's argument
+// vector in the cases the flag was meant to prevent (viewer-security §4, §11).
+func TestBrowserLaunchAllowed(t *testing.T) {
+	const loopback = "http://127.0.0.1:8080"
+	for _, tc := range []struct {
+		name    string
+		noOpen  bool
+		display displayChoice
+		baseURL string
+		want    bool
+	}{
+		{"loopback, shown", false, displayShown, loopback, true},
+		{"loopback, hidden by the default heuristic", false, displayHidden, loopback, true},
+		{"loopback, suppressed", false, displaySuppressed, loopback, false},
+		{"non-loopback, shown", false, displayShown, "", false},
+		{"non-loopback, hidden", false, displayHidden, "", false},
+		{"-no-open wins", true, displayShown, loopback, false},
+		{"-no-open on a non-loopback bind", true, displayShown, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := browserLaunchAllowed(tc.noOpen, tc.display, tc.baseURL); got != tc.want {
+				t.Fatalf("browserLaunchAllowed(%v, %v, %q) = %v, want %v", tc.noOpen, tc.display, tc.baseURL, got, tc.want)
 			}
 		})
 	}
@@ -273,9 +323,17 @@ func captureStreams(t *testing.T, fn func()) (stdout, stderr string) {
 	return string(outBytes), string(errBytes)
 }
 
-// runWebNotice runs the real `cask web` startup path with args and returns what
-// it printed on stdout and stderr together with everything it logged.
+// runWebNotice runs the real `cask web` startup path on a loopback bind with args
+// and returns what it printed on stdout and stderr together with everything it
+// logged.
 func runWebNotice(t *testing.T, args ...string) (stdout, stderr, logged string) {
+	t.Helper()
+	return runWebNoticeOn(t, "127.0.0.1:0", args...)
+}
+
+// runWebNoticeOn is runWebNotice for an explicit bind, so a test can drive the
+// real startup path over a bind the notice may not print a link for (#260).
+func runWebNoticeOn(t *testing.T, bind string, args ...string) (stdout, stderr, logged string) {
 	t.Helper()
 	t.Setenv(viewerTokenEnv, "")
 	logs := installRecorder(t)
@@ -287,7 +345,7 @@ func runWebNotice(t *testing.T, args ...string) (stdout, stderr, logged string) 
 	}()
 	var code int
 	stdout, stderr = captureStreams(t, func() {
-		code = runWeb(ctx, modeFlags{store: t.TempDir()}, append(args, "-bind", "127.0.0.1:0", "-no-open"))
+		code = runWeb(ctx, modeFlags{store: t.TempDir()}, append(args, "-bind", bind, "-no-open"))
 	})
 	if code != 0 {
 		t.Fatalf("runWeb exit = %d, want 0 (stdout %q, log %q)", code, stdout, logs.String())
@@ -347,6 +405,29 @@ func TestRunWebShowTokenControlsTheDisplay(t *testing.T) {
 			t.Fatalf("-show-token=false is the operator's choice and needs no remedy:\n%s", logged)
 		}
 	})
+}
+
+// TestRunWebNonLoopbackNeverShowsTheToken is the real-path regression guard for
+// #260: even with -show-token asking for the hint, a bind the notice may not
+// print a link for displays no token, and the run logs why — never the token
+// (viewer-security §9, §11).
+func TestRunWebNonLoopbackNeverShowsTheToken(t *testing.T) {
+	stdout, stderr, logged := runWebNoticeOn(t, "0.0.0.0:0", "-allow-insecure-bind", "-show-token")
+	if strings.Contains(stdout, "?token=") {
+		t.Fatalf("a non-loopback run displayed the login link: %q", stdout)
+	}
+	if !strings.Contains(stdout, "the startup token is never logged or echoed") {
+		t.Fatalf("a non-loopback run printed no location notice: %q", stdout)
+	}
+	if !strings.Contains(stdout, "https://") || strings.Contains(stdout, "127.0.0.1:") {
+		t.Fatalf("the notice does not name the bind and the https:// expectation: %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr carries output, want the notice on stdout only: %q", stderr)
+	}
+	if !strings.Contains(logged, "only for a loopback bind") {
+		t.Fatalf("a non-loopback run logged no reason for the hidden token:\n%s", logged)
+	}
 }
 
 // TestRunWebRejectsInvalidShowToken: a value that is neither a bool nor absent
