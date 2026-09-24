@@ -2,14 +2,14 @@
 type: Design
 title: Viewer Mockup Parity Audit — go-cask
 description: Visual and behavioral comparison of the object-browser mockup and server-rendered viewer.
-version: v5
+version: v6
 ---
 
 # Viewer Mockup Parity Audit — go-cask
 
-This audit compares [`go-cask-viewer.html`](go-cask-viewer.html) with the
-server-rendered viewer. The mockup is a visual reference; normative constraints
-remain in [`../specs/viewer-design.md`](../specs/viewer-design.md).
+Compares [`go-cask-viewer.html`](go-cask-viewer.html) with the server-rendered
+viewer. The mockup is a visual reference; normative constraints remain in
+[`../specs/viewer-design.md`](../specs/viewer-design.md).
 
 ## 1. Parity outcomes
 
@@ -29,8 +29,8 @@ remain in [`../specs/viewer-design.md`](../specs/viewer-design.md).
 | Mockup feature | Decision | Reason |
 |---|---|---|
 | Inbound reference count | Supported when indexed | Inspector and table expose host-supplied inbound counts; raw-only stores show zero. |
-| Written-time column | Supported | Filesystem modification time is rendered as mockup-style elapsed `h ago`/`d ago` metadata; it is not persisted object creation time. |
-| Timestamp metadata | Supported | Same filesystem modification time is exposed in UTC RFC 3339 for exact inspection. |
+| Written-time column | Supported | Filesystem modification time rendered as mockup-style elapsed `h ago`/`d ago` metadata; not persisted object creation time. |
+| Timestamp metadata | Supported | Same filesystem modification time exposed in UTC RFC 3339 for exact inspection. |
 | References tab and rows | Supported when indexed | Viewer renders digest-sorted By/Out edges from a host-supplied reference source; raw-only stores show empty states. |
 | Copy button | Excluded | Clipboard access needs client JavaScript. |
 | Resizable splitter | Supported | Pointer and keyboard resize is bounded to 280px–560px and resets on reload. |
@@ -41,7 +41,7 @@ remain in [`../specs/viewer-design.md`](../specs/viewer-design.md).
 
 - Start a preview store with `cask -store {path} seed-preview`.
 - Open `cask web` against that store and sign in.
-- Confirm desktop workspace has 500 objects, 25 visible rows, pinned pager,
-  local table scroll, and an empty inspector before selection.
+- Confirm the desktop workspace has 500 objects, 25 visible rows, a pinned
+  pager, local table scroll, and an empty inspector before selection.
 - Select an object; confirm the inspector uses only digest, envelope type,
   exact stored size, session integrity status, and actual bounded bytes.

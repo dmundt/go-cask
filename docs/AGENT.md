@@ -2,12 +2,12 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v14
+version: v15
 ---
 
 # AGENT — go-cask (docs/ folder)
 
-Governs all non-instruction docs in `docs/`. The instruction specs under `docs/specs/` have their own `AGENT.md`. **Before any change**, read `docs/index.md` first (path → spec table), then this file (or `docs/specs/AGENT.md`) for detailed conventions.
+Governs all non-instruction docs in `docs/`. Instruction specs under `docs/specs/` have their own `AGENT.md`. **Before any change**, read `docs/index.md` first (path → spec table), then this file (or `docs/specs/AGENT.md`) for conventions.
 
 ## Table of contents
 
@@ -35,7 +35,7 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 | `version:` | Always (custom key) | `v1` |
 | `tags:`/`status:` | Optional (`stable`/`draft`/`deprecated`) | |
 
-`type` and `version` are required. Other OKF keys (`sources`, `generated`, `verified`, `stale_after`, `tags`, `status`) optional but MUST be used when applicable.
+`type` and `version` are required. Other OKF keys (`sources`, `generated`, `verified`, `stale_after`, `tags`, `status`) are optional and MUST be used when applicable.
 
 ### 1.2 Type values and locations
 
@@ -49,16 +49,16 @@ Every subdirectory MUST have an `index.md`. Root `docs/index.md` is the top-leve
 
 Raw HTML is forbidden in every Markdown file, including HTML comments, tags,
 layout wrappers, and HTML/XML/SVG code fences. Use Markdown constructs, Mermaid,
-or links instead. HTML belongs only in dedicated non-Markdown assets such as
-the viewer mockup; it MUST NOT be copied into a `.md` file.
+or links instead. HTML belongs only in dedicated non-Markdown assets such as the
+viewer mockup; it MUST NOT be copied into a `.md` file.
 
 ## 2. Trimming
 
 - Every doc must earn its bytes: replaceable-by-a-pointer → pointer; a section repeating another spec → remove + reference the canonical source.
-- Eliminate cross-document duplication: each fact lives in one place (`defaults.md` or its owning spec), referenced not restated.
-- **Mermaid diagrams are exempt** from trimming (they visualize complex relationships; kept even when large).
-- Dead code-style sections (deferred-feature sketches, historical rationales, single-run benchmark samples) → remove, replace with a pointer to the deferral record.
-- Keep the three-directory structure: `docs/specs/` (normative, 21 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
+- No cross-document duplication: each fact lives in one place (`defaults.md` or its owning spec), referenced not restated.
+- **Mermaid diagrams are exempt** from trimming (they visualize complex relationships, kept even when large).
+- Deferred-feature sketches, historical rationales and single-run benchmark samples → remove, replace with a pointer to the deferral record.
+- Keep the three directories: `docs/specs/` (normative, 21 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
 
 ## 3. Adding a file
 
@@ -70,17 +70,17 @@ the viewer mockup; it MUST NOT be copied into a `.md` file.
 
 ## 5. Versioning
 
-`version: v1, v2, …` — bump by one on material change; cosmetic fixes (typos/formatting) do NOT bump. The `version` field is our custom key (OKF defines none) — it is the mechanism for consumers to detect staleness.
+`version: v1, v2, …` — bump by one on material change; cosmetic fixes (typos/formatting) do NOT bump. The `version` field is our custom key (OKF defines none) — the mechanism for consumers to detect staleness.
 
 ## 6. Constructor naming (in example code)
 
-Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When the codebase diverges, the code wins — update the example (a non-compiling doc example is a defect).
+Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `mem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When code and example diverge the code wins — update the example (a non-compiling doc example is a defect).
 
 ## 7. Diagram and formatting rules
 
 - Mermaid for relationships/flow; ASCII only alongside mermaid (raw views).
 - Code fences always carry a language tag (`go`, `yaml`, `text`, `mermaid`).
-- In prose, do not use the ampersand symbol as a substitute for `and` unless the text is code, a literal symbol, a diagram, or a mermaid block where the symbol is required by syntax or the source domain.
+- In prose, do not use the ampersand as a substitute for `and` unless the text is code, a literal symbol, a diagram, or a mermaid block where syntax or the source domain requires the symbol.
 - Line width ≤ ~100 chars; LF endings; UTF-8.
 
 ## 8. Editing and maintenance checklist
@@ -96,8 +96,8 @@ Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] No raw HTML, HTML comments, or HTML/XML/SVG fences
 - [ ] LF endings, UTF-8
 
-The same item list applies, with the shape adapted to the artifact, when adding
-or changing a repository skill under `.agents/skills/`; that directory's own
+The same item list applies, shape adapted to the artifact, when adding or
+changing a repository skill under `.agents/skills/`; that directory's own
 [`AGENT.md`](../.agents/AGENT.md) governs the OKF fields a skill replaces with
 its two-key frontmatter, its size budget, and its provenance requirement.
 

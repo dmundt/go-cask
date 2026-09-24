@@ -2,19 +2,19 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v39
+version: v40
 ---
 
 # Defaults and Behavior — go-cask
 
-Single reference for "how does it behave by default?" and "what are the numbers?", grouped by area with pointers to the owning spec. **Canonical for default values**: area specs MAY elaborate but MUST NOT contradict this list (AGENT.md §8). On a default change, update this document AND the owning spec and bump both versions (AGENT.md §3).
+Single reference for "what is the default behavior?" and "what are the numbers?", grouped by area with pointers to the owning spec. **Canonical for default values**: area specs MAY elaborate but MUST NOT contradict this list (AGENT.md §8). Change a default → update this document AND the owning spec, bumping both versions (AGENT.md §3).
 
 ## 1. Basic design and architecture
 
 - Three layers (cas-core §3): byte (non-generic `Digest`/`Backend`/backends) → typed (generic `Object[T]`/`Codec[T]`/`Store[T]`/`Walker[T]`/caches) → application (per-app types; `gitlike` is the reference).
 - One HTTP surface (api-design §2): the viewer (`/viewer/*`, HTML). No network JSON API ships (backend-architecture §1); `examples/api` demonstrates a JSON surface.
 - One server, one mux (backend-architecture §3–4), fixed middleware order: session auth → role → CSRF → handler.
-- Four maintenance operations (consistency §8): `Verify`, `GC`, `Prune`, `Stats`. A fifth, `ScanRefs`, is designed but not implemented, as is the rest of the deferred maintenance surface (extensions §3).
+- Four maintenance operations (consistency §8): `Verify`, `GC`, `Prune`, `Stats`. A fifth, `ScanRefs`, and the rest of the deferred maintenance surface are designed but not implemented (extensions §3).
 
 ## 2. Core defaults and constants (`cas`)
 
@@ -29,11 +29,11 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Fan-out bound | `FanLevels × FanOut ≤ 64` | cas-core §4.4 |
 | Dir / file perms | `0o755` / `0o644` | cas-core §4.4 |
 | Default codec | JSON (`json.New[T]()`), uncompressed: no default constructor wraps a payload in a compression codec | cas-core §4.6 |
-| Default compression codec | `flate` (`cas/codec/flate`) is the wrapper to choose when a payload needs compressing (smallest of the three, no header); compression is opt-in and never applied by a default constructor | cas-core §4.6; extensions §3 |
-| Compact binary codec | Optional app-defined payload codec (`binary.New(next, transform, restore)` or `binary.NewRaw(encode, decode)`) for stable, compact binary payloads | cas-core §4.6 |
+| Default compression codec | `flate` (`cas/codec/flate`) is the wrapper for a payload that needs compressing (smallest of the three, no header); compression is opt-in, never applied by a default constructor | cas-core §4.6; extensions §3 |
+| Compact binary codec | optional app-defined payload codec (`binary.New(next, transform, restore)` or `binary.NewRaw(encode, decode)`) for stable, compact binary payloads | cas-core §4.6 |
 | Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
-| Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; the byte is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
+| Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; it is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
 | Read concurrency | `fs`: lock-free (`Get`/`Exists`/`List`/`Stats`); `mem` uses an `RWMutex`; `packfs` reads take its in-memory index mutex | cas-core §4.4, §4.14 |
 | Write concurrency | one `sync.Mutex` for `Put`/`Delete` | cas-core §4.4 |
 | Storage backend selection | `fs` (loose filesystem, Git-like fan-out) is the default; `packfs` is opt-in (`cask -backend packfs`, `packfs.WithEnabled()`) | cli §1, cas-core §4.14 |
@@ -43,16 +43,16 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Sentinel errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch`, `ErrUnsupported` | library-design §2 |
 | Object type name | `<type>@<major>`; absent version reads as `@1` | object-versioning §2 |
 | Serialization envelope | TLV `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`; a version 1 envelope (no codec field) still reads, as "codec unspecified" | cas-core §8 d1 |
-| Codec identity tags | `json`, `gob`, `cbor`, `binary`; a stacked codec composes the inner tag (`gzip+json`, `flate+gzip+json`); a codec that declares no tag (`cas.CodecNamer`) writes an empty tag and no comparison is made | cas-core §4.6 |
+| Codec identity tags | `json`, `gob`, `cbor`, `binary`; a stacked codec composes the inner tag (`gzip+json`, `flate+gzip+json`); a codec declaring no tag (`cas.CodecNamer`) writes an empty tag and no comparison is made | cas-core §4.6 |
 | `Prune` dry-run default | `true` (delete needs explicit flag) | consistency §5 |
 | `clean` default min-age | 24 h | cli §2 |
 | Object age source | file mtime ≈ first-`Put` time | consistency §5 |
-| Bloom filter ceiling | `bloom.MaxBits = 1<<32` bits per filter — a standard/persistent bitmap is at most 512 MiB, a counting filter 2 GiB because each slot is a 32-bit counter; shard the key space rather than raise it | `cas/bloom/common.go` (no spec states this ceiling yet) |
+| Bloom filter ceiling | `bloom.MaxBits = 1<<32` bits per filter — a standard/persistent bitmap at most 512 MiB, a counting filter 2 GiB because each slot is a 32-bit counter; shard the key space rather than raise it | `cas/bloom/common.go` (no spec states this ceiling yet) |
 | Recorded sidecar checksums | off by default — no record exists unless a caller wraps a backend with `sidecar.New(..., WithChecksum(algo, hasher))`; the checksum covers the stored bytes and is written after the object is published | operations §6 |
-| Sidecar record directory | `<base>/.meta`, where `<base>` is the backend's `BasePath()` (`fs`: the path passed to `fs.New`; `packfs`: the loose tree `<base>/loose`) | operations §6 |
+| Sidecar record directory | `<base>/.meta`, `<base>` being the backend's `BasePath()` (`fs`: the path passed to `fs.New`; `packfs`: the loose tree `<base>/loose`) | operations §6 |
 | Sidecar record version | `1` (`sidecar.RecordVersion`); any other version reads as `cas.ErrCorrupt` | operations §6 |
 | Sidecar record read cap | `sidecar.DefaultMaxRecordBytes` = 4096 bytes per record; a larger read is `cas.ErrCorrupt` (`WithMaxRecordBytes` overrides it) | operations §6 |
-| Sidecar scratch durability | the record temp file is fsynced before its rename; the directory fsync is opt-in (`WithDirSync`), matching the backend's own default | operations §1, §6 |
+| Sidecar scratch durability | the record temp file is fsynced before its rename; the directory fsync is opt-in (`WithDirSync`), matching the backend's default | operations §1, §6 |
 | Recorded-checksum algorithm (CLI) | `crc32` for `cask verify -checksums -checksum <algo>` (also `adler32`, `crc64`); the record's own `checksum_algo` is what a read compares | cli §4, operations §6 |
 
 ## 3. HTTP defaults
@@ -93,9 +93,9 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 |---|---|---|
 | GC trigger | explicit only (never automatic) | consistency §4 |
 | GC algorithm | mark-and-sweep from application roots | consistency §4 |
-| GC grace default | `--min-age` **1 h** (`gcDefaultGrace`): a sweep reclaims only unreachable objects older than the grace, so a fresh write a live writer made survives a racing sweep; `--min-age 0` is the dangerous variant and warns | cli §2, consistency §4 |
-| `Verify` cadence | on demand (CLI `verify <hash>\|--all`, viewer Verify control); nothing samples and nothing is scheduled | consistency §2, §6 |
-| Broken-object handling | report + audit-log (`ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` line, viewer audit); no quarantine and no alert | consistency §2 |
+| GC grace default | `--min-age` **1 h** (`gcDefaultGrace`): a sweep reclaims only unreachable objects older than the grace, so a fresh write from a live writer survives a racing sweep; `--min-age 0` is the dangerous variant and warns | cli §2, consistency §4 |
+| `Verify` cadence | on demand (CLI `verify <hash>\|--all`, viewer Verify control); nothing sampled, nothing scheduled | consistency §2, §6 |
+| Broken-object handling | report + audit-log (`ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` line, viewer audit); no quarantine, no alert | consistency §2 |
 | Dangerous all-objects prune | no dedicated mode: `cask prune` takes a required root list, `--dry-run` is the default, and `--min-age 0` warns | consistency §5 |
 | Deferred maintenance surface | quarantine, `ScanRefs`, sampled/scheduled `Verify`, store metric counters + viewer stats page, latency-threshold logging, `.meta/<digest>.json` descriptor, viewer delete/GC routes — designed only, each with what exists and what does not | extensions §3 |
 | Dangling-ref handling | diagnostics only; repair is the app's job | consistency §3 |
@@ -111,18 +111,18 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | FS-backend small Put/Get (warm) | ≥10k obj/s; p99 ≤5 ms | performance §11 |
 | Large-object streaming (1 GiB) | RSS ≤64 MiB above baseline | performance §11 |
 | `List` at 1M objects (fs, (2,2)) | ≤30 s | performance §11 |
-| Packfile rotation (`packfs`) | no size threshold — every `Put` is mirrored loose **and** into the active pack; rotation at `PackMaxBytes` = 64 MiB or `PackMaxEntries` = 10 000 (`0` = unlimited) | cas-core §4.14, performance §9 |
+| Packfile rotation (`packfs`) | no size threshold — every `Put` mirrored loose **and** into the active pack; rotation at `PackMaxBytes` = 64 MiB or `PackMaxEntries` = 10 000 (`0` = unlimited) | cas-core §4.14, performance §9 |
 
-These are default targets, not absolutes, and they are **aspirational**: nothing enforces them today (performance §11.3 — there is no CI gate and no scenario harness, performance §5). Duration and RSS rows have no measuring harness at all; only the `benchmarks/` suite's `ns/op` and `allocs/op` numbers are recorded, in `benchmarks/data/baseline.txt`.
+Default targets, not absolutes, **aspirational**: nothing enforces them today (performance §11.3 — no CI gate, no scenario harness, performance §5). Duration and RSS rows have no measuring harness at all; only the `benchmarks/` suite's `ns/op` and `allocs/op` numbers are recorded, in `benchmarks/data/baseline.txt`.
 
 ## 7. Go and project defaults
 
 | Item | Default/value | Defined in |
 |---|---|---|
-| Module floor (`go.mod`) | `go 1.24.0` — the minimum supported Go, the `omitzero` JSON-tag floor | coding-guidelines §1, library-design §5 |
-| Build/gate toolchain | `toolchain go1.27.1` — what the repository builds and gates with (the module self-manages its toolchain) | coding-guidelines §1, library-design §5 |
+| Module floor (`go.mod`) | `go 1.24.0` — minimum supported Go, the `omitzero` JSON-tag floor | coding-guidelines §1, library-design §5 |
+| Build/gate toolchain | `toolchain go1.27.1` — what the repository builds and gates with (self-managed toolchain) | coding-guidelines §1, library-design §5 |
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
-| Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions require justification | coding-guidelines §3 |
+| Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions need justification | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS; one scoped embedded viewer stylesheet | coding-guidelines §4 |
 | Lean-core budget | `cas/` ≤ ~1600 LOC, ≤ ~45 exported identifiers (44 today) | library-design §1 |
 | Stable core surface | identifiers in cas-core §7.1 | cas-core §7.1 |
@@ -130,9 +130,9 @@ These are default targets, not absolutes, and they are **aspirational**: nothing
 
 ## 8. Changing a default
 
-- Defaults are part of the **compatibility contract**: changing one is a **material change** — update this document AND the owning spec and bump both (AGENT.md §3).
+- Defaults are part of the **compatibility contract**: changing one is a **material change** — update this document AND the owning spec, bumping both (AGENT.md §3).
 - A changed default MUST NOT break the stable surface (library-design §5); prefer additive options (e.g. a new `WithX`) over silently changing behavior.
-- When in doubt, keep the default — change needs a benchmark or a use case, not taste.
+- When in doubt, keep the default — a change needs a benchmark or a use case, not taste.
 
 ## 9. Checklist
 
