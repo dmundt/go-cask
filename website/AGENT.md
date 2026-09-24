@@ -107,3 +107,18 @@ current `main`; never use GitHub's server-side rebase or update-branch operation
 Apply changes with `git cherry-pick -S`, verify every head commit with
 `git verify-commit`, and push with `git push --force-with-lease`. Enable
 auto-merge only after signature verification and required checks pass.
+
+## Serialized landing
+
+Website changes take the same landing lane as code
+(`AGENTS.md`, "Serialized landing, worktrees and gates"): hold
+`scripts/land-lane.sh` for the whole landing, and start the next revision of an
+artifact only after the previous one has merged.
+
+The footer was redesigned five times in three hours (`#203` → `#220` → `#224` →
+`#236` → `#239`, six pull requests). No single change was wrong; the waste was
+parallel sessions re-deciding the same artifact before the previous decision had
+been seen, and each step cost an issue, a branch, a PR and a review.
+
+This orders the work without making it slower: a `website/**`-only change stays
+documentation scope, so its gate is still seconds.
