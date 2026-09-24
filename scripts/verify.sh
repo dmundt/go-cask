@@ -52,10 +52,81 @@ fi
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
+# Refuse to gate a tree other than the one this script lives in. A linked
+# worktree whose .git records an absolute path from the other toolchain makes git
+# walk up to the primary checkout, so the gate would silently test that tree.
+script_root="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ "$script_root" != "$repo_root" ]]; then
+  cat >&2 <<EOF
+verify.sh: git resolved '$repo_root', but this script lives in '$script_root'.
+  The worktree's .git file holds an absolute path from the other toolchain, so
+  git walks up to the primary checkout and the gate would test the WRONG tree.
+  Fix it with the relative form, then re-run:
+      scripts/worktree.sh remove <name> && scripts/worktree.sh add <name> <branch>
+  (scripts/AGENT.md documents the same fix for a worktree created from WSL.)
+EOF
+  exit 2
+fi
+
 if ! find . -name '*.go' -print -quit | grep -q .; then
   echo "No Go sources; verification skipped."
   exit 0
 fi
+
+# ---- scope ----------------------------------------------------------------
+# A documentation-only change runs the documentation gate only — the same scope
+# CI applies (ci.yml runs just `git diff --check` for a docs-only PR), plus the
+# documentation-integrity checks CI does not run for it. This keeps a docs
+# rebuild+push at seconds instead of minutes, which is what makes a serialized
+# landing lane cheap. The patterns mirror scripts/docs-only.sh: keep them in
+# sync. VERIFY_SCOPE=full forces the whole gate; VERIFY_SCOPE=docs asserts the
+# documentation scope and fails loudly if the tree is not docs-only.
+scope="${VERIFY_SCOPE:-auto}"
+if [[ "$scope" == "auto" || "$scope" == "docs" ]]; then
+  detected=full
+  base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+  if [[ -n "$base" ]]; then
+    changed="$(
+      {
+        git diff --name-only "$base" HEAD
+        git diff --name-only
+        git diff --name-only --cached
+      } | sort -u
+    )"
+    if [[ -n "$changed" ]]; then
+      detected=docs
+      while IFS= read -r changed_path; do
+        case "$changed_path" in
+        *.md | docs/* | website/* | mkdocs.yml | requirements-docs.txt | requirements-docs.lock | .github/workflows/website.yml) ;;
+        *)
+          detected=full
+          break
+          ;;
+        esac
+      done <<<"$changed"
+    else
+      detected=full
+    fi
+  fi
+  if [[ "$scope" == "docs" ]]; then
+    if [[ "$detected" != "docs" ]]; then
+      echo "VERIFY_SCOPE=docs but the change is not documentation-only" >&2
+      exit 2
+    fi
+  else
+    scope="$detected"
+  fi
+fi
+if [[ "$scope" != "docs" && "$scope" != "full" ]]; then
+  echo "VERIFY_SCOPE must be auto, docs or full (got '$scope')" >&2
+  exit 2
+fi
+echo "== scope: $scope =="
+if [[ "$scope" == "docs" ]]; then
+  echo "documentation-only change: running the documentation gate (VERIFY_SCOPE=full runs the whole gate)"
+fi
+
+if [[ "$scope" == "full" ]]; then
 
 # Scratch files for the coverage tier check below. One EXIT trap owns every
 # scratch file this script creates: bash keeps a single EXIT trap per shell, so a
@@ -236,6 +307,8 @@ go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 
 echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
+
+fi # scope == full
 
 echo "== doc integrity =="
 # Mermaid balance is checked in every tracked Markdown file, not only the specs
@@ -469,6 +542,18 @@ if [[ -n "${CASK_RELEASE_TAG:-}" ]]; then
   echo "== release note sync =="
   ./scripts/release-notes.sh "$CASK_RELEASE_TAG" "${CASK_RELEASE_FROM_TAG:-}" > /tmp/cask-release-notes.txt
   grep -q 'Full Changelog:' /tmp/cask-release-notes.txt
+fi
+
+# Record the green run for this exact commit in the shared git dir, so
+# .githooks/pre-push accepts the push without re-running a gate whose tree has
+# not changed. The stamp is keyed by commit, so amending or rebasing invalidates
+# it automatically.
+stamp_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [[ -n "$stamp_dir" ]]; then
+  printf '%s %s %s\n' \
+    "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
+    "$scope" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$stamp_dir/verify.ok"
 fi
 
 echo "verification passed"
