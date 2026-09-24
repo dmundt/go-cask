@@ -3,6 +3,7 @@ package cbor_test
 import (
 	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas/codec/cbor"
@@ -186,5 +187,40 @@ func TestCodecName(t *testing.T) {
 	delegating := cbor.New(jsoncodec.New[doc](), nil, nil)
 	if got := delegating.CodecName(); got != "json" {
 		t.Fatalf("delegating CodecName() = %q, want the inner tag json", got)
+	}
+}
+
+// TestNewRejectsInnerCodecWithConversion pins the constructor contract of #270:
+// New builds either a delegating codec or a converting one. An inner codec
+// together with conversion functions cannot work — encode/decode already produce
+// the stored bytes — so it is reported instead of silently ignoring the inner
+// codec, which is what used to happen.
+func TestNewRejectsInnerCodecWithConversion(t *testing.T) {
+	mixed := cbor.New(jsoncodec.New[doc](), encodeDoc, decodeDoc)
+	if _, err := mixed.Encode(doc{Title: "mixed"}); err == nil {
+		t.Fatal("Encode with both an inner codec and conversion functions must be refused")
+	} else if !strings.Contains(err.Error(), "inner codec") {
+		t.Fatalf("Encode error = %v, want it to name the conflict", err)
+	}
+	if _, err := mixed.Decode([]byte(`{}`)); err == nil {
+		t.Fatal("Decode with both an inner codec and conversion functions must be refused")
+	}
+
+	// New(nil, encode, decode) is the documented equivalent of NewRaw, and
+	// New(next, nil, nil) keeps delegating.
+	converting := cbor.New[doc](nil, encodeDoc, decodeDoc)
+	data, err := converting.Encode(doc{Title: "converting"})
+	if err != nil {
+		t.Fatalf("New(nil, encode, decode).Encode = %v, want nil", err)
+	}
+	if _, err := converting.Decode(data); err != nil {
+		t.Fatalf("New(nil, encode, decode).Decode = %v, want nil", err)
+	}
+	if got := converting.CodecName(); got != "cbor" {
+		t.Fatalf("converting CodecName() = %q, want cbor", got)
+	}
+	delegating := cbor.New(jsoncodec.New[doc](), nil, nil)
+	if _, err := delegating.Encode(doc{Title: "delegated"}); err != nil {
+		t.Fatalf("delegating Encode = %v, want nil", err)
 	}
 }
