@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -75,13 +76,15 @@ func asChunkBytes(chunks []Chunk) [][]byte {
 }
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	// Every pack I/O entry point takes a context first, because a manifest read
+	// or write can be cancelled or bounded like any other I/O.
+	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -104,12 +107,12 @@ func run(args []string) error {
 		if len(args) == 5 {
 			payload = args[4]
 		}
-		return runSave(args[1], args[2], args[3], payload)
+		return runSave(ctx, args[1], args[2], args[3], payload)
 	case "load":
 		if len(args) != 2 {
 			return errors.New(usage)
 		}
-		return runLoad(args[1])
+		return runLoad(ctx, args[1])
 	case "roundtrip":
 		if len(args) != 3 {
 			return errors.New(usage)
@@ -153,31 +156,31 @@ func runRoundTrip(payload string, size int) error {
 	return roundTripWithPrint(payload, chunks)
 }
 
-func saveManifest(rawPath string, manifest Manifest) error {
+func saveManifest(ctx context.Context, rawPath string, manifest Manifest) error {
 	if err := os.MkdirAll(filepath.Dir(rawPath), 0o755); err != nil {
 		return err
 	}
-	return pack.SaveWith(rawPath, manifest, jsoncodec.New[Manifest]())
+	return pack.SaveWith(ctx, rawPath, manifest, jsoncodec.New[Manifest]())
 }
 
-func loadManifest(rawPath string) (Manifest, error) {
-	return pack.LoadWith(rawPath, jsoncodec.New[Manifest]())
+func loadManifest(ctx context.Context, rawPath string) (Manifest, error) {
+	return pack.LoadWith(ctx, rawPath, jsoncodec.New[Manifest]())
 }
 
-func saveAndLoad(rawPath string, manifest Manifest) (Manifest, error) {
-	if err := saveManifest(rawPath, manifest); err != nil {
+func saveAndLoad(ctx context.Context, rawPath string, manifest Manifest) (Manifest, error) {
+	if err := saveManifest(ctx, rawPath, manifest); err != nil {
 		return Manifest{}, err
 	}
-	return loadManifest(rawPath)
+	return loadManifest(ctx, rawPath)
 }
 
-func runSave(rawPath, kind, owner, payload string) error {
+func runSave(ctx context.Context, rawPath, kind, owner, payload string) error {
 	manifest := Manifest{Kind: kind, Owner: owner}
 	if payload != "" {
 		manifest.Chunks = splitPayload([]byte(payload), 8)
 		manifest.TotalSize = len(payload)
 	}
-	loaded, err := saveAndLoad(rawPath, manifest)
+	loaded, err := saveAndLoad(ctx, rawPath, manifest)
 	if err != nil {
 		return err
 	}
@@ -185,8 +188,8 @@ func runSave(rawPath, kind, owner, payload string) error {
 	return nil
 }
 
-func runLoad(rawPath string) error {
-	loaded, err := loadManifest(rawPath)
+func runLoad(ctx context.Context, rawPath string) error {
+	loaded, err := loadManifest(ctx, rawPath)
 	if err != nil {
 		return err
 	}

@@ -40,12 +40,12 @@ func BenchmarkPackManifestRoundTrip(b *testing.B) {
 			b.SetBytes(int64(len(meta["name"]) + len(meta["sha"]) + len(meta["kind"]) + len(meta["owner"])))
 			for i := 0; i < b.N; i++ {
 				path := filepath.Join(b.TempDir(), "meta.json")
-				if err := pack.Save(path, meta); err != nil {
-					b.Fatalf("Save() = %v", err)
+				if err := pack.SaveJSON(b.Context(), path, meta); err != nil {
+					b.Fatalf("SaveJSON() = %v", err)
 				}
-				loaded, err := pack.Load(path)
+				loaded, err := pack.LoadJSON[pack.Data](b.Context(), path)
 				if err != nil {
-					b.Fatalf("Load() = %v", err)
+					b.Fatalf("LoadJSON() = %v", err)
 				}
 				if loaded["kind"] != meta["kind"] || loaded["owner"] != meta["owner"] {
 					b.Fatalf("round trip mismatch: got %#v, want %#v", loaded, meta)
@@ -60,11 +60,11 @@ func BenchmarkPackManifestSaveLoadFile(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		path := filepath.Join(b.TempDir(), "meta.json")
-		if err := pack.Save(path, payload); err != nil {
-			b.Fatalf("Save() = %v", err)
+		if err := pack.SaveJSON(b.Context(), path, payload); err != nil {
+			b.Fatalf("SaveJSON() = %v", err)
 		}
-		if _, err := pack.Load(path); err != nil {
-			b.Fatalf("Load() = %v", err)
+		if _, err := pack.LoadJSON[pack.Data](b.Context(), path); err != nil {
+			b.Fatalf("LoadJSON() = %v", err)
 		}
 		_ = os.Remove(path)
 	}
