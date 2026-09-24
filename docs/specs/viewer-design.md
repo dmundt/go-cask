@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v38
+version: v39
 ---
 
 # Viewer Design — go-cask
@@ -17,7 +17,7 @@ JavaScript is prototype-only and MUST NOT ship.
 
 Reading order: this file **defines** the viewer, the
 [package README](../../internal/web/README.md) maps the code to these contracts,
-and the [viewer page](../../website/viewer.md) **explains** the result to the
+and the [CLI README](../../cmd/cask/README.md) **explains** the result to the
 person running `cask web` — including the reference states defined in §3.
 
 ## 1. Purpose and boundaries

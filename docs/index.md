@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v25
+version: v26
 ---
 
 # go-cask Rules Index
@@ -25,11 +25,11 @@ version: v25
 | `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
 | `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
 | `cas/repo/` (typed cross-type registry, Walk, Reachable) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) |
-| `cmd/cask/` | [`cli.md`](specs/cli.md) + the [viewer page](../website/viewer.md) for the user-facing explanation of `cask web` |
+| `cmd/cask/` | [`cli.md`](specs/cli.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) for the user-facing explanation of `cask web` |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) + [`internal/web/README.md`](../internal/web/README.md) |
-| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + the [viewer page](../website/viewer.md) for the user-facing explanation of the reference states |
+| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) for the user-facing explanation of the reference states |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
 | `internal/design/` (design-rule checks the gate runs, starting with the no-`any` rule) | [`library-design.md`](specs/library-design.md) §5 |
