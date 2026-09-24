@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/dmundt/go-cask/security/advisories/new
+    about: Do not open a public issue for a suspected vulnerability; SECURITY.md describes the private process.
+  - name: Read the specification first
+    url: https://github.com/dmundt/go-cask/blob/main/docs/specs/AGENT.md
+    about: docs/specs/ is the single source of truth for the design, contracts and conventions.

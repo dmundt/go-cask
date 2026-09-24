@@ -1,0 +1,50 @@
+name: Change request
+description: A new capability, a documentation fix, or a corrected specification.
+title: "feat: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep the title's prefix honest — `feat`, `fix`, `docs`, `chore` — because
+        it selects the branch type in `docs/specs/branch-naming.md` §2.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong, missing, or stale, and who it affects. Link the rule, spec section, or code path that shows it.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: The outcome you want, in one paragraph.
+    validations:
+      required: true
+  - type: checkboxes
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - label: "`cas/` — the generic core"
+        - label: "`cas/backend/*` or `cas/codec/*`"
+        - label: "`cmd/cask` or `internal/web/` — CLI and viewer"
+        - label: "`gitlike/`, `examples/`, or `benchmarks/`"
+        - label: "documentation — `docs/`, `website/`, or a Markdown file"
+        - label: "repository tooling — `scripts/` or `.github/`"
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: The command and its output, the failing test, the spec section, or the code path. A copy-pasteable transcript beats a description.
+    validations:
+      required: true
+  - type: checkboxes
+    id: done
+    attributes:
+      label: Definition of done
+      options:
+        - label: "The rule this change follows is named (`docs/index.md` maps a path to its rule file)."
+        - label: "`CHANGELOG.md` records the change when a library consumer, CLI user, operator, or the viewer can observe it."
+        - label: "`./scripts/verify.sh` ends with `verification passed`."
+        - label: "The branch is `<type>/<NNN>-<kebab>` for this issue and its head commit is signed."
