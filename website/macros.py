@@ -12,12 +12,12 @@ footer partial renders. No theme override, no environment variable and no
 extra CI step is involved.
 
 The line shows one provenance value: the commit's own date as `YYYY-MM-DD`,
-linked to that commit's page, so a reader takes "how current are these docs"
-from the visible text and the revision from the link target. It is
-revision-derived and never wall-clock (no zone conversion and no zone label —
-at day granularity no zone is more correct than the offset the commit
-carries), so two builds of one revision produce the same footer, and the `©`
-year is derived from that same date instead of a hand-maintained literal.
+labelled `Updated` and linked to that commit's page, so a reader takes "how
+current are these docs" from the visible text and the revision from the link
+target. It is revision-derived and never wall-clock (no zone conversion and no
+zone label — at day granularity no zone is more correct than the offset the
+commit carries), so two builds of one revision produce the same footer, and the
+`©` year is derived from that same date instead of a hand-maintained literal.
 
 The line is allowed to degrade: when git cannot answer (no repository, no
 git, a tarball build) the provenance fragment and the year are omitted
@@ -47,6 +47,10 @@ PROVENANCE_SEPARATOR = "&middot;"
 # The one visible provenance value is the commit's date, and this is what it
 # links to: the revision belongs in the link target, not in the visible text.
 COMMIT_URL = "https://github.com/dmundt/go-cask/commit/"
+
+# What the visible date says it is. It stays outside the anchor: only the date
+# is the link, so the label never becomes part of the commit URL's text.
+PROVENANCE_LABEL = "Updated"
 
 CONFIG_PATH = pathlib.Path(__file__).resolve().parent.parent / "mkdocs.yml"
 
@@ -86,9 +90,9 @@ def compose_copyright(base, date, revision):
     `base` is the `copyright` value mkdocs.yml declares; `date` is the
     deployed revision's date as `YYYY-MM-DD` and `revision` its short
     form, both empty when git could not answer. The year follows
-    `COPYRIGHT_YEAR_ANCHOR`, and the line closes with that date as the one
-    visible provenance value, linked to the commit it came from; each is
-    omitted, never guessed, when its value is missing.
+    `COPYRIGHT_YEAR_ANCHOR`, and the line closes with `PROVENANCE_LABEL`
+    and that date — the date alone being the link to the commit it came
+    from; each is omitted, never guessed, when its value is missing.
     """
     line = " ".join(base.split())
     if not date:
@@ -97,9 +101,10 @@ def compose_copyright(base, date, revision):
         COPYRIGHT_YEAR_ANCHOR, COPYRIGHT_YEAR_ANCHOR + " " + date[:4], 1
     )
     if revision:
-        line = '%s %s <a href="%s%s" title="commit %s">%s</a>' % (
+        line = '%s %s %s <a href="%s%s" title="commit %s">%s</a>' % (
             line,
             PROVENANCE_SEPARATOR,
+            PROVENANCE_LABEL,
             COMMIT_URL,
             revision,
             revision,
@@ -176,8 +181,8 @@ def selftest():
     )
     expected_provenance = (
         expected_base.replace("&copy;", "&copy; 2026", 1)
-        + ' &middot; <a href="%sab7deab" title="commit ab7deab">2026-09-23</a>'
-        % COMMIT_URL
+        + ' &middot; %s <a href="%sab7deab" title="commit ab7deab">2026-09-23</a>'
+        % (PROVENANCE_LABEL, COMMIT_URL)
     )
 
     # (name, date, revision, want) — the want of the first case is the
@@ -206,6 +211,8 @@ def selftest():
                 errors.append("%s: the link does not target the revision: %r" % (name, got))
             if revision in visible_text(got):
                 errors.append("%s: the revision is visible text: %r" % (name, got))
+            if "%s <a " % PROVENANCE_LABEL not in got:
+                errors.append("%s: the label is not outside the link: %r" % (name, got))
         elif COMMIT_URL in got:
             errors.append("%s: a provenance link without a revision: %r" % (name, got))
 

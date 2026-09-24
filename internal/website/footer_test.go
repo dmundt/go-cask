@@ -45,6 +45,10 @@ const (
 	// commitURL is where the footer's one visible provenance value points: the
 	// date is shown, the revision is the link target.
 	commitURL = "https://github.com/dmundt/go-cask/commit/"
+
+	// provenanceLabel says what that date is, and stays outside the anchor so
+	// only the date is the link.
+	provenanceLabel = "Updated"
 )
 
 var (
@@ -114,9 +118,9 @@ func configCopyright(t *testing.T, config string) string {
 }
 
 // composeCopyright completes the base line the way website/macros.py does: the
-// revision's year follows the `&copy;` token and the line closes with that
-// revision's date, linked to the commit, and either is omitted — never guessed —
-// when its value is missing.
+// revision's year follows the `&copy;` token and the line closes with the label
+// and that revision's date, linked to the commit, and either is omitted — never
+// guessed — when its value is missing.
 func composeCopyright(base, date, revision string) string {
 	line := strings.Join(strings.Fields(base), " ")
 	if date == "" {
@@ -124,7 +128,7 @@ func composeCopyright(base, date, revision string) string {
 	}
 	line = strings.Replace(line, "&copy;", "&copy; "+date[:4], 1)
 	if revision != "" {
-		line += " &middot; <a href=\"" + commitURL + revision +
+		line += " &middot; " + provenanceLabel + " <a href=\"" + commitURL + revision +
 			"\" title=\"commit " + revision + "\">" + date + "</a>"
 	}
 	return line
@@ -164,8 +168,8 @@ func TestFooterCopyrightLinePinsRenderedText(t *testing.T) {
 			name:     "revision and its commit date",
 			date:     "2026-09-23",
 			revision: "ab7deab",
-			want: wantYear + " &middot; <a href=\"" + commitURL + "ab7deab\"" +
-				" title=\"commit ab7deab\">2026-09-23</a>",
+			want: wantYear + " &middot; " + provenanceLabel + " <a href=\"" + commitURL +
+				"ab7deab\" title=\"commit ab7deab\">2026-09-23</a>",
 		},
 		{
 			// A tarball build, no git, no environment variable: the footer
@@ -193,6 +197,9 @@ func TestFooterCopyrightLinePinsRenderedText(t *testing.T) {
 			}
 			if strings.Contains(visibleText(got), tc.revision) {
 				t.Errorf("footer line %q shows the revision as visible text; it belongs in the link target", got)
+			}
+			if !strings.Contains(got, provenanceLabel+" <a href=") {
+				t.Errorf("footer line %q does not label the date outside the link", got)
 			}
 		})
 	}
