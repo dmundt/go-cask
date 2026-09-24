@@ -297,6 +297,15 @@ func newWithOps(basePath string, op ops, opts ...Option) (*Backend, error) {
 	return b, nil
 }
 
+// BasePath returns the directory this backend's object bytes live under: the
+// loose tree at <basePath>/loose, not the pack root passed to New. The pack
+// files are an append-only mirror whose index is addressed separately, while the
+// loose tree is what Get/Put/List/Stats/Clean operate on (Clean delegates to it),
+// so a maintenance layer above the backend — cas/verify/sidecar stores its
+// records there — belongs beside those bytes, where a crashed temp file is
+// reclaimed by the same Clean a caller already runs.
+func (b *Backend) BasePath() string { return b.loose.BasePath() }
+
 func (b *Backend) loadIndex() error {
 	data, err := b.op.readFileDo(b.manifestPath)
 	if err != nil {

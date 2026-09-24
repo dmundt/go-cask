@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas/verify/sidecar` records an optional per-object checksum beside a store's
+  bytes, so a cheap check (`crc32`, `adler32` or `crc64`) can run over a store
+  whose identity is a strong hash: the record lives at
+  `<base>/.meta/<hex>.json`, the object's address is untouched, and a record is
+  never part of the hashed bytes. `cask verify --checksums [--checksum <algo>]`
+  reads the records, and `cask gc`/`cask prune` reconcile them after a sweep. An
+  object with no record is reported as unchecked, never as corrupt.
 - `cas.CapabilitiesOf` reports which optional maintenance operations a backend
   supports (`Cleaner`, `Statter`), and the new `cas.VerifyAll`/`cas.Sweep`
   functions give every backend — including `packfs`, which has no

@@ -123,6 +123,13 @@ func New(basePath string, opts ...Option) (*Backend, error) {
 	return &Backend{base: basePath, fanOut: cfg.fanOut, fanLevels: cfg.fanLevels, dirSync: cfg.dirSync}, nil
 }
 
+// BasePath returns the directory this backend's objects live under: the path
+// passed to New, where Get/Put/List/Stats/Clean all operate. A maintenance layer
+// above the backend needs it (cas/verify/sidecar stores its records there), and
+// a decorator reports the same path so a second layer cannot silently point at
+// another store.
+func (s *Backend) BasePath() string { return s.base }
+
 // walkDir walks root, using the installed walk seam when a test set one and
 // filepath.WalkDir otherwise. The nil fallback (rather than a field filled in
 // by New) keeps a Backend a test builds by hand — see FuzzPathRoundTrip — and

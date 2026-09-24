@@ -6,9 +6,10 @@
 // objects. It cannot validate an object addressed by another algorithm, because
 // cas.Verify recomputes the digest with the hasher it is given and compares it to
 // the object's address: Validate rejects a digest of another width with
-// cas.ErrInvalidDigest before any bytes are read. A cheap check above a
-// strongly-addressed store would need a per-object checksum stored beside the
-// object, which go-cask does not implement (cas/verify/README.md, extensions §3.1).
+// cas.ErrInvalidDigest before any bytes are read. To use it as a cheap check over
+// a strongly-addressed store, record it with cas/verify/sidecar, which compares
+// the recomputed checksum with the record instead of with the address
+// (operations §6).
 package crc32
 
 import (

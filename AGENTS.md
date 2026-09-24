@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v37
+version: v38
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -620,6 +620,13 @@ gofmt -l .
   `*.tmp` beneath it. So never nest one store inside another's base or its parent
   (an old `<base>/<algo>/…` tree included), and keep no application state there
   at all — not scratch `*.tmp` files, and no refs under a careful name either.
+  The one sanctioned resident is `cas/verify/sidecar`'s record directory,
+  `<base>/.meta/<hex>.json` with the `<hex>.<n>.tmp` scratch its atomic writes
+  leave behind (operations §6): those files are neither digest-named nor free
+  `*.tmp`, the layer is a maintenance view of the store's own bytes rather than
+  another store's state, and the backend's `Clean` reclaims its scratch. That is
+  a recorded exception, not a precedent — a package that wants files under a base
+  needs the same decision written here first.
   App refs live **outside** the base: the examples use `<root>/objects` as the
   `fs.Backend` base and `<root>/refs` as the refs directory (`examples/files`,
   `examples/artifacts`), because `refs.Store` writes `<name>.tmp` temp files next

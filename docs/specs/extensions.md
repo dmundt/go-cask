@@ -2,7 +2,7 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of implemented and designed-but-deferred possible extensions (packfiles, compression layer, encryption layer, chunking) and the specified-but-unimplemented maintenance surface (§3.1).
-version: v14
+version: v15
 ---
 
 # Extensions — go-cask
@@ -18,7 +18,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 
 ## 2. Requirements
 
-1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]` or `Hasher`, or wrap `CachedStore[T]` — nothing else. A custom algorithm is a `cas.Hasher` (`Digest(io.Reader)` + `Validate(Digest)`) injected into `cas.New`/`gitlike.NewRepository`; there is no `HashFunc`, no registry, and no core change involved.
+1. Use the documented recipes (cas-core §7.2): implement `Backend`, `Object[T]`, `Codec[T]` or `Hasher`, wrap `CachedStore[T]`, or decorate a `Backend` with a maintenance layer of your own — nothing else. A custom algorithm is a `cas.Hasher` (`Digest(io.Reader)` + `Validate(Digest)`) injected into `cas.New`/`gitlike.NewRepository`; there is no `HashFunc`, no registry, and no core change involved. A decorator is the fifth shape and the one `cas/verify/sidecar` uses: it implements `Backend` and delegates every read, so it composes with `cas.New`, `gitlike.NewRepository` and `internal/store.Open` unchanged, and it holds no objects of its own (operations §6).
 2. Never add `any`/`interface{}` or reflection to a public API (coding-guidelines §8).
 3. Wrap the core's sentinel errors with `%w` and use `errors.Is`; map them to your layer (api-design §6 for HTTP).
 4. Additive changes only; never break the core's stable surface (library-design §5).
@@ -39,6 +39,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 | **Packfiles** | Implemented | `cas/backend/packfs` — an opt-in backend that keeps the loose tree and mirrors every `Put` into an append-only pack file plus a JSON index; `cask -backend packfs` selects it. No size threshold, no inode reduction and no O(packs) `List`/`Stats` (the loose mirror stays), and no pack compaction: its implemented win is the batched read | cas-core §4.14, §8 d12; performance §9 |
 | **Compression layer** | Implemented | Opt-in `Codec[T]` wrappers in `cas/codec/gzip`, `cas/codec/zlib` and `cas/codec/flate`: compress serialized bytes without changing `Digest`, object types, or the core store semantics | cas-core §4.6 |
 | **Pack helpers** | Implemented | `cas/pack` provides fixed-size payload splitting and JSON sidecar metadata for large-object and operational workflows without changing object identity | performance §10 + cas-core §7.2 |
+| **Sidecar checksum** | Implemented | `cas/verify/sidecar` — an opt-in `cas.Backend` decorator that records a cheap per-object checksum at `<base>/.meta/<hex>.json`, verifies it (`Rec.Verifier(...).Verify`/`VerifyAll`) and reconciles records after a sweep; `cask verify --checksums` reads what it produced. The object address stays the identity, the record never enters the hashed bytes, and deleting `.meta` loses no object | operations §6 |
 | **Encryption layer** | Deferred | `EncryptedCodec[T]` wrapping `Codec[T]` with AES-256-GCM; app supplies the key — the core never generates/stores keys | cas-core §8 (follow-up 8); §4.6/§7.2 |
 | **Content-defined chunking** | Deferred | Rolling-hash chunking of very large blobs for chunk-granular dedup | performance §10 |
 | **Pack rewrite/compaction** | Deferred | Rewriting a pack to drop unreachable payloads (index rebuild, atomic swap) so a packed store reclaims space; today a sweep reclaims correctness, not space | performance §9; cas-core §4.14, §8 d12 |
@@ -73,12 +74,6 @@ These items are specified in an owning spec and have no implementation. Each ent
 - **Slow-operation (latency-threshold) logging** (operations §3) — exists: `log/slog` audit
   lines for login, throttle, CSRF, and verify, plus the CLI's plain-text summaries. Does not
   exist: any measurement of an operation's duration against a threshold.
-- **Object descriptor + sidecar checksum** (`<base>/.meta/<digest>.json`) (operations §6) —
-  exists: the rationale and a design sketch (`docs/design/object-descriptor-checksum.md`);
-  `cas/pack` writes an unrelated string-map manifest for chunked payloads, and the old
-  `examples/files` `.crc32` sidecar was deleted on purpose, because an object verifies from
-  its own stored bytes alone (`examples/files/main_test.go` pins it). Does not exist: a
-  descriptor producer, a descriptor reader, or a checksum-validation path.
 - **Viewer delete/GC/prune routes** (consistency §4–§5, defaults §4) — deliberately not
   implemented: the viewer inspects and does not destroy (viewer-design §5, viewer-security
   §8), and object removal stays in the CLI (`cask gc`, `cask prune`), where it can be
@@ -94,6 +89,15 @@ reclamation), and every item is additive behind the existing `Backend`/`cas` mai
 contracts — so each item is unticked in its owning spec and recorded here instead of being
 implemented now. Revisit per item when an operator needs it; implementing one is additive
 work, not a redesign.
+
+**Reversal (one item): the object descriptor + sidecar checksum is now implemented** as
+`cas/verify/sidecar` (operations §6), because the three shipped maintenance hashers
+documented a capability the library could not express: a cheap check over a
+strongly-addressed store. Its producer, reader and checksum-validation path ship with it,
+`cask verify --checksums` reads records, and `cask gc`/`prune` reconcile them. The
+deferral above still holds for every other item, and the descriptor's own deferred parts
+(quarantine, alerting, a logical-payload checksum, a `references` field) are recorded in
+operations §6.5.
 
 ## 4. Checklist
 

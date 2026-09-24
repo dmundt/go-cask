@@ -1,9 +1,11 @@
 // Package adler32 provides an Adler-32 (RFC 1950) cas.Hasher for go-cask.
 //
 // Use it as the addressing hasher of a store that is deliberately keyed by
-// Adler-32, or not at all: cas.Verify compares the recomputed digest to the
-// object's address, so this hasher cannot validate an object addressed by
-// another algorithm (cas/verify/README.md).
+// Adler-32: cas.Verify compares the recomputed digest to the object's address,
+// so this hasher cannot validate an object addressed by another algorithm
+// (cas/verify/README.md). To use it as a cheap check over a strongly-addressed
+// store, record it with cas/verify/sidecar, which compares the recomputed
+// checksum with the record instead of with the address (operations §6).
 package adler32
 
 import (

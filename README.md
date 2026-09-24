@@ -15,6 +15,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
 - **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 - **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate object identity from validation, re-reading the bytes with the caller-supplied `Hasher` while the backend itself stays a storage-only `Digest -> bytes` layer.
+- **Cheap checks are opt-in** — `cas/verify/sidecar` records a per-object checksum (`crc32`, `adler32` or `crc64`) at `<base>/.meta/<hex>.json` beside objects still addressed by `SHA-256`, and `cask verify -checksums` checks the stored bytes against it; deleting the records loses the cheap check, never an object.
 - **Compatibility stays explicit** — `gob` remains Go-only; no MD5 or SHA-1 hasher ships with this module, so a legacy algorithm means a client-supplied `cas.Hasher` (`Digest` + `Validate`), and neither is for new data.
 
 ## Table of contents

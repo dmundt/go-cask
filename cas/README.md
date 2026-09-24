@@ -19,6 +19,7 @@
 - Optional compression layers: [codec/gzip](./codec/gzip/README.md), [codec/zlib](./codec/zlib/README.md), and [codec/flate](./codec/flate/README.md) for large or repetitive payloads
 - Compact custom option: [codec/binary](./codec/binary/README.md) for stable per-type binary payloads
 - Maintenance validation layer: [verify](./verify/README.md) with [crc32](./verify/crc32/README.md) for explicit, cheap consistency checks
+- Recorded sidecar checksums (opt-in): [verify/sidecar](./verify/sidecar/README.md) — a `cas.Backend` decorator that writes a cheap per-object checksum to `<base>/.meta/<hex>.json` beside a strongly-addressed object and validates the stored bytes against it, so a CRC can act as a second signal without becoming the identity
 - Durable backend: [backend/fs](./backend/fs/README.md)
 - Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
 - Compatibility-only codec: [codec/gob](./codec/gob/README.md)
@@ -36,7 +37,7 @@ The core stack is intentionally layered: the storage layer stays authoritative, 
 - [pack](./pack/README.md) — canonical chunk + manifest helper layer for staged payload workflows
 - [refs](./refs/README.md) — mutable named pointers ("refs") to a `cas.Digest`, with atomic writes and an append-only reflog
 - [repo](./repo/README.md) — typed, cross-type object registry (`Registry`, `Walk`, `Reachable`) promoted from gitlike's example pattern
-- [verify](./verify/README.md) — optional integrity/checksum helpers layered above the store: [crc32](./verify/crc32/README.md)
+- [verify](./verify/README.md) — optional integrity/checksum helpers layered above the store: [crc32](./verify/crc32/README.md), [adler32](./verify/adler32/README.md), [crc64](./verify/crc64/README.md), plus [sidecar](./verify/sidecar/README.md) for a recorded per-object checksum
 - [backend/packfs](./backend/packfs/README.md) — optional packfile backend for large append-only stores; distinct from the helper layer above
 
 Optional layers such as Bloom sit above the authoritative `cas` core and provide probabilistic front-end checks without changing the underlying store semantics.

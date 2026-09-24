@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v39
+version: v40
 ---
 
 # Library Design — go-cask
@@ -17,6 +17,7 @@ The `cas` package must be small, obvious, and hard to misuse. Related: `cas-core
 - Optional machinery stays out of the core: prefetch-on-access and cache-monitor recipes are demonstrated by `examples/notes` and `examples/artifacts` — never part of `package cas`; record the decision in `AGENTS.md` when made.
 - The mutable half of the store — named, atomically-written pointers to a `cas.Digest`, with a reflog — lives in `cas/refs` (`refs.Open(dir, opts...)`; `refs.WithClock`), never in `package cas`: `Store.Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`, the `Ref`/`Entry` types, `Option`, `ValidateName`, and the sentinels `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName`.
 - The typed, cross-type registry promoted from gitlike's example `Codecs`/`Repository`/`Resolver`/`WalkGraph` pattern lives in `cas/repo`, never in `package cas`: `Object`, `Decoder`, `Resolver`, `Registry`/`NewRegistry`, `Register`, `RegisterStore[T]`, `LookupStore[T]` (the typed, `any`-free way back to a registered store), `Walk`, `Reachable`, `UnknownObject`, and `UnknownTypeError` (`Unwrap() == cas.ErrUnknownType`).
+- The optional recorded-checksum maintenance layer lives in `cas/verify/sidecar`, never in `package cas`: `Backend` (a `cas.Backend` decorator), `New`, `WithBase`/`WithChecksum`/`WithDirSync`/`WithMaxRecordBytes`, `Record`/`RecordVersion`/`DefaultMaxRecordBytes`, `Verifier`, `VerifyReport`, `ReconcileReport`, and its two sentinels. It adds no identifier to `package cas` — the budget above is unchanged — because the distinction it names is its own: `ErrUnrecorded` separates "no record" from "no object" (both are `cas.ErrNotFound`), and `ErrChecksumAlgorithm` separates a reader change from damage (as `cas.ErrCodecMismatch` does one layer down).
 - The `gitlike` layer is NOT part of `cas`.
 
 ## 2. Error contract
