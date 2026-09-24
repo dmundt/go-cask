@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v25
+version: v26
 tags: [go-cask]
 status: stable
 ---
@@ -27,6 +27,7 @@ Governs the other files in this folder. Every agent (Copilot, other AI tooling) 
 - The folder is the **single source of truth** for how go-cask is designed, built, secured, tested, and operated.
 - Every file states **requirements** (MUST/SHALL be true) and **context** (why), not project prose.
 - New files only when a real gap exists (cf. examples.md §5); prefer extending an existing file.
+- Agent skills under `.agents/skills/` are instruction files too, but they are process, not specification: they are owned by [`../../.agents/AGENT.md`](../../.agents/AGENT.md) and are deliberately **not** members of this set, so they carry two-key frontmatter instead of the four keys §3 requires. A skill MUST NOT state a requirement this folder already states; reference it instead.
 
 ## 2. File naming
 

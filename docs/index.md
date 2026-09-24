@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v17
+version: v20
 ---
 
 # go-cask Rules Index
@@ -45,6 +45,8 @@ version: v17
 | `benchmarks/` | [`benchmarks/AGENT.md`](/benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
+| `.agents/` (agent tooling: skills, their guide, vendored provenance) | [`../.agents/AGENT.md`](../.agents/AGENT.md) governs it; skills are also their own `SKILL.md` (see the row below) |
+| `.agents/skills/` (agent skills discovered at the project root) | the skill's own `SKILL.md` (directory bundle `<name>/SKILL.md`): [`../.agents/skills/cask-change/SKILL.md`](../.agents/skills/cask-change/SKILL.md) points at the rule files for a change, [`../.agents/skills/caveman/SKILL.md`](../.agents/skills/caveman/SKILL.md) is vendored style with provenance in its [`NOTICE`](../.agents/skills/caveman/NOTICE) |
 | Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
 
 **Updating:** add/remove/re-target rows when rule files change; bump version on material change. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).
