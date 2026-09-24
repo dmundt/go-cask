@@ -454,6 +454,59 @@ for filename in sorted(files):
             target_path = path.parent / unquote(parsed.path)
         if not target_path.exists():
             errors.append(f'{filename}: {target}')
+# CHANGELOG.md is published on the website and read by scripts/release-notes.sh,
+# so its own structure is checked here rather than left to review (AGENTS.md,
+# "Changelog and release-note policy"). A release heading without a link
+# definition renders as literal bracket text instead of a link; a heading
+# repeated inside one release section merges two sections into one, which is how
+# three `### Security` blocks accumulated in `Unreleased`; and an `[Unreleased]`
+# range that still starts at an older tag folds already-released versions back
+# into "unreleased" and reports the wrong compare range for the next release.
+changelog_head = re.compile(r'^## \[(?P<label>[^\]]+)\]')
+changelog_section = re.compile(r'^###\s+(?P<title>Added|Changed|Deprecated|Removed|Fixed|Security)\s*$')
+changelog_link = re.compile(r'^\[(?P<label>[^\]]+)\]:\s*\S')
+changelog_unreleased = re.compile(r'^\[Unreleased\]:\s*\S*?compare/(?P<base>[^\s]+?)\.\.\.HEAD\s*$')
+changelog_lines = (repo_root / 'CHANGELOG.md').read_text(
+    encoding='utf-8', errors='ignore'
+).splitlines()
+defined = {
+    match.group('label')
+    for match in (changelog_link.match(line) for line in changelog_lines)
+    if match
+}
+release = None
+newest_release = None
+unreleased = None
+seen = set()
+for number, line in enumerate(changelog_lines, 1):
+    compare = changelog_unreleased.match(line)
+    if compare and unreleased is None:
+        unreleased = (number, compare.group('base'))
+    heading = changelog_head.match(line)
+    if heading:
+        release = heading.group('label')
+        seen = set()
+        if newest_release is None and release != 'Unreleased':
+            newest_release = release
+        if release not in defined:
+            errors.append(
+                f'CHANGELOG.md:{number}: release heading [{release}] has no '
+                f'[{release}]: link definition'
+            )
+        continue
+    section = changelog_section.match(line)
+    if section and release is not None:
+        if section.group('title') in seen:
+            errors.append(
+                f'CHANGELOG.md:{number}: ### {section.group("title")} repeats '
+                f'in the {release} section'
+            )
+        seen.add(section.group('title'))
+if unreleased and newest_release and unreleased[1] != newest_release:
+    errors.append(
+        f'CHANGELOG.md:{unreleased[0]}: [Unreleased] compares from '
+        f'{unreleased[1]}, but the newest released section is {newest_release}'
+    )
 for error in sorted(set(errors)):
     print(f'Markdown integrity error: {error}', file=sys.stderr)
 if errors:
