@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v37
+version: v38
 ---
 
 # Defaults and Behavior — go-cask
@@ -47,6 +47,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | `Prune` dry-run default | `true` (delete needs explicit flag) | consistency §5 |
 | `clean` default min-age | 24 h | cli §2 |
 | Object age source | file mtime ≈ first-`Put` time | consistency §5 |
+| Bloom filter ceiling | `bloom.MaxBits = 1<<32` bits per filter — a standard/persistent bitmap is at most 512 MiB, a counting filter 2 GiB because each slot is a 32-bit counter; shard the key space rather than raise it | `cas/bloom/common.go` (no spec states this ceiling yet) |
 
 ## 3. HTTP defaults
 
@@ -68,7 +69,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 | Startup | `cask web` IS the viewer; loopback-only default bind; admin token never logged — shown once on stdout (`-show-token` forces it without a terminal, `-show-token=false` suppresses it, absent keeps the terminal heuristic), or supplied with `-token-file`/`CASK_VIEWER_TOKEN`; a non-loopback bind prints no login link, only the bind and the `https://` expectation | cli §2, viewer-security |
 | Default bind | `127.0.0.1:8080` | viewer-security |
 | Short-hash display | 8 hex chars (`9f86d081`) — `cas.Digest.Prefix(8)`, the core's total display helper | viewer-design §7 |
-| Generic-list hash format | `<shorthash> (<type>)` | viewer-design §7 |
+| Generic-list row | Two separate cells from the object row: a short-digest cell (`cas.Digest.Prefix(8)`) and a type-label cell (`unreadable` when the bytes could not be read). The list never renders a composite `<shorthash> (<type>)` string | viewer-design §1, §7 |
 | Session idle timeout | 30 min | viewer-security |
 | Session max lifetime | 8 h | viewer-security |
 | Session cookie | Always `HttpOnly`, `SameSite=Strict`, and `Secure` | viewer-security |
@@ -86,6 +87,7 @@ Single reference for "how does it behave by default?" and "what are the numbers?
 |---|---|---|
 | GC trigger | explicit only (never automatic) | consistency §4 |
 | GC algorithm | mark-and-sweep from application roots | consistency §4 |
+| GC grace default | `--min-age` **1 h** (`gcDefaultGrace`): a sweep reclaims only unreachable objects older than the grace, so a fresh write a live writer made survives a racing sweep; `--min-age 0` is the dangerous variant and warns | cli §2, consistency §4 |
 | `Verify` cadence | on demand (CLI `verify <hash>\|--all`, viewer Verify control); nothing samples and nothing is scheduled | consistency §2, §6 |
 | Broken-object handling | report + audit-log (`ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` line, viewer audit); no quarantine and no alert | consistency §2 |
 | Dangerous all-objects prune | no dedicated mode: `cask prune` takes a required root list, `--dry-run` is the default, and `--min-age 0` warns | consistency §5 |
@@ -111,7 +113,8 @@ These are default targets, not absolutes, and they are **aspirational**: nothing
 
 | Item | Default/value | Defined in |
 |---|---|---|
-| Toolchain / `go.mod` | Go 1.27 | coding-guidelines §1 |
+| Module floor (`go.mod`) | `go 1.24.0` — the minimum supported Go, the `omitzero` JSON-tag floor | coding-guidelines §1, library-design §5 |
+| Build/gate toolchain | `toolchain go1.27.1` — what the repository builds and gates with (the module self-manages its toolchain) | coding-guidelines §1, library-design §5 |
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions require justification | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS; one scoped embedded viewer stylesheet | coding-guidelines §4 |
