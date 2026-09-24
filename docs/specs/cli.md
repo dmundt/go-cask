@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v27
+version: v28
 ---
 
 # CLI — go-cask
@@ -36,7 +36,7 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 | `list [-limit <n>] [-offset <n>] [-json]` | list objects (`{total, objects}` shape); a digest-named file that is not a readable object (a stray file in the store directory) is skipped with a stderr warning instead of failing the command (cas-core §4.4) |
 | `meta <hash> [-json]` | metadata of one object (size, type, algorithm) |
 | `stats` | storage statistics (`N objects, M bytes`) |
-| `verify <hash>\|--all` | integrity check (single object or full scan) |
+| `verify <hash>\|--all [-checksums [-checksum <algo>]]` | integrity check (single object or full scan; `-checksums` checks the per-object checksum recorded beside each object instead of its address) |
 | `gc --min-age <dur> <roots...>` | reclaim objects absent from `<roots...>` AND older than `--min-age` (grace default 1h; `--min-age 0` = immediate, dangerous); `<roots...>` must already be the complete reachable set, not just entry points |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
 | `clean [--min-age <dur>]` | remove orphan `*.tmp` files older than `--min-age` (default 24 h) |
@@ -107,7 +107,9 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 
 ## 4. Conventions
 
-- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-tokens`, `-token-file`, `-trusted-proxy`, `-allow-insecure-bind`, `-show-token` (viewer: display the generated token's one-time login hint even without a terminal; `-show-token=false` never shows it), `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- Flags: single-dash long names (`-store`, `-backend`, `-json`, `-o`, `-min-age`, `-dry-run`, `-limit`, `-offset`, `-count`, `-bind`, `-hash-algo`, `-checksums`, `-checksum`, `-tokens`, `-token-file`, `-trusted-proxy`, `-allow-insecure-bind`, `-show-token` (viewer: display the generated token's one-time login hint even without a terminal; `-show-token=false` never shows it), `-no-open` (viewer: skip opening the browser), `-config` (deferred)).
+- `-checksums` is `verify`'s recorded-checksum mode (operations §6): it reads the per-object record beside each object rather than recomputing the object's address, so it is a cheap check over a strongly-addressed store, not an identity check. `-checksum <algo>` names which record to read and accepts the shipped checksums (`crc32` — the default, `adler32`, `crc64`); it requires `-checksums` (exit 2 otherwise) and an unknown name is a usage error. A record written by another algorithm is a runtime error naming the mismatch, never corruption. An object with **no** record is reported as unchecked and does **not** fail the command: only a mismatch exits 1. The mismatch line is `CHECKSUM MISMATCH <hash>: …` on stderr, deliberately distinct from the address check's `CORRUPT <hash>: …`. A mismatch is reported and never repaired, and this mode writes no record: records come from the library decorator (`cas/verify/sidecar`).
+- `gc` and a non-dry `prune` reconcile records after their sweep — removing the record of every object the sweep deleted — and print a `checksum records: …` summary when the store has any; a store without records is unaffected.
 - `-backend` accepts `fs` (default) or `packfs`; anything else is a usage error (exit 2). An absent flag is not the same as an unknown one: it selects the documented default without passing through validation.
 - `put`/`get` stream bytes; the CLI never buffers large objects (performance P-05).
 - No secrets in output: the startup token is never logged at any level and never echoed; the one place it is displayed is the one-time login hint on **stdout** — on an interactive stdout, or in any run that passes `-show-token` — and `-token-file`/`CASK_VIEWER_TOKEN` supply it unattended. Errors name the flag or the file, never the token (viewer-security §5.1, §9, §11).
@@ -130,6 +132,8 @@ The contract for `cmd/cask`, the single binary: a thin CLI over the cas library 
 - [x] Hash arguments parsed with `sha256.Parse` (exit 2 on malformed)
 - [x] `-backend fs|packfs` selects the storage backend; every store operation runs over either
 - [x] `verify`/`gc`/`prune`/`clean` work over a packed store, or fail with `cas.ErrUnsupported` naming the operation and the backend
+- [x] `verify -checksums` reads the recorded per-object checksums (`operations §6`) and exits non-zero only on a mismatch; a record-less object is reported unchecked, and the mismatch line is distinct from the address `CORRUPT` line
+- [x] `gc`/`prune` reconcile the records of the objects they sweep; a store with no records is unaffected
 - [x] The store is closed on the write path; `web` requires the `fs` backend
 - [x] Plain text by default, `-json` on request; errors on stderr; the viewer's login notice on stdout
 - [x] Exit codes 0/1/2 per §3

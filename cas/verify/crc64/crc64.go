@@ -1,9 +1,11 @@
 // Package crc64 provides a CRC-64/ECMA-182 cas.Hasher for go-cask.
 //
 // Use it as the addressing hasher of a store that is deliberately keyed by
-// CRC-64, or not at all: cas.Verify compares the recomputed digest to the
-// object's address, so this hasher cannot validate an object addressed by
-// another algorithm (cas/verify/README.md).
+// CRC-64: cas.Verify compares the recomputed digest to the object's address, so
+// this hasher cannot validate an object addressed by another algorithm
+// (cas/verify/README.md). To use it as a cheap check over a strongly-addressed
+// store, record it with cas/verify/sidecar, which compares the recomputed
+// checksum with the record instead of with the address (operations §6).
 package crc64
 
 import (

@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v19
+version: v20
 ---
 
 # Performance — go-cask
@@ -33,6 +33,8 @@ Writes are atomic (temp file → `f.Sync()` → `os.Rename`; Go's `os.Rename` al
 ## 3. One-pass hashing (`Store.Put`)
 
 Serialize once: `Store.Put` marshals the envelope into one buffer, digests that buffer with the injected `Hasher`, then streams it to `raw.Put` — the envelope is never marshaled twice. Surfaces that hash while writing (the CLI's `put` and `examples/api`'s upload) spool and hash in a single pass through `io.MultiWriter`/`io.Copy` into `sha256.NewHasher()`. `Backend.Put(ctx, d, r)` MUST stream `r` without buffering; the digest `d` is the trusted address (`Verify` is the integrity check).
+
+**Recorded sidecar checksums cost one extra read per recorded `Put`** (`cas/verify/sidecar`, operations §6). A record must describe the *stored* bytes, and `cas.Hasher` exposes only a reader-based `Digest` — no incremental writer, and the sidecar may not add one to the core — so the checksum is computed in one streaming pass over what `Get` returns after the write publishes the object, plus one extra file and atomic rename per `Put`. Reads (`Get`/`Exists`/`List`/`Stats`) are untouched, so the cost sits only on the write path of a store that opted in; `Rec.Verifier(...)`'s `VerifyAll` is likewise one streaming read per recorded object. This is the price of the feature, stated rather than hidden: recording is off by default, and a caller that never wraps a backend pays nothing.
 
 ## 4. Allocation and streaming rules
 

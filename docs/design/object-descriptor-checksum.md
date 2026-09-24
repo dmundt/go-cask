@@ -2,12 +2,23 @@
 type: Design Document
 title: Object Descriptor + Sidecar Checksum — go-cask
 description: Non-normative design note for storing a small object descriptor and optional sidecar checksum outside the object bytes, without changing the digest model or the Backend contract.
-version: v2
+version: v3
 ---
 
 # Object Descriptor + Sidecar Checksum — go-cask
 
 Non-normative design sketch. The canonical rules remain in the spec set (`cas-core.md`, `operations.md`, `consistency.md`).
+
+## 0. Status: implemented, with differences
+
+The recorded-checksum path this note argued for is **shipped** as `cas/verify/sidecar`; the normative contract is `operations.md` §6, and this note is now the rationale behind it. Where the sketch below differs from that contract, the contract wins. The differences, recorded rather than implied:
+
+- **Placement:** the sketch puts the descriptor at the `Store[T]` layer (§3.2). The shipped layer is one rung lower — a `cas.Backend` decorator that composes with `cas.New`, `gitlike.NewRepository` and `internal/store.Open` unchanged, so it works for byte-layer consumers and needs no store change.
+- **What is checksummed:** the sketch checksums the *logical payload* (`payload_checksum`). v1 checksums the **stored bytes** — exactly what `Backend.Get` returns — and therefore does not satisfy the "checksum independent of the raw object bytes" use case in §5. A logical-payload layer is a larger feature and stays deferred (operations §6.5).
+- **Field names and encoding:** the shipped record uses `checksum_algo`/`checksum`/`size` with bare lowercase-hex digests (`encoding.TextMarshaler`), not `payload_checksum`/`payload_size` with an algorithm prefix.
+- **`references`:** not in v1. Only the typed layer knows `References()`, a byte-layer producer cannot derive it, and the object type stays the authoritative traversal source (the sketch says the same in §2.2).
+- **Read path:** the sketch validates the descriptor inside `Store.Get`. The shipped read path is explicit and separate — `Rec.Verifier(...).Verify` / `VerifyAll` — so a read never pays for a check it did not ask for, and `Get` delegates untouched.
+- **Quarantine:** still not implemented (§3.3 says "quarantine + audit"); the shipped path reports a mismatch and never moves bytes (operations §6.3).
 
 ## 1. The constraint
 
@@ -41,7 +52,7 @@ Exact file layout:
 <base>/.meta/<hex>.json       // sidecar descriptor for that object
 ```
 
-The descriptor is keyed by the same digest as the main object:
+The descriptor is keyed by the same digest as the main object. The sketch's field names follow (the shipped record is `operations.md` §6.2; §0 lists the differences):
 
 ```json
 {
@@ -68,7 +79,7 @@ The important rule is that the descriptor is side data; it is never part of the 
 
 ## 3. Where it fits in the boundary
 
-This sits at the `Store[T]` layer, not in the `Backend` interface.
+This sits at the `Store[T]` layer, not in the `Backend` interface. (The shipped layer sits one rung lower, as a `cas.Backend` decorator — §0.)
 
 ### 3.1 Backend boundary
 
@@ -89,7 +100,7 @@ That is intentionally byte-only. It knows nothing about descriptors, envelopes, 
 
 ### 3.2 Store boundary
 
-`Store[T]` is the right insertion point because it already owns:
+`Store[T]` is the right insertion point because it already owns (the shipped decorator instead takes the caller's `Hasher`, because it sits below the store — §0):
 
 - `Codec[T]`
 - object validation
@@ -136,7 +147,7 @@ Use this pattern when you need one of the following:
 
 - packaging metadata for a large or chunked object
 - app-level provenance or audit info for a content-addressed blob
-- a checksum independent of the raw object bytes for a logical payload layer
+- a checksum independent of the raw object bytes for a logical payload layer — **not satisfied by v1**, which checksums the stored bytes (operations §6.2, and §0 above)
 - a future object store that needs a manifest without changing the core backend contract
 
 Do not use it when the object is a small whole-object blob whose digest already covers the exact stored bytes. In that case, the descriptor is unnecessary overhead and the raw digest is sufficient.

@@ -292,6 +292,7 @@ coverage_targets=(
   "80|./cas/verify/adler32|verify"
   "80|./cas/verify/crc32|verify"
   "80|./cas/verify/crc64|verify"
+  "80|./cas/verify/sidecar|verify"
   "80|./gitlike|reference"
   "80|./internal/index|support"
   "80|./internal/web|viewer"

@@ -7,12 +7,13 @@ This package keeps integrity validation explicit and separate from the storage m
 - The raw store remains a `Digest -> bytes` backend.
 - The caller chooses the verification algorithm and passes it explicitly to `cas.Verify` or `cas.NewVerifier`.
 - Maintenance helpers such as `cas/verify/crc32` are `cas.Hasher` implementations for a store deliberately addressed by that checksum — they address and validate the same objects, and cannot validate an object addressed by another algorithm.
+- `cas/verify/sidecar` is the sibling maintenance layer for the other direction: it records a per-object checksum beside objects addressed by a strong hash and validates the stored bytes against that record, so a checksum can act as a cheap second check without changing the object's address (operations §6).
 
 ## Rules
 
 - Do not change the backend contract or object-address semantics.
 - Keep verification layered above the store, not inside it.
-- A checksum hasher verifies only objects addressed with that same checksum: `cas.Verify` compares the recomputed digest to the object's address, so never document or test one as a cheap check over a strongly-addressed store (`cas/verify/README.md`).
+- A checksum hasher verifies only objects addressed with that same checksum: `cas.Verify` compares the recomputed digest to the object's address, so never document or test one as a cheap check over a strongly-addressed store. The cheap check is `cas/verify/sidecar`'s job — it compares against the recorded checksum, never against the address (`cas/verify/README.md`).
 - Prefer caller-controlled `Hasher` implementations and explicit helper packages.
 - If a helper is tagged as a maintenance check, say so clearly in docs and examples.
 

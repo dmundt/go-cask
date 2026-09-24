@@ -6,7 +6,23 @@
 
 The storage model stays boring and stable: object identity remains a `cas.Digest`, and the backend is still a raw `Digest -> bytes` store. `crc32` gives a caller that deliberately addresses objects by CRC-32 a hasher to store and verify them with.
 
-## Typical use
+## Typical use: a cheap check over a strongly-addressed store
+
+This is what the recorded-checksum path is for: the object keeps its `SHA-256` address, and the CRC-32 of the stored bytes sits beside it.
+
+```go
+backend, _ := fs.New("store/objects")
+rec, _ := sidecar.New(backend, sidecar.WithChecksum(crc32.Name, crc32.New()))
+store := cas.New(rec, json.New[*Blob](), sha256.New())
+
+blob := &Blob{Data: []byte("payload")}
+d, _ := store.Put(ctx, blob) // address is SHA-256; the record holds CRC-32
+err := rec.Verifier(crc32.Name, crc32.New()).Verify(ctx, d) // cheap check
+```
+
+The record lives at `<base>/.meta/<hex>.json`, the address is untouched, and an object with no record is reported as unchecked rather than corrupt (`operations.md` §6, [`sidecar`](../sidecar/README.md)).
+
+## Typical use: a checksum-addressed store
 
 ```go
 backend := mem.New()
@@ -23,4 +39,4 @@ The address and the verifying hasher must be the same algorithm: `cas.Verify` co
 
 ## Policy
 
-Use CRC-32 for a deliberately checksum-addressed store, for fixtures, and for interchange with systems that key data by CRC-32. Keep a stronger hash such as `SHA-256` for durable content-address identity; a cheap check over such a store needs a per-object sidecar checksum, which the library does not implement (`extensions.md` §3.1). Choose `crc64` for a wider digest and `adler32` for the cheapest computation ([selection rule](../README.md#choosing-among-the-three)).
+Use CRC-32 for a deliberately checksum-addressed store, for fixtures, and for interchange with systems that key data by CRC-32. Keep a stronger hash such as `SHA-256` for durable content-address identity; a cheap check over such a store is a per-object record, which [`sidecar`](../sidecar/README.md) implements (`operations.md` §6). Choose `crc64` for a wider digest and `adler32` for the cheapest computation ([selection rule](../README.md#choosing-among-the-three)) — the same rule picks a record's algorithm.

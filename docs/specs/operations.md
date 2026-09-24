@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v15
+version: v16
 ---
 
 # Operations — go-cask
@@ -136,15 +136,70 @@ done < /tmp/cask-layout-files.txt
 
 If the new layout is canonical and verified, replace the old store path in place; otherwise recover from `./store-backup-*` before any writes resume. The core rule is unchanged: keep the old data tree intact until the new one passes `Verify`, then flip the active root. There is no silent in-place migration in the library; the migration is an operational rewrite plus a verified cutover.
 
-## 6. Object descriptor + sidecar checksum — designed, not implemented
+## 6. Object descriptor + sidecar checksum
 
-The core does not put a payload checksum inside the TLV envelope. The object digest is already the checksum of the stored bytes, so a payload checksum can only ever be an optional sidecar descriptor **above** the `Backend` contract: putting it inside the object bytes would make it part of the object identity and create a circular dependency, because the checksum would be computed over bytes that contain the checksum.
+The core does not put a payload checksum inside the TLV envelope. The object digest is already the checksum of the stored bytes, so a payload checksum can only ever be an optional sidecar record **above** the `Backend` contract: putting it inside the object bytes would make it part of the object identity and create a circular dependency, because the checksum would be computed over bytes that contain the checksum.
 
-**Nothing writes or reads such a descriptor today.** There is no `<base>/.meta/<digest>.json` producer, reader, or checksum-validation path in the library, the CLI, or the viewer, so an operator must not budget for one (extensions §3). The sidecars that do exist are unrelated shapes: `cas/pack` writes a string-map manifest for chunked payloads, and the old `examples/files` `.crc32` sidecar was deliberately deleted, because an object verifies from its own stored bytes alone. The concrete layout, fields, and read path remain a design sketch in `docs/design/object-descriptor-checksum.md`; the required producer work is catalogued in extensions §3 with what exists and what does not.
+`cas/verify/sidecar` implements that record. It is **opt-in** — a store has one only when a caller wraps its backend — and it holds no objects: deleting the record directory loses the cheap check, never an object. Its purpose is the one thing content addressing cannot express: a cheap second check over a store whose address is a strong hash, so bytes can be re-read with a CRC while SHA-256 remains the identity.
 
-### 6.1 Why not in the TLV?
+### 6.1 Layout
 
-Putting the checksum into the object bytes would make it part of the object identity. That creates a circular dependency: the checksum must be computed over bytes that contain the checksum itself. The result is a different hash for a different payload and a store where object identity no longer matches the bytes you stored. The repo therefore keeps the TLV envelope stable and, if the descriptor ever lands, keeps checksum metadata in a sidecar record outside the hash input.
+```text
+<base>/<fan-out>/<hex>        object bytes (the backend's own layout, unchanged)
+<base>/.meta/<hex>.json       sidecar record for that digest
+<base>/.meta/<hex>.<n>.tmp    atomic-write scratch, reclaimed by the backend's Clean
+```
+
+`<base>` is the directory the backend reports as `BasePath()`: for `fs` the path passed to `fs.New`, for `packfs` the loose tree at `<base>/loose`, because that is the directory its `List`, `Stats` and `Clean` operate on.
+
+`.meta` is the one sanctioned resident under a store's base (AGENTS.md, "The store base belongs to exactly one store"). It is sanctioned because every file in it is outside both rules that make a base single-owner: the `.json` suffix keeps a record out of `List`/`Stats`, which read a digest from the last path element only, and the `.tmp` suffix puts a crashed write inside the backend's own scratch reclamation. A record is never an object, and an object without a record is never damage.
+
+### 6.2 Record, version 1
+
+```json
+{
+  "version": 1,
+  "digest": "abcd…",
+  "type": "blob@1",
+  "codec": "json",
+  "checksum_algo": "crc32",
+  "checksum": "1a2b3c4d",
+  "size": 4096,
+  "created_at": "2026-10-01T12:00:00Z"
+}
+```
+
+- `digest` and `checksum` are bare lowercase hex (`cas.Digest` through `encoding.TextMarshaler`, cas-core §4.6).
+- `checksum` covers the **stored bytes** — exactly what `Backend.Get` returns, in one streaming pass. It is not a payload checksum: a logical-payload layer is a larger feature, and v1 does not claim it.
+- `checksum_algo` names the algorithm the writer computed with (for example `crc32.Name`) and is compared on read, because crc32 and adler32 are both four bytes wide: width alone cannot tell a wrong-algorithm read from corruption.
+- `type` and `codec` are derived best-effort from a bounded prefix of the stored bytes, and are empty when those bytes are not a go-cask envelope (a `snapshot` archive, for instance) or when the envelope does not fit the captured prefix. A write never fails because an optional field could not be derived, and the object is never buffered.
+- `size` is the stored byte count. A disagreement with the object's actual size is reported, never repaired.
+- `created_at` is the first-record time (UTC). A repeat `Put` of the same digest under the same algorithm leaves an existing valid record untouched, so the record stays deterministic and its creation time is not refreshed.
+- There is no `references` field in v1: only the typed layer knows `References()`, a byte-layer producer cannot derive it, and the object type stays the authoritative traversal source.
+
+### 6.3 Read path, failures and reconciliation
+
+A reader checks a record, never the address: `cas.Verify` with the addressing hasher remains the identity check, and the two are independent.
+
+| Condition | Result |
+|---|---|
+| record absent | `cas.ErrNotFound` (wrapped by `sidecar.ErrUnrecorded`) — an unchecked object, never corruption |
+| `checksum_algo` differs from the reader's configured name | `sidecar.ErrChecksumAlgorithm`; a reader change must not read as damage, the same reasoning as `cas.ErrCodecMismatch` |
+| recomputed checksum or stored size differs | `cas.ErrCorrupt`, wrapped |
+| record's `digest` disagrees with the object, or the record is unparseable, the wrong version, or larger than the read cap | `cas.ErrCorrupt` on read, never a silent skip |
+| the inner backend returns before the reader reaches EOF | a loud error and **no** record: a checksum over partial bytes is worse than none |
+
+Ordering and crash rule: **object first, record second**. A crash between the two leaves an object with no record — unchecked, never corrupt — and `Reconcile` closes the gap. A record write is temp file → `f.Sync()` → rename inside `.meta`; the directory sync is opt-in (`WithDirSync`), matching the backend's own configurable directory fsync (§1).
+
+`Reconcile` removes the record of every object that is gone and reports the stored objects that have no record. It never deletes an object and never invents a record: only a writer that read the bytes can record a checksum. `cask gc` and a non-dry `cask prune` run it after their sweep, so a store with records does not accumulate orphans; the backend's `Clean` reclaims `.meta` scratch like any other temp file.
+
+### 6.4 Why not in the TLV?
+
+Putting the checksum into the object bytes would make it part of the object identity. That creates a circular dependency: the checksum must be computed over bytes that contain the checksum itself. The result is a different hash for a different payload and a store where object identity no longer matches the bytes you stored. The repo therefore keeps the TLV envelope stable and keeps checksum metadata in a sidecar record outside the hash input.
+
+### 6.5 Not implemented
+
+Quarantine of a mismatching object, alerting, a logical-payload (as opposed to stored-bytes) checksum, and a `references` field in the record stay deferred (extensions §3.1; consistency §2). This path reports; it does not move bytes aside, and it never repairs an object.
 
 ## 7. Backup
 
@@ -162,5 +217,5 @@ Putting the checksum into the object bytes would make it part of the object iden
 - [x] verify runs on demand; mismatch → `ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` report, viewer audit
 - [ ] quarantine on mismatch + alerting — not implemented (extensions §3)
 - [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
-- [ ] object descriptor + sidecar checksum — designed (rationale in §6.1) but not implemented: no producer, reader, or validation path (extensions §3)
+- [x] object descriptor + sidecar checksum — implemented opt-in as `cas/verify/sidecar` (`<base>/.meta/<hex>.json`, record version 1): producer, reader, checksum validation, `cask verify --checksums`, and record reconciliation in `cask gc`/`prune` (§6); quarantine, alerting, a logical-payload checksum and a `references` field stay deferred (extensions §3.1)
 - [x] backup procedure documented; the packfile backend's doubled on-disk footprint and missing space reclamation stated (performance §9)

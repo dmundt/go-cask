@@ -8,10 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/cas/verify/adler32"
+	"github.com/dmundt/go-cask/cas/verify/crc32"
+	"github.com/dmundt/go-cask/cas/verify/crc64"
+	"github.com/dmundt/go-cask/cas/verify/sidecar"
 	"github.com/dmundt/go-cask/internal/index"
 	"github.com/dmundt/go-cask/internal/store"
 )
@@ -343,15 +348,22 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 
 // verifyArgs holds verify's flag values.
 type verifyArgs struct {
-	all bool
+	all       bool
+	checksums bool
+	checksum  string
 }
 
 // verifyFlags registers verify's flags over a; opVerify and the command table
 // both use it, so the accepted and the documented flags are one set (cli.md
 // §2, §4). --all is the cli.md §2 alternative to a single <hash>.
+// --checksums switches the check from the object's address to the per-object
+// checksum recorded beside it (operations §6), and --checksum names which
+// recorded checksum to read.
 func verifyFlags(a *verifyArgs) *flag.FlagSet {
 	flags := newFlagSet("verify")
 	flags.BoolVar(&a.all, "all", false, "verify every object in the store")
+	flags.BoolVar(&a.checksums, "checksums", false, "check the per-object checksum recorded beside each object instead of its address")
+	flags.StringVar(&a.checksum, "checksum", crc32.Name, "recorded checksum to check with --checksums ("+checksumNames()+")")
 	return flags
 }
 
@@ -360,6 +372,18 @@ func opVerify(ctx context.Context, t *store.Store, args []string) error {
 	flags := verifyFlags(&a)
 	if err := parseFlags(flags, args); err != nil {
 		return err
+	}
+	checksumSet := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "checksum" {
+			checksumSet = true
+		}
+	})
+	if checksumSet && !a.checksums {
+		return usagef("verify --checksum needs --checksums")
+	}
+	if a.checksums {
+		return verifyChecksums(ctx, t, &a, flags)
 	}
 	if a.all {
 		if flags.NArg() != 0 {
@@ -378,6 +402,129 @@ func opVerify(ctx context.Context, t *store.Store, args []string) error {
 		return err
 	}
 	fmt.Printf("%s ok\n", sha256.Format(h))
+	return nil
+}
+
+// checksumNames lists the checksums --checksum accepts, for the usage text.
+func checksumNames() string {
+	return strings.Join([]string{crc32.Name, adler32.Name, crc64.Name}, ", ")
+}
+
+// checksumHasher resolves a shipped checksum by name for the CLI. There is no
+// registry in the library — the client owns the algorithm — so the name is
+// resolved here, at the one place that has to turn a flag value into a hasher.
+func checksumHasher(name string) (cas.Hasher, error) {
+	switch name {
+	case crc32.Name:
+		return crc32.New(), nil
+	case adler32.Name:
+		return adler32.New(), nil
+	case crc64.Name:
+		return crc64.New(), nil
+	default:
+		return nil, usagef("unknown checksum %q (want %s)", name, checksumNames())
+	}
+}
+
+// verifyChecksums answers the cheap question the recorded checksums exist for:
+// do the stored bytes still match the checksum written beside them? It is a
+// read-only maintenance check — it never records a checksum and never repairs
+// anything (operations §6). The object's address is not re-checked here; that is
+// plain `cask verify`.
+func verifyChecksums(ctx context.Context, t *store.Store, a *verifyArgs, flags *flag.FlagSet) error {
+	hasher, err := checksumHasher(a.checksum)
+	if err != nil {
+		return err
+	}
+	rec, err := sidecar.New(t.Backend)
+	if err != nil {
+		return err
+	}
+	verifier := rec.Verifier(a.checksum, hasher)
+	if a.all {
+		if flags.NArg() != 0 {
+			return usagef("verify --all takes no additional arguments")
+		}
+		return verifyAllChecksums(ctx, verifier, a.checksum)
+	}
+	if flags.NArg() != 1 {
+		return usagef("verify needs exactly one <hash> or --all")
+	}
+	h, err := sha256.Parse(flags.Arg(0))
+	if err != nil {
+		return usagef("invalid hash: %v", err)
+	}
+	err = verifier.Verify(ctx, h)
+	switch {
+	case err == nil:
+		fmt.Printf("%s %s checksum ok\n", sha256.Format(h), a.checksum)
+		return nil
+	case errors.Is(err, sidecar.ErrUnrecorded):
+		// Absence is unchecked, not corrupt: nothing was verified and nothing
+		// is wrong with the object (#196).
+		fmt.Printf("%s no %s checksum record\n", sha256.Format(h), a.checksum)
+		return nil
+	case errors.Is(err, cas.ErrCorrupt):
+		fmt.Fprintf(os.Stderr, "%s %s: %v\n", checksumMismatchLabel, h, err)
+		return fmt.Errorf("%s failed its recorded %s checksum", h, a.checksum)
+	default:
+		return err
+	}
+}
+
+// checksumMismatchLabel starts a recorded-checksum mismatch line. It is
+// deliberately not "CORRUPT", which cli.md reserves for an object whose bytes no
+// longer match its address (cas.ErrDigestMismatch): an operator must be able to
+// tell "the store's identity no longer holds" from "the cheap check disagrees",
+// and the two have different remedies.
+const checksumMismatchLabel = "CHECKSUM MISMATCH"
+
+// verifyAllChecksums checks every record the store's objects have. A mismatch is
+// reported per object; an object without a record is counted, not listed —
+// listing them is what `verify --checksums <hash>` is for, and a store that
+// turned recording on recently has many.
+func verifyAllChecksums(ctx context.Context, verifier *sidecar.Verifier, algo string) error {
+	report, err := verifier.VerifyAll(ctx)
+	if report != nil {
+		for _, h := range report.Bad {
+			fmt.Fprintf(os.Stderr, "%s %s: %v\n", checksumMismatchLabel, h,
+				fmt.Errorf("%w: %s failed its recorded %s checksum", cas.ErrCorrupt, h, algo))
+		}
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("checked %d recorded objects, %d corrupt, %d unrecorded\n",
+		report.Checked, len(report.Bad), len(report.Unrecorded))
+	if len(report.Bad) > 0 {
+		return fmt.Errorf("%d objects failed their recorded checksum", len(report.Bad))
+	}
+	return nil
+}
+
+// reconcileChecksums drops the record of every object a sweep deleted, so a
+// store with sidecars does not accumulate orphan records (operations §6). It is
+// a no-op for a store that has no records, and it removes nothing but records:
+// the sweep's deleted objects are its only input.
+func reconcileChecksums(ctx context.Context, t *store.Store, verb string) error {
+	// A backend that cannot name its base keeps its records nowhere, so there is
+	// nothing to reconcile and no error to report.
+	if _, ok := t.Backend.(interface{ BasePath() string }); !ok {
+		return nil
+	}
+	rec, err := sidecar.New(t.Backend)
+	if err != nil {
+		return err
+	}
+	report, err := rec.Reconcile(ctx)
+	if err != nil {
+		return err
+	}
+	if report.Records == 0 {
+		return nil
+	}
+	fmt.Printf("%s: checksum records: %d examined, %d orphaned removed, %d objects unrecorded\n",
+		verb, report.Records, len(report.Removed), len(report.Unrecorded))
 	return nil
 }
 
@@ -458,7 +605,9 @@ func opGC(ctx context.Context, t *store.Store, args []string) error {
 		return err
 	}
 	fmt.Printf("gc: deleted %d objects\n", len(doomed))
-	return nil
+	// The sweep just deleted objects, so their records are orphans. Reconcile
+	// in the same run instead of leaving them for the next verify to explain.
+	return reconcileChecksums(ctx, t, "gc")
 }
 
 // --- clean ---
@@ -549,7 +698,9 @@ func opPrune(ctx context.Context, t *store.Store, args []string) error {
 		return nil
 	}
 	fmt.Printf("prune: deleted %d objects\n", len(doomed))
-	return nil
+	// A dry run deletes nothing, so it leaves no orphan record behind and
+	// reconciles nothing: the sweep above is the only thing that can create one.
+	return reconcileChecksums(ctx, t, "prune")
 }
 
 func parseDigests(args []string) ([]cas.Digest, error) {
