@@ -41,12 +41,19 @@ const (
 	overrides   = "website/overrides"
 
 	macrosSelftestCall = "python3 website/macros.py --selftest"
+
+	// commitURL is where the footer's one visible provenance value points: the
+	// date is shown, the revision is the link target.
+	commitURL = "https://github.com/dmundt/go-cask/commit/"
 )
 
 var (
 	// yearLiteral matches a four-digit year, which the footer must derive from
 	// the deployed revision's date instead of carrying as a literal.
 	yearLiteral = regexp.MustCompile(`\b(?:19|20)\d\d\b`)
+	// tagPattern matches a tag with its attributes, so visibleText can strip
+	// the markup that legitimately carries the revision.
+	tagPattern = regexp.MustCompile(`<[^>]*>`)
 	// removedMachinery lists, per file, the strings #224 deleted. None of them
 	// may come back. website/macros.py is absent here because "provenance" is
 	// the name of its own function, not of the deleted CI plumbing.
@@ -107,8 +114,9 @@ func configCopyright(t *testing.T, config string) string {
 }
 
 // composeCopyright completes the base line the way website/macros.py does: the
-// revision's year follows the `&copy;` token and the provenance fragment closes
-// the line, and either is omitted — never guessed — when its value is missing.
+// revision's year follows the `&copy;` token and the line closes with that
+// revision's date, linked to the commit, and either is omitted — never guessed —
+// when its value is missing.
 func composeCopyright(base, date, revision string) string {
 	line := strings.Join(strings.Fields(base), " ")
 	if date == "" {
@@ -116,9 +124,16 @@ func composeCopyright(base, date, revision string) string {
 	}
 	line = strings.Replace(line, "&copy;", "&copy; "+date[:4], 1)
 	if revision != "" {
-		line += " &middot; docs from " + revision + " (" + date + ")"
+		line += " &middot; <a href=\"" + commitURL + revision +
+			"\" title=\"commit " + revision + "\">" + date + "</a>"
 	}
 	return line
+}
+
+// visibleText drops tags and their attributes, so the checks below can assert
+// what a reader sees rather than what the markup carries.
+func visibleText(line string) string {
+	return tagPattern.ReplaceAllString(line, "")
 }
 
 // TestFooterCopyrightLinePinsRenderedText pins the exact footer line for a
@@ -149,7 +164,8 @@ func TestFooterCopyrightLinePinsRenderedText(t *testing.T) {
 			name:     "revision and its commit date",
 			date:     "2026-09-23",
 			revision: "ab7deab",
-			want:     wantYear + " &middot; docs from ab7deab (2026-09-23)",
+			want: wantYear + " &middot; <a href=\"" + commitURL + "ab7deab\"" +
+				" title=\"commit ab7deab\">2026-09-23</a>",
 		},
 		{
 			// A tarball build, no git, no environment variable: the footer
@@ -168,6 +184,15 @@ func TestFooterCopyrightLinePinsRenderedText(t *testing.T) {
 				if strings.Contains(got, forbidden) {
 					t.Errorf("footer line %q carries %q; the footer is one line and names no zone", got, forbidden)
 				}
+			}
+			if tc.revision == "" {
+				return
+			}
+			if !strings.Contains(got, commitURL+tc.revision) {
+				t.Errorf("footer line %q does not link to commit %s", got, tc.revision)
+			}
+			if strings.Contains(visibleText(got), tc.revision) {
+				t.Errorf("footer line %q shows the revision as visible text; it belongs in the link target", got)
 			}
 		})
 	}
