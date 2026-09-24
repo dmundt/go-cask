@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
 	mem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
@@ -171,6 +174,65 @@ func TestSweepPropagatesDeleteError(t *testing.T) {
 	backend := deleteErrorBackend{Backend: inner, err: want}
 	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, want) {
 		t.Fatalf("Sweep(delete error) = %v, want %v", err, want)
+	}
+}
+
+// TestSweepSkipsUnaddressableDigestName is the regression guard for #258: an fs
+// store with a wider fan-out reports any lowercase-hex file name from List,
+// including one too short for its layout. The portable sweep must skip it the
+// way fs.GC/Prune do; it used to hand it to Delete, whose ErrInvalidDigest
+// aborted the sweep after part of the store had already been reclaimed.
+func TestSweepSkipsUnaddressableDigestName(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	// A fan-out of 4 needs four hex characters, while the stray file below has
+	// two — the default layout would address it, which is why this needs a
+	// non-default one.
+	backend, err := fsbackend.New(base, fsbackend.WithFanOut(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := sha256.Of([]byte("kept"))
+	dead := sha256.Of([]byte("dead"))
+	for _, d := range []cas.Digest{kept, dead} {
+		if err := backend.Put(ctx, d, bytes.NewReader([]byte(d.String()))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stray := filepath.Join(base, "ab")
+	if err := os.WriteFile(stray, []byte("not an object"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reachable := map[string]bool{kept.String(): true}
+
+	// A dry run reports exactly what a real run reclaims — the stray file is not
+	// one of them — and the real run then applies it.
+	for _, opts := range []cas.SweepOptions{{DryRun: true}, {}} {
+		doomed, err := cas.Sweep(ctx, backend, reachable, opts)
+		if err != nil {
+			t.Fatalf("Sweep(%+v) = %v, want nil: a stray digest-named file must not abort the sweep", opts, err)
+		}
+		if len(doomed) != 1 || !doomed[0].Equal(dead) {
+			t.Fatalf("Sweep(%+v) doomed = %v, want [%s]", opts, doomed, dead)
+		}
+		if _, err := os.Stat(stray); err != nil {
+			t.Fatalf("Sweep(%+v) touched the file its layout cannot address: %v", opts, err)
+		}
+	}
+
+	// The age path takes the same route (Exists is asked before ModTime).
+	if doomed, err := cas.Sweep(ctx, backend, reachable, cas.SweepOptions{MinAge: time.Hour}); err != nil || len(doomed) != 0 {
+		t.Fatalf("Sweep(min-age) = (%v, %v), want no error and no doomed objects", doomed, err)
+	}
+
+	if ok, err := backend.Exists(ctx, dead); err != nil || ok {
+		t.Fatalf("Exists(dead) = (%v, %v), want false after the sweep", ok, err)
+	}
+	if ok, err := backend.Exists(ctx, kept); err != nil || !ok {
+		t.Fatalf("Exists(kept) = (%v, %v), want true", ok, err)
+	}
+	if content, err := os.ReadFile(stray); err != nil || string(content) != "not an object" {
+		t.Fatalf("stray file = (%q, %v), want it left untouched", content, err)
 	}
 }
 

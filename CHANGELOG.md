@@ -207,6 +207,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The portable sweep (`cas.Sweep` — the path `cask -backend packfs gc|prune`
+  takes, since the packfile backend has no native sweep) no longer fails halfway
+  on a stray digest-named file that its store's layout cannot address: `List`
+  reports any lowercase-hex file name, while only the backend knows which names
+  it can address, so the sweep asks before it deletes and skips the rest. It
+  previously returned `ErrInvalidDigest` after part of the store had already
+  been reclaimed, and kept failing until the file was found by hand; a dry run
+  now reports the same set a real run reclaims, matching `fs.GC`/`fs.Prune`.
 - A persistent Bloom filter (`cas/bloom/persistent`) keeps its hint set across
   processes: the file now carries an index key, and the default Bloom index hash
   is derived from it instead of from a seed drawn per process. A filter reopened
