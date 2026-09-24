@@ -329,6 +329,7 @@ go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 
 echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
+./scripts/test-land-lane.sh
 
 fi # scope == full
 
@@ -576,14 +577,24 @@ fi
 
 # Record the green run for this exact commit in the shared git dir, so
 # .githooks/pre-push accepts the push without re-running a gate whose tree has
-# not changed. The stamp is keyed by commit, so amending or rebasing invalidates
-# it automatically.
+# not changed. Entries are keyed by commit, so amending or rebasing invalidates
+# one automatically.
+#
+# The ledger is appended, not overwritten: every worktree of this clone shares
+# the file, and a single-slot stamp let a gate run in one worktree invalidate
+# another branch's verified commit and refuse its push. The file stays bounded
+# by keeping the newest entries; the same commit re-verified replaces its line.
 stamp_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 if [[ -n "$stamp_dir" ]]; then
-  printf '%s %s %s\n' \
-    "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
-    "$scope" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$stamp_dir/verify.ok"
+  head_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  entry="$(printf '%s %s %s' "$head_sha" "$scope" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+  {
+    if [[ -f "$stamp_dir/verify.ok" ]]; then
+      grep -v "^$head_sha " "$stamp_dir/verify.ok" || true
+    fi
+    printf '%s\n' "$entry"
+  } | tail -n 200 >"$stamp_dir/verify.ok.tmp" &&
+    mv "$stamp_dir/verify.ok.tmp" "$stamp_dir/verify.ok"
 fi
 
 echo "verification passed"
