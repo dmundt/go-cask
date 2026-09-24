@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v18
+version: v19
 ---
 
 # Performance — go-cask
@@ -16,8 +16,10 @@ Every optimization MUST preserve the invariants of `cas-core.md`. Measure before
 | P-01 | Lock-free read path | `Get`/`Exists`/`List`/`Stats` take no lock (§2) |
 | P-02 | One-pass serialization | the envelope is marshaled once, digested, then streamed to `Backend.Put`; hash-on-write surfaces (CLI, `examples/api`) stream through `io.MultiWriter`/`io.Copy`; never re-serialize or re-read source bytes |
 | P-03 | Bounded allocations | hot paths flat; every benchmark calls `b.ReportAllocs()` |
-| P-04 | No reflection | generics monomorphize; no runtime type assertions in hot paths |
+| P-04 | No reflection-based dispatch | generics monomorphize and no exported value is `any`; the typed layer's one structural `Validator` assertion and the internal nil check are the recorded exceptions, paid once per `Put`/`Get` |
 | P-05 | Large objects never buffered | `Backend` streams `io.Reader`; HTTP layer streams bodies |
+
+**P-04's two exceptions are deliberate, and they are measurable.** Every `Store.Put` and `Store.Get` runs one structural `any(obj).(Validator)` assertion (`cas/store.go`, the object-invariant contract, cas-core §4.8) and one `reflect.ValueOf` — the latter through `isNilValue`, the core's only use of reflection, which rejects a nil-interface or nil-pointer object before it is encoded or returned. A reviewer weighing a hot-path change should count them: the assertion and the reflection are paid per operation, and removing them is a design change (a `Validator`-carrying type constraint, or a fast path for types that do not implement it) that needs a benchmark, not this document.
 
 ## 2. Lock-free reads (`fs.Backend`)
 
@@ -182,7 +184,7 @@ Record CPU model, RAM, disk type, filesystem, Go version; run each scenario 3× 
 - [x] hash-on-write in a single pass (CLI/HTTP: `io.MultiWriter` + `io.Copy`; core: marshal once, digest, stream)
 - [x] timed benchmarks report allocations; payload-defined operations report bytes
 - [x] `-race` concurrent Put/Get/Delete test green
-- [x] no reflection/`unsafe`/external speed dependencies
+- [x] no reflection-based dispatch, no `unsafe`, no external speed dependencies — with the two recorded exceptions above: the structural `Validator` assertion and `isNilValue`'s internal `reflect.ValueOf`, once per `Put`/`Get`
 - [x] profiling workflow documented and reproducible
 - [x] fan-out layout chosen per expected object count (§8.1)
 - [ ] scenario tests T-01…T-08 do **not** exist — aspirational, deferred (`extensions.md` §3); only the env-gated `BenchmarkScale*` probes run today
