@@ -20,7 +20,36 @@ set -euo pipefail
 stale_minutes=${LAND_LANE_STALE_MINUTES:-90}
 lane="$(git rev-parse --path-format=absolute --git-common-dir)/dsh-land-lane"
 owner="$lane/owner"
-me="$(git rev-parse --show-toplevel)#$(git rev-parse --abbrev-ref HEAD)"
+repo_id_file="$lane/repo-id"
+
+# The holder identity MUST be byte-identical in both toolchains that work in this
+# repository: Windows git records `D:/x/repo`, WSL git records `/mnt/d/x/repo`, so
+# a lane taken in one is invisible to the other's `.githooks/pre-push`. That
+# matters because on Windows the gate only runs under WSL (the race build needs a
+# C compiler) while the push only runs under the Windows git client (WSL's git has
+# no HTTPS and no SSH key here) — the two halves of one landing use different
+# toolchains by necessity.
+#
+# Repo identity: a random id written once into the shared git dir, so every
+# worktree of this clone agrees and no absolute path is involved.
+if [[ ! -f "$repo_id_file" ]]; then
+  mkdir -p "$lane"
+  if [[ -r /proc/sys/kernel/random/uuid ]]; then
+    printf '%s\n' "$(cat /proc/sys/kernel/random/uuid)" >"$repo_id_file"
+  else
+    printf 'repo-%s-%s\n' "$(date -u +%s)" "${RANDOM:-0}${RANDOM:-0}" >"$repo_id_file"
+  fi
+fi
+repo_id="$(cat "$repo_id_file" 2>/dev/null || echo repo-unknown)"
+
+# Worktree identity: the primary checkout is `<common-dir>` itself; a linked one
+# is identified by the name this repository gave it (`wt-<task>` under
+# `.gocache/`), a bare directory name and therefore toolchain-neutral.
+worktree="primary"
+if [[ "$(git rev-parse --absolute-git-dir 2>/dev/null)" != "$(git rev-parse --path-format=absolute --git-common-dir)" ]]; then
+  worktree="$(basename "$(git rev-parse --show-toplevel)")"
+fi
+me="$repo_id#primary:$worktree#$(git rev-parse --abbrev-ref HEAD)"
 
 show() { # sets pid, epoch, label, who from the owner file (best effort)
   pid=0
@@ -31,6 +60,12 @@ show() { # sets pid, epoch, label, who from the owner file (best effort)
 }
 
 case "${1:-status}" in
+whoami)
+  # The holder identity as this worktree computes it. Exposed so a test — and a
+  # person debugging a refused push — can compare the identity two toolchains
+  # produce without reverse-engineering the owner file.
+  echo "$me"
+  ;;
 status)
   if [[ ! -f "$owner" ]]; then
     echo "land lane: free"
@@ -80,7 +115,7 @@ release)
   echo "land lane: released"
   ;;
 *)
-  echo "usage: land-lane.sh [status | acquire [--force] <label> | release]" >&2
+  echo "usage: land-lane.sh [status | whoami | acquire [--force] <label> | release]" >&2
   exit 2
   ;;
 esac

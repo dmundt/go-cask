@@ -22,7 +22,11 @@ fi
 
 stamp="$(git rev-parse --path-format=absolute --git-common-dir)/verify.ok"
 head="$(git rev-parse HEAD)"
-if [ ! -f "$stamp" ] || [ "$(cut -d' ' -f1 <"$stamp")" != "$head" ]; then
+# verify.ok is a SHARED append-only ledger holding one entry per verified commit
+# (`<sha> <scope> <timestamp>`). It used to hold a single line, which meant a gate
+# run in any other worktree of this clone silently invalidated every other
+# branch's stamp and refused its push. Accept any line that names this head.
+if ! grep -q "^$head " "$stamp" 2>/dev/null; then
   cat >&2 <<EOF
 pre-push: no green gate for $head.
   Run the gate once for this commit, then push again:

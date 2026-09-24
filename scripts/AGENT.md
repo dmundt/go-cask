@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v5
+version: v6
 ---
 
 # Agent instructions — `scripts/`
@@ -35,6 +35,15 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   that stamp only on success. Keep them dependency-free, POSIX-sh safe for the
   hook, and never make the hook re-run work the stamp already covers — the point
   is that an unchanged commit costs nothing.
+- Two invariants of those helpers are load-bearing on a host where the gate and
+  the push run in different toolchains (Windows: the race gate needs WSL, the
+  push needs the Windows git client). First, the lane's holder identity must stay
+  a portable token with no path in it — `land-lane.sh whoami` prints it for
+  debugging — because `D:/x/repo` and `/mnt/d/x/repo` never compare equal, which
+  would make a lane taken in one toolchain invisible to the other's hook. Second,
+  `$common/verify.ok` is a ledger with one line per verified commit, never a
+  single slot: overwriting it let a gate run in any other worktree invalidate a
+  verified branch and refuse its push. `test-land-lane.sh` pins both.
 
 ## Dependencies and scope
 
