@@ -2,7 +2,7 @@
 type: Specification
 title: Consistency — go-cask
 description: The consistency model of the CAS store — broken vs dangling objects, Verify, garbage collection (mark-and-sweep from roots), age-based pruning, and the detection algorithms — informed by Git/IPFS/restic practices, deliberately simple.
-version: v15
+version: v16
 ---
 
 # Consistency — go-cask
@@ -40,6 +40,7 @@ Store invariants (cas-core §2) rule out torn objects: `Put` is atomic (rename) 
 **Model = Git's + IPFS's:** objects are kept while reachable from **roots**; the rest is reclaimable garbage.
 
 - **Roots** are application-supplied pinned hashes (Git refs/branches, IPFS pins, Docker manifest digests; in `gitlike`, typically commit/tag hashes). `cas/refs.Store.Roots` is the concrete, library-provided source: every ref's current digest, ready to hand to `cas.Reachable` (single-type) or `cas/repo.Reachable` (cross-type, via a `Registry`) for expansion (library-design.md).
+- **The reflog is history, not a root source.** `cas/refs.Store.Roots` returns each ref's *current* value only, so a sweep built from the documented root set reclaims every object that only `Log`/`Previous` still names: the reflog keeps handing the digest back while `Get` on it is `ErrNotFound`. That is deliberate — go-cask roots a ref's current value, not its history — and a caller that wants a recovery window MUST feed the `Log`/`Previous` digests into its root set explicitly, exactly the way it feeds `Roots`, before expanding it (Git roots its reflog via `gc.reflogExpire` for this reason; §7 records the divergence).
 - **Algorithm** (`GC(ctx, reachable map[string]bool)`, cas-core §4.11): **(1) Mark** — walk `References()` from every root (BFS/DFS with a visited set, robust even against cycles), collect the reachable set (via `cas.Reachable`/`Walker[T]` for one type, or `cas/repo.Walk`/`Reachable` across several registered types); **(2) Sweep** — delete every object whose `h.String()` is not in the reachable set. `fs.Backend.GC` is the fs-native fast path; `cas.Sweep(ctx, raw, reachable, cas.SweepOptions{})` is the generic form that works against any backend, including one with no backend-native GC of its own (`packfs`; go-cask#137).
 - **Unreachability and space are two different outcomes, and the sweep guarantees both only on `fs`/`mem`.** Mark-and-sweep's contract is that a swept object is gone from the store: `List` no longer reports it and `Get` is `ErrNotFound`. That holds on every backend. Reclaiming the *disk space* is a backend property, not a GC property: `fs` and `mem` unlink the bytes, while the packfile backend's `Delete` removes the loose object and the index record but leaves the payload in the append-only pack — a packed store grows with every `Put` and never shrinks on its own (cas-core §4.14, performance §9). No pack compaction is implemented or promised: see the de-claim in cas-core §8 d12.
 - **When:** explicit only — `cask gc` at the CLI, or a job the operator schedules outside the product. The viewer has no GC route, and nothing in the product schedules or runs a sweep automatically (a store with no roots must not silently delete itself).
@@ -72,7 +73,7 @@ Costs: full `Verify` O(bytes); reference scan O(refs) lock-free lookups; GC O(ob
 
 | System | Practice adopted |
 |---|---|
-| Git | unreachable objects kept until explicit `gc`; refs as roots |
+| Git | unreachable objects kept until explicit `gc`; refs as roots — but **not** Git's reflog rooting: `cas/refs` history is collectable (§4) |
 | IPFS | pins as roots; GC deletes only unpinned objects |
 | restic | snapshot roots + retention; keep recent unreachable data |
 | S3 lifecycle | age-based object expiration |
