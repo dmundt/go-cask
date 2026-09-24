@@ -4,12 +4,12 @@ site_url: https://go-cask.dev/
 
 # The footer's copyright line. The theme renders this value verbatim, and
 # website/macros.py completes it before any page renders: the year after
-# `&copy;` and the deployed revision's date, linked to that commit, both
-# read from the checked-out revision. Keep it one line and keep the
-# `&copy;` token — that token is where the hook inserts the year, and
-# `python3 website/macros.py --selftest` pins both the line and the
-# insertion. With no readable revision the line renders exactly as
-# written here: no year and no fragment.
+# `&copy;` and the deployed revision's date, labelled `Updated` and linked to
+# that commit, both read from the checked-out revision. Only the date is
+# inside the link. Keep it one line and keep the `&copy;` token — that token
+# is where the hook inserts the year, and `python3 website/macros.py
+# --selftest` pins both the line and the insertion. With no readable revision
+# the line renders exactly as written here: no year and no fragment.
 copyright: >-
   &copy; Daniel Mundt &middot; <a href="/impressum/">Impressum</a> &middot;
   <a href="/privacy/">Privacy</a> &middot;
