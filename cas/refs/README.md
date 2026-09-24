@@ -7,7 +7,7 @@ Package `refs` implements the mutable half of a content-addressable store: named
 - `refs` is layered above the core: it stores plain `cas.Digest` values, never object bytes, and never reaches into a `cas.Backend`'s base directory.
 - `Open` takes a plain filesystem directory the caller dedicates to refs (conventionally `filepath.Join(storeDir, "refs")`, beside a store's `objects/` tree) — the two trees are independent.
 - Every `Set` is atomic (temp file + fsync + rename, plus a best-effort parent-directory fsync on POSIX) and appends one reflog entry, so `Log`/`Previous` never scan the object store the way a peek-every-object approach does.
-- `Roots` is the ready-made root set for `cas.Reachable` before calling `Backend.GC`/`Backend.Prune` (see [docs/specs/consistency.md](../../docs/specs/consistency.md)).
+- `Roots` is the ready-made root set for `cas.Reachable` before calling `Backend.GC`/`Backend.Prune` (see [docs/specs/consistency.md](../../docs/specs/consistency.md)). It returns each ref's **current** value only: the reflog is history, not a root source, so a sweep built from `Roots` reclaims every object that only `Log`/`Previous` still names. Feed those digests into the root set too when a recovery window is wanted.
 
 ## Example
 
@@ -54,6 +54,8 @@ if err != nil {
 ## Reflog
 
 `Log` returns a name's history newest first, capped by `limit` (0 or negative returns all entries); `Previous` returns the value a name held immediately before its most recent `Set`. A `Delete` appends a tombstone entry rather than erasing the log, mirroring how Git keeps a branch's reflog after the branch itself is deleted.
+
+The log is history, not a root source: a sweep that uses `Roots` alone collects a digest that only the log still names, and a later `Get` on it is `ErrNotFound` even though `Previous` just returned it (consistency.md §4). Re-pinning an older revision from the log therefore requires the object to still exist — root the log's digests, or re-`Put` the content, before sweeping.
 
 ## Name validation
 
