@@ -12,7 +12,7 @@ The hash layer is the client-side algorithm seam for the generic `cas` core. The
 
 - Prefer `SHA-256` for new durable content-addressed data.
 - Use `SHA-512/256` when you want a fast secure alternative with the same 256-bit security level.
-- Treat MD5 and SHA-1 as legacy or compatibility-only choices, not as new CAS defaults.
+- Treat MD5 and SHA-1 as obsolete for new content-addressed data: neither ships with this module, and supporting a legacy source means writing a `cas.Hasher` for it.
 
 ## Notes
 

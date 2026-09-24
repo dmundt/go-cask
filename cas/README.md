@@ -22,7 +22,7 @@
 - Durable backend: [backend/fs](./backend/fs/README.md)
 - Test/ephemeral backend: [backend/mem](./backend/mem/README.md)
 - Compatibility-only codec: [codec/gob](./codec/gob/README.md)
-- Legacy-only choices: MD5 and SHA-1; not for new content-addressed data
+- Not shipped: MD5 and SHA-1; a legacy source needs a client-supplied `cas.Hasher`, and neither belongs in new content-addressed data
 
 ## Layer index
 
