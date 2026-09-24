@@ -2,10 +2,10 @@
 // manifest encoding. It is a helper layer, not a storage backend and not a
 // codec; the content-addressed byte model remains in the cas core.
 //
-// The codec is always the caller's: no function here substitutes one when the
-// caller passes nil, because the codec decides what is written on disk. The JSON
-// convenience lives behind the names that say so (SaveJSON, LoadJSON,
-// EncodeJSON, DecodeJSON).
+// The codec is always the caller's, and this package imports none: every entry
+// point takes one (EncodeWith, DecodeWith, LoadWith, SaveWith, New) and reports
+// ErrNilCodec rather than substituting a format of its own. A caller that wants
+// JSON passes json.New[T]() at the call site, where the format is visible.
 package pack
 
 import (
@@ -17,7 +17,6 @@ import (
 	"slices"
 
 	"github.com/dmundt/go-cask/cas"
-	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 )
 
 // Codec is the shared codec contract used by the pack layer.
@@ -71,14 +70,6 @@ func Count(size, chunkSize int) int {
 // default to fall back to: a missing one is a caller mistake, not a mode.
 var ErrNilCodec = fmt.Errorf("pack: nil codec")
 
-// EncodeJSON serializes a manifest map with the JSON codec, which the function
-// name makes explicit.
-func EncodeJSON(v Data) ([]byte, error) { return EncodeWith(v, jsoncodec.New[Data]()) }
-
-// DecodeJSON deserializes a manifest map with the JSON codec, which the
-// function name makes explicit.
-func DecodeJSON(b []byte) (Data, error) { return DecodeWith(b, jsoncodec.New[Data]()) }
-
 // EncodeWith serializes a typed value with the caller's codec. A nil codec is
 // ErrNilCodec: encoding with a codec the caller did not choose would make the
 // package decide what is stored.
@@ -122,18 +113,6 @@ func (s *Store[T]) Load(ctx context.Context) (T, error) {
 // Save writes the store's manifest with the store's codec.
 func (s *Store[T]) Save(ctx context.Context, v T) error {
 	return SaveWith(ctx, s.path, v, s.codec)
-}
-
-// LoadJSON reads a manifest with the JSON codec, which the function name makes
-// explicit (this is the convenience the old context-less Load provided).
-func LoadJSON[T any](ctx context.Context, path string) (T, error) {
-	return LoadWith(ctx, path, jsoncodec.New[T]())
-}
-
-// SaveJSON writes a manifest with the JSON codec, which the function name makes
-// explicit (this is the convenience the old context-less Save provided).
-func SaveJSON[T any](ctx context.Context, path string, v T) error {
-	return SaveWith(ctx, path, v, jsoncodec.New[T]())
 }
 
 // LoadWith reads a manifest file with the supplied codec. The context is

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dmundt/go-cask/cas/codec/gob"
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas/pack"
 )
@@ -52,27 +53,73 @@ func TestCountAndZero(t *testing.T) {
 func TestManifestRoundTripAndStore(t *testing.T) {
 	ctx := context.Background()
 	want := pack.Data{"kind": "test", "owner": "team-a"}
-	b, err := pack.EncodeJSON(want)
+	codec := jsoncodec.New[pack.Data]()
+	b, err := pack.EncodeWith(want, codec)
 	if err != nil {
-		t.Fatalf("EncodeJSON: %v", err)
+		t.Fatalf("EncodeWith: %v", err)
 	}
-	got, err := pack.DecodeJSON(b)
+	got, err := pack.DecodeWith(b, codec)
 	if err != nil {
-		t.Fatalf("DecodeJSON: %v", err)
+		t.Fatalf("DecodeWith: %v", err)
 	}
 	if got["kind"] != want["kind"] || got["owner"] != want["owner"] {
 		t.Fatalf("round trip mismatch: got %#v, want %#v", got, want)
 	}
 	path := filepath.Join(t.TempDir(), "state", "meta.json")
-	if err := pack.SaveJSON(ctx, path, want); err != nil {
-		t.Fatalf("SaveJSON: %v", err)
+	if err := pack.SaveWith(ctx, path, want, codec); err != nil {
+		t.Fatalf("SaveWith: %v", err)
 	}
-	loaded, err := pack.LoadJSON[pack.Data](ctx, path)
+	loaded, err := pack.LoadWith(ctx, path, codec)
 	if err != nil {
-		t.Fatalf("LoadJSON: %v", err)
+		t.Fatalf("LoadWith: %v", err)
 	}
 	if loaded["kind"] != want["kind"] || loaded["owner"] != want["owner"] {
-		t.Fatalf("LoadJSON mismatch: got %#v, want %#v", loaded, want)
+		t.Fatalf("LoadWith mismatch: got %#v, want %#v", loaded, want)
+	}
+}
+
+// TestManifestRoundTripOverAnotherCodec proves the seam instead of assuming it
+// (#307): the same manifest survives EncodeWith/DecodeWith and SaveWith/LoadWith
+// over a shipped codec that is not JSON, so nothing in this package has an
+// opinion about the wire format.
+func TestManifestRoundTripOverAnotherCodec(t *testing.T) {
+	ctx := context.Background()
+	want := pack.Data{"kind": "gob-manifest", "owner": "team-b"}
+	codec := gob.NewRaw[pack.Data]()
+
+	b, err := pack.EncodeWith(want, codec)
+	if err != nil {
+		t.Fatalf("EncodeWith(gob): %v", err)
+	}
+	got, err := pack.DecodeWith(b, codec)
+	if err != nil {
+		t.Fatalf("DecodeWith(gob): %v", err)
+	}
+	if got["kind"] != want["kind"] || got["owner"] != want["owner"] {
+		t.Fatalf("gob round trip mismatch: got %#v, want %#v", got, want)
+	}
+
+	path := filepath.Join(t.TempDir(), "meta.gob")
+	store, err := pack.New(path, codec)
+	if err != nil {
+		t.Fatalf("pack.New(gob): %v", err)
+	}
+	if err := store.Save(ctx, want); err != nil {
+		t.Fatalf("Store.Save(gob): %v", err)
+	}
+	loaded, err := store.Load(ctx)
+	if err != nil {
+		t.Fatalf("Store.Load(gob): %v", err)
+	}
+	if loaded["kind"] != want["kind"] || loaded["owner"] != want["owner"] {
+		t.Fatalf("Store(gob) mismatch: got %#v, want %#v", loaded, want)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+		t.Fatalf("a gob manifest was written as JSON: %q", raw)
 	}
 }
 
@@ -177,11 +224,11 @@ func TestContextCanceledBeforeIO(t *testing.T) {
 	if _, err := pack.LoadWith(ctx, path, customCodec{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("LoadWith(canceled) = %v, want context.Canceled", err)
 	}
-	if err := pack.SaveJSON(ctx, path, pack.Data{"kind": "x"}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("SaveJSON(canceled) = %v, want context.Canceled", err)
+	if err := pack.SaveWith(ctx, path, pack.Data{"kind": "x"}, jsoncodec.New[pack.Data]()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SaveWith(canceled) = %v, want context.Canceled", err)
 	}
-	if _, err := pack.LoadJSON[pack.Data](ctx, path); !errors.Is(err, context.Canceled) {
-		t.Fatalf("LoadJSON(canceled) = %v, want context.Canceled", err)
+	if _, err := pack.LoadWith(ctx, path, jsoncodec.New[pack.Data]()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("LoadWith(canceled) = %v, want context.Canceled", err)
 	}
 	store := mustStore(t, path, customCodec{})
 	if err := store.Save(ctx, "demo"); !errors.Is(err, context.Canceled) {
@@ -205,16 +252,16 @@ func TestSaveWithPublishesAtomically(t *testing.T) {
 	path := filepath.Join(dir, "meta.json")
 
 	long := pack.Data{"kind": strings.Repeat("long", 64)}
-	if err := pack.SaveJSON(ctx, path, long); err != nil {
-		t.Fatalf("SaveJSON: %v", err)
+	if err := pack.SaveWith(ctx, path, long, jsoncodec.New[pack.Data]()); err != nil {
+		t.Fatalf("SaveWith: %v", err)
 	}
 	short := pack.Data{"kind": "short"}
-	if err := pack.SaveJSON(ctx, path, short); err != nil {
-		t.Fatalf("SaveJSON: %v", err)
+	if err := pack.SaveWith(ctx, path, short, jsoncodec.New[pack.Data]()); err != nil {
+		t.Fatalf("SaveWith: %v", err)
 	}
-	loaded, err := pack.LoadJSON[pack.Data](ctx, path)
+	loaded, err := pack.LoadWith(ctx, path, jsoncodec.New[pack.Data]())
 	if err != nil {
-		t.Fatalf("LoadJSON: %v", err)
+		t.Fatalf("LoadWith: %v", err)
 	}
 	if loaded["kind"] != "short" {
 		t.Fatalf("the shorter manifest did not replace the longer one: %q", loaded["kind"])
