@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v37
+version: v38
 ---
 
 # Viewer Design — go-cask
@@ -175,9 +175,9 @@ The integrity filter orders its states as Verified, Unverified, and Corrupt.
 These are exclusive alternatives on one axis, so the filter is a single-choice
 `status` control with an empty value meaning every state. Reachability is the
 other axis and MUST be a separate single-choice `reach` filter
-(`reachable`/`orphaned`/`detached`/`head`, empty meaning any). `detached`
+(`reachable`/`orphaned`/`detached`/`root`, empty meaning any). `detached`
 means an orphaned object with zero host-supplied inbound references; it is a
-disconnected component entry, not a retention root. `head` means a reachable
+disconnected component entry, not a retention root. `root` means a reachable
 object with zero host-supplied inbound references — the entry point of a
 reachable subtree, structurally consistent with being a root but not an
 assertion that the viewer has seen the host's actual root list (it only ever
