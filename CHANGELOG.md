@@ -207,6 +207,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A persistent Bloom filter (`cas/bloom/persistent`) keeps its hint set across
+  processes: the file now carries an index key, and the default Bloom index hash
+  is derived from it instead of from a seed drawn per process. A filter reopened
+  by the next process previously reported every digest it had recorded as
+  absent, and `bloom.Guard` turns a negative into an authoritative absence — so
+  a warm cache answered "object missing" for objects that are stored. A file
+  written before the header existed, or under a different index hash, is rebuilt
+  empty instead of trusted, and `bloom.DefaultIndexHash` is documented as
+  process-local and unusable for bits that outlive the process.
 - The viewer's login throttle is proxy-aware: `cask web -trusted-proxy
   <ip|cidr,...>` names the reverse proxies whose forwarded client address
   (`X-Forwarded-For`, or RFC 7239 `Forwarded`) the throttle may believe, so

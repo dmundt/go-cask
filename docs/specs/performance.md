@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v21
+version: v22
 ---
 
 # Performance — go-cask
@@ -85,6 +85,7 @@ object existence or reachability.
 - A positive result is only a hint: the wrapped backend/store must still verify the digest's real existence.
 - Standard, counting, and persistent variants are production-safe only as advisory front ends; they do not participate in `Verify`, `GC`, or `Prune` semantics.
 - Bit-index derivation is independent from the CAS digest algorithm: the object hash remains the caller-owned `cas.Hasher` contract, while the filter chooses bit positions in its own bitmap.
+- **A filter whose bits outlive the process MUST derive its bit positions deterministically.** "A negative result is definitive" is only true for the lifetime of the indexing rule that wrote the bits: a filter reopened under a different rule answers `false` for digests it recorded, and a `bloom.Guard` converts that into an authoritative "absent". `bloom.DefaultIndexHash` is seeded per process and therefore may only back an in-memory filter; `cas/bloom/persistent` persists a 32-byte index key in the file header (format `CASKBLM1`) and derives its default index hash from it, so its bits stay readable by the next process. A caller-supplied `bloom.IndexHash` carries the same obligation, and the header records which kind wrote the file, so a file written under the other kind is rebuilt rather than trusted (`cas/bloom/persistent`, go-cask#254).
 
 This keeps the optional layer outside the core invariants while letting a large
 store skip wasted backend lookups in the hot path.

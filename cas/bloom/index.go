@@ -14,8 +14,12 @@ var defaultIndexSeed = maphash.MakeSeed()
 
 // DefaultIndexHash uses a process-local map hash with a probe-dependent suffix.
 // This keeps the default path fast and does not depend on a client-supplied
-// hasher, but callers that need cross-process or restart-stable Bloom indexes
-// should override it with their own deterministic IndexHash.
+// hasher, but the seed is drawn per process, so two processes disagree about
+// every bit position: a filter whose bits outlive the process MUST NOT use it.
+// cas/bloom/persistent derives its default hash from an index key persisted in
+// its file header instead, which keeps its bits readable by the next process; a
+// caller that supplies its own IndexHash takes on the same determinism
+// requirement (cas/bloom/guard.go, performance §5.1, go-cask#254).
 func DefaultIndexHash(data []byte, i int) uint64 {
 	var h maphash.Hash
 	h.SetSeed(defaultIndexSeed)

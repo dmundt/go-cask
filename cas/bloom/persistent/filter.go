@@ -12,6 +12,15 @@ import (
 // Filter is a Bloom filter whose bitset is stored in a single file so the hint
 // set survives process restarts without a rebuild.
 //
+// The file is a header followed by the bitset (see header.go). The header carries
+// the index key the default index hash is derived from, so a filter reopened by
+// the next process indexes the same bits as the one that wrote them: a Bloom
+// index built from a process-local seed would report false for every recorded
+// digest there, and bloom.Guard turns a negative into an authoritative absence
+// (#254). A caller-supplied Config.Hash must be deterministic for the same
+// reason; the header records which kind wrote the file, and a file written under
+// the other kind is rebuilt rather than trusted.
+//
 // The backing strategy is platform dependent and reported by IsMapped: when the
 // platform can memory map the file, the bitset is a live shared view of it;
 // otherwise the bitset is a heap buffer that Sync and Close write back with
@@ -27,6 +36,7 @@ import (
 type Filter struct {
 	mu     sync.RWMutex
 	file   *os.File
+	raw    []byte
 	data   []byte
 	k      int
 	m      uint64
@@ -54,9 +64,14 @@ func New(path string, expectedItems uint64, falsePositiveRate float64) (*Filter,
 
 // NewFilter creates a persistent Bloom filter from a config and path.
 //
-// An existing file is reused: it is grown with Truncate when it is shorter than
-// the configured size, and its bits are preserved. Callers that need a clean
-// filter for the same shape must remove the file first or call Reset.
+// An existing file whose header names the same index-hash kind is reused: its
+// bits are preserved, and it is grown with Truncate when it is shorter than the
+// configured size. A file with no usable header — one written before the header
+// existed, a truncated one, or one written under the other index-hash kind — is
+// rebuilt empty with a fresh index key, because its bits cannot be indexed the
+// way this filter reads them. The hint set is a cache, so an unusable file costs
+// a rebuild rather than a wrong answer; callers that want a clean filter for the
+// same shape must remove the file first or call Reset.
 func NewFilter(cfg Config, path string) (*Filter, error) {
 	return newFilter(cfg, path, defaultMmapDriver())
 }
@@ -81,33 +96,69 @@ func newFilter(cfg Config, path string, driver mmapDriver) (*Filter, error) {
 		return nil, fmt.Errorf("bloom/persistent: open persistent file: %w", err)
 	}
 	bytesLen := (m + 7) / 8
+	// bloom.Parameters bounds m by bloom.MaxBits, so the bitset and its header
+	// always fit an int and no overflow check is needed here.
+	total := headerSize + int(bytesLen)
 	fi, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("bloom/persistent: stat persistent file: %w", err)
 	}
-	if fi.Size() < int64(bytesLen) {
-		if err := file.Truncate(int64(bytesLen)); err != nil {
+	if fi.Size() < int64(total) {
+		if err := file.Truncate(int64(total)); err != nil {
 			_ = file.Close()
 			return nil, fmt.Errorf("bloom/persistent: resize persistent file: %w", err)
 		}
 	}
 
-	mapped, data, err := driver.mapFile(file, int(bytesLen))
+	mapped, raw, err := driver.mapFile(file, total)
 	if err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("bloom/persistent: map persistent file: %w", err)
 	}
-	return &Filter{
+	f := &Filter{
 		file:   file,
-		data:   data,
+		raw:    raw,
+		data:   raw[headerSize:],
 		k:      k,
 		m:      m,
-		hash:   bloom.ResolveIndexHash(cfg.Hash),
 		mapped: mapped,
 		path:   path,
 		driver: driver,
-	}, nil
+	}
+	if err := f.initIndexHash(cfg.Hash); err != nil {
+		_ = f.closeLocked()
+		return nil, err
+	}
+	return f, nil
+}
+
+// initIndexHash resolves the filter's index hash and makes the header describe
+// it. A header that is missing, unreadable, or names the other index-hash kind
+// makes the stored bits unusable under this filter's indexing, so the file is
+// rebuilt empty with a fresh key: the hint set is a cache, and rebuilding it is
+// always safer than answering from bits indexed another way (#254).
+func (f *Filter) initIndexHash(custom bloom.IndexHash) error {
+	kind := hashKindDefault
+	if custom != nil {
+		kind = hashKindCustom
+	}
+	gotKind, key, ok := decodeHeader(f.raw[:headerSize])
+	if !ok || gotKind != kind {
+		fresh, err := randomKey()
+		if err != nil {
+			return err
+		}
+		key = fresh
+		encodeHeader(f.raw[:headerSize], kind, key)
+		clear(f.data)
+	}
+	if custom != nil {
+		f.hash = custom
+		return nil
+	}
+	f.hash = keyedIndexHash(key)
+	return nil
 }
 
 // IsMapped reports whether the bitset is a live memory-mapped view of the
@@ -227,11 +278,14 @@ func (f *Filter) closeLocked() error {
 	if err := f.syncLocked(); err != nil {
 		firstErr = err
 	}
-	if f.mapped && len(f.data) > 0 {
-		if err := f.driver.unmap(f.data); err != nil && firstErr == nil {
+	if f.mapped && len(f.raw) > 0 {
+		// The mapping covers the header as well as the bitset, so it must be
+		// released with the bounds it was created with.
+		if err := f.driver.unmap(f.raw); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
+	f.raw = nil
 	f.data = nil
 	if f.file != nil {
 		if err := f.file.Close(); err != nil && firstErr == nil {
@@ -242,13 +296,14 @@ func (f *Filter) closeLocked() error {
 	return firstErr
 }
 
-// syncLocked flushes the bitset to the backing store. The caller must hold f.mu.
+// syncLocked flushes the header and bitset to the backing store. The caller must
+// hold f.mu.
 func (f *Filter) syncLocked() error {
-	if len(f.data) == 0 {
+	if len(f.raw) == 0 {
 		return nil
 	}
 	if f.mapped {
-		if err := f.driver.flush(f.data); err != nil {
+		if err := f.driver.flush(f.raw); err != nil {
 			return err
 		}
 		if f.file != nil {
@@ -258,7 +313,9 @@ func (f *Filter) syncLocked() error {
 		}
 		return nil
 	}
-	if err := os.WriteFile(f.path, f.data, 0o644); err != nil {
+	// The heap fallback owns the whole file, header included, so it is written in
+	// one call: that keeps the header and the bits it describes inseparable.
+	if err := os.WriteFile(f.path, f.raw, 0o644); err != nil {
 		return fmt.Errorf("bloom/persistent: write persistent file: %w", err)
 	}
 	return nil

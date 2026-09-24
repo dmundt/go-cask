@@ -126,22 +126,39 @@ func TestFilterPersistentRejectsUnboundedParameters(t *testing.T) {
 
 func TestFilterPersistentSyncWriteError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "nested", "file.bin")
-	f := &Filter{file: &os.File{}, data: []byte{0x01, 0x02}, path: path, mapped: false}
+	f := &Filter{file: &os.File{}, raw: []byte{0x01, 0x02}, path: path, mapped: false}
 	if err := f.Sync(); err == nil {
 		t.Fatal("Sync with unwritable target path should return an error")
 	}
 }
 
 func TestFilterPersistentCloseWithFallbackWrite(t *testing.T) {
+	rec := &recordingDriver{mapped: false}
 	path := filepath.Join(t.TempDir(), "fallback.bin")
-	p, err := New(path, 256, 0.01)
+	p, err := newFilter(Config{ExpectedItems: 256, FalsePositiveRate: 0.01}, path, rec.driver())
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.mapped = false
-	p.data = []byte{0xFF, 0x00, 0x01}
+	// A heap-backed filter owns the whole file — header and bitset — so Close
+	// writes it in one call.
+	p.raw[headerSize] = 0x01
+	want := int64(len(p.raw))
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != want {
+		t.Fatalf("persistent file size = %d, want %d (header plus bitset)", info.Size(), want)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(written, magic[:]) {
+		t.Fatalf("heap-backed Close did not persist the header: % x", written[:min(len(written), headerSize)])
 	}
 }
 
@@ -171,7 +188,7 @@ func TestFilterPersistentMappedAndSyncBranches(t *testing.T) {
 	if _, err := file.Write([]byte{0x01, 0x02, 0x03, 0x04}); err != nil {
 		t.Fatal(err)
 	}
-	f := &Filter{file: file, data: []byte{0x01, 0x02, 0x03, 0x04}, mapped: true, path: path}
+	f := &Filter{file: file, raw: []byte{0x01, 0x02, 0x03, 0x04}, mapped: true, path: path}
 	if err := f.Sync(); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +302,7 @@ func TestFilterPersistentClosePropagatesDriverErrors(t *testing.T) {
 	}
 	f := &Filter{
 		file:   file,
-		data:   []byte("abc"),
+		raw:    []byte("abc"),
 		mapped: true,
 		path:   path,
 		driver: mmapDriver{closeMapped: func([]byte) error { return errors.New("unmap failure") }},
@@ -339,8 +356,6 @@ func TestPersistentHelpersAndLifecycleBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.mapped = false
-	p.data = nil
 	if err := p.Sync(); err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +384,7 @@ func TestFilterPersistentWrapperErrorBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	f := &Filter{file: file, data: []byte("abc"), mapped: false, path: filepath.Join(t.TempDir(), "missing", "close.bin")}
+	f := &Filter{file: file, raw: []byte("abc"), mapped: false, path: filepath.Join(t.TempDir(), "missing", "close.bin")}
 	if err := f.Close(); err == nil {
 		t.Fatal("expected Close to error when a heap-backed Sync cannot write to an invalid path")
 	}
