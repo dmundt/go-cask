@@ -15,7 +15,7 @@ CASK is a Git-like, content-addressable store for Go: bytes are keyed by their c
 - **Extensible helpers** — `cas/pack` provides chunking and sidecar metadata workflows without changing the identity model.
 - **Layering stays clear** — the project uses one canonical sentence: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
 - **Integrity checks are explicit** — `cas.Verify` and `cas.NewVerifier` separate object identity from validation, re-reading the bytes with the caller-supplied `Hasher` while the backend itself stays a storage-only `Digest -> bytes` layer.
-- **Compatibility stays explicit** — `gob` remains Go-only, while MD5 and SHA-1 are migration-only choices rather than defaults.
+- **Compatibility stays explicit** — `gob` remains Go-only; no MD5 or SHA-1 hasher ships with this module, so a legacy algorithm means a client-supplied `cas.Hasher` (`Digest` + `Validate`), and neither is for new data.
 
 ## Table of contents
 
@@ -116,7 +116,7 @@ classDiagram
 - Compact custom option: binary payloads via `cas/codec/binary` when a stable per-type binary layout is required
 - Opt-in compatibility codec: `gob` (`cas/codec/gob`) for Go-only compatibility, not for durable long-term storage
 
-Legacy or compatibility-only hashes should not be used for new content-addressed data: MD5 and SHA-1 are migration-only or compatibility choices, not the default for a CAS.
+Legacy hashes do not ship for new content-addressed data: this module provides `SHA-256`, `SHA-512`, and `SHA-512/256`, so neither MD5 nor SHA-1 can address a new store without a client-supplied `cas.Hasher` — a migration bridge for a legacy store, not a supported default.
 
 ## Viewer reference states
 
@@ -148,11 +148,11 @@ normative contract that defines them.
 
 ## Security note
 
-Use cryptographic hashes for object identity and integrity. For new data, prefer `SHA-256` or `SHA-512/256`. Do not use `MD5` or `SHA-1` for new content-addressed data, even when a legacy system still emits them; they are not recommended for new objects or new interoperability contracts.
+Use cryptographic hashes for object identity and integrity. For new data, prefer `SHA-256` or `SHA-512/256`. Do not use `MD5` or `SHA-1` for new content-addressed data, even when a legacy system still emits them; they are not recommended for new objects or new interoperability contracts, and this module ships no hasher for either — a legacy source needs a client-supplied `cas.Hasher`, which does not make the algorithm a default.
 
 ## Upgrading
 
-Current patch release: `v1.4.2`. This maintenance release documents the default policy as `SHA-256` + `flate` compression for durable payloads, refreshes the benchmark guidance to keep benchmark winners distinct from the project default, and keeps the canonical benchmark matrix in JSON for review and future analysis.
+The current release and every notable change before it are recorded in [CHANGELOG.md](CHANGELOG.md), which the website also publishes as [go-cask.dev/changelog](https://go-cask.dev/changelog/): read its newest released section, then the version-specific notes below.
 
 `v1.3.0` is a **breaking MINOR**: the core is hash-agnostic (`cas.Hash` → `cas.Digest` + a client-injected `cas.Hasher`), `gitlike.NewRepository` takes a `gitlike.Codecs` set, object invariants moved to `cas.Validator`, and the filesystem layout lost its algorithm directory. Read the `[v1.3.0]` section of [CHANGELOG.md](CHANGELOG.md) and [docs/specs/operations.md](docs/specs/operations.md) §5 before pointing this build at an existing store — objects written by `v1.2.0` are not migrated.
 
