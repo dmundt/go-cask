@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas/pack"
 )
 
@@ -32,16 +33,17 @@ func FuzzEncodeDecodeRoundTrip(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, key, value string) {
 		in := pack.Data{"key": key, "value": value}
-		b, err := pack.EncodeJSON(in)
+		codec := jsoncodec.New[pack.Data]()
+		b, err := pack.EncodeWith(in, codec)
 		if err != nil {
-			t.Fatalf("EncodeJSON() error = %v", err)
+			t.Fatalf("EncodeWith() error = %v", err)
 		}
-		out, err := pack.DecodeJSON(b)
+		out, err := pack.DecodeWith(b, codec)
 		if err != nil {
-			t.Fatalf("DecodeJSON() error = %v", err)
+			t.Fatalf("DecodeWith() error = %v", err)
 		}
 		if out["key"] != key || out["value"] != value {
-			t.Fatalf("DecodeJSON(EncodeJSON(data)) mismatch: got %#v, want %#v", out, in)
+			t.Fatalf("DecodeWith(EncodeWith(data)) mismatch: got %#v, want %#v", out, in)
 		}
 	})
 }

@@ -240,6 +240,15 @@ if go list -deps ./gitlike | grep -E 'cas/codec' >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "== pack codec guard =="
+# cas/pack is the helper layer that must stay codec-agnostic like the reference
+# layer: the caller passes the codec to EncodeWith/DecodeWith/LoadWith/SaveWith,
+# and the package reports ErrNilCodec instead of choosing a format (go-cask#307).
+if go list -deps ./cas/pack | grep -E 'cas/codec' >/dev/null 2>&1; then
+  echo "cas/pack must not depend on the codec layer; the caller passes the codec." >&2
+  exit 1
+fi
+
 echo "== govulncheck =="
 if [[ "${VERIFY_SKIP_SECURITY:-false}" == "true" ]]; then
   echo "skipped (run by the separate CI security job)"

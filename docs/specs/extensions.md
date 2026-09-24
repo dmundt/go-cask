@@ -2,7 +2,7 @@
 type: Specification
 title: Extensions — go-cask
 description: The simple, minimal requirements every future extension or client built on the cas core must satisfy — use the stable surface, extend don't modify, follow the recipes, stay compatible — plus the catalog of implemented and designed-but-deferred possible extensions (packfiles, compression layer, encryption layer, chunking) and the specified-but-unimplemented maintenance surface (§3.1).
-version: v16
+version: v17
 ---
 
 # Extensions — go-cask
@@ -38,7 +38,7 @@ Requirements for **future extensions and clients** (backends, object types, code
 |---|---|---|---|
 | **Packfiles** | Implemented | `cas/backend/packfs` — an opt-in backend that keeps the loose tree and mirrors every `Put` into an append-only pack file plus a JSON index; `cask -backend packfs` selects it. No size threshold, no inode reduction and no O(packs) `List`/`Stats` (the loose mirror stays), and no pack compaction: its implemented win is the batched read | cas-core §4.14, §8 d12; performance §9 |
 | **Compression layer** | Implemented | Opt-in `Codec[T]` wrappers in `cas/codec/gzip`, `cas/codec/zlib` and `cas/codec/flate`: compress serialized bytes without changing `Digest`, object types, or the core store semantics | cas-core §4.6 |
-| **Pack helpers** | Implemented | `cas/pack` provides fixed-size payload splitting and JSON sidecar metadata for large-object and operational workflows without changing object identity | performance §10 + cas-core §7.2 |
+| **Pack helpers** | Implemented | `cas/pack` provides fixed-size payload splitting and manifest metadata written with the codec the caller names — the package imports no codec — for large-object and operational workflows without changing object identity | performance §10 + cas-core §7.2 |
 | **Sidecar checksum** | Implemented | `cas/verify/sidecar` — an opt-in `cas.Backend` decorator that records a cheap per-object checksum at `<base>/.meta/<hex>.json`, verifies it (`Rec.Verifier(...).Verify`/`VerifyAll`) and reconciles records after a sweep; `cask verify --checksums` reads what it produced. The object address stays the identity, the record never enters the hashed bytes, and deleting `.meta` loses no object | operations §6 |
 | **Encryption layer** | Deferred | `EncryptedCodec[T]` wrapping `Codec[T]` with AES-256-GCM; app supplies the key — the core never generates/stores keys | cas-core §8 (follow-up 8); §4.6/§7.2 |
 | **Content-defined chunking** | Deferred | Rolling-hash chunking of very large blobs for chunk-granular dedup | performance §10 |

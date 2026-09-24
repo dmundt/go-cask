@@ -7,7 +7,7 @@ The project’s canonical distinction is: `cas/backend/fs` is the filesystem bac
 ## Policy
 
 - The core `cas` package remains hash-agnostic and codec-agnostic.
-- The codec is always the caller's. Nothing here substitutes one for a nil codec — a nil codec is `pack.ErrNilCodec`, because the codec decides what is written on disk. The JSON convenience is explicit: `SaveJSON`/`LoadJSON`/`EncodeJSON`/`DecodeJSON`.
+- The codec is always the caller's, and the package imports none: every read and write names the codec at the call site (`SaveWith`/`LoadWith`, `EncodeWith`/`DecodeWith`, or `New` for a typed `Store[T]`). Nothing here substitutes one for a nil codec — a nil codec is `pack.ErrNilCodec`, because the codec decides what is written on disk.
 - Every manifest read or write takes a `context.Context` first and reports `context.Canceled` instead of touching the filesystem.
 - A manifest write is atomic: a temp file in the target directory, fsynced, then renamed, so a crash mid-write leaves the previous manifest intact instead of a truncated file that no longer decodes.
 - `pack` is the canonical helper layer for chunking and manifest metadata, not a replacement for the typed `Store[T]` abstraction.
@@ -17,9 +17,10 @@ The project’s canonical distinction is: `cas/backend/fs` is the filesystem bac
 ## Helper vs backend
 
 ```go
-// helper layer: split payloads and write a sidecar manifest
+// helper layer: split payloads and write a sidecar manifest with the caller's codec
 parts := pack.Split(payload, 1024)
-_ = pack.SaveJSON(ctx, "./state/manifest.json", pack.Data{"kind": "artifact"})
+codec := jsoncodec.New[pack.Data]() // cas/codec/json
+_ = pack.SaveWith(ctx, "./state/manifest.json", pack.Data{"kind": "artifact"}, codec)
 
 // backend layer: persist digests in an append-only packfile backend
 raw, _ := packfs.New("./store", packfs.WithEnabled())
@@ -40,10 +41,11 @@ fmt.Println(string(rebuilt))
 
 ```go
 meta := pack.Data{"kind": "artifact", "owner": "team-a"}
-if err := pack.SaveJSON(ctx, "./state/meta.json", meta); err != nil {
+codec := jsoncodec.New[pack.Data]()
+if err := pack.SaveWith(ctx, "./state/meta.json", meta, codec); err != nil {
 	panic(err)
 }
-loaded, err := pack.LoadJSON[pack.Data](ctx, "./state/meta.json")
+loaded, err := pack.LoadWith(ctx, "./state/meta.json", codec)
 if err != nil {
 	panic(err)
 }

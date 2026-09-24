@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas/pack"
 )
 
@@ -19,7 +20,9 @@ func ExampleSplit() {
 	// hello world
 }
 
-func ExampleSaveJSON() {
+// ExampleSaveWith shows the codec seam: the JSON codec is the caller's, named at
+// the call site, and the pack layer never chooses a format itself (#307).
+func ExampleSaveWith() {
 	dir, err := os.MkdirTemp("", "pack-example")
 	if err != nil {
 		panic(err)
@@ -28,10 +31,11 @@ func ExampleSaveJSON() {
 
 	metaPath := filepath.Join(dir, "meta.json")
 	meta := pack.Data{"kind": "artifact", "owner": "team-a"}
-	if err := pack.SaveJSON(context.Background(), metaPath, meta); err != nil {
+	codec := jsoncodec.New[pack.Data]()
+	if err := pack.SaveWith(context.Background(), metaPath, meta, codec); err != nil {
 		panic(err)
 	}
-	loaded, err := pack.LoadJSON[pack.Data](context.Background(), metaPath)
+	loaded, err := pack.LoadWith(context.Background(), metaPath, codec)
 	if err != nil {
 		panic(err)
 	}

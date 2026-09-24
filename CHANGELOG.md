@@ -112,15 +112,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The `cas/pack` manifest helpers take the caller's `context.Context` first, and
-  they never substitute a codec: a nil codec is `pack.ErrNilCodec` instead of a
-  silent switch to JSON, so the codec that decides what is on disk is always the
-  caller's. The JSON convenience is now explicit — `SaveJSON`/`LoadJSON` (and
-  `EncodeJSON`/`DecodeJSON`) replace the old `Save`/`Load`/`Encode`/`Decode`, and
-  `Store` is built with `pack.New(path, codec) (*Store[T], error)`. Migration:
-  pass a context and name the JSON helpers, or hand your own codec to
-  `SaveWith`/`LoadWith`. `cas/pack` is a helper layer outside the frozen surface
-  (cas-core §7.1), so the rename ships in `v1`.
+- The `cas/pack` manifest helpers take the caller's `codec` and
+  `context.Context` and name neither format themselves: the package no longer
+  imports a codec at all, a nil codec is `pack.ErrNilCodec` instead of a silent
+  switch to JSON, and every call site says what it writes.
+  `Save`/`Load`/`Encode`/`Decode` become `SaveWith`/`LoadWith`/`EncodeWith`/
+  `DecodeWith` (the codec is the last argument) and `Store` is built with
+  `pack.New(path, codec) (*Store[T], error)`. Migration: pass a context and a
+  codec — go-cask's own callers use `jsoncodec.New[pack.Data]()`. `cas/pack` is a
+  helper layer outside the frozen surface (cas-core §7.1), so the break ships in
+  `v1`.
 - The user-facing documentation reads leaner without losing a rule: the README
   and the normative specs under `docs/` (including `docs/specs/cas-core.md`)
   state the same contracts, defaults, sentinel errors and measured numbers in

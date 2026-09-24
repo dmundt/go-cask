@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v27
+version: v28
 ---
 
 # go-cask Rules Index
@@ -21,7 +21,7 @@ version: v27
 | `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go` (`GetMany`/`BatchGetter`), `cas/envelope.go` (TLV readers incl. `PeekVersion`) | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 (stable surface) + [`defaults.md`](specs/defaults.md) (`flate` is the default compression wrapper; `MaxDecodedBytes` binds the decompressing wrappers) |
 | `cas/cache/validate.go` (the shared cache validation layer), `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
-| `cas/pack/` (app-facing manifest/helper layer) | [`cas-core.md`](specs/cas-core.md) §7 + architecture boundary rule: helper/manifest logic stays out of the core and is not a backend |
+| `cas/pack/` (app-facing manifest/helper layer) | [`cas-core.md`](specs/cas-core.md) §7 + architecture boundary rule: helper/manifest logic stays out of the core and is not a backend; a manifest read or write names the caller's codec (the package imports no codec) |
 | `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
 | `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
 | `cas/repo/` (typed cross-type registry, Walk, Reachable) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) |

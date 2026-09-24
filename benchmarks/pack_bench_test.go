@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	"github.com/dmundt/go-cask/cas/pack"
 )
 
@@ -40,12 +41,12 @@ func BenchmarkPackManifestRoundTrip(b *testing.B) {
 			b.SetBytes(int64(len(meta["name"]) + len(meta["sha"]) + len(meta["kind"]) + len(meta["owner"])))
 			for i := 0; i < b.N; i++ {
 				path := filepath.Join(b.TempDir(), "meta.json")
-				if err := pack.SaveJSON(b.Context(), path, meta); err != nil {
-					b.Fatalf("SaveJSON() = %v", err)
+				if err := pack.SaveWith(b.Context(), path, meta, jsoncodec.New[pack.Data]()); err != nil {
+					b.Fatalf("SaveWith() = %v", err)
 				}
-				loaded, err := pack.LoadJSON[pack.Data](b.Context(), path)
+				loaded, err := pack.LoadWith(b.Context(), path, jsoncodec.New[pack.Data]())
 				if err != nil {
-					b.Fatalf("LoadJSON() = %v", err)
+					b.Fatalf("LoadWith() = %v", err)
 				}
 				if loaded["kind"] != meta["kind"] || loaded["owner"] != meta["owner"] {
 					b.Fatalf("round trip mismatch: got %#v, want %#v", loaded, meta)
@@ -60,11 +61,11 @@ func BenchmarkPackManifestSaveLoadFile(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		path := filepath.Join(b.TempDir(), "meta.json")
-		if err := pack.SaveJSON(b.Context(), path, payload); err != nil {
-			b.Fatalf("SaveJSON() = %v", err)
+		if err := pack.SaveWith(b.Context(), path, payload, jsoncodec.New[pack.Data]()); err != nil {
+			b.Fatalf("SaveWith() = %v", err)
 		}
-		if _, err := pack.LoadJSON[pack.Data](b.Context(), path); err != nil {
-			b.Fatalf("LoadJSON() = %v", err)
+		if _, err := pack.LoadWith(b.Context(), path, jsoncodec.New[pack.Data]()); err != nil {
+			b.Fatalf("LoadWith() = %v", err)
 		}
 		_ = os.Remove(path)
 	}
