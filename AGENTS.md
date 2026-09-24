@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v34
+version: v35
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -71,7 +71,7 @@ passed`; a run that stops earlier failed even if nothing was echoed about it.
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,
 > content-addressable object store component written in Go, fully type-safe via
-> generics (no `any` in the public API), a hash-agnostic core whose clients own
+> generics (no `any` in an exported value position), a hash-agnostic core whose clients own
 > the algorithm (`sha256` ships as the default), a
 > filesystem backend, typed object layers, lazy loading and caching.
 >
@@ -133,7 +133,8 @@ The repo layout is:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it
-internal/  implementation detail (web — the viewer —, index, test);
+internal/  implementation detail (web — the viewer —, index, store, test,
+           website, design — the repo-wide design-rule checks);
            not importable outside this module
 gitlike/  shared reference library (package gitlike) — Git-like object model
                  on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
@@ -353,9 +354,17 @@ build their own equivalents for their own types.
    repository, and changing the algorithm is a client-side re-digest and rewrite.
 3. **Core storage is non-generic.** `Backend` deals in `Digest` + `io.Reader`
    only. All generics live in the typed layer on top.
-4. **Fully type-safe — no `any` in the public API.** No `interface{}` in
-   exported signatures, no reflection-based dispatch. Each object type gets its
-   own `Store[T]`, so mixing types is a compile-time error.
+4. **Fully type-safe — no `any` in an exported value position.** No exported
+   value, parameter or result type is `any` or `interface{}`, and there is no
+   reflection-based dispatch. That is narrower than it sounds: an unconstrained
+   type parameter (`Codec[T any]`, `Object[T any]`) is Go's constraint syntax,
+   not a value type, so it is allowed — and it is the correct constraint for the
+   codec seam, which must serialize arbitrary caller types. The one recorded
+   exception is `cas/codec/cbor`'s dynamic value codec (library-design §5).
+   Each object type gets its own `Store[T]`, so mixing types is a compile-time
+   error, and `internal/design` enforces all of this in the gate: a new exported
+   `any` fails `go test ./...` until its symbol is ratified in that check's
+   allow-list.
 5. **Objects are self-describing and pluggable.** Every `Object[T]` declares
    `Type()` and `References()`; apps register/define new types without touching
    the storage core.
@@ -542,9 +551,15 @@ gofmt -l .
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the
   reference library `gitlike/` — it is NOT part of the generic `cas` core; the
   core stays app-agnostic.
-- **No `any`/`interface{}` in exported API.** The typed layer is constrained
-  (`Store[T Object[T]]`); reads return the concrete `T` via `Store[T].Get` —
-  no type assertions anywhere.
+- **No `any`/`interface{}` in an exported value position** (library-design §5):
+  no exported value, parameter or result type may be `any`. Constraint syntax is
+  not a value type, so `Codec[T any]`/`Object[T any]` are fine;
+  `cas/codec/cbor`'s `NewValue`/`NewMap` are the one recorded exception, and a
+  new one needs the same explicit ratification — which is mechanical: the symbol
+  must be named in `internal/design`'s allow-list, or the check fails. Unexported
+  fields and methods, `package main`, and test files are outside the rule. The
+  typed layer is constrained (`Store[T Object[T]]`); reads return the concrete
+  `T` via `Store[T].Get` — no type assertions anywhere.
 - **Constructors:** use plain `New()` when a package exposes one primary type
   (`fs.New`, `mem.New`, `json.New[T]`, `sha256.New`); use `NewType()` when it
   exposes several important types or the type isn't the package's primary one
