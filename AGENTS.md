@@ -1,7 +1,7 @@
 ---
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v32
+version: v33
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -67,6 +67,24 @@ and the exact command are in [`scripts/AGENT.md`](scripts/AGENT.md), section
 
 On any platform, a gate run is green only when it ends with `verification
 passed`; a run that stops earlier failed even if nothing was echoed about it.
+
+## Serialized landing, worktrees and gates (STRICT)
+
+Parallel sessions on one repository invalidate each other's branches: every merge
+makes the others "behind", each rebuild costs a gate run, and the rebuild window
+is long enough for the next merge to arrive first. The landing lane is therefore
+serialized **mechanically**, not by intention.
+
+- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in the relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. Never edit the primary checkout while another session may be using it.
+- **Never `git add -A` and never `git commit -a`.** Stage the paths you touched: a shared tree otherwise sweeps another session's untracked files into your commit.
+- **Claim before you start.** Comment on the issue ("taking #NNN"), then check `gh issue view NNN --json state` and `gh pr list --state all --limit 15`: a closed issue or an open PR means stop. Re-read the owning spec immediately before asking a question — parallel PRs make premises stale within minutes.
+- **Hold the land lane for the whole landing.** `./scripts/land-lane.sh acquire <issue>` before the first push and `release` after the merge; `status` names the holder (exit 0 yours, 1 free, 2 someone else). One slot in the shared git dir; an abandoned lock older than 90 minutes is taken over automatically, `--force` overrides deliberately.
+- **Gate once per commit, at the right scope.** `./scripts/verify.sh` detects a documentation-only change and runs the documentation gate — the scope CI applies (`VERIFY_SCOPE=full` forces the whole gate, `VERIFY_SCOPE=docs` asserts the documentation scope). A green run stamps the commit in the shared git dir.
+- **Install the hook once per clone:** `git config core.hooksPath .githooks`. `.githooks/pre-push` refuses a push that holds no land lane or has no green stamp for that exact commit, so re-pushing an unchanged commit costs no compute.
+- **The gate runs in the worktree, under WSL, once per commit.** Do not look for a faster path: this host's WSL has no Linux `python3`, so a WSL-native clone on ext4 would push the documentation steps onto the Windows interpreter, which cannot read a non-Windows path, and the gate would fail after spending the whole Go suite. `./scripts/verify.sh` on `/mnt/d` is the one supported route.
+- **One decision or area per PR; append, don't rewrite.** Prefer adding a spec row or bullet over rewriting an existing line, and keep a documentation PR to one file where possible: additions auto-merge, rewrites conflict and cost a rebuild.
+- **Merge queue over `strict`.** `main` requires an up-to-date branch. When a merge queue is available, enable it — GitHub then rebases and re-tests once per PR at merge time. The repository currently runs `required_status_checks.strict=false`, which lets a green, non-conflicting PR merge while behind; that is safe only because the land lane is held, so keep the lane discipline. A merge queue is not GitHub's "update branch" button and is allowed.
+
 > **Origin:** This specification is generated from the DeepSeek design conversation
 > at <https://chat.deepseek.com/share/p7jkdjl1gbyhjipf6r>. It captures the **final
 > implementation** the conversation converged on: a generic, Git-like,

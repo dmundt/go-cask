@@ -29,6 +29,12 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   helpers can write the same file, one of them gains a mode that never touches
   it, and a test in `verify.sh` pins the split (`test-bench-scripts.sh` is the
   reference for `bench-baseline.sh` versus `bench-compare.sh`).
+- The landing helpers are part of this layer: `land-lane.sh` serializes who may
+  push (one slot, in the shared git dir), `.githooks/pre-push` refuses a push
+  without the lane and a green stamp for the exact commit, and `verify.sh` writes
+  that stamp only on success. Keep them dependency-free, POSIX-sh safe for the
+  hook, and never make the hook re-run work the stamp already covers — the point
+  is that an unchanged commit costs nothing.
 
 ## Dependencies and scope
 

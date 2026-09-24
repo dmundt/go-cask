@@ -1,0 +1,33 @@
+#!/bin/sh
+# Mechanical landing rules (AGENTS.md, "Serialized landing, worktrees and gates"):
+#
+#   1. this worktree holds the land lane — one landing at a time, so parallel
+#      sessions cannot invalidate each other's branch mid-flight;
+#   2. the gate ran green for the exact commit being pushed — and because the
+#      stamp is keyed by commit, re-pushing an unchanged commit costs nothing.
+#
+# Install once per clone:  git config core.hooksPath .githooks
+set -eu
+
+if ! ./scripts/land-lane.sh status >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+pre-push: the land lane is not held by this worktree.
+  Landing is serialized on purpose: every merge makes other branches "behind",
+  and a rebuild + full gate per race is wasted work.
+      ./scripts/land-lane.sh acquire <issue-or-label>
+      ./scripts/land-lane.sh release        # after the PR merges
+EOF
+  exit 1
+fi
+
+stamp="$(git rev-parse --path-format=absolute --git-common-dir)/verify.ok"
+head="$(git rev-parse HEAD)"
+if [ ! -f "$stamp" ] || [ "$(cut -d' ' -f1 <"$stamp")" != "$head" ]; then
+  cat >&2 <<EOF
+pre-push: no green gate for $head.
+  Run the gate once for this commit, then push again:
+      ./scripts/verify.sh                      # docs-only branches get the docs gate
+      VERIFY_SCOPE=full ./scripts/verify.sh    # force the whole gate
+EOF
+  exit 1
+fi
