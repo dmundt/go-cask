@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v42
+version: v43
 ---
 
 # Viewer Design — go-cask
@@ -114,14 +114,26 @@ object-delete and GC routes it deliberately omits — replies on the session, no
 the path: 401 without one, 404 with. Probing cannot map the surface.
 
 The browser is a top bar, filter bar, table/pager master column, and inspector
-detail column; the object table carries digest, type, IEC-formatted size,
-optional inbound-reference count, integrity status, plus optional metadata the
-backend can supply truthfully. MUST NOT fabricate reference counts, object age,
-incoming/outgoing references, or stored verification state. `not verified`
-holds until an on-demand result exists in the current server session.
-Verification — success or failure — MUST refresh the visible object table
-through an htmx response event, its status cell immediately reflecting the
-session-scoped result.
+detail column; the object table carries digest, type, envelope frame version,
+codec, IEC-formatted size, optional inbound-reference count, integrity status,
+plus optional metadata the backend can supply truthfully. MUST NOT fabricate
+reference counts, object age, incoming/outgoing references, or stored
+verification state. `not verified` holds until an on-demand result exists in the
+current server session. Verification — success or failure — MUST refresh the
+visible object table through an htmx response event, its status cell immediately
+reflecting the session-scoped result.
+
+**The header census is reported, never inferred.** The version and codec cells
+and the inspector's Identity rows come from one header read per object (the same
+read that yields the type), so they cost no payload byte and agree with
+`cask list -json`/`cask meta -json` digest by digest (cli.md §3). A frame that
+carries no codec identity MUST read `unspecified` — explicitly, in the cell and
+in the `codec` filter, never as a blank cell and never as a guessed tag; bytes
+with no walkable envelope header at all (a raw object written by `put`) MUST read
+the viewer's not-read marker for both fields, because there is no frame whose
+version or codec could be stated. A codec difference is a *format* fact, not
+damage: it is visible in the cell, and it MUST NOT be labelled corrupt by the
+integrity axis, which stays address-based (cas-core §4.8).
 
 Digest URLs are algorithm-agnostic at the viewer layer: `Server` takes a
 `cas.Hasher`; routes parse canonical hex with `cas.ParseDigest` and validate the
@@ -183,8 +195,15 @@ The rejection never describes the token or the account (api-design §5–§6).
 
 The integrity filter orders states Verified, Unverified, Corrupt — exclusive
 alternatives on one axis, so one single-choice `status` control, empty meaning
-every state. Reachability is the other axis, MUST be a separate single-choice
-`reach` filter (`reachable`/`orphaned`/`detached`/`root`, empty meaning any).
+every state. The header axes are single-choice too: `type` (the versioned
+envelope type), `version` (the frame's leading byte, as its decimal form) and
+`codec` (the identity tag, with the literal `unspecified` naming the frames that
+carry none), each empty meaning any. A value the store does not hold — an unknown
+type, an absent version, an unknown codec — is rejected with 400 rather than
+rendered as an empty page; bytes with no walkable header (version 0) match no
+version and no codec. Reachability is the other axis, MUST be a separate
+single-choice `reach` filter (`reachable`/`orphaned`/`detached`/`root`, empty
+meaning any).
 `detached`: an orphaned object with zero host-supplied inbound references — a
 disconnected component entry, not a retention root. `root`: a reachable object
 with zero host-supplied inbound references — the entry point of a reachable

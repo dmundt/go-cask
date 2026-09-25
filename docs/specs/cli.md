@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v34
+version: v35
 ---
 
 # CLI — go-cask
@@ -37,9 +37,9 @@ Contract for `cmd/cask`, the single binary: thin CLI over the cas library plus, 
 |---|---|
 | `put <file>\|- [-json]` | store bytes (or stdin); prints the hash (`sha256:hexdigest`) |
 | `get <hash> [-o <file>]` | retrieve to a file or stdout (no `-o` → stdout) |
-| `list [-limit <n>] [-offset <n>] [-json]` | list objects (`{total, objects}` shape); a digest-named file that is not a readable object (a stray file in the store directory) is skipped with a stderr warning instead of failing the command (cas-core §4.4) |
-| `meta <hash> [-json]` | metadata of one object (size, type, algorithm) |
-| `stats` | storage statistics (`N objects, M bytes`) |
+| `list [-limit <n>] [-offset <n>] [-type <type[@major]>] [-codec <tag>] [-json]` | list objects (`{total, objects}` shape, `total` being the matches when a filter is set); `-type`/`-codec` filter on the envelope header — a bare type name reads as `@1`, `-codec unspecified` selects the frames that carry no identity — and a value no object carries is an empty result at exit 0; a digest-named file that is not a readable object (a stray file in the store directory) is skipped with a stderr warning instead of failing the command (cas-core §4.4) |
+| `meta <hash> [-json]` | metadata of one object (size, type, frame version, codec, algorithm) |
+| `stats [-json]` | storage statistics (`N objects, M bytes`) plus a header census: per type, per frame version and per codec (see §3) |
 | `verify [-hash-algo <name>] <hash>\|--all [-checksums [-checksum <algo>]]` | integrity check (single object or full scan; `-hash-algo` selects the algorithm the addresses are expressed in; `-checksums` checks the per-object checksum recorded beside each object instead of its address) |
 | `gc --min-age <dur> <roots...>` | reclaim objects absent from `<roots...>` AND older than `--min-age` (grace default 1h; `--min-age 0` = immediate, dangerous); `<roots...>` must already be the complete reachable set, not just entry points |
 | `prune --min-age <dur> <roots...> [--dry-run]` | age-based retention (dry-run default); same reachable-set contract as `gc` |
@@ -108,7 +108,8 @@ Contract for `cmd/cask`, the single binary: thin CLI over the cas library plus, 
 ## 3. Output and exit codes
 
 - Default output is plain text: one hash per line for `put`/`list`; human-readable summaries for `stats`/`meta`/`verify`/`gc`/`prune`.
-- `-json` switches to machine-readable JSON: `put` → `{"hash": "sha256:hexdigest", "deduplicated": bool}`; `list` → `{"total": n, "objects": [{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n}, …]}`; `meta` → `{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n, "type": "…"}`. `"algorithm"` is the client's constant, not something the core reports.
+- `-json` switches to machine-readable JSON: `put` → `{"hash": "sha256:hexdigest", "deduplicated": bool}`; `list` → `{"total": n, "objects": [{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n, "type": "…", "version": 2, "codec": "…"}, …]}`; `meta` → `{"hash": "sha256:hexdigest", "algorithm": "sha256", "size": n, "type": "…", "version": 2, "codec": "…"}`; `stats` → `{"objects": n, "bytes": m, "unreadable": u, "headerless": h, "types": {"blob@1": n, …}, "versions": {"2": n, …}, "codecs": {"json": n, …}}`. `"algorithm"` is the client's constant, not something the core reports.
+- **The header census is one convention across the surfaces.** `type` is the versioned envelope type (`""` when the bytes carry none), `version` is the frame's leading byte (`0` when there is no walkable header — raw bytes written by `put`), and `codec` is the writing codec's identity tag with the literal `unspecified` for a frame that carries none (a version 1 frame, or a version 2 frame whose codec declared no tag): never a blank value, never a guess. In `stats -json` each axis counts only objects whose header was read, so `sum(types) == sum(versions) == sum(codecs) == objects - unreadable - headerless`; a store of enveloped objects therefore sums to its object count exactly. The viewer renders the same three values from the same read (viewer-design §3), so `list -json`, `meta -json`, `stats -json`, the object table and the inspector agree digest by digest.
 - Errors go to stderr, never stdout. The viewer's one-time login notice (§1, §2) is deliberate command output, so it goes to stdout.
 
 | Exit | Meaning |

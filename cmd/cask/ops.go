@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,21 +199,71 @@ func opGet(ctx context.Context, t *store.Store, args []string) error {
 
 // --- list ---
 
+// unspecifiedCodec is how every surface renders a frame that carries no codec
+// identity: a version 1 envelope, a version 2 envelope whose codec declared no
+// tag, or bytes that carry no walkable header at all (a raw object). It is the
+// documented value rather than a blank cell, so "no codec" is never read as
+// "the CLI forgot to report it" (cli.md §2, viewer-design §3).
+const unspecifiedCodec = "unspecified"
+
+// codecLabel renders a frame's codec tag for a surface.
+func codecLabel(codec string) string {
+	if codec == "" {
+		return unspecifiedCodec
+	}
+	return codec
+}
+
+// normalizeTypeFilter accepts the documented `<type[@major]>` form: a bare name
+// means its first major version, the same reading a stored legacy name gets.
+func normalizeTypeFilter(filter string) string {
+	if filter == "" || strings.Contains(filter, "@") {
+		return filter
+	}
+	return filter + "@1"
+}
+
 // listArgs holds list's flag values.
 type listArgs struct {
-	limit   int
-	offset  int
-	jsonOut bool
+	limit       int
+	offset      int
+	jsonOut     bool
+	typeFilter  string
+	codecFilter string
 }
 
 // listFlags registers list's flags over a; opList and the command table both use
 // it, so the accepted and the documented flags are one set (cli.md §2, §4).
+// -type and -codec filter on the envelope header (cli.md §2): the type is the
+// versioned name a bare value is read as ("blob" is "blob@1"), and the codec is
+// the identity tag, with "unspecified" naming the frames that carry none.
 func listFlags(a *listArgs) *flag.FlagSet {
 	flags := newFlagSet("list")
 	flags.IntVar(&a.limit, "limit", 100, "max items (1-1000)")
 	flags.IntVar(&a.offset, "offset", 0, "start offset")
 	flags.BoolVar(&a.jsonOut, "json", false, "machine-readable JSON")
+	flags.StringVar(&a.typeFilter, "type", "", "only objects of this envelope type (e.g. blob or blob@1)")
+	flags.StringVar(&a.codecFilter, "codec", "", "only objects whose codec tag is this (use \"unspecified\" for frames that carry none)")
 	return flags
+}
+
+// listItem is one reported object: its address, the algorithm the CLI speaks,
+// its stored size, and the three header fields a census reader wants.
+type listItem struct {
+	// Hash is the object's printable digest.
+	Hash string `json:"hash"`
+	// Algorithm identifies the digest algorithm.
+	Algorithm string `json:"algorithm"`
+	// Size is the stored object's byte count.
+	Size int64 `json:"size"`
+	// Type is the envelope type ("" for bytes that carry no header).
+	Type string `json:"type"`
+	// Version is the envelope frame version (0 for bytes that carry no
+	// walkable header).
+	Version byte `json:"version"`
+	// Codec is the codec identity tag, or "unspecified" when the frame carries
+	// none.
+	Codec string `json:"codec"`
 }
 
 func opList(ctx context.Context, t *store.Store, args []string) error {
@@ -226,38 +278,48 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 	if a.offset < 0 {
 		return usagef("offset must be >= 0, got %d", a.offset)
 	}
-	type item struct {
-		// Hash is the object's printable digest.
-		Hash string `json:"hash"`
-		// Algorithm identifies the digest algorithm.
-		Algorithm string `json:"algorithm"`
-		// Size is the stored object's byte count.
-		Size int64 `json:"size"`
-	}
 	digests, err := t.List(ctx)
 	if err != nil {
 		return err
 	}
 	total := len(digests)
-	// Size the result from the page that is actually reported, not from the
-	// whole store: the page is bounded by -limit (cli.md §2).
-	page := index.Paginate(digests, a.offset, a.limit)
-	items := make([]item, 0, len(page))
 	skipped := 0
-	for _, h := range page {
-		size, err := t.Size(ctx, h)
+	var items []listItem
+	if a.typeFilter != "" || a.codecFilter != "" {
+		// A filter needs every object's header, so the walk is the whole store:
+		// the alternative would be a walk per page and a total that depends on
+		// where the page starts (cli.md §2).
+		matched, snapshotSkipped, err := filteredItems(ctx, t, a)
 		if err != nil {
-			// List reports every digest-named file, including one at a path the
-			// layout cannot address (a stray file in the store directory): such
-			// an entry is not an object, so it is skipped with a warning instead
-			// of failing the whole listing (cas-core §4.4).
-			if errors.Is(err, cas.ErrNotFound) || errors.Is(err, cas.ErrInvalidDigest) {
+			return err
+		}
+		skipped = snapshotSkipped
+		total = len(matched)
+		items = index.Paginate(matched, a.offset, a.limit)
+	} else {
+		// Size the result from the page that is actually reported, not from the
+		// whole store: the page is bounded by -limit (cli.md §2).
+		page := index.Paginate(digests, a.offset, a.limit)
+		items = make([]listItem, 0, len(page))
+		for _, h := range page {
+			item, ok, err := listItemFor(ctx, t, h)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				// List reports every digest-named file, including one at a path
+				// the layout cannot address (a stray file in the store
+				// directory): such an entry is not an object, so it is skipped
+				// with a warning instead of failing the whole listing
+				// (cas-core §4.4).
 				skipped++
 				continue
 			}
-			return err
+			items = append(items, item)
 		}
-		items = append(items, item{sha256.Format(h), sha256.Name, size})
+		if items == nil {
+			items = []listItem{}
+		}
 	}
 	if skipped > 0 {
 		fmt.Fprintf(os.Stderr, "cask: skipped %d digest-named file(s) that are not readable objects\n", skipped)
@@ -269,6 +331,70 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 		fmt.Println(it.Hash)
 	}
 	return nil
+}
+
+// listItemFor reads one object's reported metadata. It reports ok=false for a
+// digest-named file that is not an addressable object, which the caller skips
+// with a warning.
+func listItemFor(ctx context.Context, t *store.Store, h cas.Digest) (listItem, bool, error) {
+	size, err := t.Size(ctx, h)
+	if err != nil {
+		if errors.Is(err, cas.ErrNotFound) || errors.Is(err, cas.ErrInvalidDigest) {
+			return listItem{}, false, nil
+		}
+		return listItem{}, false, err
+	}
+	version, codec, typ, err := index.Header(ctx, t, h)
+	if err != nil {
+		if errors.Is(err, cas.ErrNotFound) || errors.Is(err, cas.ErrInvalidDigest) {
+			return listItem{}, false, nil
+		}
+		return listItem{}, false, err
+	}
+	return listItem{
+		Hash:      sha256.Format(h),
+		Algorithm: sha256.Name,
+		Size:      size,
+		Type:      typ,
+		Version:   version,
+		Codec:     codecLabel(codec),
+	}, true, nil
+}
+
+// filteredItems walks the store once and returns the objects a -type/-codec
+// filter matches, in the store's listing order. It uses the shared metadata
+// snapshot, so the CLI and the viewer agree on what an object's header says.
+func filteredItems(ctx context.Context, t *store.Store, a listArgs) ([]listItem, int, error) {
+	snapshot, err := index.BuildSnapshot(ctx, t)
+	if err != nil {
+		return nil, 0, err
+	}
+	want := normalizeTypeFilter(a.typeFilter)
+	items := make([]listItem, 0, len(snapshot.Entries))
+	skipped := 0
+	for _, entry := range snapshot.Entries {
+		if entry.Unreadable {
+			// The same skip the unfiltered path applies: a digest-named file
+			// that is not a readable object is not a listing result.
+			skipped++
+			continue
+		}
+		if want != "" && entry.Type != want {
+			continue
+		}
+		if a.codecFilter != "" && codecLabel(entry.Codec) != a.codecFilter {
+			continue
+		}
+		items = append(items, listItem{
+			Hash:      sha256.Format(entry.Digest),
+			Algorithm: sha256.Name,
+			Size:      entry.Size,
+			Type:      entry.Type,
+			Version:   entry.Version,
+			Codec:     codecLabel(entry.Codec),
+		})
+	}
+	return items, skipped, nil
 }
 
 // --- meta ---
@@ -299,10 +425,11 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	// The type is read through the shared header reader: a raw object stored by
-	// `put` has no envelope and reports an empty type, while an object that
-	// cannot be read at all is the CLI's error.
-	typ, err := index.HeaderType(ctx, t, h)
+	// The header is read through the shared reader, so the CLI reports the same
+	// three fields the list and stats censuses do: a raw object stored by `put`
+	// has no envelope (type "", version 0) and a frame without a codec tag
+	// reports the explicit "unspecified" rather than a blank.
+	version, codec, typ, err := index.Header(ctx, t, h)
 	if err != nil {
 		return err
 	}
@@ -312,24 +439,33 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 	}
 	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size, "type": typ,
+			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size,
+			"type": typ, "version": version, "codec": codecLabel(codec),
 		})
 	}
-	fmt.Printf("%s %s size=%d type=%q\n", sha256.Format(h), sha256.Name, size, typ)
+	fmt.Printf("%s %s size=%d type=%q version=%d codec=%s\n",
+		sha256.Format(h), sha256.Name, size, typ, version, codecLabel(codec))
 	return nil
 }
 
 // --- stats ---
 
-// statsFlags registers stats' flags: the command takes none, but parsing its
-// arguments gives it the same -h/-help handling and unknown-flag rejection as
-// every other command (cli.md §4).
-func statsFlags() *flag.FlagSet {
-	return newFlagSet("stats")
+// statsArgs holds stats' flag values.
+type statsArgs struct {
+	jsonOut bool
+}
+
+// statsFlags registers stats' flags over a; opStats and the command table both
+// use it, so the accepted and the documented flags are one set (cli.md §2, §4).
+func statsFlags(a *statsArgs) *flag.FlagSet {
+	flags := newFlagSet("stats")
+	flags.BoolVar(&a.jsonOut, "json", false, "machine-readable JSON")
+	return flags
 }
 
 func opStats(ctx context.Context, t *store.Store, args []string) error {
-	flags := statsFlags()
+	var a statsArgs
+	flags := statsFlags(&a)
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -340,8 +476,107 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 	if err != nil {
 		return err
 	}
+	// The census walks the store once and counts the three header fields. An
+	// object whose header cannot be read is counted in no axis, so each axis
+	// sums to the readable object count and `unreadable` names the rest
+	// (cli.md §2).
+	snapshot, err := index.BuildSnapshot(ctx, t)
+	if err != nil {
+		return err
+	}
+	census := newHeaderCensus(snapshot)
+	if a.jsonOut {
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"objects":    st.ObjectCount,
+			"bytes":      st.TotalSize,
+			"unreadable": census.unreadable,
+			"headerless": census.headerless,
+			"types":      census.types,
+			"versions":   census.versions,
+			"codecs":     census.codecs,
+		})
+	}
 	fmt.Println(st)
+	census.print(os.Stdout)
 	return nil
+}
+
+// headerCensus is the per-type, per-version and per-codec tally a `stats`
+// report adds. Each map's counts sum to the object count minus the objects that
+// carry no header fields to count: `unreadable` (the metadata could not be read)
+// and `headerless` (the bytes are not an envelope — a raw object written by
+// `put`). A store of enveloped objects therefore sums to its object count
+// exactly, and nothing is ever guessed into an axis (cli.md §2).
+type headerCensus struct {
+	// types counts objects per versioned envelope type.
+	types map[string]int
+	// versions counts objects per frame version, keyed by its decimal form so
+	// the JSON object is stable and ordered by the encoder.
+	versions map[string]int
+	// codecs counts objects per codec identity tag; "unspecified" is the tag
+	// of a frame that carries none.
+	codecs map[string]int
+	// unreadable counts objects whose metadata could not be read.
+	unreadable int
+	// headerless counts objects whose bytes carry no walkable envelope header.
+	headerless int
+}
+
+// newHeaderCensus tallies a built snapshot.
+func newHeaderCensus(snapshot *index.Snapshot) headerCensus {
+	c := headerCensus{
+		types:    make(map[string]int),
+		versions: make(map[string]int),
+		codecs:   make(map[string]int),
+	}
+	for _, entry := range snapshot.Entries {
+		switch {
+		case entry.Unreadable:
+			c.unreadable++
+		case entry.Type == "":
+			// Readable bytes that are not an envelope: nothing to count on any
+			// axis, and guessing a version or a type would misdescribe them.
+			c.headerless++
+		default:
+			c.types[entry.Type]++
+			c.versions[strconv.Itoa(int(entry.Version))]++
+			c.codecs[codecLabel(entry.Codec)]++
+		}
+	}
+	return c
+}
+
+// print renders the census as one line per axis, skipping an axis with no
+// entries so an empty store prints nothing but its summary.
+func (c headerCensus) print(w io.Writer) {
+	for _, axis := range []struct {
+		label string
+		count map[string]int
+	}{
+		{"types", c.types},
+		{"versions", c.versions},
+		{"codecs", c.codecs},
+	} {
+		if len(axis.count) == 0 {
+			continue
+		}
+		keys := make([]string, 0, len(axis.count))
+		for key := range axis.count {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		parts := make([]string, 0, len(keys))
+		for _, key := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%d", key, axis.count[key]))
+		}
+		fmt.Fprintf(w, "%s: %s\n", axis.label, strings.Join(parts, ", "))
+	}
+	if c.headerless > 0 {
+		fmt.Fprintf(w, "headerless: %d\n", c.headerless)
+	}
+	if c.unreadable > 0 {
+		fmt.Fprintf(w, "unreadable: %d\n", c.unreadable)
+	}
 }
 
 // --- verify ---

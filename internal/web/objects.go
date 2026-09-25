@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
@@ -32,6 +31,16 @@ type objectRow struct {
 	// bytes could not be read: the cell says so instead of rendering an empty
 	// cell that reads like an untyped object.
 	TypeLabel string
+	// Version is the envelope frame version, 0 when the bytes carry no walkable
+	// header.
+	Version byte
+	// VersionLabel is what the version cell shows: the frame version, or the
+	// viewer's "not read" marker when there is no header to read.
+	VersionLabel string
+	// Codec is what the codec cell and the codec filter read: the identity tag,
+	// the explicit "unspecified" for a frame that carries none, or the "not
+	// read" marker when there is no header at all.
+	Codec string
 	// Unreadable reports that the object's bytes could not be read.
 	Unreadable bool
 	// Size is the stored payload size.
@@ -90,6 +99,10 @@ type objectBrowserData struct {
 	Objects []objectRow
 	// Types contains available type filter choices.
 	Types []filterOption
+	// Versions contains available frame-version filter choices.
+	Versions []filterOption
+	// Codecs contains available codec filter choices.
+	Codecs []filterOption
 	// HasAny reports whether the store contains any objects.
 	HasAny bool
 	// Total is the number of indexed objects.
@@ -145,6 +158,12 @@ type browserInspector struct {
 	HashAlgorithm string
 	// Type is the selected object's envelope type.
 	Type string
+	// VersionLabel is the selected object's frame version, or the not-read
+	// marker when the bytes carry no walkable header.
+	VersionLabel string
+	// Codec is the selected object's codec identity tag, the explicit
+	// "unspecified" for a frame that carries none, or the not-read marker.
+	Codec string
 	// Size is the selected object's stored byte count.
 	Size int64
 	// Integrity is the selected object's integrity state.
@@ -231,21 +250,25 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
-	rows, types, typeFound := result.Rows, result.Types, result.TypeFound
+	rows, types := result.Rows, result.Types
 	total, matchedSize := result.Total, result.TotalSize
+	versions, codecs := result.Versions, result.Codecs
 	page := result.Page
 	if result.Fast {
 		state = result.State
 	} else {
-		rows, types, typeFound, total, matchedSize, err = s.objectRows(r.Context(), id, state)
-		if err != nil {
+		walked, walkErr := s.objectRows(r.Context(), id, state)
+		if walkErr != nil {
 			http.Error(w, "list failed", http.StatusInternalServerError)
 			return
 		}
-		if !typeFound {
-			http.Error(w, "invalid object type", http.StatusBadRequest)
+		if walked.FilterErr != nil {
+			http.Error(w, walked.FilterErr.Error(), http.StatusBadRequest)
 			return
 		}
+		rows, types = walked.Rows, walked.Types
+		versions, codecs = walked.Versions, walked.Codecs
+		total, matchedSize = walked.Total, walked.MatchedSize
 		sortObjectRows(rows, state)
 		page, state = pageObjects(rows, state)
 	}
@@ -272,6 +295,8 @@ func (s *Server) objects(w http.ResponseWriter, r *http.Request) {
 		StatusOptions:   statusOptions(state.Status),
 		LimitOptions:    limitOptions(state.Limit),
 		Types:           typeOptions(types, state.Type),
+		Versions:        filterOptions(versions, state.Version),
+		Codecs:          filterOptions(codecs, state.Codec),
 		Objects:         page.Rows,
 		HasAny:          len(page.Rows) > 0,
 		Total:           total,
@@ -307,8 +332,14 @@ type objectPageResult struct {
 	Rows []objectRow
 	// Types lists every object type in the store.
 	Types []string
-	// TypeFound reports whether the requested type filter matched an object.
-	TypeFound bool
+	// Versions lists every frame version in the store, rendered the way the
+	// version filter and cell read it.
+	Versions []string
+	// Codecs lists every codec value in the store, rendered the way the codec
+	// filter and cell read it ("unspecified" for a frame that carries none).
+	Codecs []string
+	// FilterErr reports a filter value the store does not contain.
+	FilterErr error
 	// Total is the number of stored objects.
 	Total int
 	// TotalSize is the aggregate stored size.
@@ -336,7 +367,8 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 	// page is the starting point of every return, so an error or a request
 	// this path cannot answer yields no selection to index.
 	result := objectPageResult{Page: objectPage{Selected: -1}, State: state}
-	if state.Query != "" || state.Type != "" || state.Size != "" || state.Status != "" ||
+	if state.Query != "" || state.Type != "" || state.Version != "" || state.Codec != "" ||
+		state.Size != "" || state.Status != "" ||
 		state.Reach != "" || state.Sort != "hash" || state.Direction != "asc" ||
 		state.Selected != "" || state.Deselected {
 		return result, nil
@@ -347,7 +379,9 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 	}
 	result.Total, result.TotalSize = snapshot.Total, snapshot.Bytes
 	result.Types = snapshot.Types
-	result.TypeFound, result.Fast = true, true
+	result.Versions = versionFilterValues(snapshot)
+	result.Codecs = codecFilterValues(snapshot)
+	result.Fast = true
 	if state.Offset >= len(snapshot.Entries) {
 		return result, nil
 	}
@@ -372,17 +406,43 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 	return result, nil
 }
 
+// objectRowsResult is what the filtered walk produces: the matching rows, the
+// filter values the store actually holds, and whether a requested value was
+// among them.
+type objectRowsResult struct {
+	// Rows contains the objects state matches.
+	Rows []objectRow
+	// Types lists every object type in the store.
+	Types []string
+	// Versions lists every frame version in the store, as the filter reads it.
+	Versions []string
+	// Codecs lists every codec value in the store, as the filter reads it.
+	Codecs []string
+	// FilterErr reports a filter value the store does not contain.
+	FilterErr error
+	// Total is the number of stored objects.
+	Total int
+	// MatchedSize is the aggregate size of the matching objects.
+	MatchedSize int64
+}
+
 // objectRows builds one row per stored object and keeps the ones state matches.
-// It also reports every type present in the store, which the type filter
-// offers, and whether the requested type was among them: a filter naming a type
-// no object carries is a malformed request, not an empty page.
-func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, matchedSize int64, err error) {
+// It also reports the type, version and codec values the store actually holds —
+// which the filter controls offer — and whether each requested filter value was
+// among them: a filter naming a value no object carries is a malformed request,
+// not an empty page.
+func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (objectRowsResult, error) {
 	snapshot, err := s.metadataSnapshot(ctx, id)
 	if err != nil {
-		return nil, nil, false, 0, 0, err
+		return objectRowsResult{}, err
+	}
+	result := objectRowsResult{
+		Versions: versionFilterValues(snapshot),
+		Codecs:   codecFilterValues(snapshot),
+		Total:    snapshot.Total,
 	}
 	present := make(map[string]bool)
-	typeFound = state.Type == ""
+	typeFound := state.Type == ""
 	hasVerifications := s.sessions.hasVerifications(id)
 	for _, entry := range snapshot.Entries {
 		row := s.objectRowFromMeta(id, entry, hasVerifications)
@@ -393,11 +453,50 @@ func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserS
 			typeFound = true
 		}
 		if matchesObjectRow(&row, state) {
-			rows = append(rows, row)
-			matchedSize += row.Size
+			result.Rows = append(result.Rows, row)
+			result.MatchedSize += row.Size
 		}
 	}
-	return rows, slices.Sorted(maps.Keys(present)), typeFound, snapshot.Total, matchedSize, nil
+	result.Types = slices.Sorted(maps.Keys(present))
+	result.FilterErr = filterValueError(state, typeFound, result.Versions, result.Codecs)
+	return result, nil
+}
+
+// filterValueError reports a filter whose value the store does not contain, the
+// way an unknown type already was: the viewer says the request is malformed
+// instead of rendering a plausible but wrong empty page (viewer-design §5).
+func filterValueError(state objectBrowserState, typeFound bool, versions, codecs []string) error {
+	if !typeFound {
+		return fmt.Errorf("invalid object type")
+	}
+	if state.Version != "" && !slices.Contains(versions, state.Version) {
+		return fmt.Errorf("invalid frame version")
+	}
+	if state.Codec != "" && !slices.Contains(codecs, state.Codec) {
+		return fmt.Errorf("invalid codec")
+	}
+	return nil
+}
+
+// versionFilterValues lists the frame versions the store holds, rendered the way
+// the version cell and the version filter read them.
+func versionFilterValues(snapshot *index.Snapshot) []string {
+	values := make([]string, 0, len(snapshot.Versions))
+	for _, version := range snapshot.Versions {
+		values = append(values, versionLabel(version))
+	}
+	return values
+}
+
+// codecFilterValues lists the codec values the store holds, rendered the way the
+// codec cell and the codec filter read them: identity tags plus the explicit
+// "unspecified" for the frames that carry none.
+func codecFilterValues(snapshot *index.Snapshot) []string {
+	values := make([]string, 0, len(snapshot.Codecs))
+	for _, codec := range snapshot.Codecs {
+		values = append(values, codecLabel(codec))
+	}
+	return values
 }
 
 // objectRowFromMeta fills one row from the snapshot's metadata, keeping the
@@ -410,6 +509,9 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 		// match it — the type is unknown, not blank — while the cell still says
 		// what happened.
 		Type:              entry.Type,
+		Version:           entry.Version,
+		VersionLabel:      versionLabel(entry.Version),
+		Codec:             codecCell(entry.Version, entry.Codec),
 		Unreadable:        entry.Unreadable,
 		Size:              entry.Size,
 		Integrity:         "not-verified",
@@ -427,6 +529,47 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 	row.Detached = row.Orphaned && row.ReferencesAvailable && row.References == 0
 	row.Root = row.ReachabilityKnown && !row.Orphaned && row.ReferencesAvailable && row.References == 0
 	return row
+}
+
+// notReadLabel is what the header cells show for bytes with no walkable
+// envelope header: a raw object stored by `put`, or damaged bytes. It is the
+// viewer's own marker, distinct from any value the frame could carry, so a cell
+// never reads as a version or a codec the store does not have (viewer-design §3).
+const notReadLabel = "—"
+
+// versionLabel renders a frame version for the table, the inspector and the
+// version filter: the number, or the not-read marker when there is no header
+// (version 0).
+func versionLabel(version byte) string {
+	if version == 0 {
+		return notReadLabel
+	}
+	return strconv.Itoa(int(version))
+}
+
+// codecCell renders a codec for the table, the inspector and the codec filter.
+// A frame that carries no tag reads "unspecified" — explicitly, never as a
+// blank cell (viewer-design §3); bytes with no header read the not-read marker,
+// because there is no frame whose codec could be unspecified.
+func codecCell(version byte, codec string) string {
+	if version == 0 {
+		return notReadLabel
+	}
+	return codecLabel(codec)
+}
+
+// unspecifiedCodec is how every viewer surface renders a frame that carries no
+// codec identity: a version 1 envelope, or a version 2 envelope whose codec
+// declared no tag. It matches the CLI's rendering (cli.md §2), so a filter, a
+// cell and a `cask meta` line name the same thing.
+const unspecifiedCodec = "unspecified"
+
+// codecLabel renders a codec tag, or the explicit unspecified value.
+func codecLabel(codec string) string {
+	if codec == "" {
+		return unspecifiedCodec
+	}
+	return codec
 }
 
 // prepareObjectRows adds template-only values after filtering, sorting, and
@@ -588,6 +731,8 @@ func (s *Server) inspectorFor(ctx context.Context, id string, state objectBrowse
 		Digest:              row.Digest,
 		HashAlgorithm:       s.cfg.HashAlgorithm,
 		Type:                row.Type,
+		VersionLabel:        row.VersionLabel,
+		Codec:               row.Codec,
 		Size:                row.Size,
 		Integrity:           row.Integrity,
 		IntegrityLabel:      row.IntegrityLabel,
@@ -642,12 +787,25 @@ func typeOptions(types []string, selected string) []filterOption {
 	return options
 }
 
+// filterOptions renders a closed set of filter values the store holds: the
+// value and its label are the same string, which is what the cell renders and
+// the URL carries.
+func filterOptions(values []string, selected string) []filterOption {
+	options := make([]filterOption, 0, len(values))
+	for _, value := range values {
+		options = append(options, filterOption{Value: value, Label: value, Selected: value == selected})
+	}
+	return options
+}
+
 func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, digests []cas.Digest) []referenceRow {
 	rows := make([]referenceRow, 0, len(digests))
 	for _, digest := range digests {
 		rowState := state
 		rowState.Query = ""
 		rowState.Type = ""
+		rowState.Version = ""
+		rowState.Codec = ""
 		rowState.Size = ""
 		rowState.Status = ""
 		rowState.Reach = ""
@@ -659,7 +817,7 @@ func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, di
 		rows = append(rows, referenceRow{
 			Digest:    digest.String(),
 			Short:     shortDigest(digest),
-			Type:      strings.TrimSuffix(s.objectMetaFor(ctx, digest).Type, "@1"),
+			Type:      s.objectMetaFor(ctx, digest).Type,
 			SelectURL: rowState.navURL(navReference),
 		})
 	}
