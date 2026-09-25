@@ -1,7 +1,8 @@
 ---
+type: Agent Instructions
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v40
+version: v41
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -599,8 +600,10 @@ gofmt -l .
 - **Constructors:** use plain `New()` when a package exposes one primary type
   (`fs.New`, `backmem.New`, `json.New[T]`, `sha256.New`); use `NewType()` when it
   exposes several important types or the type isn't the package's primary one
-  (`cas.NewWalker`, `prefetch.NewSmartCache`) — coding-guidelines
-  §1 "Constructors".
+  (`cas.NewWalker`, `cas.NewDigest`) — coding-guidelines §1 "Constructors".
+  `prefetch.NewSmartCache` is the one constructor that keeps a `NewType` name in
+  a single-type package: the frozen surface lists it (cas-core §7.1), so renaming
+  it to `New` is a breaking change and waits for a major version.
 - Defaults: the core names no algorithm — go-cask's own clients wire
   `cas/hash/sha256`; codec the JSON codec (`cas/codec/json`), Git-like fan-out
   (`FanOut=2`, `FanLevels=1` → `aa/<full-hex>`; any n-way/n-level

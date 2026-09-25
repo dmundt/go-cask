@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v13
+version: v14
 ---
 
 # Frontend Architecture — go-cask
@@ -50,8 +50,10 @@ Governs the browser-facing architecture of go-cask (the viewer and any future fr
 ## 5. Navigation and state
 
 - **URLs are the state:** `q`, `type`, `size`, `sort`, `dir`, `limit`,
-  `offset`, `selected`, and inspector `tab` (`metadata`, `references`, `bytes`,
-  or `actions`) identify an object-browser view.
+  `offset`, `selected`, and inspector `tab` (`metadata`, `references`, or
+  `bytes`) identify an object-browser view. `tab=actions` is a legacy alias an
+  old bookmark may still carry: it is rewritten to `metadata`, which absorbed
+  that panel, rather than rejected.
   `hx-push-url` keeps that state in the address bar; refresh and back/forward
   work; no client-side state exists to lose or rehydrate.
 - Identity comes from the server session cookie (always `HttpOnly`,
