@@ -38,3 +38,22 @@ pre-push: note — this worktree does not hold the local advisory slot.
   overlapping, so a busy clone may still want it (scripts/land-lane.sh acquire).
 EOF
 fi
+
+# Last, and best effort: publish the gate receipt for the commit being pushed, so
+# CI reuses this run instead of repeating the same suite (scripts/gate-receipt.sh,
+# .github/AGENT.md). Nothing here may refuse a push. A clone whose git cannot sign
+# — the WSL shell next to a Windows signing key is the case here — cannot publish,
+# and CI then runs the whole gate, which is the safe direction; the note says so
+# and how to fix it. `git push --no-verify` inside the helper's publish keeps this
+# hook from running for its own push.
+if [ -z "${CASK_GATE_NO_PUBLISH:-}" ] && [ -f ./scripts/gate-receipt.sh ]; then
+  if ! publish_note="$(bash ./scripts/gate-receipt.sh publish --quiet --sha "$head" --remote "${1:-origin}" 2>&1)"; then
+    if [ -n "$publish_note" ]; then printf '%s\n' "$publish_note" >&2; fi
+    cat >&2 <<'EOF'
+pre-push: note — the gate receipt was not published for this commit, so CI will run
+  the whole gate again. Publish it from the toolchain that signs your commits:
+      ./scripts/gate-receipt.sh publish
+  (it needs gpg.format and user.signingkey; see scripts/AGENT.md)
+EOF
+  fi
+fi

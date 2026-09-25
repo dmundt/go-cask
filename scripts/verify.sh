@@ -73,6 +73,18 @@ if ! find . -name '*.go' -print -quit | grep -q .; then
   exit 0
 fi
 
+# ---- what this run attests to ---------------------------------------------
+# Every section that completes marks itself here, and the gate receipt at the end
+# records the list. CI reuses a green local run only when that receipt names every
+# check the job it skips would have run (scripts/gate-receipt.sh verify
+# --require-check), so a section that forgets its mark costs a CI re-run of the
+# whole gate — the safe direction, and the reason the marks are per section rather
+# than one list derived from the scope.
+receipt_checks=()
+mark_check() { receipt_checks+=("$1"); }
+# How many packages the coverage tier gate covers; recorded with the receipt.
+coverage_tiers=""
+
 # ---- worktree locks -------------------------------------------------------
 # Every linked worktree must carry git's `locked` file. `git worktree prune`
 # deletes any registration whose admin `gitdir` cannot be resolved, and that link
@@ -176,6 +188,7 @@ EOF
     exit 2
   fi
 fi
+mark_check version-fields
 
 if [[ "$scope" == "full" ]]; then
 
@@ -198,6 +211,7 @@ if [[ -n "$unformatted" ]]; then
   echo "gofmt needed; run gofmt -w ." >&2
   exit 1
 fi
+mark_check gofmt
 
 echo "== go mod tidy =="
 tidy_errors="$(mktemp)"
@@ -212,9 +226,11 @@ if [[ -n "$tidy_diff" ]]; then
   printf '%s\n' "$tidy_diff" >&2
   exit 1
 fi
+mark_check go-mod-tidy
 
 echo "== go build =="
 go build ./...
+mark_check go-build
 
 echo "== module graph =="
 mod_snapshot="$(mktemp)"
@@ -224,9 +240,28 @@ if ! grep -q '"Path": "github.com/dmundt/go-cask"' "$mod_snapshot"; then
   echo "module graph is empty or malformed; inspect go list -m -json all" >&2
   exit 1
 fi
+mark_check module-graph
 
 echo "== go vet =="
 go vet ./...
+mark_check go-vet
+
+echo "== cross-platform build =="
+# The platform matrix in CI pays two runners to answer what a cross-compile answers
+# here in seconds: a build or type error in a GOOS/GOARCH-specific file. This does
+# NOT replace the matrix — nothing below runs a Windows or an arm64 binary, and the
+# native `go test ./...` jobs stay in CI — it moves the cheap half of that signal in
+# front of the push, where it costs seconds instead of a runner round trip.
+# CGO_ENABLED=0 because a cross-build has no C toolchain for the target, which is
+# also what makes the check independent of the host's compiler.
+for target in windows/amd64 linux/arm64; do
+  target_os="${target%%/*}"
+  target_arch="${target##*/}"
+  echo "  ${target_os}/${target_arch}"
+  GOOS="$target_os" GOARCH="$target_arch" CGO_ENABLED=0 go build ./...
+  GOOS="$target_os" GOARCH="$target_arch" CGO_ENABLED=0 go vet ./...
+done
+mark_check cross-platform
 
 echo "== layer matrix check =="
 # AGENTS.md, "Layers and citizen classes": cas/ -> gitlike/ -> examples/, with
@@ -268,12 +303,14 @@ if [[ -n "$layer_violations" ]]; then
   printf '%s' "$layer_violations" >&2
   exit 1
 fi
+mark_check layer-matrix
 
 echo "== gitlike codec guard =="
 if go list -deps ./gitlike | grep -E 'cas/codec' >/dev/null 2>&1; then
   echo "gitlike must not depend on the codec layer; inject codecs via gitlike.Codecs." >&2
   exit 1
 fi
+mark_check gitlike-codec-guard
 
 echo "== pack codec guard =="
 # cas/pack is the helper layer that must stay codec-agnostic like the reference
@@ -283,12 +320,16 @@ if go list -deps ./cas/pack | grep -E 'cas/codec' >/dev/null 2>&1; then
   echo "cas/pack must not depend on the codec layer; the caller passes the codec." >&2
   exit 1
 fi
+mark_check pack-codec-guard
 
 echo "== govulncheck =="
 if [[ "${VERIFY_SKIP_SECURITY:-false}" == "true" ]]; then
   echo "skipped (run by the separate CI security job)"
 else
   ./scripts/security.sh
+  # Marked only when the scan really ran, so a receipt produced with
+  # VERIFY_SKIP_SECURITY=true cannot excuse the security job's scan.
+  mark_check govulncheck
 fi
 
 echo "== test -race + coverage gate =="
@@ -395,19 +436,25 @@ go test -race ./...
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
+mark_check go-test-race
+mark_check coverage-tiers
+coverage_tiers="${#coverage_targets[@]}"
 
 echo "== fuzz smoke =="
 go test -run=^$ -fuzz=FuzzParseDigest -fuzztime=5s ./cas/
 go test -run=^$ -fuzz=FuzzPathRoundTrip -fuzztime=5s ./cas/backend/fs/
 go test -run=^$ -fuzz=FuzzVerify -fuzztime=5s ./cas/backend/fs/
 go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
+mark_check fuzz-smoke
 
 echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
 ./scripts/test-dep-graph.sh
+./scripts/test-gate-receipt.sh
 ./scripts/test-land-lane.sh
 ./scripts/test-pr-lane.sh
 ./scripts/test-version-fields.sh
+mark_check helper-scripts
 
 fi # scope == full
 
@@ -564,6 +611,7 @@ cd "$repo_root"
 if [[ "$fail_doc" -ne 0 ]]; then
   exit 1
 fi
+mark_check doc-integrity
 
 echo "== package graph =="
 # docs/design/package-graph.md is generated from `go list` by dep-graph.sh, which
@@ -574,6 +622,7 @@ echo "== package graph =="
 # scopes — it costs one `go list`, and the `go` toolchain is required in the
 # documentation scope anyway by the website-examples step below.
 ./scripts/dep-graph.sh --check
+mark_check package-graph
 
 echo "== website footer =="
 # The published footer is one line, composed by website/macros.py from the
@@ -582,6 +631,7 @@ echo "== website footer =="
 # rendered text, a returning zone label or second line, a config that lost the
 # line, or a date that was guessed instead of omitted.
 python3 website/macros.py --selftest
+mark_check website-footer
 
 echo "== website examples =="
 # Every Go fence on the site is a complete unit (website/AGENT.md, "Examples
@@ -709,6 +759,7 @@ if ! (cd "$webdir" && go build ./... && go vet ./...); then
   exit 1
 fi
 rm -rf "$webdir"
+mark_check website-examples
 
 if [[ -n "${CASK_RELEASE_TAG:-}" ]]; then
   echo "== release note sync =="
@@ -726,8 +777,8 @@ fi
 # another branch's verified commit and refuse its push. The file stays bounded
 # by keeping the newest entries; the same commit re-verified replaces its line.
 stamp_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+head_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$stamp_dir" ]]; then
-  head_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
   entry="$(printf '%s %s %s' "$head_sha" "$scope" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
   {
     if [[ -f "$stamp_dir/verify.ok" ]]; then
@@ -736,6 +787,32 @@ if [[ -n "$stamp_dir" ]]; then
     printf '%s\n' "$entry"
   } | tail -n 200 >"$stamp_dir/verify.ok.tmp" &&
     mv "$stamp_dir/verify.ok.tmp" "$stamp_dir/verify.ok"
+fi
+
+# ---- gate receipt ---------------------------------------------------------
+# The stamp above is local; the receipt is the same evidence made portable, so CI
+# can reuse this run instead of repeating it (scripts/gate-receipt.sh, and
+# .github/AGENT.md for the CI side). It is written only for a clean tree: a
+# receipt names the tree OF A COMMIT, and a run that gated uncommitted changes
+# gated a tree no commit in this repository has — the stamp still covers this
+# checkout for the push, which is all the hook needs.
+#
+# A runner gets no receipt at all: CI checks out the merge commit of a pull
+# request, and a receipt for that commit could never be pushed by anyone.
+if [[ -n "$gate_base" && -n "$gate_changed" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  echo "== gate receipt =="
+  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    echo "uncommitted changes in the working tree: no receipt for $head_sha"
+    echo "  commit the change and run the gate again to produce one"
+  else
+    ./scripts/gate-receipt.sh create \
+      --sha "$head_sha" \
+      --base "$gate_base" \
+      --scope "$scope" \
+      --checks "${receipt_checks[*]:-}" \
+      ${coverage_tiers:+--coverage-tiers "$coverage_tiers"}
+    echo "publish it for CI with ./scripts/gate-receipt.sh publish (the pre-push hook does this)"
+  fi
 fi
 
 echo "verification passed"

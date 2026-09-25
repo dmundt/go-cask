@@ -1,0 +1,15 @@
+# Keys allowed to sign a gate receipt (scripts/gate-receipt.sh verify).
+#
+# CI reuses the gate a developer ran locally when that run is published as a
+# signed tag under refs/gate/<head-sha>, and this file is the trust anchor for
+# that signature: an SSH signature is only evidence if the key is one this
+# repository decided to trust. One signer per line, in ssh-keygen
+# allowed_signers format:
+#
+#   <principal> [options] <keytype> <key>
+#
+# The principal is the key's comment — the identity git reports when it verifies
+# the signature — and it must match what the signing key carries. Rotating the
+# signing key means adding the new line here; until it is added, CI falls back to
+# running the whole gate, which is the safe direction.
+900458+dmundt@users.noreply.github.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL+PPj3QhHD57uTbCJr3yGoQRWTTcG+wCZjGZvRjokx4

@@ -13,6 +13,19 @@ env:
 #
 # The required verify context always runs. Expensive security and native
 # platform jobs run only for changes that can affect them.
+#
+# The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
+# already ran it on this host before the branch was pushed, and `.githooks/pre-push`
+# published that run as a signed receipt under `refs/gate/<head-sha>`
+# (`scripts/gate-receipt.sh`, trust anchored in `.github/gate-signers`). The
+# `verify` job checks that receipt against the commit it is really testing — the
+# signature, the head commit, the tree of the checked-out merge result, the base
+# and the diff hash recomputed here, the scope, and the list of checks the gate
+# would otherwise repeat — and only then skips the suite. Anything short of that
+# (no receipt, a fork, an unsigned local gate, a branch that fell behind main, a
+# renamed gate section) leaves the receipt unusable and the whole gate runs below.
+# The fast path is entered by evidence; it cannot be entered by its absence, and
+# the required check names stay exactly what branch protection names.
 
 on:
   pull_request:
@@ -72,8 +85,32 @@ jobs:
             echo "website_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify the local gate receipt
+        id: receipt
+        # Every failure here — no ref, an untrusted signature, a tree that is not
+        # the one checked out, a base this branch does not contain, a check the
+        # receipt cannot show — leaves the receipt unusable and the whole gate
+        # runs below. `continue-on-error` is what makes that fallback invisible to
+        # the job: the step's OUTCOME carries the verdict, and its status never
+        # fails the build. On any non-pull-request run there is no head commit the
+        # local gate could have covered, so the step does not run at all.
+        if: github.event_name == 'pull_request' && steps.scope.outputs.docs_only != 'true'
+        continue-on-error: true
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # refs/gate/* usually does not exist for a first push or a fork; that is
+          # the ordinary case, not a failure.
+          git fetch --no-tags --quiet origin '+refs/gate/*:refs/gate/*' || true
+          bash ./scripts/gate-receipt.sh verify \
+            --sha "$HEAD_SHA" \
+            --tree "$(git rev-parse 'HEAD^{tree}')" \
+            --base "$BASE_SHA" \
+            --require-suite full
+
       - name: Set up Go
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -81,7 +118,7 @@ jobs:
           cache: false
 
       - name: Verify repo
-        if: steps.scope.outputs.docs_only != 'true' && hashFiles('**/*.go') != ''
+        if: steps.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success' && hashFiles('**/*.go') != ''
         env:
           VERIFY_SKIP_SECURITY: 'true'
         run: bash ./scripts/verify.sh

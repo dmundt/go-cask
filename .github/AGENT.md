@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v1
+version: v2
 ---
 
 # GitHub repository operations
@@ -81,6 +81,39 @@ coverage measured on Windows does not predict the gate.
 - Pages runs only for public documentation inputs.
 - Keep required-check names synchronized with the branch protection settings
   when workflow job names change.
+- The `verify` job may skip the suite it would otherwise run, but only when a
+  signed local gate receipt covers the exact tree it is testing (see "Local gate
+  receipts"). Whatever it decides, the job still reports: the required context is
+  the job, never the step, and a skipped required check is a skipped landing gate.
+
+## Local gate receipts
+
+`scripts/verify.sh` runs the whole gate on the developer's host before a push, and
+`.githooks/pre-push` publishes that green run as a signed receipt commit under the
+coordination ref `refs/gate/<head-sha>` (`scripts/gate-receipt.sh publish`). The
+`verify` job verifies the receipt and skips only what the receipt covers, so the
+merge gate is unchanged in *what* it accepts while the duplicated compute moves to
+the host that already paid for it.
+
+- **What CI checks before trusting a receipt.** The receipt commit's SSH signature
+  verifies against [`.github/gate-signers`](./gate-signers); the receipt is built
+  on the pull request's head commit (its parent) and carries the tree of the commit
+  CI is testing (the merge result, so a branch that fell behind `main` gets the full
+  gate instead of
+  passing on a tree nobody gated); its base is an ancestor of both the head and the
+  pull request's base; the diff hash recomputed in CI matches; its scope covers the
+  change; and it lists every check in `gate-receipt.sh`'s `suite_full`. Anything
+  short of that runs the whole gate — a fork, an unsigned local gate, a missing or
+  stale ref, a renamed gate section.
+- **The signature is the anchor, and the ref is not.** Push authority decided who
+  could create the ref; the allow-list decides whose receipt may excuse a check.
+  Rotating the signing key means adding its line to `.github/gate-signers`; until
+  then CI simply runs the full gate, which is the safe direction.
+- **The fast path is entered by evidence, never by its absence.** No step may be
+  skipped because a receipt is missing, unreadable or malformed, and the required
+  check names (`verify`, `security`, `platforms`, `Analyze (actions)`,
+  `Analyze (go)`) stay what branch protection names — a skipped job must still
+  report, or the landing gate disappears.
 
 ## Validation
 
