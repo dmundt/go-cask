@@ -761,7 +761,10 @@ func TestVersionAndWebHelpers(t *testing.T) {
 			cmd  string
 			args []string
 		}{
-			{"windows", "cmd", []string{"/c", "start", "http://x"}},
+			// Windows opens the URL through rundll32's protocol handler, not
+			// through a command interpreter, so the document never reaches
+			// one (#349).
+			{"windows", "rundll32.exe", []string{"url.dll,FileProtocolHandler", "http://x"}},
 			{"darwin", "open", []string{"http://x"}},
 			{"linux", "xdg-open", []string{"http://x"}},
 		} {

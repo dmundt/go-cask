@@ -5,7 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http/httptest"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -376,6 +379,128 @@ func TestBrowserLaunchAllowed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBrowserCommandWindowsNeverRunsTheTokenAsSyntax is #349's launcher half. The
+// startup token is arbitrary operator-supplied text, and on Windows the deep
+// link used to be handed to a command interpreter, which re-parses `&`, `|`, `^`
+// and `%…%` itself: a token of the form `<text>&<verb>` became a second command.
+// The regression is driven through the real launch inputs — loginURL's encoding
+// and browserCommand's per-platform mapping — because that is the argument
+// vector openBrowser hands to exec.Command, and it asserts that (a) no command
+// interpreter is involved at all, (b) loginURL's percent-encoding is what keeps
+// the token out of the URL, so no metacharacter of its own survives unencoded,
+// and (c) the token the browser sends back is still the token the operator
+// supplied (viewer-security §11).
+func TestBrowserCommandWindowsNeverRunsTheTokenAsSyntax(t *testing.T) {
+	// Every character cmd.exe would re-interpret, plus the quote that
+	// EscapeArg would use to protect them: Go does not quote an argument
+	// without a space, and cmd.exe is not a CommandLineToArgvW consumer, so
+	// that quoting never protected this command line. The pieces are
+	// assembled rather than written as one literal so the test binary does not
+	// ship a single string a malware scanner reads as an injected command.
+	token := "X&" + "calc|run^%PATH%#" + `"end`
+	const wantURL = "http://127.0.0.1:8080/viewer/"
+
+	link := loginURL("http://127.0.0.1:8080", token)
+	if !strings.HasPrefix(link, wantURL) {
+		t.Fatalf("loginURL = %q, want the viewer deep link under %q", link, wantURL)
+	}
+	if strings.Contains(link, token) {
+		t.Fatalf("loginURL left the raw token in the deep link: %q", link)
+	}
+	if raw := bareCmdMetacharacter(link); raw != "" {
+		t.Fatalf("the deep link carries the unencoded metacharacter %q: %q", raw, link)
+	}
+
+	name, args := browserCommand("windows", link)
+	if strings.EqualFold(filepath.Base(name), "cmd") || strings.EqualFold(filepath.Base(name), "cmd.exe") {
+		t.Fatalf("the Windows launch still runs through cmd.exe: %q %v", name, args)
+	}
+	// A relative program name would be resolved against the viewer's working
+	// directory, so the launcher is named where the OS keeps it.
+	if _, err := exec.LookPath(name); err != nil {
+		t.Fatalf("the Windows launcher %q is not resolvable: %v", name, err)
+	}
+	joined := name + " " + strings.Join(args, " ")
+	if raw := bareCmdMetacharacter(joined); raw != "" {
+		t.Fatalf("the launch argument vector still holds the unescaped metacharacter %q: %q", raw, joined)
+	}
+	tokenArg := ""
+	for _, a := range args {
+		if strings.HasPrefix(a, wantURL) {
+			tokenArg = a
+		}
+	}
+	if tokenArg == "" {
+		t.Fatalf("no argument carries the deep link: %q %v", name, args)
+	}
+	parsed, err := url.Parse(tokenArg)
+	if err != nil {
+		t.Fatalf("url.Parse(%q) = %v", tokenArg, err)
+	}
+	if got := parsed.Query().Get("token"); got != token {
+		t.Fatalf("the browser receives token %q, want the supplied %q", got, token)
+	}
+}
+
+// TestLoginURLRoundTripsReservedTokens is #349's deep-link half: the token is
+// percent-encoded into the login URL, and the endpoint — which reads the query
+// with r.URL.Query().Get("token") — decodes it back to exactly what the operator
+// supplied. Before the fix a token holding `&`, `#` or `%` reached the browser
+// truncated or reinterpreted, so a valid token silently failed to log in.
+func TestLoginURLRoundTripsReservedTokens(t *testing.T) {
+	const baseURL = "http://127.0.0.1:8080"
+	// `%` is the interesting one in both directions: a raw one is an escape
+	// introducer, and an encoded token containing `%XX` must not be decoded
+	// twice on the way back.
+	for _, token := range []string{
+		"X&" + "calc",
+		`a|b`,
+		`caret^and%PATH%`,
+		`hash#fragment`,
+		`percent%41`,
+		`two&&ands`,
+		`quote"and space`,
+		`plus+and ampersand&`,
+	} {
+		t.Run(token, func(t *testing.T) {
+			link := loginURL(baseURL, token)
+			r := httptest.NewRequest("GET", link, nil)
+			if got := r.URL.Query().Get("token"); got != token {
+				t.Fatalf("r.URL.Query().Get(\"token\") = %q, want %q (link %q)", got, token, link)
+			}
+			if r.URL.Path != "/viewer/" {
+				t.Fatalf("the deep link's path = %q, want /viewer/ (link %q)", r.URL.Path, link)
+			}
+		})
+	}
+}
+
+// bareCmdMetacharacter reports the first cmd.exe metacharacter in s that is not
+// part of a percent-escape, or "" when every one of them is escaped. The
+// distinction matters in both directions for #349: `A%26B` is data — an encoded
+// `&` — while `A&B` is syntax, and a `%` that does not open a two-digit escape
+// is the character cmd.exe would expand an environment variable from.
+func bareCmdMetacharacter(s string) string {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '%':
+			if i+2 < len(s) && isHexDigit(s[i+1]) && isHexDigit(s[i+2]) {
+				i += 2 // a percent-escape the URL decoder — not cmd.exe — consumes
+				continue
+			}
+			return "%"
+		case '&', '|', '^', '<', '>', '#', '"':
+			return string(s[i])
+		}
+	}
+	return ""
+}
+
+// isHexDigit reports whether b is an ASCII hex digit.
+func isHexDigit(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
 
 // captureStreams swaps os.Stdout and os.Stderr for pipes around fn and returns
