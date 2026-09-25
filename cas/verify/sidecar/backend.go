@@ -338,19 +338,23 @@ func (b *Backend) recordPath(d cas.Digest) string {
 
 // readRecord loads one record. found is false when no record file exists; a
 // record that exists but cannot be read, is oversized, or names another digest
-// is an error, because a record is either usable or damage.
+// is cas.ErrCorrupt, because a record is either usable or damage. A record is
+// derived metadata whose only source of truth is the store's own bytes, so one
+// that cannot be trusted is corruption rather than a transient I/O failure —
+// which is what Load and Verify document. Every arm keeps its cause on the
+// chain, so an operator still sees the underlying open or read error.
 func (b *Backend) readRecord(d cas.Digest) (rec *Record, found bool, err error) {
 	f, err := os.Open(b.recordPath(d))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("sidecar: open record %s: %w", d, err)
+		return nil, false, fmt.Errorf("%w: sidecar: open record %s: %w", cas.ErrCorrupt, d, err)
 	}
 	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, b.maxRecordBytes+1))
 	if err != nil {
-		return nil, true, fmt.Errorf("sidecar: read record %s: %w", d, err)
+		return nil, true, fmt.Errorf("%w: sidecar: read record %s: %w", cas.ErrCorrupt, d, err)
 	}
 	if int64(len(data)) > b.maxRecordBytes {
 		return nil, true, fmt.Errorf("%w: sidecar: record for %s exceeds %d bytes", cas.ErrCorrupt, d, b.maxRecordBytes)
