@@ -140,6 +140,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Landing is coordinated through the pull request instead of a lock file inside
+  one clone. `scripts/pr-lane.sh` claims a lane for an issue with a server-side
+  compare-and-swap on the coordination ref `refs/lane/<issue>` — an atomic create
+  that succeeds exactly once, so two sessions cannot both claim one lane — and
+  `status` lists every lane on the remote with the pull request behind it, which
+  makes a landing in another clone, another machine or another person visible.
+  A lane with an open pull request is held; a claim that has no pull request yet
+  is honoured for 90 minutes (`PR_LANE_STALE_MINUTES`) and then taken over, so an
+  abandoned lane is reclaimed without a `--force` takeover and nobody has to judge
+  whether a holder is dead. `scripts/land-lane.sh` keeps its single slot but is
+  now advisory, and `.githooks/pre-push` refuses only a commit that has no green
+  gate stamp.
 - `cask web` pins its listener to an explicit numeric loopback address instead of
   handing `-bind` to the host resolver. `-bind localhost:8080` now listens on
   `127.0.0.1:8080` and prints that origin, rather than whichever of `127.0.0.1`

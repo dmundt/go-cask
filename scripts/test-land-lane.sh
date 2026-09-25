@@ -215,10 +215,9 @@ git worktree remove --force "$usurper" 2>/dev/null || true
 # The hook's own code decides here: a real commit is pushed to a bare remote with
 # the real `.githooks/pre-push` installed, and the ledger is the only variable.
 #
-# The hook checks the lane FIRST and the stamp second, so holding the lane for
-# real would couple these cases to whatever another session is doing. Instead the
-# lane is stubbed to "held" through a PATH shim, which keeps the assertion on the
-# rule this section is about; the lane's own contract is covered in section 2.
+# The hook checks the stamp FIRST; the local lane is advisory (the lane is the
+# pull request now, scripts/test-pr-lane.sh), so the shim below is only there to
+# keep the advisory note out of the cases that assert the stamp rule.
 remote="$scratch/remote.git"
 git init -q --bare "$remote"
 work="$scratch/work"
@@ -261,6 +260,20 @@ check "hook refuses a commit with no entry" "1" \
 printf '%s full 2026-01-02T00:00:00Z\n' "$head_sha" >>"$stamp"
 check "hook accepts a verified commit despite another worktree's entry" "0" \
   "$(git -C "$work" push -q origin HEAD:refs/heads/x >/dev/null 2>&1; echo $?)"
+
+# The local slot is advisory now: a stamped commit pushes without it, and the
+# hook reports that instead of refusing. A file only one clone can see must not
+# be able to stop a landing the server would have serialized anyway.
+cat >"$work/scripts/land-lane.sh" <<'SHIM'
+#!/bin/sh
+# Stand-in for the advisory slot: free — not held by this worktree.
+exit 1
+SHIM
+chmod +x "$work/scripts/land-lane.sh"
+push_note="$(git -C "$work" push -q origin HEAD:refs/heads/y 2>&1 >/dev/null)" && push_rc=0 || push_rc=$?
+check "hook accepts a stamped commit without the local lane" "0" "$push_rc"
+check "and says the local slot is advisory" "noted" \
+  "$(grep -q 'advisory slot' <<<"$push_note" && echo noted || echo silent)"
 check "the other worktree's entry survives the push" "1" "$(grep -c "^$other_sha " "$stamp")"
 
 # The writer side, mirroring verify.sh: only this commit's line is replaced.
