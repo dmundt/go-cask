@@ -8,8 +8,8 @@
 // headers, the static assets, and template rendering. The rest of the package
 // is split by concern — auth.go (login and authorization), browser.go (the
 // object browser's query state), objects.go (its rows and handlers),
-// verify.go (integrity checks), format.go (presentation helpers), and
-// sessions.go, meta.go, csrf.go, throttle.go.
+// verify.go (integrity checks), format.go (presentation helpers), body.go (the
+// request-body bound), and sessions.go, meta.go, csrf.go, throttle.go.
 package web
 
 import (
@@ -220,7 +220,8 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 }
 
 // Handler returns the viewer routes with the fixed middleware order:
-// auth (session) → role → CSRF (mutations) → handler. Login is public.
+// hardening (response headers and the request-body bound) → auth (session) →
+// role → CSRF (mutations) → handler. Login is public.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /viewer/login", s.loginPage)
@@ -242,7 +243,10 @@ func (s *Server) Handler() http.Handler {
 	// path: 401 without one, 404 with. A bare 404 would let an anonymous
 	// caller map which paths the viewer knows.
 	mux.HandleFunc("/viewer/", s.require(RoleViewer, http.NotFound))
-	return secureHeaders(mux)
+	// The body bound sits inside the hardening middleware — so a refused body
+	// carries the same headers as every other viewer response — and outside the
+	// routes, so every route inherits it (viewer-security §13).
+	return secureHeaders(boundBody(mux))
 }
 
 // landing is the viewer's entry point. It completes the documented `?token=`

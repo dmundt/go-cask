@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v25
+version: v26
 ---
 
 # Backend Architecture — go-cask
@@ -27,7 +27,8 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 ## 3. The viewer server (`cask web`)
 
 - One `net/http` server, one mux (Go 1.22+ pattern routing); every route under `/viewer` — no second surface (api-design §2).
-- Fixed middleware order: session auth → role → CSRF (mutations) → handler; login sits behind its own failure throttle (viewer-security, api-design §8).
+- The server sets `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout` and `IdleTimeout` (defaults §4), so a client that completes the header phase cannot hold the connection and its goroutine open by dribbling or stalling a body (viewer-security §13).
+- Fixed middleware order: the viewer's own hardening (response headers and the request-body bound, in one place for every route) → session auth → role → CSRF (mutations) → handler; login sits behind its own failure throttle (viewer-security §13, api-design §8).
 - The viewer never talks to storage directly from handlers — it goes through `Backend`/`Store[T]`, so backend selection is config, not code.
 - Handlers live in `internal/web`, over the `cas` library and `internal/index`; `cmd/cask web` only wires them.
 
@@ -41,6 +42,7 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
   not a streaming download — api-design §11 streaming applies to the API
   surface, not the hexdump UI).
 - Errors are minimal HTML; 401/403 are empty bodies never disclosing existence.
+- A request body is bounded before it is parsed: the viewer caps it at 4 KiB in the outermost hardening middleware — so every route, including one added later, inherits the bound — refuses a longer declared body `413` without reading a byte of it, and parses forms with `ParseForm`, never `ParseMultipartForm`, so a multipart body is refused rather than buffered in memory and spilled to temp files (viewer-security §13, defaults §4).
 - The product serves no OpenAPI; an HTTP surface needing a documented contract (`examples/api`) keeps it in a separate embedded `openapi.yaml` (api-design §13).
 
 ## 5. Storage backend selection

@@ -37,6 +37,13 @@ func (s *Server) require(role string, next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusForbidden) // empty body
 			return
 		}
+		// The body is parsed under the viewer's bound before the CSRF token is
+		// read out of it: an oversized body answers 413 and an unparsable one
+		// 400, so a refused mutation is decided by the parse rather than
+		// mistaken for a missing token (viewer-security §13).
+		if !parseFormBody(w, r) {
+			return
+		}
 		if !csrfOK(r, sess) {
 			slog.Warn("viewer csrf rejected", "path", r.URL.Path, "session", sessionHandle(sess.ID))
 			w.WriteHeader(http.StatusForbidden) // empty body
@@ -144,7 +151,16 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 	http.Redirect(w, r, "/viewer/", http.StatusSeeOther)
 }
 
+// loginPost submits the login form. The body is parsed under the viewer's
+// bound before the token is read, so an oversized body is refused 413 and a
+// non-form body — a multipart one, which ParseForm leaves unread — never
+// reaches memory or a temp file (viewer-security §13). FormValue is safe after
+// that parse: it re-parses nothing, and in particular never triggers the
+// multipart parse it would otherwise run on its own.
 func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
+	if !parseFormBody(w, r) {
+		return
+	}
 	s.loginToken(w, r, r.FormValue("token"))
 }
 

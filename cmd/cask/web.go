@@ -112,6 +112,41 @@ func (d tokenDisplay) resolve(interactive bool) displayChoice {
 // deployment, so a service never needs the token printed (viewer-security §11).
 const viewerTokenEnv = "CASK_VIEWER_TOKEN"
 
+// The viewer's connection deadlines (viewer-security §13, defaults §4). Only
+// the header phase was bounded before, so a client that completed it could
+// dribble or stall a body forever and hold the connection and its goroutine at
+// negligible cost. The viewer's exchanges are small — HTML fragments and
+// bounded hexdump previews — so these are generous for a browser and still
+// bound a stalled peer:
+//
+//   - ReadHeaderTimeout bounds the header phase, the cheapest inner bound;
+//   - ReadTimeout bounds the whole request read, body included, so a slow body
+//     cannot hold the connection past it;
+//   - WriteTimeout bounds the response write from just after the request is
+//     read, so it also covers handler execution — it is deliberately wider
+//     because one route (`POST /viewer/objects/verify`) sweeps the whole store
+//     before it writes (limit.go);
+//   - IdleTimeout bounds a kept-alive connection between requests.
+const (
+	viewerReadHeaderTimeout = 10 * time.Second
+	viewerReadTimeout       = 30 * time.Second
+	viewerWriteTimeout      = 120 * time.Second
+	viewerIdleTimeout       = 120 * time.Second
+)
+
+// viewerServer builds the viewer's HTTP server with its connection bounds. It
+// is split from runWeb so the deadlines can be asserted without starting a
+// listener (cli.md §2).
+func viewerServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: viewerReadHeaderTimeout,
+		ReadTimeout:       viewerReadTimeout,
+		WriteTimeout:      viewerWriteTimeout,
+		IdleTimeout:       viewerIdleTimeout,
+	}
+}
+
 // webFlags registers the viewer's flags over a, defaulting -store to
 // storeDefault and -backend to backendDefault (the global flags; cli.md §1).
 // runWeb and the command table both use it, so the accepted and the documented
@@ -270,10 +305,7 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	root.Handle("/viewer/", webSrv.Handler())
 	root.Handle("/viewer", webSrv.Handler())
 
-	httpSrv := &http.Server{
-		Handler:           root,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	httpSrv := viewerServer(root)
 	listener, err := net.Listen("tcp", bind)
 	if err != nil {
 		slog.Error("listen", "addr", bind, "err", err)

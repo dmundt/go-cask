@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v46
+version: v47
 ---
 
 # Defaults and Behavior — go-cask
@@ -80,6 +80,8 @@ Single reference for "what is the default behavior?" and "what are the numbers?"
 | Session max lifetime | 8 h | viewer-security |
 | Session cookie | Always `HttpOnly`, `SameSite=Strict`, and `Secure` | viewer-security |
 | Login throttle | max 5 failures/caller-address/min with backoff | viewer-security §5 |
+| Request body bound | **4 KiB** (`maxRequestBodyBytes`) on every viewer route, in one middleware all routes inherit; a body over it answers `413` **before** it is parsed, so a declared-longer body is never read and a multipart body is never spooled, and an oversized `POST /viewer/login` creates no session | viewer-security §13 |
+| Server connection limits | `ReadHeaderTimeout` 10 s, `ReadTimeout` 30 s, `WriteTimeout` 120 s, `IdleTimeout` 120 s (`cmd/cask/web.go`); the write deadline also covers handler execution, so it leaves room for a verify-all sweep | viewer-security §13 |
 | Expensive operations | verify-all and a metadata-snapshot rebuild: **one at a time**, per session a burst of 3 then one per 5 s; past it `429` + `Retry-After`, and a refused rebuild serves the published snapshot (staleness ≤ 5 s) | viewer-design §3 |
 | Trusted proxies | none (`-trusted-proxy` empty): a forwarded client address is ignored, the direct peer keys the throttle | viewer-security §5.2, cli §2 |
 | Active-search trigger | `input changed delay:300ms` | viewer-design §5 |

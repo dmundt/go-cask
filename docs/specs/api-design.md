@@ -2,7 +2,7 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v13
+version: v14
 ---
 
 # API Design — go-cask
@@ -52,12 +52,14 @@ Applies to the viewer (`/viewer/*`, `text/html`) and any example HTTP surface (`
 | 401 | **empty body** | `{"error":"unauthorized"}` |
 | 403 | **empty body** | `{"error":"forbidden"}` |
 | 404 | minimal error page | `{"error":"not found"}` |
+| 413 | minimal error page (an oversized request body) | — |
 | 429 | **empty body** + `Retry-After` | `{"error":"rate limited"}` + `Retry-After` |
 
 - 401/403 never disclose whether the target exists (all surfaces). A successful mutation with no useful body → 204; a create → 201 + the hash. 429 comes from the shared rate-limit middleware before any handler.
 - `Retry-After` is required on every 429, in whole seconds: it reports the delay the limiter is actually enforcing — the shared rate-limit middleware's window on a JSON surface, the viewer's login-throttle block on `/viewer/login` (viewer-security §5). A caller told how long to wait does not retry into the same refusal; a value that drifted from the enforced wait would be worse than none.
 - A rejected authentication attempt carries no body on any surface, and its status does not soften because a browser form sent it: `POST /viewer/login` with a bad token answers `401` (empty), exactly like a missing or expired session. The login page states the human-readable reason for a caller who returns to it (viewer-design §3), so the refusal never has to describe the token or the account.
 - 403 also answers a token-bearing login that is not same-origin (`POST /viewer/login`, `GET /viewer/?token=`): the credential is refused before any session exists, with an empty body, so the response never reveals whether the token was valid (viewer-security §5.1).
+- 413 answers a request body over the surface's bound, decided before the body is parsed: the viewer's bound is one setting for every route (viewer-security §13, defaults §4), not a per-endpoint decision.
 
 ## 6. Error contract
 
@@ -87,7 +89,7 @@ Fixed order: **rate limit → auth → CSRF → handler**. The viewer enforces i
 
 - Every `{hash}`: `sha256.Parse` first (it accepts `sha256:hexdigest` and bare hex) → 400 on malformed.
 - Query params (JSON surfaces, `examples/api`): reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0. The viewer's HTML object list is the documented exception, following `viewer-design` §5: its own allowed limits (25/50/100/250) and clamping rather than a 400, because a hypermedia page must still render.
-- Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible).
+- Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible). A surface bounds the body it parses and refuses a larger one `413` before reading it, so an oversized or multipart body is never buffered in memory or spooled to a temp file; the viewer's bound is 4 KiB in one middleware every route inherits (viewer-security §13, defaults §4), and a surface that parses a body states its own bound rather than accepting an unbounded one.
 - Credentials ride in the documented carrier only: a login token must be presented same-origin (viewer-security §5.1), and the viewer's CSRF token comes from the POST body or the `X-CSRF-Token` header — a query value is never accepted, because URLs are captured by logs, bookmarks, proxies, and `Referer` chains.
 - Never trust client input — header, query, and body all validated (viewer-security).
 
