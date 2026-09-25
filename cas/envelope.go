@@ -2,6 +2,7 @@ package cas
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -266,6 +267,78 @@ func decodeEnvelope(data []byte) (Envelope, error) {
 // is the caller's ErrUnknownType decision).
 func EnvelopeType(data []byte) (string, error) {
 	_, typeName, _, err := decodeEnvelopeHeader(data)
+	if err != nil {
+		return "", err
+	}
+	return typeName, nil
+}
+
+// headerPrefixLimit bounds how much of an object a Header read may consume. It
+// is expressed as a multiple of maxPeekNameLen, the ceiling PeekHeader applies
+// to each header string field, so the limit is visibly large enough for two
+// maximal fields plus their length prefixes and the version byte — a whole
+// header, for any realistic codec tag and type name, is a few dozen bytes.
+//
+// The bound exists so a hostile or damaged object cannot make a header read
+// grow with the object: without it, streaming an object's header would consume
+// its payload too. It is deliberately far above any real header.
+const headerPrefixLimit = 2 * maxPeekNameLen
+
+// Header reads the envelope header of the object stored at d — the frame's
+// leading version byte, the writing codec's identity tag and the versioned type
+// name ("blob@1", …) — without reading a payload byte. A version 1 frame reports
+// version 1 and an empty codec (it carries no identity); an absent major version
+// reads back as "@1" (object-versioning §2).
+//
+// It is the one bounded header read in the library, and it is one pass: the
+// fields are walked by cas.PeekHeader, the same parser PeekType and PeekVersion
+// resolve the layout through, over a reader limited to headerPrefixLimit. So a
+// caller that needs to know what an object is never buffers it and never walks
+// its header twice — cas/repo.Registry.Resolve, the gitlike resolver,
+// internal/index (and so the CLI and the viewer) all learn an object's header
+// through this rather than each reading a prefix of its own (go-cask#319).
+//
+// A non-nil error means one of exactly two things, and never a third:
+//
+//   - the object could not be read — the backend's own error, with
+//     cas.ErrNotFound for a digest that is not stored. The error names the
+//     header read or close that failed.
+//   - the bytes at d do not begin with a usable envelope header — cas.ErrCorrupt
+//     from the parser, naming the offending field. Reporting a header is not
+//     dispatch: a frame that parses and names a type nothing has a decoder for
+//     is no error here (that is the caller's ErrUnknownType decision).
+//
+// A caller reading a store that legitimately holds raw, un-enveloped objects
+// (`cask put` writes a file's own bytes) must therefore decide what ErrCorrupt
+// means to it: internal/index.Header is the documented best-effort wrapper that
+// reads such an object as headerless rather than damaged. cas.PeekHeader remains
+// the streaming form for a caller that already holds an io.Reader.
+func Header(ctx context.Context, backend Backend, d Digest) (version byte, codec, typeName string, err error) {
+	rc, err := backend.Get(ctx, d)
+	if err != nil {
+		return 0, "", "", err
+	}
+	// LimitReader rather than a read-all: only the fields PeekHeader walks
+	// matter, and the bound keeps a damaged length prefix from consuming the
+	// payload.
+	version, codec, typeName, peekErr := PeekHeader(io.LimitReader(rc, headerPrefixLimit))
+	// A failed close wins: the read is over either way, and a reader that cannot
+	// be released is the caller's problem to hear about first. A read error is
+	// still reported when the close succeeded, so the peek failure is never lost.
+	if closeErr := rc.Close(); closeErr != nil {
+		return 0, "", "", fmt.Errorf("cas: close object header reader: %w", closeErr)
+	}
+	if peekErr != nil {
+		return 0, "", "", fmt.Errorf("cas: read object header: %w", peekErr)
+	}
+	return version, codec, typeName, nil
+}
+
+// HeaderType is Header's type-only convenience, for a caller that needs to know
+// what an object is and nothing else. It reports the same errors Header does, so
+// an unparseable header is cas.ErrCorrupt in both.
+func HeaderType(ctx context.Context, backend Backend, d Digest) (string, error) {
+	_, _, typeName, err := Header(ctx, backend, d)
 	if err != nil {
 		return "", err
 	}

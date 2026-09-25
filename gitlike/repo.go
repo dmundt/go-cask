@@ -3,7 +3,6 @@ package gitlike
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/dmundt/go-cask/cas"
 	casrepo "github.com/dmundt/go-cask/cas/repo"
@@ -131,7 +130,16 @@ func (r *Resolver) ResolveTag(ctx context.Context, d cas.Digest) (*Tag, error) {
 // as an unknown type — a walk must not treat an object it cannot read as one it
 // can safely skip.
 func (r *Resolver) Resolve(ctx context.Context, d cas.Digest) (casrepo.Object, error) {
-	typ, err := r.objectType(ctx, d)
+	// cas.HeaderType is the library's one bounded envelope-header read: a
+	// prefix large enough for any realistic codec tag and type name, parsed by
+	// cas.EnvelopeType, so the cost of resolution stays independent of the
+	// object's size and this resolver carries no header reader of its own. It is
+	// deliberately not cas.PeekType: the backends hand back a plain
+	// io.ReadCloser (*os.File, bytes.Reader), which is not an io.ByteReader, so
+	// PeekType's byte-at-a-time adapter would cost a read syscall per header
+	// byte. The legacy rule that an absent major version reads as "@1"
+	// (object-versioning §2) lives in the core parser either way.
+	typ, err := cas.HeaderType(ctx, r.repo.backend, d)
 	if err != nil {
 		return nil, err
 	}
@@ -162,43 +170,6 @@ func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObjec
 		return nil, err
 	}
 	return resolvedObjectOf(obj)
-}
-
-// envelopeHeaderLimit bounds the prefix read to learn an object's type. The
-// envelope header is
-// [version u8][uvarint codecLen][codec][uvarint typeLen][type] — a few dozen
-// bytes for any realistic codec tag and type name — so this is generous while
-// keeping the read cost of resolution independent of the object's size.
-const envelopeHeaderLimit = 1 << 10
-
-// objectType returns the versioned type name ("blob@1") stored in d's envelope
-// header, reading no payload byte.
-//
-// The header is read as one bounded prefix and parsed by cas.EnvelopeType, not
-// streamed through cas.PeekType: the backends hand back a plain io.ReadCloser
-// (*os.File, bytes.Reader), which is not an io.ByteReader, so PeekType's
-// byte-at-a-time adapter would cost a read syscall per header byte while a walk
-// resolves one header per object. The prefix is bounded, so the cost stays
-// independent of the object's size, and the legacy rule that an absent major
-// version reads as "@1" (object-versioning §2) lives in cas.EnvelopeType.
-func (r *Resolver) objectType(ctx context.Context, d cas.Digest) (string, error) {
-	rc, err := r.repo.backend.Get(ctx, d)
-	if err != nil {
-		return "", err
-	}
-	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
-	if err != nil {
-		_ = rc.Close() // the read error is the one worth reporting
-		return "", fmt.Errorf("gitlike: read object header for resolution: %w", err)
-	}
-	if err := rc.Close(); err != nil {
-		return "", fmt.Errorf("gitlike: close object header reader: %w", err)
-	}
-	typ, err := cas.EnvelopeType(prefix)
-	if err != nil {
-		return "", fmt.Errorf("gitlike: %w", err)
-	}
-	return typ, nil
 }
 
 // resolvedObjectOf maps a resolved concrete object onto the typed union — the

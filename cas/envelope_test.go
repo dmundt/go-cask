@@ -2,6 +2,7 @@ package cas
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -134,6 +135,105 @@ func TestEnvelopeUnknownTypeIsNotAParseFailure(t *testing.T) {
 func TestEnvelopeTruncatedVersion(t *testing.T) {
 	if _, err := EnvelopeFromBytes(nil); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("nil data = %v, want ErrCorrupt", err)
+	}
+}
+
+// stubBackend serves one object's bytes and nothing else, so HeaderType's own
+// read paths (a failing reader, a failing Close) can be exercised without a
+// backend that can produce them.
+type stubBackend struct {
+	data    []byte
+	getErr  error
+	rc      func() io.ReadCloser
+	missing bool
+}
+
+func (b stubBackend) Get(context.Context, Digest) (io.ReadCloser, error) {
+	if b.getErr != nil {
+		return nil, b.getErr
+	}
+	if b.missing {
+		return nil, ErrNotFound
+	}
+	if b.rc != nil {
+		return b.rc(), nil
+	}
+	return io.NopCloser(bytes.NewReader(b.data)), nil
+}
+
+func (stubBackend) Put(context.Context, Digest, io.Reader) error { return nil }
+func (stubBackend) Exists(context.Context, Digest) (bool, error) { return false, nil }
+func (stubBackend) Delete(context.Context, Digest) error         { return nil }
+func (stubBackend) List(context.Context) ([]Digest, error)       { return nil, nil }
+func (stubBackend) Stats(context.Context) (*Stats, error)        { return &Stats{}, nil }
+
+// erroringReadCloser fails the read or the close on demand.
+type erroringReadCloser struct {
+	failRead  bool
+	failClose bool
+}
+
+func (e erroringReadCloser) Read(p []byte) (int, error) {
+	if e.failRead {
+		return 0, errors.New("read exploded")
+	}
+	return bytes.NewReader(nil).Read(p)
+}
+
+func (e erroringReadCloser) Close() error {
+	if e.failClose {
+		return errors.New("close exploded")
+	}
+	return nil
+}
+
+// TestHeaderTypeReadsOnlyTheHeader pins the contract every consumer of
+// cas.HeaderType now shares (cas/repo.Registry.Resolve, the gitlike resolver,
+// internal/index.HeaderType, the CLI and the viewer): it returns the versioned
+// type name from a bounded prefix, it never needs the payload — so a prefix is
+// enough and a huge object is not buffered — and it reports an unreadable
+// object, a missing one and damaged bytes as three distinguishable answers.
+func TestHeaderTypeReadsOnlyTheHeader(t *testing.T) {
+	ctx := context.Background()
+
+	data := encodeEnvelope("json", "blob@1", bytes.Repeat([]byte("x"), 1<<20))
+	typ, err := HeaderType(ctx, stubBackend{data: data}, Digest{})
+	if err != nil {
+		t.Fatalf("HeaderType(valid) = %v", err)
+	}
+	if typ != "blob@1" {
+		t.Fatalf("HeaderType = %q, want blob@1", typ)
+	}
+
+	// Bytes that do not begin with a usable header are damage, not an absent
+	// type: "" with no error is internal/index's best-effort reading, not this.
+	if _, err := HeaderType(ctx, stubBackend{data: []byte("not an envelope")}, Digest{}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("HeaderType(raw bytes) = %v, want ErrCorrupt", err)
+	}
+	// A truncated prefix is the same answer: the declared type length is not
+	// satisfied by the bytes that arrived.
+	if _, err := HeaderType(ctx, stubBackend{data: []byte{envelopeVersion, 0x01, 'a', 0xc8, 'a'}}, Digest{}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("HeaderType(truncated) = %v, want ErrCorrupt", err)
+	}
+	if _, err := HeaderType(ctx, stubBackend{missing: true}, Digest{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("HeaderType(missing) = %v, want ErrNotFound", err)
+	}
+	if _, err := HeaderType(ctx, stubBackend{getErr: errors.New("boom")}, Digest{}); err == nil {
+		t.Fatal("HeaderType(Get failure) = nil, want an error")
+	}
+	// The messages are load-bearing: cas/repo's and gitlike's tests pin them,
+	// so the read that moved into the core must keep naming the failure.
+	_, err = HeaderType(ctx, stubBackend{rc: func() io.ReadCloser {
+		return erroringReadCloser{failRead: true}
+	}}, Digest{})
+	if err == nil || !strings.Contains(err.Error(), "read object header") {
+		t.Fatalf("HeaderType(failing read) = %v, want it to name the header read", err)
+	}
+	_, err = HeaderType(ctx, stubBackend{rc: func() io.ReadCloser {
+		return erroringReadCloser{failClose: true}
+	}}, Digest{})
+	if err == nil || !strings.Contains(err.Error(), "close object header reader") {
+		t.Fatalf("HeaderType(failing close) = %v, want it to name the close", err)
 	}
 }
 

@@ -6,8 +6,6 @@ package index
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"slices"
 	"time"
 
@@ -52,45 +50,31 @@ func EnvelopeType(data []byte) string {
 	return typ
 }
 
-// headerPrefixLimit bounds the bytes a header read consumes when the object is
-// not an envelope the core's peek can walk: the peek reads one field at a time
-// and never more than the core's own per-field ceiling (4 KiB each for the codec
-// tag and the type name), so the worst case is bounded regardless of the
-// object's size.
-const headerPrefixLimit = 8 << 10
-
 // Header reads the envelope header of the object at d — its frame version, its
 // codec identity tag and its versioned type name ("blob@1", …) — in one pass,
 // and reports every field as absent (zero values) when the bytes are not an
 // envelope this build can walk.
 //
 // It is the one place the viewer's index, the inspector, and the cask CLI learn
-// an object's header from stored bytes. The three fields live in one walk, so
-// reading them through cas.PeekHeader costs one open and exactly the header
-// bytes, independent of the payload: a CLI that lists a store, or a viewer that
-// rebuilds its snapshot, pays no more for a 1 GiB object than for an empty one.
+// an object's header from stored bytes. The three fields live in one walk: the
+// read is cas.Header, which opens the object once and walks its header under a
+// bound, so a CLI that lists a store, or a viewer that rebuilds its snapshot,
+// pays no more for a 1 GiB object than for an empty one. The CLI, the viewer,
+// cas/repo and the gitlike resolver therefore share one bounded header read
+// instead of reading one prefix each (go-cask#319), and this layer carries no
+// prefix limit of its own.
 //
 // Best-effort on purpose: a store legitimately holds raw, un-enveloped objects
-// (`cask put` writes the file's own bytes), and cas.PeekHeader reports anything
-// that is not a usable header as cas.ErrCorrupt — which would relabel every raw
+// (`cask put` writes the file's own bytes), and cas.Header reports anything that
+// is not a usable header as cas.ErrCorrupt — which would relabel every raw
 // object as damaged. Damaged bytes therefore read here as "no header", while a
 // non-nil error means the object could not be read at all.
 func Header(ctx context.Context, backend cas.Backend, d cas.Digest) (version byte, codec, typeName string, err error) {
-	rc, err := backend.Get(ctx, d)
-	if err != nil {
-		return 0, "", "", err
+	version, codec, typeName, err = cas.Header(ctx, backend, d)
+	if err != nil && errors.Is(err, cas.ErrCorrupt) {
+		return 0, "", "", nil // not an envelope header; not damage either
 	}
-	version, codec, typeName, peekErr := cas.PeekHeader(io.LimitReader(rc, headerPrefixLimit))
-	if closeErr := rc.Close(); closeErr != nil {
-		return 0, "", "", fmt.Errorf("cas: close object header reader: %w", closeErr)
-	}
-	if peekErr != nil {
-		if errors.Is(peekErr, cas.ErrCorrupt) || errors.Is(peekErr, cas.ErrUnknownType) {
-			return 0, "", "", nil // not an envelope header; not damage either
-		}
-		return 0, "", "", fmt.Errorf("cas: read object header: %w", peekErr)
-	}
-	return version, codec, typeName, nil
+	return version, codec, typeName, err
 }
 
 // HeaderType is Header's type-only convenience, kept for the callers that report

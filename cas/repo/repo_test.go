@@ -659,8 +659,10 @@ func TestResolveRejectsNilObjectFromDecoder(t *testing.T) {
 }
 
 // erroringBackend wraps a real Backend but replaces Get's returned reader with
-// one whose Read or Close fails, so readEnvelopeHeader's own error paths (not
-// reachable through a well-behaved Backend) can be exercised directly.
+// one whose Read or Close fails, so the header read's own error paths (not
+// reachable through a well-behaved Backend) can be exercised directly. The read
+// is cas.HeaderType now, but its errors still reach Resolve through here
+// (go-cask#319).
 type erroringBackend struct {
 	cas.Backend
 	failRead  bool
