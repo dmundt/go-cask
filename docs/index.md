@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v28
+version: v29
 ---
 
 # go-cask Rules Index
@@ -18,7 +18,7 @@ version: v28
 | `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11, §4.13 + architecture boundary rule: verification/sweep/reachability are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
 | `cas/verify/sidecar/*` | [`operations.md`](specs/operations.md) §6 + [`cas-core.md`](specs/cas-core.md) §4.11 + [`library-design.md`](specs/library-design.md) §1 + architecture boundary rule: an opt-in maintenance layer *above* a backend — a `cas.Backend` decorator that records per-object checksum at `<base>/.meta/<hex>.json` and validates stored bytes against the record; it is not a backend, holds no objects, adds no `cas` identifier, and the record never enters the hashed bytes |
 | `cas/verify/*` / `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification helpers are maintenance-only and must not redefine the storage model; they are `cas.Hasher` implementations for a store deliberately addressed by that checksum, so they verify only objects addressed with it |
-| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go` (`GetMany`/`BatchGetter`), `cas/envelope.go` (TLV readers incl. `PeekVersion`) | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
+| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go` (`GetMany`/`BatchGetter`), `cas/envelope.go` (the TLV writer `EncodeEnvelope` plus the readers incl. `PeekVersion`) | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 (stable surface) + [`defaults.md`](specs/defaults.md) (`flate` is the default compression wrapper; `MaxDecodedBytes` binds the decompressing wrappers) |
 | `cas/cache/validate.go` (the shared cache validation layer), `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/pack/` (app-facing manifest/helper layer) | [`cas-core.md`](specs/cas-core.md) §7 + architecture boundary rule: helper/manifest logic stays out of the core and is not a backend; a manifest read or write names the caller's codec (the package imports no codec) |

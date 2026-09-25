@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strings"
 	"sync"
 )
 
@@ -238,26 +237,16 @@ func (s *Store[T]) PutDedup(ctx context.Context, obj T) (Digest, bool, error) {
 // codec decodes on read (Get) — and its identity tag (s.codecName, resolved
 // from CodecNamer at construction) is written into the header. obj is the
 // concrete T (the Store constraint), so no type assertion is involved.
+//
+// The frame itself comes from EncodeEnvelope, the exported writer a tool
+// without a Store calls (go-cask#187), so the version byte, the field order and
+// the type-name rule have one implementation each.
 func (s *Store[T]) marshal(obj T) ([]byte, error) {
 	payload, err := s.codec.Encode(obj)
 	if err != nil {
 		return nil, fmt.Errorf("cas: encode: %w", err)
 	}
-	typ := obj.Type()
-	if typ == "" {
-		// An empty type name produces an envelope that decodeEnvelope rejects,
-		// i.e. an object Put succeeds on but Get can never read.
-		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
-	}
-	if !strings.Contains(typ, "@") {
-		// Object[T].Type MUST return a versioned name "<type>@<major>"
-		// (object.go, object-versioning.md). decodeEnvelope reads a legacy
-		// unversioned name as "@1", so writing one produces an object whose
-		// stored type ("legacy@1") can never equal the decoded Type()
-		// ("legacy"): a write-only object. Reject it at the source instead.
-		return nil, fmt.Errorf("%w: type name %q is not versioned (want \"<type>@<major>\")", ErrUnknownType, typ)
-	}
-	return encodeEnvelope(s.codecName, typ, payload), nil
+	return EncodeEnvelope(s.codecName, obj.Type(), payload)
 }
 
 // Get reads the object at d and returns the concrete T directly — no casts.

@@ -218,6 +218,65 @@ func TestVerifyFollowsHashAlgorithm(t *testing.T) {
 	}
 }
 
+// TestSeedPreviewWritesCurrentEnvelopeVersion pins the seeded frame to the
+// format this build writes. `seed-preview` frames its objects itself — it must
+// predict their digests — and it hand-rolled a version 1 envelope until
+// go-cask#187, so the store it seeded carried no codec identity and mixed
+// layouts with everything `cask put` writes. The tampered ordinal keeps its
+// header (only the last payload byte is flipped), so every object is checked.
+func TestSeedPreviewWritesCurrentEnvelopeVersion(t *testing.T) {
+	mf := localMF(t)
+	if _, code := run(t, mf, "seed-preview", "-count", "8"); code != 0 {
+		t.Fatalf("seed-preview exit = %d, want 0", code)
+	}
+	backend, err := fs.New(mf.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	digests, err := backend.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) == 0 {
+		t.Fatal("the seeded store lists no objects")
+	}
+	for _, d := range digests {
+		rc, err := backend.Get(ctx, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		if closeErr := rc.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data[0] != cas.EnvelopeVersion {
+			t.Fatalf("seeded %s leads with envelope version %d, want %d", d, data[0], cas.EnvelopeVersion)
+		}
+		env, err := cas.EnvelopeFromBytes(data)
+		if err != nil {
+			t.Fatalf("seeded %s: %v", d, err)
+		}
+		if env.Codec != previewCodecTag {
+			t.Fatalf("seeded %s codec tag = %q, want %q", d, env.Codec, previewCodecTag)
+		}
+		if !strings.Contains(env.Type, "@") {
+			t.Fatalf("seeded %s type = %q, want a versioned name", d, env.Type)
+		}
+		version, err := cas.PeekVersion(bytes.NewReader(data))
+		if err != nil || version != cas.EnvelopeVersion {
+			t.Fatalf("PeekVersion(%s) = (%d, %v), want %d", d, version, err, cas.EnvelopeVersion)
+		}
+		typ, err := cas.PeekType(bytes.NewReader(data))
+		if err != nil || typ != env.Type {
+			t.Fatalf("PeekType(%s) = (%q, %v), want %q", d, typ, err, env.Type)
+		}
+	}
+}
+
 // TestPreviewReferencesToleratesHoles pins that an object missing inside a
 // block does not truncate the index. `cask gc` reclaims the detached object of
 // every block; stopping at that hole used to drop every later block, so the

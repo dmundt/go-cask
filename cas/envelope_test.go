@@ -254,6 +254,52 @@ func TestEnvelopeMarshalDeterministic(t *testing.T) {
 	}
 }
 
+// TestEncodeEnvelopeExported pins the writer's contract: the frame it produces
+// carries the version this build writes, reads back through EnvelopeFromBytes
+// and the peekers, treats an empty codec tag as "unspecified", and enforces the
+// versioned type-name rule Store.Put applies (go-cask#187).
+func TestEncodeEnvelopeExported(t *testing.T) {
+	frame, err := EncodeEnvelope("json", "note@1", []byte("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame[0] != EnvelopeVersion {
+		t.Fatalf("leading byte = %d, want EnvelopeVersion %d", frame[0], EnvelopeVersion)
+	}
+	env, err := EnvelopeFromBytes(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Type != "note@1" || env.Codec != "json" || string(env.Data) != "payload" {
+		t.Fatalf("EnvelopeFromBytes = {type %q, codec %q, data %q}", env.Type, env.Codec, env.Data)
+	}
+	if version, err := PeekVersion(bytes.NewReader(frame)); err != nil || version != EnvelopeVersion {
+		t.Fatalf("PeekVersion = (%d, %v), want %d", version, err, EnvelopeVersion)
+	}
+	if typ, err := PeekType(bytes.NewReader(frame)); err != nil || typ != "note@1" {
+		t.Fatalf("PeekType = (%q, %v), want note@1", typ, err)
+	}
+
+	// An empty tag is legal and means "codec unspecified", not an error.
+	untagged, err := EncodeEnvelope("", "note@1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = EnvelopeFromBytes(untagged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Codec != "" || len(env.Data) != 0 {
+		t.Fatalf("untagged frame = {codec %q, data %q}, want an empty tag and payload", env.Codec, env.Data)
+	}
+
+	for _, typ := range []string{"", "note"} {
+		if _, err := EncodeEnvelope("json", typ, nil); !errors.Is(err, ErrUnknownType) {
+			t.Fatalf("EncodeEnvelope(type %q) = %v, want ErrUnknownType", typ, err)
+		}
+	}
+}
+
 func TestEnvelopeFromBytesExported(t *testing.T) {
 	raw := encodeEnvelope("cbor", "exported@1", []byte("data"))
 	env, err := EnvelopeFromBytes(raw)

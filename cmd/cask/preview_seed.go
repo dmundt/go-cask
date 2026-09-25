@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -168,12 +167,15 @@ type previewObject struct {
 
 func previewObjectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
 	references := previewObjectReferences(ordinal, digests)
-	data := previewEnvelope(
+	data, err := previewEnvelope(
 		previewObjectType(ordinal),
 		ordinal,
 		previewObjectSize(ordinal),
 		references,
 	)
+	if err != nil {
+		return previewObject{}, err
+	}
 	digest, err := hasher.Digest(bytes.NewReader(data))
 	if err != nil {
 		return previewObject{}, err
@@ -218,7 +220,14 @@ func previewRootOrdinal(ordinal int) bool {
 	return ordinal%previewBlockSize == previewRootOffset
 }
 
-func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) []byte {
+// previewCodecTag is the codec identity seeded preview objects carry. Their
+// payload is a synthetic byte pattern no shipped codec produced, so the tag
+// names the preview layer instead of claiming to be a decoder (cli.md §2): a
+// reader sees a decodable-looking object whose codec identity is honest about
+// where the bytes came from.
+const previewCodecTag = "preview"
+
+func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
 	referenceText := ""
 	for _, reference := range references {
 		referenceText += " " + reference.String()
@@ -226,18 +235,11 @@ func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Dige
 	header := fmt.Sprintf("preview object %03d: %s refs:%s", ordinal, typ, referenceText)
 	payload := bytes.Repeat([]byte{byte(ordinal)}, max(payloadSize, len(header)))
 	copy(payload, header)
-
-	var lengthBuffer [binary.MaxVarintLen64]byte
-	typeLength := binary.PutUvarint(lengthBuffer[:], uint64(len(typ)))
-	payloadLength := binary.PutUvarint(lengthBuffer[:], uint64(len(payload)))
-	data := make([]byte, 1+typeLength+len(typ)+payloadLength+len(payload))
-	data[0] = 1
-	offset := 1
-	offset += binary.PutUvarint(data[offset:], uint64(len(typ)))
-	offset += copy(data[offset:], typ)
-	offset += binary.PutUvarint(data[offset:], uint64(len(payload)))
-	copy(data[offset:], payload)
-	return data
+	// The frame comes from the core's writer, not from a local copy of the
+	// layout: the digest of these bytes must equal the digest of the bytes the
+	// store would write, or the preview graph the viewer rebuilds points at
+	// objects that do not exist (go-cask#187).
+	return cas.EncodeEnvelope(previewCodecTag, typ, payload)
 }
 
 type previewReferenceIndex struct {
