@@ -53,3 +53,18 @@ var ErrChecksumAlgorithm = errors.New("sidecar: checksum algorithm mismatch")
 // cas.ErrNotFound; one that must tell "no record" apart from "no object" tests
 // this.
 var ErrUnrecorded = fmt.Errorf("%w: sidecar: object has no checksum record", cas.ErrNotFound)
+
+// ErrRecordTooLarge reports that a record cannot be published within the read cap
+// the writer was configured with (WithMaxRecordBytes, DefaultMaxRecordBytes by
+// default), so the write is refused and no record is written.
+//
+// The write path drops the optional type and codec fields before it gives up —
+// both are derived best-effort and documented as never required — so this says
+// the cap is too small for a record's own required fields (a digest, a checksum,
+// a size and a creation time), not that one object is unusual.
+//
+// It exists so the writer and the reader cannot disagree silently: a record is
+// either published in a shape readRecord accepts, or not published at all.
+// Publishing one the reader would refuse as cas.ErrCorrupt is the one outcome the
+// write path must never produce (go-cask#362).
+var ErrRecordTooLarge = errors.New("sidecar: record exceeds the read cap")

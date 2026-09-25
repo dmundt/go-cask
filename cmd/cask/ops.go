@@ -707,10 +707,19 @@ func verifyChecksums(ctx context.Context, t *store.Store, a *verifyArgs, flags *
 // and the two have different remedies.
 const checksumMismatchLabel = "CHECKSUM MISMATCH"
 
+// recordUnreadableLabel starts a line for a record the pass could not read at
+// all. It is its own label because the two diagnoses differ: a mismatch says the
+// object's bytes changed, while an unreadable record says the record is damaged
+// and the object is simply not covered (go-cask#362).
+const recordUnreadableLabel = "RECORD UNREADABLE"
+
 // verifyAllChecksums checks every record the store's objects have. A mismatch is
 // reported per object; an object without a record is counted, not listed —
 // listing them is what `verify --checksums <hash>` is for, and a store that
-// turned recording on recently has many.
+// turned recording on recently has many. A record that cannot be read at all is
+// reported per record too, and the pass still covers every other object: one
+// unusable record must not be able to report the whole store as unchecked
+// (go-cask#362).
 func verifyAllChecksums(ctx context.Context, verifier *sidecar.Verifier, algo string) error {
 	report, err := verifier.VerifyAll(ctx)
 	if report != nil {
@@ -718,14 +727,24 @@ func verifyAllChecksums(ctx context.Context, verifier *sidecar.Verifier, algo st
 			fmt.Fprintf(os.Stderr, "%s %s: %v\n", checksumMismatchLabel, h,
 				fmt.Errorf("%w: %s failed its recorded %s checksum", cas.ErrCorrupt, h, algo))
 		}
+		for _, h := range report.Unreadable {
+			fmt.Fprintf(os.Stderr, "%s %s: %v\n", recordUnreadableLabel, h,
+				fmt.Errorf("%w: %s has no readable %s checksum record", cas.ErrCorrupt, h, algo))
+		}
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Printf("checked %d recorded objects, %d corrupt, %d unrecorded\n",
-		report.Checked, len(report.Bad), len(report.Unrecorded))
-	if len(report.Bad) > 0 {
+	fmt.Printf("checked %d recorded objects, %d corrupt, %d unrecorded, %d unreadable\n",
+		report.Checked, len(report.Bad), len(report.Unrecorded), len(report.Unreadable))
+	switch {
+	case len(report.Bad) > 0 && len(report.Unreadable) > 0:
+		return fmt.Errorf("%d objects failed their recorded checksum and %d records could not be read",
+			len(report.Bad), len(report.Unreadable))
+	case len(report.Bad) > 0:
 		return fmt.Errorf("%d objects failed their recorded checksum", len(report.Bad))
+	case len(report.Unreadable) > 0:
+		return fmt.Errorf("%d checksum records could not be read", len(report.Unreadable))
 	}
 	return nil
 }
@@ -734,6 +753,11 @@ func verifyAllChecksums(ctx context.Context, verifier *sidecar.Verifier, algo st
 // store with sidecars does not accumulate orphan records (operations §6). It is
 // a no-op for a store that has no records, and it removes nothing but records:
 // the sweep's deleted objects are its only input.
+//
+// A `.json` file in the record directory that is not a record is skipped and
+// named on stderr, never deleted and never an error: one foreign name must not
+// abort a sweep, and a file this layer cannot interpret is not its own to remove
+// (go-cask#362).
 func reconcileChecksums(ctx context.Context, t *store.Store, verb string) error {
 	// A backend that cannot name its base keeps its records nowhere, so there is
 	// nothing to reconcile and no error to report.
@@ -748,11 +772,14 @@ func reconcileChecksums(ctx context.Context, t *store.Store, verb string) error 
 	if err != nil {
 		return err
 	}
-	if report.Records == 0 {
-		return nil
+	if report.Records > 0 {
+		fmt.Printf("%s: checksum records: %d examined, %d orphaned removed, %d objects unrecorded\n",
+			verb, report.Records, len(report.Removed), len(report.Unrecorded))
 	}
-	fmt.Printf("%s: checksum records: %d examined, %d orphaned removed, %d objects unrecorded\n",
-		verb, report.Records, len(report.Removed), len(report.Unrecorded))
+	if len(report.Foreign) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %d file(s) in the checksum record directory are not records: %s\n",
+			verb, len(report.Foreign), strings.Join(report.Foreign, ", "))
+	}
 	return nil
 }
 

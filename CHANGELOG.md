@@ -316,8 +316,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generic error instead of the damaged-record line it prints for the other two
   arms. A record is derived metadata whose only source of truth is the store's
   own bytes, so one that exists and cannot be trusted is damage; the underlying
-  I/O error stays on the chain. `Verifier.VerifyAll` still stops the pass rather
-  than marking such a digest bad, which is its documented contract.
+  I/O error stays on the chain.
 - `cas/codec/cbor` decodes CBOR **half-precision** floats (major 7, additional
   information 25) correctly. The 16-bit payload is IEEE 754 half precision — 1
   sign bit, 5 exponent bits, 10 mantissa bits — and was being reinterpreted as
@@ -327,6 +326,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now expanded from their own layout. This codec never writes float16, so only
   objects written by another CBOR encoder were affected — and only the value
   read back: an object's address covers its stored bytes, so no digest changes.
+- `cas/verify/sidecar` can no longer produce a record its own reader refuses, and
+  one unusable record no longer disables the checksum sweep. A record that would
+  exceed the read cap is written without its optional `type`/`codec` fields, and
+  one that still does not fit is refused with the new
+  `sidecar.ErrRecordTooLarge`, publishing nothing; a damaged record already in a
+  store is reported in the new `VerifyReport.Unreadable` list while `VerifyAll`
+  keeps checking every other object. `cask verify --checksums --all` prints
+  `RECORD UNREADABLE <hash>: …` on stderr, counts it in its summary and exits 1
+  instead of failing with nothing checked. `Keys`/`Reconcile` skip a `.json` name
+  in `.meta` that is not a record and report it in `ReconcileReport.Foreign`, so
+  one foreign file can no longer abort `cask gc`/`cask prune` reconciliation.
 - `cask web -backend packfs` fails with an actionable message — the operation,
   the backend, and the remedy (open a loose store with `-backend fs` or `-store`
   pointing at a loose store directory) — instead of a bare "unsupported

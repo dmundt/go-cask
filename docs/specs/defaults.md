@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v47
+version: v48
 ---
 
 # Defaults and Behavior — go-cask
@@ -51,7 +51,7 @@ Single reference for "what is the default behavior?" and "what are the numbers?"
 | Recorded sidecar checksums | off by default — no record exists unless a caller wraps a backend with `sidecar.New(..., WithChecksum(algo, hasher))`; the checksum covers the stored bytes and is written after the object is published | operations §6 |
 | Sidecar record directory | `<base>/.meta`, `<base>` being the backend's `BasePath()` (`fs`: the path passed to `fs.New`; `packfs`: the loose tree `<base>/loose`) | operations §6 |
 | Sidecar record version | `1` (`sidecar.RecordVersion`); any other version reads as `cas.ErrCorrupt` | operations §6 |
-| Sidecar record read cap | `sidecar.DefaultMaxRecordBytes` = 4096 bytes per record; a larger read is `cas.ErrCorrupt` (`WithMaxRecordBytes` overrides it) | operations §6 |
+| Sidecar record read cap | `sidecar.DefaultMaxRecordBytes` = 4096 bytes per record; a larger read is `cas.ErrCorrupt` (`WithMaxRecordBytes` overrides it). The same cap bounds the writer: a record that would exceed it is written without the optional `type`/`codec` fields, and one that still does not fit is refused with `sidecar.ErrRecordTooLarge` and writes nothing | operations §6 |
 | Sidecar scratch durability | the record temp file is fsynced before its rename; the directory fsync is opt-in (`WithDirSync`), matching the backend's default | operations §1, §6 |
 | Recorded-checksum algorithm (CLI) | `crc32` for `cask verify -checksums -checksum <algo>` (also `adler32`, `crc64`); the record's own `checksum_algo` is what a read compares | cli §4, operations §6 |
 
