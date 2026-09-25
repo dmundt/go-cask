@@ -199,21 +199,6 @@ func opGet(ctx context.Context, t *store.Store, args []string) error {
 
 // --- list ---
 
-// unspecifiedCodec is how every surface renders a frame that carries no codec
-// identity: a version 1 envelope, a version 2 envelope whose codec declared no
-// tag, or bytes that carry no walkable header at all (a raw object). It is the
-// documented value rather than a blank cell, so "no codec" is never read as
-// "the CLI forgot to report it" (cli.md §2, viewer-design §3).
-const unspecifiedCodec = "unspecified"
-
-// codecLabel renders a frame's codec tag for a surface.
-func codecLabel(codec string) string {
-	if codec == "" {
-		return unspecifiedCodec
-	}
-	return codec
-}
-
 // normalizeTypeFilter accepts the documented `<type[@major]>` form: a bare name
 // means its first major version, the same reading a stored legacy name gets.
 func normalizeTypeFilter(filter string) string {
@@ -357,7 +342,7 @@ func listItemFor(ctx context.Context, t *store.Store, h cas.Digest) (listItem, b
 		Size:      size,
 		Type:      typ,
 		Version:   version,
-		Codec:     codecLabel(codec),
+		Codec:     index.CodecLabel(codec),
 	}, true, nil
 }
 
@@ -382,7 +367,7 @@ func filteredItems(ctx context.Context, t *store.Store, a listArgs) ([]listItem,
 		if want != "" && entry.Type != want {
 			continue
 		}
-		if a.codecFilter != "" && codecLabel(entry.Codec) != a.codecFilter {
+		if a.codecFilter != "" && index.CodecLabel(entry.Codec) != a.codecFilter {
 			continue
 		}
 		items = append(items, listItem{
@@ -391,7 +376,7 @@ func filteredItems(ctx context.Context, t *store.Store, a listArgs) ([]listItem,
 			Size:      entry.Size,
 			Type:      entry.Type,
 			Version:   entry.Version,
-			Codec:     codecLabel(entry.Codec),
+			Codec:     index.CodecLabel(entry.Codec),
 		})
 	}
 	return items, skipped, nil
@@ -440,11 +425,11 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"hash": sha256.Format(h), "algorithm": sha256.Name, "size": size,
-			"type": typ, "version": version, "codec": codecLabel(codec),
+			"type": typ, "version": version, "codec": index.CodecLabel(codec),
 		})
 	}
 	fmt.Printf("%s %s size=%d type=%q version=%d codec=%s\n",
-		sha256.Format(h), sha256.Name, size, typ, version, codecLabel(codec))
+		sha256.Format(h), sha256.Name, size, typ, version, index.CodecLabel(codec))
 	return nil
 }
 
@@ -540,7 +525,7 @@ func newHeaderCensus(snapshot *index.Snapshot) headerCensus {
 		default:
 			c.types[entry.Type]++
 			c.versions[strconv.Itoa(int(entry.Version))]++
-			c.codecs[codecLabel(entry.Codec)]++
+			c.codecs[index.CodecLabel(entry.Codec)]++
 		}
 	}
 	return c

@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v30
+version: v31
 ---
 
 # go-cask Rules Index
@@ -32,7 +32,7 @@ version: v30
 | `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) for the user-facing reference-states explanation |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
-| `internal/design/` (design-rule checks the gate runs, starting with the no-`any` rule) | [`library-design.md`](specs/library-design.md) §5 |
+| `internal/design/` (design-rule checks the gate runs: no exported `any`, canonical `memory` import aliases, and one owner for the codec census label) | [`library-design.md`](specs/library-design.md) §5 + [`cas/AGENT.md`](../cas/AGENT.md) "Core rules" (the alias check) + [`cli.md`](specs/cli.md) §3 (the census convention) |
 | `gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |

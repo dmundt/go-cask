@@ -84,6 +84,31 @@ func HeaderType(ctx context.Context, backend cas.Backend, d cas.Digest) (string,
 	return typeName, err
 }
 
+// UnspecifiedCodec is how every surface renders a frame that carries no codec
+// identity: a version 1 envelope, a version 2 envelope whose codec declared no
+// tag, or bytes with no walkable header at all (a raw object stored by `put`).
+//
+// It is the documented value rather than a blank, so "no codec" is never read as
+// "the surface forgot to report it" (cli.md §2, viewer-design §3). It lives here,
+// beside the Entry.Codec it labels, because both surfaces fill that field from
+// the one header read this package performs (Entry, BuildSnapshot) — a second
+// literal in either surface could drift from this one without anything failing.
+const UnspecifiedCodec = "unspecified"
+
+// CodecLabel renders a frame's codec identity tag for a surface: the tag as
+// stored, or UnspecifiedCodec when the frame carries none.
+//
+// It is deliberately not version-aware. Bytes with no walkable header (Version
+// 0) and a frame that carries no tag both report an empty tag here, so a caller
+// that must tell them apart decides that from Entry.Version — the viewer's
+// not-read marker is exactly such a decision, and it is the viewer's own.
+func CodecLabel(codec string) string {
+	if codec == "" {
+		return UnspecifiedCodec
+	}
+	return codec
+}
+
 // Entry is the immutable metadata used by the viewer query path. Keeping the
 // result of one store walk together avoids re-opening and re-statting every
 // object for each filter, sort, or pagination request.
