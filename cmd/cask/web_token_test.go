@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -201,6 +202,90 @@ func TestNoticeOrigin(t *testing.T) {
 		if got := noticeOrigin(tc.addr); got != tc.want {
 			t.Errorf("noticeOrigin(%q) = %q, want %q", tc.addr, got, tc.want)
 		}
+	}
+}
+
+// TestRunWebPinsLoopbackBindings is #337's acceptance test on the real startup
+// path: every accepted loopback spelling yields a listener on an explicit
+// numeric loopback address chosen by the viewer, and the printed login origin is
+// that listener's own address — so the origin, the browser URL and the host
+// firewall's behaviour no longer follow what the machine's resolver made of the
+// name. `localhost` in particular must land on 127.0.0.1, not on whichever
+// family the hosts file preferred that day.
+func TestRunWebPinsLoopbackBindings(t *testing.T) {
+	for _, tc := range []struct {
+		bind string
+		host string
+		ipv6 bool
+	}{
+		{"127.0.0.1:0", "127.0.0.1", false},
+		{"localhost:0", "127.0.0.1", false},
+		{"LOCALHOST:0", "127.0.0.1", false},
+		{"[::1]:0", "::1", true},
+	} {
+		t.Run(tc.bind, func(t *testing.T) {
+			if tc.ipv6 {
+				// A host with no IPv6 loopback cannot listen on [::1]; the
+				// spelling itself stays pinned by the bind table in
+				// TestVersionAndWebHelpers either way.
+				probe, err := net.Listen("tcp", "[::1]:0")
+				if err != nil {
+					t.Skipf("this host has no IPv6 loopback: %v", err)
+				}
+				probe.Close()
+			}
+			stdout, _, logged := runWebNoticeOn(t, tc.bind, "-show-token")
+			addr := listeningAddr(t, logged)
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				t.Fatalf("listener address %q is not host:port: %v", addr, err)
+			}
+			if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+				t.Fatalf("listener address %q is not an explicit numeric loopback address", addr)
+			}
+			if host != tc.host {
+				t.Errorf("listener host = %q, want %q", host, tc.host)
+			}
+			if want := "cask web: log in once at http://" + addr + "/viewer/?token="; !strings.Contains(stdout, want) {
+				t.Errorf("the printed origin is not the listener's own address %q: %q", addr, stdout)
+			}
+		})
+	}
+}
+
+// listeningAddr returns the address the viewer logged on its startup line —
+// "cask web listening (viewer) addr=…" — which is the listener.Addr() the
+// serving goroutine reported.
+func listeningAddr(t *testing.T, logged string) string {
+	t.Helper()
+	const marker = "cask web listening (viewer) addr="
+	_, rest, ok := strings.Cut(logged, marker)
+	if !ok {
+		t.Fatalf("no startup line in the log:\n%s", logged)
+	}
+	addr, _, _ := strings.Cut(rest, " ")
+	if addr == "" {
+		t.Fatalf("the startup line names no address:\n%s", logged)
+	}
+	return addr
+}
+
+// TestRunWebRefusesWildcardBind is #337's refusal half: a bare `:port` listens
+// on every interface of both families, so it is a non-loopback bind exactly like
+// `0.0.0.0:port` and `[::]:port`, and must be refused without
+// -allow-insecure-bind. The refusal precedes the listen, so this test never
+// binds a fixed port.
+func TestRunWebRefusesWildcardBind(t *testing.T) {
+	for _, bind := range []string{":8080", "0.0.0.0:8080", "[::]:8080", "192.168.1.10:8080"} {
+		t.Run(bind, func(t *testing.T) {
+			logs := installRecorder(t)
+			if code := runWeb(context.Background(), modeFlags{store: t.TempDir()}, []string{"-bind", bind, "-no-open"}); code != 1 {
+				t.Fatalf("runWeb -bind %s exit = %d, want 1", bind, code)
+			}
+			if !strings.Contains(logs.String(), "refusing to bind the viewer to a non-loopback address") {
+				t.Errorf("the refusal is not logged for %s:\n%s", bind, logs.String())
+			}
+		})
 	}
 }
 

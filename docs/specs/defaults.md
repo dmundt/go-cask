@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v45
+version: v46
 ---
 
 # Defaults and Behavior — go-cask
@@ -73,7 +73,7 @@ Single reference for "what is the default behavior?" and "what are the numbers?"
 | Item | Default/value | Defined in |
 |---|---|---|
 | Startup | `cask web` IS the viewer; loopback-only default bind; admin token never logged — shown once on stdout **for a loopback bind only** (`-show-token` forces it without a terminal, `-show-token=false` suppresses it, absent keeps the terminal heuristic), or supplied with `-token-file`/`CASK_VIEWER_TOKEN`; a non-loopback bind prints no login link and displays no token, only the bind and the `https://` expectation; the browser launch follows the display's two conditions (loopback bind, display not suppressed) | cli §2, viewer-security §11 |
-| Default bind | `127.0.0.1:8080` | viewer-security |
+| Default bind | `127.0.0.1:8080`; the accepted loopback spellings `127.0.0.1`, `localhost`, and `[::1]` are pinned to an explicit numeric loopback address before listening (`localhost` → `127.0.0.1`), so the listener never depends on the host resolver | viewer-security §4 |
 | Short-hash display | 8 hex chars (`9f86d081`) — `cas.Digest.Prefix(8)`, the core's total display helper | viewer-design §7 |
 | Generic-list row | Two separate cells from the object row: a short-digest cell (`cas.Digest.Prefix(8)`) and a type-label cell (`unreadable` when the bytes could not be read). The list never renders a composite `<shorthash> (<type>)` string | viewer-design §1, §7 |
 | Session idle timeout | 30 min | viewer-security |
