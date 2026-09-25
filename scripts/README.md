@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v8
+version: v9
 ---
 
 # Scripts — go-cask
@@ -13,7 +13,9 @@ This directory holds the repo's operational helper scripts. They are the single 
 
 | Script | Purpose |
 |---|---|
-| [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, helper-script behaviour, doc integrity, and the website example build plus shipped-package inventory check. Auto-detects a documentation-only change and runs the documentation gate instead (the scope CI applies; `VERIFY_SCOPE=full|docs` overrides). A green run stamps the commit in the shared git dir for the pre-push hook. |
+| [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, build, vet, the layer matrix, cross-platform build/vet for windows/amd64 and linux/arm64, security scanning, race/coverage, fuzz smoke, helper-script behaviour, doc integrity, and the website example build plus shipped-package inventory check. Auto-detects a documentation-only change and runs the documentation gate instead (the scope CI applies; `VERIFY_SCOPE=full|docs` overrides). A green run stamps the commit in the shared git dir for the pre-push hook and writes a gate receipt for the commit, which CI can reuse instead of repeating the same suite. |
+| [`gate-receipt.sh`](./gate-receipt.sh) | The gate's evidence, made portable. `create` writes the receipt for a green run (commit, tree, merge base, hash of the changed path list, scope, the checks that ran) into the shared git dir; `publish` signs it with the developer's git key as a receipt commit — parent: the gated commit, tree: the gated tree, message: the receipt — and pushes it to `refs/gate/<sha>`, a coordination ref like `refs/lane/<issue>` and never a branch; `verify` is the CI side, and accepts only a receipt signed by a key in [`.github/gate-signers`](../.github/gate-signers) whose parent, tree, ancestor base, recomputed diff hash, recomputed scope and check list all agree; `show` prints one; `suite` prints the checks a full receipt must list. Every refusal is a fallback to the whole gate, never a skipped check. |
+| [`test-gate-receipt.sh`](./test-gate-receipt.sh) | Behaviour test for that helper in throwaway repositories with throwaway ssh keys: the receipt's fields, publish's signing and its idempotent second run, the accept path, and every refusal — an untrusted signer, a rewritten payload, a receipt built on another commit, a different tree, a base that is not an ancestor, a diff hash that no longer describes the change, a docs receipt for a Go change, and a missing required check. `verify.sh` runs it. |
 | [`pr-lane.sh`](./pr-lane.sh) | The landing lane: one open pull request is one lane. `claim <issue>` takes it with a server-side compare-and-swap on the coordination ref `refs/lane/<issue>` (an atomic create — it succeeds exactly once, so two sessions cannot both claim a lane), `check` reports whether a claim would succeed without claiming, `status [<issue>] [--json]` lists every lane on the remote with the pull request behind it, and `release <issue> [--force]` frees a lane whose PR merged or was closed. The ref points at a tag object naming the claiming branch and worktree and dating the claim; an open PR holds the lane, and a claim with no PR is honoured for `PR_LANE_STALE_MINUTES` (90) before the next claimer takes it over — no heartbeat to renew and no `--force` takeover. |
 | [`test-pr-lane.sh`](./test-pr-lane.sh) | Behaviour test for that lane against a stub `gh`: the atomic claim under four simultaneous claimers, the refusal while a PR is open, the claim window, the takeover of an abandoned claim, an unreadable record, and release. `verify.sh` runs it. |
 | [`land-lane.sh`](./land-lane.sh) | The local ADVISORY slot: one slot in the shared git dir that keeps two gate runs in ONE clone from overlapping, so a clone does not pay twice for the same tree. It no longer gates a push — the lane is the pull request (`pr-lane.sh`) and `.githooks/pre-push` only reports this slot. `status` / `acquire [--force] <label>` / `renew` / `release`. Staleness is idle time and only `renew` — the holder's own call — moves the deadline; a takeover records the holder it evicted. |
@@ -52,6 +54,16 @@ This directory holds the repo's operational helper scripts. They are the single 
 - `security.sh` installs the pinned `govulncheck` version so local and CI vulnerability scans are reproducible. Update `GOVULNCHECK_VERSION` deliberately.
 - CI sets `VERIFY_SKIP_SECURITY=true` because its required `security` job runs
   the same pinned scan separately; local `verify.sh` runs it by default.
+- The gate receipt is one contract in three places and they move together: every
+  `verify.sh` section marks itself with `mark_check`, `gate-receipt.sh`'s
+  `suite_full` list names the marks CI requires, and `ci.yml` asks only for
+  `--require-suite full`. A section that is renamed or added without the other two
+  makes the receipt unusable and CI runs the whole gate — slower, never weaker.
+- Publishing a receipt is signing it: `gate-receipt.sh publish` uses this
+  toolchain's git signing configuration, so run it where `gpg.format` and
+  `user.signingkey` are set (on this host the Windows toolchain, which is also the
+  one that pushes). A clone without signing simply cannot publish, and CI falls
+  back to the full gate.
 - The race/coverage gate requires CGO. On Windows, use a Go-supported MinGW-w64 or LLVM compiler; some Go/MSVC combinations reject race-build flags.
 - Documentation CI installs [requirements-docs.lock](../requirements-docs.lock) with
   hash verification. Regenerate it with the command recorded in
@@ -73,6 +85,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 ./scripts/pr-lane.sh claim 389              # take the lane for an issue before starting
 ./scripts/pr-lane.sh status                 # every lane on the remote and its pull request
 ./scripts/pr-lane.sh release 389            # free the lane once its PR merged
+./scripts/gate-receipt.sh show              # the receipt for HEAD, if this clone has one
+./scripts/gate-receipt.sh publish           # sign it and push refs/gate/<sha> for CI
 ```
 
 When a script's behavior changes, update this README, the matching workflow, and any affected docs in the same change.

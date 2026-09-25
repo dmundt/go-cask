@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v12
+version: v13
 ---
 
 # Agent instructions — `scripts/`
@@ -45,6 +45,29 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   commit — the one hard local rule, because it is what makes re-pushing an
   unchanged commit free. Keep the helpers dependency-free, POSIX-sh safe for the
   hook, and never make the hook re-run work the stamp already covers.
+- `gate-receipt.sh` is the stamp made portable, and it is the one helper whose
+  failure mode is deliberate: `create` writes the receipt for a green run (commit,
+  tree, merge base, hash of the changed path list, scope, the checks that ran),
+  `publish` signs it with this toolchain's git key as a receipt commit (parent: the
+  gated commit, tree: the gated tree, message: the receipt) and pushes it to
+  `refs/gate/<sha>`, and `verify` is the CI side, which accepts a receipt only when
+  the signature is in `.github/gate-signers` and the parent, the tree, the ancestor
+  base, the recomputed diff hash, the recomputed scope and the check list all
+  agree. Every refusal means CI runs the whole gate: that is the intended
+  outcome for a fork, an unsigned gate, a branch behind `main`, or a malformed
+  receipt, so never turn one into a skipped check.
+- Three places hold that contract and they move together: a section in
+  `verify.sh` marks itself with `mark_check <name>`, `suite_full` in
+  `gate-receipt.sh` lists the marks CI requires, and `ci.yml` asks only for
+  `--require-suite full`. Adding or renaming a gate section without the other two
+  costs a full CI run, never a missed one. `verify.sh` writes a receipt only for a
+  clean working tree and never on a runner: a receipt names the tree of a commit,
+  and CI checks out a merge commit nobody pushes.
+- Publishing is signing, so it happens in the toolchain that has `gpg.format` and
+  `user.signingkey` — on this host the Windows git, which is also the one that
+  pushes, and the reason `.githooks/pre-push` publishes best-effort after its stamp
+  check rather than the WSL gate doing it. A toolchain that cannot sign cannot
+  publish, and CI falls back; the hook says so and names the command.
 - Four invariants of those helpers are load-bearing. First, the lane is claimed
   with an atomic create on the REMOTE (`POST /git/refs` answers 422 when the ref
   exists), never with a check followed by a write: two sessions that retry on the
@@ -137,6 +160,21 @@ earlier failed: the gate reports each unmet coverage threshold and every other
 failure as it proceeds, then exits non-zero after the race suite. Judge the
 result by the script's own output and exit status, not by a wrapper's echoed
 status.
+
+A green WSL run also writes the gate receipt that lets CI reuse it instead of
+repeating the suite. Publishing that receipt is signing, and signing belongs to
+the toolchain that holds the key: this host signs with the Windows git
+(`gpg.format=ssh` plus `user.signingkey` under `%USERPROFILE%\.ssh`), while the
+WSL git carries its own, separate config and no key. `.githooks/pre-push` runs in
+the toolchain that pushes, so it publishes the receipt after its stamp check; a
+push made from WSL git warns instead that CI will run the whole gate. To publish
+from WSL as well, configure signing there — signing needs no `allowed_signers`
+file, only verification does:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519_github_signing
+```
 
 ### Worktrees created from WSL
 
