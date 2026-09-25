@@ -18,17 +18,13 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // digestOf computes a content digest for the backend tests, using the
 // client-side sha256 hasher the core no longer owns.
 func digestOf(data []byte) cas.Digest {
 	return sha256.Of(data)
-}
-
-func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
-	defer rc.Close()
-	return io.ReadAll(rc)
 }
 
 func mustFS(t *testing.T, opts ...Option) *Backend {
@@ -105,7 +101,7 @@ func TestLayoutEquivalence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("opts %v: Get: %v", opts, err)
 		}
-		got, err := readAllAndClose(rc)
+		got, err := test.ReadAllAndClose(rc)
 		if err != nil || string(got) != string(content) {
 			t.Fatalf("opts %v: read = %q, %v", opts, got, err)
 		}
@@ -384,7 +380,7 @@ func TestPutIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -859,7 +855,7 @@ func TestWithDirSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil || !bytes.Equal(got, content) {
 		t.Fatalf("read back = %q, %v", got, err)
 	}

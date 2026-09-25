@@ -13,6 +13,7 @@ import (
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	"github.com/dmundt/go-cask/cas/backend/packfs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // backendCase is one Backend implementation under conformance test. open builds
@@ -137,17 +138,6 @@ func closeBackend(t *testing.T, backend cas.Backend) {
 	}
 }
 
-// digestKeys renders digests as a sorted key set, so two List results compare
-// equal regardless of each backend's own ordering.
-func digestKeys(digests []cas.Digest) []string {
-	keys := make([]string, 0, len(digests))
-	for _, d := range digests {
-		keys = append(keys, d.String())
-	}
-	slices.Sort(keys)
-	return keys
-}
-
 // TestBackendConformance asserts the cas.Backend guarantees over every backend
 // in conformanceBackends: an object reads back immediately after Put, a
 // repeated Put is idempotent, List reports every stored digest exactly once,
@@ -253,7 +243,7 @@ func TestBackendConformance(t *testing.T) {
 				if len(list) != len(digests)-1 {
 					t.Fatalf("List returned %d digests after one Delete, want %d", len(list), len(digests)-1)
 				}
-				for _, key := range digestKeys(list) {
+				for _, key := range test.DigestKeys(list) {
 					if key == digests[0].String() {
 						t.Fatalf("List still reports the deleted digest %s", digests[0])
 					}
@@ -328,8 +318,8 @@ func TestBackendConformance(t *testing.T) {
 				if err != nil {
 					t.Fatalf("List after reopen: %v", err)
 				}
-				if !slices.Equal(digestKeys(before), digestKeys(after)) {
-					t.Fatalf("List changed across reopen: %v, want %v", digestKeys(after), digestKeys(before))
+				if !slices.Equal(test.DigestKeys(before), test.DigestKeys(after)) {
+					t.Fatalf("List changed across reopen: %v, want %v", test.DigestKeys(after), test.DigestKeys(before))
 				}
 				for _, payload := range payloads {
 					mustRead(t, reopened, sha256.Of(payload), payload)

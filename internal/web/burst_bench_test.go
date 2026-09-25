@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // benchmarkBurst is how many concurrent verify-all requests the burst benchmark
@@ -40,7 +41,7 @@ func BenchmarkVerifyAllBurst(b *testing.B) {
 		b.Fatal(err)
 	}
 	for i := range benchmarkStoreSize {
-		frame := tlvEnvelope("blob@1", []byte(fmt.Sprintf("object %d", i)))
+		frame := test.TLVEnvelope("blob@1", []byte(fmt.Sprintf("object %d", i)))
 		digest := sha256.Of(frame)
 		if err := backend.Put(ctx, digest, bytes.NewReader(frame)); err != nil {
 			b.Fatal(err)

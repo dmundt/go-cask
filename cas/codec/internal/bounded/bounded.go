@@ -1,13 +1,16 @@
-// Package bounded holds the compression body the flate, gzip and zlib codecs
-// share.
+// Package bounded holds the codec-stack internals the cas/codec wrappers share:
+// the bounded decompression body the flate, gzip and zlib codecs use, and the
+// identity-tag compositor every stacking codec names itself through.
 //
-// It is internal to cas/codec: those three wrappers are the public surface
+// It is internal to cas/codec: those wrappers are the public surface
 // (cas-core §4.6), and each keeps its own `Codec[T]`, `New`, `MaxDecodedBytes`
 // and `ErrDecodedTooLarge`. What they must not keep is three copies of the same
 // bounded read — the stored bytes are untrusted, and a small compressed payload
 // can expand without limit, so the ceiling, the one-byte-over probe and the
 // rule that the wrapped codec is never handed bytes this layer refused are
-// written once here.
+// written once here. ComposeTag is here for the same reason: binary, gob, flate,
+// gzip and zlib all derive their tag from the codec they wrap, so that rule has
+// one implementation too.
 package bounded
 
 import (
@@ -94,7 +97,8 @@ func Decode[T any](next cas.Codec[T], data []byte, maxDecoded int64, newReader f
 // ComposeTag builds the identity tag of a codec stacked over next:
 // "<name>+<inner tag>". It reports "" when next declares no tag, so an unnamed
 // inner codec leaves the stack unspecified rather than manufacturing a tag that
-// would later read as a mismatch.
+// would later read as a mismatch. It is the one implementation the stacking
+// codecs (binary, gob, flate, gzip, zlib) name themselves through.
 func ComposeTag[T any](name string, next cas.Codec[T]) string {
 	namer, ok := next.(cas.CodecNamer)
 	if !ok {

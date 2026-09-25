@@ -14,8 +14,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 )
@@ -210,11 +211,10 @@ func appendMapValue(dst []byte, v map[string]any) ([]byte, error) {
 	if v == nil {
 		return appendMajor(dst, 5, 0), nil
 	}
-	keys := make([]string, 0, len(v))
-	for key := range v {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
+	// CBOR canonical map encoding requires ascending key order, so the keys are
+	// collected and sorted in one step by the slices/maps helpers rather than by
+	// a hand-written loop.
+	keys := slices.Sorted(maps.Keys(v))
 
 	dst = appendMajor(dst, 5, uint64(len(keys)))
 	for _, key := range keys {

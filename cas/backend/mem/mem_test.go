@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // cancelOnRead cancels the configured context during the first Read, so the
@@ -50,11 +51,6 @@ func TestPutHonorsCancellationDuringRead(t *testing.T) {
 	}
 }
 
-func readAllAndClose(rc io.ReadCloser) ([]byte, error) {
-	defer rc.Close()
-	return io.ReadAll(rc)
-}
-
 func TestMemoryBackend(t *testing.T) {
 	ctx := context.Background()
 	b := New()
@@ -66,7 +62,7 @@ func TestMemoryBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil || string(got) != "hello" {
 		t.Fatalf("Get = %q, %v", got, err)
 	}
@@ -111,7 +107,7 @@ func TestMemoryBackendCorruptionRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +122,7 @@ func TestMemoryBackendCorruptionRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err = readAllAndClose(rc)
+	got, err = test.ReadAllAndClose(rc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +188,7 @@ func TestMemoryBackendSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := readAllAndClose(rc)
+	data, err := test.ReadAllAndClose(rc)
 	if err != nil || string(data) != "alpha" {
 		t.Fatalf("Get = %q, %v", data, err)
 	}
@@ -313,7 +309,7 @@ func TestMemoryBackendSnapshotRoundTripAndDeterminism(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := readAllAndClose(rc)
+		got, err := test.ReadAllAndClose(rc)
 		if err != nil {
 			t.Fatal(err)
 		}

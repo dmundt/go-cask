@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func TestObjectRawIsLimitedTo256Bytes(t *testing.T) {
@@ -51,7 +52,7 @@ func TestObjectInspectorRendersInboundReferenceCount(t *testing.T) {
 	}
 
 	target := mustParse(t, "sha256:"+strings.Repeat("a1", 32))
-	if err := backend.Put(ctx, target, bytes.NewReader(tlvEnvelope("blob@1", nil))); err != nil {
+	if err := backend.Put(ctx, target, bytes.NewReader(test.TLVEnvelope("blob@1", nil))); err != nil {
 		t.Fatal(err)
 	}
 	references := newTestReferenceIndex()
@@ -106,7 +107,7 @@ func TestObjectInspectorRendersReferencesTab(t *testing.T) {
 		{inbound, "commit@1"},
 		{outbound, "tree@1"},
 	} {
-		if err := backend.Put(ctx, object.digest, bytes.NewReader(tlvEnvelope(object.typ, nil))); err != nil {
+		if err := backend.Put(ctx, object.digest, bytes.NewReader(test.TLVEnvelope(object.typ, nil))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -152,7 +153,7 @@ func TestObjectInspectorRendersZeroReferencesWithoutIndex(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
 	target := mustParse(t, "sha256:"+strings.Repeat("d4", 32))
-	if err := srv.store.Put(ctx, target, bytes.NewReader(tlvEnvelope("blob@1", nil))); err != nil {
+	if err := srv.store.Put(ctx, target, bytes.NewReader(test.TLVEnvelope("blob@1", nil))); err != nil {
 		t.Fatal(err)
 	}
 	viewer := login(t, ts, testStartupToken)
@@ -178,7 +179,7 @@ func TestObjectsListAndRaw(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
 	h := mustParse(t, "sha256:"+strings.Repeat("cd", 32))
-	if err := srv.store.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("object body")))); err != nil {
+	if err := srv.store.Put(ctx, h, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("object body")))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -378,7 +379,7 @@ func TestLargeObjectDetailAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := tlvEnvelope("blob@1", bytes.Repeat([]byte("x"), previewLimit+10))
+	env := test.TLVEnvelope("blob@1", bytes.Repeat([]byte("x"), previewLimit+10))
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
 	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
@@ -425,7 +426,7 @@ func TestColdObjectLinkSelectsInTheBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := backend.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("cold")))); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("cold")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{StartupToken: testStartupToken})
@@ -469,7 +470,7 @@ func TestEveryRowCellCarriesTheSelectionLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
-	if err := backend.Put(ctx, h, bytes.NewReader(tlvEnvelope("blob@1", []byte("row")))); err != nil {
+	if err := backend.Put(ctx, h, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("row")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{StartupToken: testStartupToken})

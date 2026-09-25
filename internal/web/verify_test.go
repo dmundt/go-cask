@@ -20,6 +20,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // TestIntegrityOfClassifiesSentinels pins the classification the sweep and the
@@ -163,7 +164,7 @@ func TestCorruptVerifyResultNamesBothDigests(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := sha256.Of([]byte("intended-content"))
-	stored := tlvEnvelope("blob@1", []byte("tampered"))
+	stored := test.TLVEnvelope("blob@1", []byte("tampered"))
 	if err := backend.Put(ctx, h, bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)
 	}
@@ -308,13 +309,13 @@ func TestVerifyAllUpdatesEveryObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	good := tlvEnvelope("blob@1", []byte("sound"))
+	good := test.TLVEnvelope("blob@1", []byte("sound"))
 	goodDigest := sha256.Of(good)
 	if err := backend.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
 		t.Fatal(err)
 	}
 	badDigest := sha256.Of([]byte("intended"))
-	if err := backend.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, badDigest, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{StartupToken: testStartupToken})
@@ -366,7 +367,7 @@ func TestVerifyAllUpdatesEveryObject(t *testing.T) {
 func TestVerificationRefreshesObjectList(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
-	data := tlvEnvelope("blob@1", []byte("object body"))
+	data := test.TLVEnvelope("blob@1", []byte("object body"))
 	h := sha256.Of(data)
 	if err := srv.store.Put(ctx, h, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
@@ -445,13 +446,13 @@ func TestInspectorReplaysStoredVerificationResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	good := tlvEnvelope("blob@1", []byte("sound"))
+	good := test.TLVEnvelope("blob@1", []byte("sound"))
 	goodDigest := sha256.Of(good)
 	if err := backend.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
 		t.Fatal(err)
 	}
 	badDigest := sha256.Of([]byte("intended"))
-	if err := backend.Put(ctx, badDigest, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, badDigest, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{StartupToken: testStartupToken})
@@ -503,7 +504,7 @@ func TestInspectorReplaysStoredVerificationResult(t *testing.T) {
 			t.Fatalf("corrupt object must restate %q on reselection: %.900q", want, page)
 		}
 	}
-	if !strings.Contains(page, sha256.Of(tlvEnvelope("blob@1", []byte("tampered"))).String()) {
+	if !strings.Contains(page, sha256.Of(test.TLVEnvelope("blob@1", []byte("tampered"))).String()) {
 		t.Fatalf("corrupt report must keep the digest the bytes actually hash to: %.900q", page)
 	}
 	// The inline replay must carry no out-of-band swap: outside an htmx action
@@ -522,7 +523,7 @@ func TestSweepRefreshesTheOpenInspector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := tlvEnvelope("blob@1", []byte("sound"))
+	data := test.TLVEnvelope("blob@1", []byte("sound"))
 	digest := sha256.Of(data)
 	if err := backend.Put(ctx, digest, bytes.NewReader(data)); err != nil {
 		t.Fatal(err)

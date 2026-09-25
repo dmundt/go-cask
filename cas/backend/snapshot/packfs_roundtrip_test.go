@@ -14,6 +14,7 @@ import (
 	"github.com/dmundt/go-cask/cas/backend/packfs"
 	"github.com/dmundt/go-cask/cas/backend/snapshot"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // backendFactory opens one store for the round-trip matrix.
@@ -99,8 +100,8 @@ func TestPackedStoreSnapshotRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("List destination: %v", err)
 			}
-			if !slices.Equal(digestKeys(sourceList), digestKeys(destList)) {
-				t.Fatalf("List after Import = %v, want %v", digestKeys(destList), digestKeys(sourceList))
+			if !slices.Equal(test.DigestKeys(sourceList), test.DigestKeys(destList)) {
+				t.Fatalf("List after Import = %v, want %v", test.DigestKeys(destList), test.DigestKeys(sourceList))
 			}
 			for _, digest := range sourceList {
 				want := readObject(t, src, digest)
@@ -126,8 +127,8 @@ func TestPackedStoreSnapshotRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("List reopened destination: %v", err)
 			}
-			if !slices.Equal(digestKeys(sourceList), digestKeys(reopenedList)) {
-				t.Fatalf("List after reopen = %v, want %v", digestKeys(reopenedList), digestKeys(sourceList))
+			if !slices.Equal(test.DigestKeys(sourceList), test.DigestKeys(reopenedList)) {
+				t.Fatalf("List after reopen = %v, want %v", test.DigestKeys(reopenedList), test.DigestKeys(sourceList))
 			}
 			stats, err := reopened.Stats(ctx)
 			if err != nil {
@@ -210,15 +211,4 @@ func readObject(t *testing.T, backend cas.Backend, digest cas.Digest) []byte {
 		t.Fatalf("close %s: %v", digest, err)
 	}
 	return data
-}
-
-// digestKeys renders digests as a sorted key list for an order-independent
-// comparison of two stores' List results.
-func digestKeys(digests []cas.Digest) []string {
-	keys := make([]string, 0, len(digests))
-	for _, digest := range digests {
-		keys = append(keys, digest.String())
-	}
-	slices.Sort(keys)
-	return keys
 }

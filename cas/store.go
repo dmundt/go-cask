@@ -364,19 +364,7 @@ func (s *Store[T]) Type(ctx context.Context, d Digest) (string, error) {
 	if err := s.check(d, "store: type"); err != nil {
 		return "", err
 	}
-	rc, err := s.backend.Get(ctx, d)
-	if err != nil {
-		return "", err
-	}
-	typeName, err := PeekType(rc)
-	if err != nil {
-		_ = rc.Close() // the header error is the one worth reporting
-		return "", err
-	}
-	if err := rc.Close(); err != nil {
-		return "", fmt.Errorf("cas: close object: %w", err)
-	}
-	return typeName, nil
+	return peekAt(ctx, s.backend, d, PeekType)
 }
 
 // Version reports the envelope format version stored at d without decoding the
@@ -398,19 +386,36 @@ func (s *Store[T]) Version(ctx context.Context, d Digest) (byte, error) {
 	if err := s.check(d, "store: version"); err != nil {
 		return 0, err
 	}
-	rc, err := s.backend.Get(ctx, d)
+	return peekAt(ctx, s.backend, d, PeekVersion)
+}
+
+// peekAt opens the object at d, runs one bounded header peek over it and closes
+// the reader, so Store.Type and Store.Version share one lifecycle instead of
+// carrying a copy each. The peek decides how much of the stream is consumed:
+// PeekType and PeekVersion both stop at the last header field they need, so a
+// large object costs a header read rather than a full read and allocation.
+//
+// The header error is the one reported when the peek fails: the read is over
+// either way, and a reader that cannot be released must not mask the diagnosis.
+// A close failure after a successful peek is reported, because the caller has
+// its answer and the residual failure is the only thing left to say. cas.Header
+// keeps its own plumbing deliberately: it reads all three header fields through
+// PeekHeader and gives a failed close precedence.
+func peekAt[R any](ctx context.Context, backend Backend, d Digest, peek func(io.Reader) (R, error)) (R, error) {
+	var zero R
+	rc, err := backend.Get(ctx, d)
 	if err != nil {
-		return 0, err
+		return zero, err
 	}
-	version, err := PeekVersion(rc)
+	value, err := peek(rc)
 	if err != nil {
 		_ = rc.Close() // the header error is the one worth reporting
-		return 0, err
+		return zero, err
 	}
 	if err := rc.Close(); err != nil {
-		return 0, fmt.Errorf("cas: close object: %w", err)
+		return zero, fmt.Errorf("cas: close object: %w", err)
 	}
-	return version, nil
+	return value, nil
 }
 
 // Exists reports whether the object is stored. Delegates to the backend.

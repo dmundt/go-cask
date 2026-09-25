@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmundt/go-cask/cas"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // TestPathToDigest pins the path→digest reconstruction: the last path element
@@ -71,7 +72,7 @@ func TestDirSyncRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil || !bytes.Equal(got, data) {
 		t.Fatalf("Get = %q, %v", got, err)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func BenchmarkBackendWriteRead(b *testing.B) {
@@ -22,8 +23,8 @@ func BenchmarkBackendWriteRead(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				payload := benchText(sz.size, i)
-				h := digestData([]byte(payload))
-				if err := memBenchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
+				h := test.DigestData([]byte(payload))
+				if err := benchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -35,7 +36,7 @@ func BenchmarkBackendWriteRead(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				payload := benchText(sz.size, i)
-				h := digestData([]byte(payload))
+				h := test.DigestData([]byte(payload))
 				if err := memBenchmarkRoundTrip(ctx, payload, h); err != nil {
 					b.Fatal(err)
 				}
@@ -53,8 +54,8 @@ func BenchmarkBackendWriteRead(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				payload := benchText(sz.size, i)
-				h := digestData([]byte(payload))
-				if err := fsBenchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
+				h := test.DigestData([]byte(payload))
+				if err := benchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -66,7 +67,7 @@ func BenchmarkBackendWriteRead(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				payload := benchText(sz.size, i)
-				h := digestData([]byte(payload))
+				h := test.DigestData([]byte(payload))
 				if err := fsBenchmarkRoundTrip(ctx, b.TempDir(), payload, h); err != nil {
 					b.Fatal(err)
 				}
@@ -80,23 +81,23 @@ func BenchmarkBackendWriteReadBaseline(b *testing.B) {
 	ctx := context.Background()
 	m := backmem.New()
 	payload := benchText(1024, 0)
-	h := digestData([]byte(payload))
+	h := test.DigestData([]byte(payload))
 	b.SetBytes(1024)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {
-		if err := memBenchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
+		if err := benchmarkRoundTripWithBackend(ctx, m, payload, h); err != nil {
 			b.Fatal(err)
 		}
 	}
 	benchmarkSummary(b, "backend-write-read/baseline/mem-1KiB", 1024)
 }
 
-func memBenchmarkRoundTripWithBackend(ctx context.Context, m *backmem.Backend, payload string, h cas.Digest) error {
-	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
+func benchmarkRoundTripWithBackend(ctx context.Context, backend cas.Backend, payload string, h cas.Digest) error {
+	if err := backend.Put(ctx, h, strings.NewReader(payload)); err != nil {
 		return err
 	}
-	rc, err := m.Get(ctx, h)
+	rc, err := backend.Get(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -105,46 +106,17 @@ func memBenchmarkRoundTripWithBackend(ctx context.Context, m *backmem.Backend, p
 	return err
 }
 
-func fsBenchmarkRoundTripWithBackend(ctx context.Context, m *fs.Backend, payload string, h cas.Digest) error {
-	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
-		return err
-	}
-	rc, err := m.Get(ctx, h)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	_, err = io.Copy(io.Discard, rc)
-	return err
-}
-
+// memBenchmarkRoundTrip measures the cold-start shape: a fresh in-memory
+// backend per measured operation.
 func memBenchmarkRoundTrip(ctx context.Context, payload string, h cas.Digest) error {
-	m := backmem.New()
-	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
-		return err
-	}
-	rc, err := m.Get(ctx, h)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	_, err = io.Copy(io.Discard, rc)
-	return err
+	return benchmarkRoundTripWithBackend(ctx, backmem.New(), payload, h)
 }
 
+// fsBenchmarkRoundTrip is memBenchmarkRoundTrip over a fresh filesystem store.
 func fsBenchmarkRoundTrip(ctx context.Context, dir, payload string, h cas.Digest) error {
 	m, err := fs.New(dir)
 	if err != nil {
 		return err
 	}
-	if err := m.Put(ctx, h, strings.NewReader(payload)); err != nil {
-		return err
-	}
-	rc, err := m.Get(ctx, h)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	_, err = io.Copy(io.Discard, rc)
-	return err
+	return benchmarkRoundTripWithBackend(ctx, m, payload, h)
 }

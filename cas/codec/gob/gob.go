@@ -16,6 +16,7 @@ import (
 	"encoding/gob"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/codec/internal/bounded"
 )
 
 // Codec[T] serializes values with encoding/gob. If a wrapped codec is supplied,
@@ -90,21 +91,5 @@ func (c Codec[T]) CodecName() string {
 	if c.next == nil {
 		return "gob"
 	}
-	return composeTag("gob", c.next)
-}
-
-// composeTag builds the identity tag of a codec stacked over next:
-// "<name>+<inner tag>". It reports "" when next declares no tag, so an unnamed
-// inner codec leaves the stack unspecified rather than manufacturing a tag that
-// would later read as a mismatch.
-func composeTag[T any](name string, next cas.Codec[T]) string {
-	namer, ok := next.(cas.CodecNamer)
-	if !ok {
-		return ""
-	}
-	inner := namer.CodecName()
-	if inner == "" {
-		return ""
-	}
-	return name + "+" + inner
+	return bounded.ComposeTag("gob", c.next)
 }

@@ -17,6 +17,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
@@ -25,7 +26,7 @@ func TestViewerUsesInjectedHasherForRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := tlvEnvelope("blob@1", []byte("sha512 viewer"))
+	payload := test.TLVEnvelope("blob@1", []byte("sha512 viewer"))
 	digest := sha512.Of(payload)
 	if err := backend.Put(ctx, digest, bytes.NewReader(payload)); err != nil {
 		t.Fatal(err)
@@ -68,8 +69,8 @@ func TestFilterDroppingSelectionSwapsInspector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob := tlvEnvelope("blob@1", []byte("blob"))
-	tree := tlvEnvelope("tree@1", []byte("tree"))
+	blob := test.TLVEnvelope("blob@1", []byte("blob"))
+	tree := test.TLVEnvelope("tree@1", []byte("tree"))
 	blobDigest, treeDigest := sha256.Of(blob), sha256.Of(tree)
 	for payload, digest := range map[string]cas.Digest{string(blob): blobDigest, string(tree): treeDigest} {
 		if err := backend.Put(ctx, digest, strings.NewReader(payload)); err != nil {
@@ -517,7 +518,7 @@ func TestFilteredOutSelectionFallsBackToFirstRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	dropped := sha256.Of([]byte("dropped"))
-	if err := backend.Put(ctx, dropped, bytes.NewReader(tlvEnvelope("blob@1", []byte("dropped")))); err != nil {
+	if err := backend.Put(ctx, dropped, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("dropped")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{StartupToken: testStartupToken})
@@ -547,7 +548,7 @@ func TestIntegrityAndReachabilityAreIndependentColumns(t *testing.T) {
 	}
 	// Stored bytes deliberately do not hash to their address, so Verify fails.
 	orphaned := sha256.Of([]byte("orphaned-corrupt"))
-	if err := backend.Put(ctx, orphaned, bytes.NewReader(tlvEnvelope("blob@1", []byte("tampered")))); err != nil {
+	if err := backend.Put(ctx, orphaned, bytes.NewReader(test.TLVEnvelope("blob@1", []byte("tampered")))); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(backend, Config{
@@ -661,7 +662,7 @@ func TestTabSelectionSurvivesPickingAnotherRow(t *testing.T) {
 	}
 	digests := make([]cas.Digest, 0, 2)
 	for _, payload := range [][]byte{[]byte("first"), []byte("second")} {
-		data := tlvEnvelope("blob@1", payload)
+		data := test.TLVEnvelope("blob@1", payload)
 		digest := sha256.Of(data)
 		if err := backend.Put(ctx, digest, bytes.NewReader(data)); err != nil {
 			t.Fatal(err)
@@ -737,7 +738,7 @@ func TestObjectBrowserQueryState(t *testing.T) {
 		if i == 0 {
 			typeName = "note@1"
 		}
-		data := tlvEnvelope(typeName, bytes.Repeat([]byte{byte(i)}, i+1))
+		data := test.TLVEnvelope(typeName, bytes.Repeat([]byte{byte(i)}, i+1))
 		digest := sha256.Of(data)
 		if err := srv.store.Put(ctx, digest, bytes.NewReader(data)); err != nil {
 			t.Fatal(err)
@@ -933,7 +934,7 @@ func TestSortObjectRows(t *testing.T) {
 func TestSortHeaderLabelsFollowTheActiveColumn(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
-	data := tlvEnvelope("blob@1", []byte("sort-header"))
+	data := test.TLVEnvelope("blob@1", []byte("sort-header"))
 	if err := srv.store.Put(ctx, sha256.Of(data), bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}

@@ -35,11 +35,6 @@ type testNote struct {
 func (testNote) Type() string             { return "note@1" }
 func (testNote) References() []cas.Digest { return nil }
 
-// digestData computes the content address of data with the client's hasher.
-func digestData(data []byte) cas.Digest {
-	return sha256.Of(data)
-}
-
 func benchText(size int, seed int) string {
 	if size <= 0 {
 		return ""

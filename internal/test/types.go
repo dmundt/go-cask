@@ -4,10 +4,8 @@ package test
 
 import (
 	"errors"
-	"io"
 
 	"github.com/dmundt/go-cask/cas"
-	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
 // Note is a test Object[T] used across the test suite.
@@ -69,14 +67,3 @@ func (FailingCodec[T]) Encode(T) ([]byte, error) { return nil, errors.New("encod
 
 // Decode returns the zero value without error.
 func (FailingCodec[T]) Decode([]byte) (T, error) { var z T; return z, nil }
-
-// DigestData is a test helper for digesting data with the shipped sha256 hasher.
-func DigestData(data []byte) cas.Digest {
-	return sha256.Of(data)
-}
-
-// ReadAllAndClose reads all bytes from rc and closes it.
-func ReadAllAndClose(rc io.ReadCloser) ([]byte, error) {
-	defer rc.Close()
-	return io.ReadAll(rc)
-}

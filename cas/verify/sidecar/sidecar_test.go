@@ -23,6 +23,7 @@ import (
 	"github.com/dmundt/go-cask/cas/verify/crc32"
 	"github.com/dmundt/go-cask/cas/verify/crc64"
 	"github.com/dmundt/go-cask/cas/verify/sidecar"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 const metaDir = ".meta"
@@ -187,7 +188,7 @@ func TestRecordFilesAreInvisibleToListAndStats(t *testing.T) {
 			t.Fatalf("List returned a record file as an object: %s", d)
 		}
 	}
-	if !containsDigest(digests, first) || !containsDigest(digests, second) {
+	if !test.ContainsDigest(digests, first) || !test.ContainsDigest(digests, second) {
 		t.Fatalf("List = %v, want both stored objects", digests)
 	}
 	stats, err := backend.Stats(ctx)
@@ -432,7 +433,7 @@ func TestVerifyAllSeparatesBadFromUnrecorded(t *testing.T) {
 	if len(report.Unrecorded) != 1 || !report.Unrecorded[0].Equal(unrecorded) {
 		t.Errorf("Unrecorded = %v, want [%s]", report.Unrecorded, unrecorded)
 	}
-	if !containsDigest([]cas.Digest{intact}, intact) {
+	if !test.ContainsDigest([]cas.Digest{intact}, intact) {
 		t.Error("intact object missing from the checked set")
 	}
 }
@@ -536,7 +537,7 @@ func TestKeysListsSortedRecordedDigests(t *testing.T) {
 			t.Fatalf("Keys not sorted: %v", keys)
 		}
 	}
-	if !containsDigest(keys, first) || !containsDigest(keys, second) {
+	if !test.ContainsDigest(keys, first) || !test.ContainsDigest(keys, second) {
 		t.Errorf("Keys = %v, want %s and %s", keys, first, second)
 	}
 
@@ -845,16 +846,6 @@ func TestVerifierRejectsBadArguments(t *testing.T) {
 	if _, err := rec.Verifier(crc32.Name, nil).VerifyAll(ctx); err == nil {
 		t.Error("VerifyAll with a nil hasher succeeded, want an error")
 	}
-}
-
-// containsDigest reports whether the slice holds d.
-func containsDigest(digests []cas.Digest, d cas.Digest) bool {
-	for _, other := range digests {
-		if other.Equal(d) {
-			return true
-		}
-	}
-	return false
 }
 
 var (

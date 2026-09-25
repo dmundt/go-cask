@@ -3,7 +3,6 @@ package index
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"io"
 	"slices"
@@ -13,6 +12,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func TestPaginate(t *testing.T) {
@@ -39,39 +39,6 @@ func TestPaginate(t *testing.T) {
 			}
 		}
 	}
-}
-
-// tlvEnvelope builds a TLV envelope ([version][uvarint typeLen][type][uvarint
-// payloadLen][payload], cas-core §8 decision 1) for the test input.
-func tlvEnvelope(typeName string, payload []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteByte(1) // envelopeVersion
-	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(typeName)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
-	buf.Write(lenBuf[:n])
-	buf.Write(payload)
-	return buf.Bytes()
-}
-
-// v2Envelope builds a version 2 TLV envelope — the layout this build writes,
-// with the codec identity tag in front of the type name — for the test input.
-func v2Envelope(codec, typeName string, payload []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteByte(2) // envelopeVersion
-	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(codec)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(codec)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(typeName)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
-	buf.Write(lenBuf[:n])
-	buf.Write(payload)
-	return buf.Bytes()
 }
 
 // countingReadCloser counts the bytes a header read pulls through it.
@@ -119,9 +86,9 @@ func TestHeaderReportsEveryField(t *testing.T) {
 		}
 		return d
 	}
-	tagged := put(v2Envelope("gzip+json", "blob@1", []byte("x")))
-	untagged := put(v2Envelope("", "note@1", []byte("x")))
-	v1 := put(tlvEnvelope("legacy", []byte("x")))
+	tagged := put(test.V2Envelope("gzip+json", "blob@1", []byte("x")))
+	untagged := put(test.V2Envelope("", "note@1", []byte("x")))
+	v1 := put(test.TLVEnvelope("legacy", []byte("x")))
 	raw := put([]byte("not an envelope"))
 	truncated := put([]byte{2, 200, 'a'}) // declared codec length beyond the buffer
 
@@ -166,9 +133,9 @@ func TestHeaderReadsOnlyTheHeader(t *testing.T) {
 	source := &countingSource{Backend: backmem.New()}
 	// The header is everything before the payload-length field; an empty payload
 	// frames as exactly one more byte (uvarint 0).
-	want := len(v2Envelope(codec, typ, nil)) - 1
+	want := len(test.V2Envelope(codec, typ, nil)) - 1
 	for _, size := range []int{0, 7, 1 << 20} {
-		frame := v2Envelope(codec, typ, bytes.Repeat([]byte("x"), size))
+		frame := test.V2Envelope(codec, typ, bytes.Repeat([]byte("x"), size))
 		d := sha256.Of(frame)
 		if err := source.Put(ctx, d, bytes.NewReader(frame)); err != nil {
 			t.Fatal(err)
@@ -190,9 +157,9 @@ func TestBuildSnapshotCensusLists(t *testing.T) {
 	ctx := context.Background()
 	backend := &snapshotSource{Backend: backmem.New(), modTime: time.Unix(42, 0)}
 	frames := [][]byte{
-		v2Envelope("json", "blob@1", []byte("a")),
-		v2Envelope("", "note@1", []byte("b")),
-		tlvEnvelope("legacy", []byte("c")),
+		test.V2Envelope("json", "blob@1", []byte("a")),
+		test.V2Envelope("", "note@1", []byte("b")),
+		test.TLVEnvelope("legacy", []byte("c")),
 		[]byte("not an envelope"),
 	}
 	for _, frame := range frames {
@@ -230,15 +197,15 @@ func TestEnvelopeType(t *testing.T) {
 		in   []byte
 		want string
 	}{
-		{"versioned type", tlvEnvelope("blob@1", []byte("x")), "blob@1"},
-		{"legacy unversioned type reads as @1", tlvEnvelope("blob", []byte("x")), "blob@1"},
-		{"other versioned type", tlvEnvelope("commit@1", []byte("{}")), "commit@1"},
-		{"empty payload is still typed", tlvEnvelope("blob@1", nil), "blob@1"},
+		{"versioned type", test.TLVEnvelope("blob@1", []byte("x")), "blob@1"},
+		{"legacy unversioned type reads as @1", test.TLVEnvelope("blob", []byte("x")), "blob@1"},
+		{"other versioned type", test.TLVEnvelope("commit@1", []byte("{}")), "commit@1"},
+		{"empty payload is still typed", test.TLVEnvelope("blob@1", nil), "blob@1"},
 		{"garbage bytes are not an envelope", []byte("not an envelope"), ""},
 		{"JSON object is not a TLV envelope", []byte(`{"type":"blob@1","data":"aGk="}`), ""},
 		{"empty input", nil, ""},
 		{"type length beyond buffer", []byte{1, 200, 'a'}, ""},
-		{"truncated payload still yields the type", tlvEnvelope("blob@1", bytes.Repeat([]byte("x"), 1<<20))[:32], "blob@1"},
+		{"truncated payload still yields the type", test.TLVEnvelope("blob@1", bytes.Repeat([]byte("x"), 1<<20))[:32], "blob@1"},
 		{"non-TLV first byte", []byte{2, 1, 'a'}, ""},
 	}
 	for _, tc := range cases {
@@ -265,7 +232,7 @@ func TestHeaderType(t *testing.T) {
 		}
 		return d
 	}
-	typed := put(tlvEnvelope("blob@1", []byte("x")))
+	typed := put(test.TLVEnvelope("blob@1", []byte("x")))
 	raw := put([]byte("not an envelope"))
 	truncated := put([]byte{1, 200, 'a'}) // declared type length beyond the buffer
 
@@ -321,7 +288,7 @@ func (s *snapshotSource) ModTime(context.Context, cas.Digest) (time.Time, error)
 func TestBuildSnapshot(t *testing.T) {
 	ctx := context.Background()
 	backend := &snapshotSource{Backend: backmem.New(), modTime: time.Unix(42, 0)}
-	typed := tlvEnvelope("blob@1", []byte("payload"))
+	typed := test.TLVEnvelope("blob@1", []byte("payload"))
 	untyped := []byte("backend")
 	for _, object := range []struct {
 		data []byte
