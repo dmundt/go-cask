@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v9
+version: v10
 ---
 
 # Agent instructions — `scripts/`
@@ -64,6 +64,13 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   the record `release` blames it in exactly the words it uses for a session that
   never held the lane. `test-land-lane.sh` pins the idle deadline, the refusal of
   a second acquirer in one worktree, and both diagnostics.
+- `scripts/worktree.sh add` bases every task worktree on the freshly fetched
+  `origin/main` (`-b <branch> origin/main`). A local `main` is not a substitute:
+  in the primary checkout it can be behind the remote or hold another session's
+  uncommitted work. The rule and its one exception — a `hotfix` based on
+  `release/vX.Y` — live in
+  [`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md) §3 and the
+  repo-root [`AGENTS.md`](../AGENTS.md).
 
 ## Dependencies and scope
 
