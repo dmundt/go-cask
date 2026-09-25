@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v8
+version: v9
 ---
 
 # Agent instructions — `scripts/`
@@ -53,6 +53,17 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   waiters retrying on the same cadence both found the slot absent and both claimed
   it, so two landings gated and pushed at once. `test-land-lane.sh` pins all
   three.
+- The lane's staleness is IDLE time, never age since acquisition, and losing the
+  slot is recorded. `acquire` writes the moment the slot was last refreshed and
+  only `renew` — the holder's own verb — moves that moment forward, so a gate run
+  or push that outlasts `LAND_LANE_STALE_MINUTES` keeps the lane instead of being
+  evicted by the next session's `acquire` (#325). Renewing is never a side effect
+  of asking for the slot, or a second session in one worktree would collect a lane
+  it does not hold. A takeover drops the slot only after recording the holder it
+  evicts: the evicted holder has no other way to learn what happened, and without
+  the record `release` blames it in exactly the words it uses for a session that
+  never held the lane. `test-land-lane.sh` pins the idle deadline, the refusal of
+  a second acquirer in one worktree, and both diagnostics.
 
 ## Dependencies and scope
 
