@@ -147,9 +147,13 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 //
 // The viewer reads per-object physical metadata (Size, ModTime) and lists
 // through the concrete fs.Backend (internal/web.New), so a backend with no
-// filesystem view cannot serve it: selecting one reports ErrUnsupported naming
-// the operation and the backend rather than silently reading a different
-// directory than -store named.
+// filesystem view cannot serve it. A packed object has no file of its own to
+// stat — packfs keeps a loose copy at write time and the payload in an
+// append-only pack, so "size" and "mod time" would describe whichever of the two
+// the viewer picked — and selecting packs is therefore refused with
+// viewerRefusal rather than silently reading a different directory than -store
+// named, or serving numbers about a pack file instead of the object (cli.md §1,
+// §2).
 func OpenViewer(ctx context.Context, opts Options) (*fsbackend.Backend, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -159,12 +163,23 @@ func OpenViewer(ctx context.Context, opts Options) (*fsbackend.Backend, error) {
 		return nil, err
 	}
 	if kind != KindFS {
-		return nil, unsupported("web", kind)
+		return nil, viewerRefusal(kind)
 	}
 	if opts.Path == "" {
 		return nil, errors.New("cask: store path is required")
 	}
 	return fsbackend.New(opts.Path)
+}
+
+// viewerRefusal is the viewer's one refusal: it wraps cas.ErrUnsupported (so a
+// caller still classifies it with errors.Is), names the operation and the
+// backend, and tells the operator what to do instead. Creating a packed store
+// with `cask -backend packfs` and then being unable to inspect it is the likely
+// support question, so the message answers it where the operator reads it
+// (cli.md §1, §2).
+func viewerRefusal(kind Kind) error {
+	return fmt.Errorf("cask: web is not supported by the %q backend: the viewer reads loose objects only (per-object size and mod time, no pack index), so open a loose store with -backend %s or -store with a loose store directory: %w",
+		kind, KindFS, cas.ErrUnsupported)
 }
 
 // newStore wraps an opened backend with the maintenance capabilities the CLI

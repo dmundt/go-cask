@@ -109,8 +109,8 @@ func TestOpenRejectsBadOptions(t *testing.T) {
 }
 
 // TestOpenViewer: the viewer opens the loose filesystem backend, and a backend
-// with no filesystem view is refused with an error naming the operation and the
-// backend.
+// with no filesystem view is refused with an error naming the operation, the
+// backend and the remedy (cli.md §1, §2).
 func TestOpenViewer(t *testing.T) {
 	ctx := context.Background()
 	backend, err := OpenViewer(ctx, Options{Kind: KindFS, Path: t.TempDir()})
@@ -124,6 +124,8 @@ func TestOpenViewer(t *testing.T) {
 		t.Fatalf("OpenViewer(packfs) = %v, want ErrUnsupported", err)
 	} else if !strings.Contains(err.Error(), "web") || !strings.Contains(err.Error(), string(KindPackFS)) {
 		t.Fatalf("OpenViewer(packfs) = %v, want it to name the operation and the backend", err)
+	} else if !strings.Contains(err.Error(), "-backend "+string(KindFS)) {
+		t.Fatalf("OpenViewer(packfs) = %v, want it to name the remedy (%s)", err, KindFS)
 	}
 	if _, err := OpenViewer(ctx, Options{Kind: Kind("sqlite"), Path: t.TempDir()}); err == nil {
 		t.Fatal("OpenViewer with an unknown kind succeeded")
