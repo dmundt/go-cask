@@ -321,6 +321,41 @@ func appendMajor(dst []byte, mt byte, length uint64) []byte {
 	)
 }
 
+// halfToFloat64 widens an IEEE 754 half-precision value to float64. A CBOR
+// float16 (major 7, additional information 25) carries 1 sign bit, 5 exponent
+// bits and 10 mantissa bits — a layout of its own, not a truncated float32 — so
+// its bits cannot be reinterpreted: they are expanded here, subnormals,
+// infinities and NaN included.
+//
+// The exponent bias is 15 and the mantissa is worth 2^-10, so math.Ldexp
+// expresses both cases exactly: a normal value is (1 + frac/1024) * 2^(exp-15),
+// and a subnormal one — where there is no implicit leading 1 and the exponent
+// stays at its minimum — is frac * 2^-24. Scaling rather than assembling float64
+// bits keeps the rounding out of this function.
+func halfToFloat64(bits uint16) float64 {
+	negative := bits&0x8000 != 0
+	exp := int(bits>>10) & 0x1f
+	frac := float64(bits & 0x03ff)
+
+	var v float64
+	switch {
+	case exp == 0:
+		v = math.Ldexp(frac, -24) // subnormal, or a signed zero when frac is 0
+	case exp == 0x1f:
+		if bits&0x03ff == 0 {
+			v = math.Inf(1) // the sign is applied below, so this is ±Inf
+		} else {
+			return math.NaN() // a half NaN carries no payload bit this decoder honors
+		}
+	default:
+		v = math.Ldexp(1+frac/1024, exp-15)
+	}
+	if negative {
+		return -v
+	}
+	return v
+}
+
 func decodeOne(data []byte) (any, []byte, error) {
 	if len(data) == 0 {
 		return nil, nil, fmt.Errorf("cbor: unexpected end of input")
@@ -341,8 +376,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 			if len(data) < 3 {
 				return nil, nil, fmt.Errorf("cbor: truncated float16")
 			}
-			bits := binary.BigEndian.Uint16(data[1:3])
-			return float64(math.Float32frombits(uint32(bits))), data[3:], nil
+			return halfToFloat64(binary.BigEndian.Uint16(data[1:3])), data[3:], nil
 		case 26:
 			if len(data) < 5 {
 				return nil, nil, fmt.Errorf("cbor: truncated float32")
