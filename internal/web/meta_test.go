@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // TestObjectMetaIsCached proves the list's per-object metadata is read once.
@@ -19,7 +20,7 @@ func TestObjectMetaIsCached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := tlvEnvelope("blob@1", []byte("cached"))
+	env := test.TLVEnvelope("blob@1", []byte("cached"))
 	h := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
 	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
@@ -57,7 +58,7 @@ func TestObjectMetaDoesNotCacheFailures(t *testing.T) {
 	if missing := srv.objectMetaFor(ctx, h); !missing.Unreadable {
 		t.Fatalf("objectMetaFor(absent) = %#v, want unreadable", missing)
 	}
-	env := tlvEnvelope("tree@1", []byte("now here"))
+	env := test.TLVEnvelope("tree@1", []byte("now here"))
 	if err := backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // contextIgnoringBackend delegates to an in-memory store but ignores the
@@ -59,7 +60,7 @@ func (b *contextIgnoringBackend) ModTime(ctx context.Context, d cas.Digest) (tim
 func TestBuildSnapshotChecksTheContextPerEntry(t *testing.T) {
 	ctx := context.Background()
 	inner := backmem.New()
-	frame := v2Envelope("json", "blob@1", []byte("payload"))
+	frame := test.V2Envelope("json", "blob@1", []byte("payload"))
 	d := sha256.Of(frame)
 	if err := inner.Put(ctx, d, bytes.NewReader(frame)); err != nil {
 		t.Fatal(err)

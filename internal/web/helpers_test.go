@@ -4,8 +4,6 @@
 package web
 
 import (
-	"bytes"
-	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -156,20 +154,6 @@ func mustParse(t *testing.T, s string) cas.Digest {
 		t.Fatal(err)
 	}
 	return h
-}
-
-// tlvEnvelope builds a TLV envelope (cas-core §8 decision 1) for viewer tests.
-func tlvEnvelope(typeName string, payload []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteByte(1) // envelopeVersion
-	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(typeName)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
-	buf.Write(lenBuf[:n])
-	buf.Write(payload)
-	return buf.Bytes()
 }
 
 func csrfFromPage(page string) string {
