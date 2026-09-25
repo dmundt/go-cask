@@ -284,6 +284,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cas/codec/cbor` decodes CBOR **half-precision** floats (major 7, additional
+  information 25) correctly. The 16-bit payload is IEEE 754 half precision — 1
+  sign bit, 5 exponent bits, 10 mantissa bits — and was being reinterpreted as
+  the low half of a float32, so every half float read back as the wrong number
+  (`f9 3e 00`, the half for 1.5, decoded to 2.2e-41) and a half infinity or NaN
+  could not be produced at all. Subnormals, signed zeros, infinities and NaN are
+  now expanded from their own layout. This codec never writes float16, so only
+  objects written by another CBOR encoder were affected — and only the value
+  read back: an object's address covers its stored bytes, so no digest changes.
 - `cask web -backend packfs` fails with an actionable message — the operation,
   the backend, and the remedy (open a loose store with `-backend fs` or `-store`
   pointing at a loose store directory) — instead of a bare "unsupported

@@ -1,6 +1,7 @@
 package cbor
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -109,25 +110,25 @@ func TestDecodeRejectsTruncatedFloatWidths(t *testing.T) {
 	}
 }
 
-// TestDecodeReadsEveryFloatWidth pins the three float conversions: a float32
-// written by another encoder reads back as the same value, and a half float
-// whose bit pattern is also valid in the low half of a float32 reads back as
-// the double it denotes.
-//
-// BUG (reported, not fixed): the float16 branch of decodeOne feeds the 16-bit
-// payload to math.Float32frombits instead of decoding IEEE 754 half precision,
-// so any half float whose pattern is not numerically meaningful as a float32
-// decodes to the wrong number (for example 0xf9 0x3e 0x00, half-precision 1.5,
-// reads as 2.2e-41). The case below only pins the branch; it deliberately uses a
-// pattern that survives the conversion, so this suite does not encode the bug as
-// the expected value.
+// TestDecodeReadsEveryFloatWidth pins the three float conversions with the
+// values they denote, not merely the branches they reach. The float16 vectors
+// are the golden ones: a half float is a format of its own (1 sign bit, 5
+// exponent bits, 10 mantissa bits), so 0xf9 0x3e 0x00 is 1.5 — not the denormal
+// its raw bits form when reinterpreted as a float32 (go-cask#364).
 func TestDecodeReadsEveryFloatWidth(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		data []byte
 		want float64
 	}{
-		{"float16 whose bits are a float32 zero", []byte{0xf9, 0x00, 0x00}, 0},
+		{"float16 positive zero", []byte{0xf9, 0x00, 0x00}, 0},
+		{"float16 one", []byte{0xf9, 0x3c, 0x00}, 1},
+		{"float16 one and a half", []byte{0xf9, 0x3e, 0x00}, 1.5},
+		{"float16 negative two", []byte{0xf9, 0xc0, 0x00}, -2},
+		{"float16 largest finite", []byte{0xf9, 0x7b, 0xff}, 65504},
+		{"float16 smallest positive subnormal", []byte{0xf9, 0x00, 0x01}, math.Ldexp(1, -24)},
+		{"float16 largest subnormal", []byte{0xf9, 0x03, 0xff}, math.Ldexp(1023, -24)},
+		{"float16 smallest positive normal", []byte{0xf9, 0x04, 0x00}, math.Ldexp(1, -14)},
 		{"float32 one and a half", []byte{0xfa, 0x3f, 0xc0, 0x00, 0x00}, 1.5},
 		{"float64 one and a half", []byte{0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1.5},
 	} {
@@ -140,6 +141,42 @@ func TestDecodeReadsEveryFloatWidth(t *testing.T) {
 				t.Fatalf("Decode(% x) = %v, want %v", tc.data, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestDecodeHalfPrecisionSpecials pins the half-float arms a numeric comparison
+// cannot express: the signed zeros and the infinities. The reinterpretation this
+// decoder used to perform could produce neither from these inputs — 0xf9 0x80 0x00
+// decoded to a denormal rather than negative zero, and 0xf9 0x7c 0x00 to a
+// denormal rather than +Inf (go-cask#364).
+func TestDecodeHalfPrecisionSpecials(t *testing.T) {
+	decoded := func(t *testing.T, data ...byte) float64 {
+		t.Helper()
+		got, err := NewValue().Decode(data)
+		if err != nil {
+			t.Fatalf("Decode(% x) = %v", data, err)
+		}
+		f, ok := got.(float64)
+		if !ok {
+			t.Fatalf("Decode(% x) = %T, want a float64", data, got)
+		}
+		return f
+	}
+
+	if got := decoded(t, 0xf9, 0x80, 0x00); !math.Signbit(got) || got != 0 {
+		t.Fatalf("Decode(f9 80 00) = %v, want negative zero", got)
+	}
+	if got := decoded(t, 0xf9, 0x7c, 0x00); !math.IsInf(got, 1) {
+		t.Fatalf("Decode(f9 7c 00) = %v, want +Inf", got)
+	}
+	if got := decoded(t, 0xf9, 0xfc, 0x00); !math.IsInf(got, -1) {
+		t.Fatalf("Decode(f9 fc 00) = %v, want -Inf", got)
+	}
+	// Every exponent-all-ones, non-zero-mantissa half is a NaN, quiet or not.
+	for _, nan := range [][]byte{{0xf9, 0x7e, 0x00}, {0xf9, 0x7f, 0xff}, {0xf9, 0xfe, 0x00}} {
+		if got := decoded(t, nan...); !math.IsNaN(got) {
+			t.Fatalf("Decode(% x) = %v, want NaN", nan, got)
+		}
 	}
 }
 
