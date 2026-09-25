@@ -2,12 +2,44 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/dmundt/go-cask/internal/store"
 )
+
+// TestViewerServerTimeouts pins the viewer's connection bounds
+// (viewer-security §13, defaults §4): only the header phase was bounded before,
+// so a client that completed it could dribble or stall a request body forever,
+// holding the connection and its goroutine. Every deadline is set, and the
+// whole-request read covers the header phase it must contain.
+func TestViewerServerTimeouts(t *testing.T) {
+	srv := viewerServer(http.NotFoundHandler())
+	for _, tc := range []struct {
+		name string
+		got  time.Duration
+	}{
+		{"ReadHeaderTimeout", srv.ReadHeaderTimeout},
+		{"ReadTimeout", srv.ReadTimeout},
+		{"WriteTimeout", srv.WriteTimeout},
+		{"IdleTimeout", srv.IdleTimeout},
+	} {
+		if tc.got <= 0 {
+			t.Errorf("%s = %v, want a non-zero deadline", tc.name, tc.got)
+		}
+	}
+	if srv.ReadTimeout < srv.ReadHeaderTimeout {
+		t.Errorf("ReadTimeout %v is shorter than the ReadHeaderTimeout %v it contains",
+			srv.ReadTimeout, srv.ReadHeaderTimeout)
+	}
+	// The write deadline also covers handler execution, and one route sweeps the
+	// whole store before it writes anything, so it must leave that room.
+	if srv.WriteTimeout < srv.ReadTimeout {
+		t.Errorf("WriteTimeout %v is shorter than ReadTimeout %v", srv.WriteTimeout, srv.ReadTimeout)
+	}
+}
 
 // TestRunWebRefusesPackedStore pins the operator-facing refusal at the CLI
 // boundary: a packed store is a legitimate choice for every other subcommand,

@@ -485,6 +485,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no longer be captured through access logs, bookmarks, proxies, or `Referer`
   chains.
 
+- The viewer bounds what an unauthenticated caller can make it hold. Every
+  request body is capped (4 KiB) in one middleware all routes inherit, and a
+  larger body — including a `multipart/form-data` one, which the standard
+  library would otherwise keep in memory and spill to temp files — is refused
+  `413` before it is parsed, so no oversized login mints a session. The viewer's
+  HTTP server now carries `ReadTimeout`, `WriteTimeout` and `IdleTimeout` beside
+  `ReadHeaderTimeout`, so a client that completes the header phase can no longer
+  hold the connection and its goroutine open by dribbling or stalling a body.
+
 ## [v1.6.5] - 2026-09-22
 
 ### Added

@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v16
+version: v17
 ---
 
 # Viewer Security — go-cask
@@ -273,6 +273,19 @@ A reverse proxy is also the deployment the login throttle must know about
   landing (`GET /viewer/`) alone redirects (303) to `/viewer/login` with no
   session, so a browser can reach the login page, and completes the same-origin
   direct `?token=` login (§5.1).
+- Bound every request body (MUST): the viewer caps the body it accepts at
+  **4 KiB** — a login token, a CSRF token and a digest (defaults §4) — in one
+  middleware that every route inherits, so a route added later never re-decides
+  the bound, and answers a body over it `413` **before** parsing it. The body is
+  parsed with `ParseForm`, never `ParseMultipartForm`, so a multipart body is
+  refused rather than buffered in memory and spilled to temp files; an oversized
+  body to `POST /viewer/login` creates no session. The refusal is audit-logged
+  without the body (§9).
+- Bound every connection (MUST): the viewer's `http.Server` sets `ReadTimeout`,
+  `WriteTimeout` and `IdleTimeout` beside `ReadHeaderTimeout` (values in defaults
+  §4), because a header-only deadline lets a client that completes the header
+  phase dribble or stall a body forever while holding the connection and its
+  goroutine at negligible cost.
 
 ## 14. Security principle
 
@@ -300,3 +313,5 @@ implementation.
 - [x] Secrets never hardcoded/committed/logged/returned (§11)
 - [x] Remote access only via VPN + reverse proxy + OIDC/SSO; role derived from the configured claim (§12)
 - [x] Input validated everywhere; 401/403 empty bodies never disclose existence (§13)
+- [x] Every request body is bounded (4 KiB) by one middleware every route inherits: a body over the bound answers `413` before it is parsed, a multipart body is refused rather than spooled, and an oversized `POST /viewer/login` mints no session (§13)
+- [x] The viewer's server carries `ReadTimeout`, `WriteTimeout` and `IdleTimeout` beside `ReadHeaderTimeout`, so a completed header phase cannot hold a connection open (§13)

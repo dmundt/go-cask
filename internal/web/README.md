@@ -9,7 +9,7 @@ does not reimplement any part of it.
 | Concern | Files | Normative spec |
 |---|---|---|
 | Screens, routes, the object browser, reference states, hexdump | `objects.go`, `browser.go`, `meta.go`, `format.go`, `templates/*.html`, `viewer.css` | [viewer-design.md](../../docs/specs/viewer-design.md) |
-| Authn, sessions, cookies, roles, login throttle, audit logging, response hardening | `auth.go`, `sessions.go`, `csrf.go`, `throttle.go`, `proxy.go` | [viewer-security.md](../../docs/specs/viewer-security.md) |
+| Authn, sessions, cookies, roles, login throttle, audit logging, the request-body bound, response hardening | `auth.go`, `sessions.go`, `csrf.go`, `throttle.go`, `proxy.go`, `body.go` | [viewer-security.md](../../docs/specs/viewer-security.md) |
 | Templates, htmx interactions, URL-as-state, embedding | `templates/*.html`, `web.go` (embed + render) | [frontend-architecture.md](../../docs/specs/frontend-architecture.md) |
 | Wiring, middleware order, config, lifecycle, backend selection | `web.go`, `cmd/cask/web.go` | [backend-architecture.md](../../docs/specs/backend-architecture.md) |
 | Integrity checks and their result fragments | `verify.go` | [viewer-design.md](../../docs/specs/viewer-design.md) §3 |
