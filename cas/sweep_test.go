@@ -254,3 +254,167 @@ func TestSweepSkipsConcurrentlyDeletedDuringAgeCheck(t *testing.T) {
 		t.Fatalf("Sweep() doomed = %v, want none (ModTime ErrNotFound is skipped, not doomed)", doomed)
 	}
 }
+
+// cancelOnListBackend cancels the context while List runs, so the caller's next
+// per-item context check is the one that fires — the only deterministic way to
+// reach the loop's cancellation arm rather than the entry guard's.
+type cancelOnListBackend struct {
+	*backmem.Backend
+	cancel context.CancelFunc
+}
+
+func (b cancelOnListBackend) List(ctx context.Context) ([]cas.Digest, error) {
+	digests, err := b.Backend.List(ctx)
+	b.cancel()
+	return digests, err
+}
+
+// cancelOnExistsBackend cancels the context during the existence probe, so a
+// sweep finishes marking and then stops in its delete pass.
+type cancelOnExistsBackend struct {
+	*backmem.Backend
+	cancel context.CancelFunc
+}
+
+func (b cancelOnExistsBackend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
+	ok, err := b.Backend.Exists(ctx, d)
+	b.cancel()
+	return ok, err
+}
+
+// vanishedBackend reports every digest that List returned as already gone,
+// standing in for a concurrent sweep that deleted it between the two calls.
+type vanishedBackend struct{ *backmem.Backend }
+
+func (vanishedBackend) Exists(context.Context, cas.Digest) (bool, error) { return false, nil }
+
+// modTimeErrorBackend is a Statter whose ModTime always fails, so the age path's
+// error arms can be selected without touching the filesystem clock. Size is
+// satisfied honestly, because Statter requires both methods and only ModTime is
+// under test.
+type modTimeErrorBackend struct {
+	*backmem.Backend
+	err error
+}
+
+func (b modTimeErrorBackend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	rc, err := b.Backend.Get(ctx, d)
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+	return io.Copy(io.Discard, rc)
+}
+
+func (b modTimeErrorBackend) ModTime(context.Context, cas.Digest) (time.Time, error) {
+	return time.Time{}, b.err
+}
+
+// TestSweepStopsWhenContextIsCancelledDuringTheScan pins the per-object
+// cancellation check inside the marking loop.
+func TestSweepStopsWhenContextIsCancelledDuringTheScan(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	backend := cancelOnListBackend{Backend: inner, cancel: cancel}
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Sweep(ctx cancelled during List) = %v, want context.Canceled", err)
+	}
+}
+
+// TestSweepStopsWhenContextIsCancelledBeforeDeleting pins the second
+// cancellation check: marking finished, and the delete pass must not start.
+func TestSweepStopsWhenContextIsCancelledBeforeDeleting(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	backend := cancelOnExistsBackend{Backend: inner, cancel: cancel}
+	doomed, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Sweep(ctx cancelled before deleting) = %v, want context.Canceled", err)
+	}
+	if doomed != nil {
+		t.Fatalf("Sweep(cancelled) doomed = %v, want nil alongside the error", doomed)
+	}
+	if ok, _ := inner.Exists(context.Background(), d); !ok {
+		t.Fatal("Sweep deleted an object after its context was cancelled")
+	}
+}
+
+// TestSweepReportsExistenceProbeFailure pins the arm where the backend cannot
+// answer "does this object exist?" for a reason other than an unusable key.
+func TestSweepReportsExistenceProbeFailure(t *testing.T) {
+	ctx := context.Background()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("exists exploded")
+	backend := existsErrorBackend{Backend: inner, err: want}
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{}); !errors.Is(err, want) {
+		t.Fatalf("Sweep(Exists error) = %v, want %v", err, want)
+	}
+}
+
+// TestSweepSkipsObjectThatVanishedAfterList pins the concurrent-delete arm: the
+// object was listed, then a racing sweep removed it, so this run skips it
+// instead of failing and instead of counting it as reclaimed.
+func TestSweepSkipsObjectThatVanishedAfterList(t *testing.T) {
+	ctx := context.Background()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	doomed, err := cas.Sweep(ctx, vanishedBackend{Backend: inner}, nil, cas.SweepOptions{})
+	if err != nil {
+		t.Fatalf("Sweep(vanished object) = %v, want nil", err)
+	}
+	if len(doomed) != 0 {
+		t.Fatalf("Sweep(vanished object) doomed = %v, want none", doomed)
+	}
+}
+
+// TestSweepSkipsUnaddressableNameDuringAgeCheck pins the second ErrInvalidDigest
+// arm: a name the layout cannot address is skipped by the age path too, not just
+// by the existence probe.
+func TestSweepSkipsUnaddressableNameDuringAgeCheck(t *testing.T) {
+	ctx := context.Background()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	backend := modTimeErrorBackend{Backend: inner, err: cas.ErrInvalidDigest}
+	doomed, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour})
+	if err != nil {
+		t.Fatalf("Sweep(ModTime ErrInvalidDigest) = %v, want nil", err)
+	}
+	if len(doomed) != 0 {
+		t.Fatalf("Sweep(ModTime ErrInvalidDigest) doomed = %v, want none", doomed)
+	}
+}
+
+// TestSweepReportsModTimeFailure pins the age path's "anything else aborts" arm.
+func TestSweepReportsModTimeFailure(t *testing.T) {
+	ctx := context.Background()
+	inner := backmem.New()
+	d := sha256.Of([]byte("doomed"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("doomed"))); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("stat exploded")
+	backend := modTimeErrorBackend{Backend: inner, err: want}
+	if _, err := cas.Sweep(ctx, backend, nil, cas.SweepOptions{MinAge: time.Hour}); !errors.Is(err, want) {
+		t.Fatalf("Sweep(ModTime error) = %v, want %v", err, want)
+	}
+}

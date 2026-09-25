@@ -132,6 +132,36 @@ func TestEnvelopeUnknownTypeIsNotAParseFailure(t *testing.T) {
 	}
 }
 
+// TestEnvelopeTypeReportsCorruptPrefix pins EnvelopeType's error arm: the
+// header-only reader gives the same ErrCorrupt verdict as the full reader for
+// bytes that do not begin with a usable header, and reports no type alongside
+// it. A caller that peeks a type must never be told a damaged frame is fine.
+func TestEnvelopeTypeReportsCorruptPrefix(t *testing.T) {
+	full := encodeEnvelope("json", "blob@1", []byte("{}"))
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"nil", nil},
+		{"version byte only", []byte{EnvelopeVersion}},
+		{"truncated before the codec field", full[:2]},
+		{"truncated inside the type name", full[:5]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			typ, err := EnvelopeType(tc.data)
+			if !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("EnvelopeType() = (%q, %v), want ErrCorrupt", typ, err)
+			}
+			if typ != "" {
+				t.Fatalf("EnvelopeType() = %q alongside the error, want the empty string", typ)
+			}
+			if _, err := EnvelopeFromBytes(tc.data); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("EnvelopeFromBytes() = %v, want the same ErrCorrupt verdict", err)
+			}
+		})
+	}
+}
+
 func TestEnvelopeTruncatedVersion(t *testing.T) {
 	if _, err := EnvelopeFromBytes(nil); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("nil data = %v, want ErrCorrupt", err)
