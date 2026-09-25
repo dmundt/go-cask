@@ -367,6 +367,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- An authenticated viewer session can no longer monopolize the server by
+  refreshing: the two routes whose work is proportional to the *store* rather
+  than to the request are bounded. `POST /viewer/objects/verify` runs one sweep
+  at a time, and one session may start three and then one per 5 seconds; past
+  that it answers `429` with `Retry-After` and a fragment saying how long to
+  wait, instead of queueing behind the running sweep. The object browser's
+  metadata rebuild shares the same budget, and a refused rebuild serves the last
+  published snapshot (stale by at most the cooldown, never wrong) so a page
+  always renders. Refusals are audit-logged like a throttled login. Measured on
+  a 500-object synthetic store, a burst of 8 concurrent verify-all requests costs
+  45 ms before and 17 ms after, with 7.8 of the 8 answered immediately.
 - A viewer bound to a non-loopback address no longer displays its generated
   startup token, whatever `-show-token` asks for: the one-time hint is permitted
   only for a loopback bind, so that run prints the bind and the `https://`

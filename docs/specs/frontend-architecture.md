@@ -2,7 +2,7 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v14
+version: v15
 ---
 
 # Frontend Architecture — go-cask
@@ -91,6 +91,7 @@ Reference implementation of this architecture: object-browser-first, low-level t
 - Error responses carry the viewer's own prose only. A failure the operator can see is classified and explained; the Go error behind it goes to the audit line, because interpreter text names the layer underneath (filesystem paths, syscalls) rather than the finding (viewer-design §3).
 - No response is cacheable: every response is `Cache-Control: no-store`, and pages whose body depends on the session vary on `Cookie`, so a proxy in front of the viewer cannot serve one session's page to another (viewer-security §10).
 - htmx requests carry the same session cookie as full-page navigation — the backend cannot distinguish them and MUST NOT need to.
+- A route whose work is O(store) rather than O(request) is bounded, and the bound is part of the contract: at most one such operation at a time, a per-session budget, `429` + `Retry-After` when it is exceeded, and never a queue behind the running operation. The metadata snapshot is the same bound spent differently — a refused rebuild serves the published snapshot, so a page always renders (viewer-design §3, defaults.md).
 
 ## 10. Checklist
 

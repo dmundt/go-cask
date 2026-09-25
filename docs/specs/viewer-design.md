@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v41
+version: v42
 ---
 
 # Viewer Design — go-cask
@@ -144,6 +144,18 @@ them. A sweep also changes the integrity of the inspector's open object, so the
 inspector MUST subscribe to that status event and re-render alongside the table.
 The sweep is audited as one event with counts — one audit line per object would
 flood the log.
+
+A sweep is expensive — it re-reads and re-hashes every stored object — so it is
+**bounded**, and the bound is what the operator sees rather than a stall: at most
+one sweep runs at a time, and one session may start `expensiveBurst` of them and
+then one per cooldown (the numbers are defaults.md's, not this page's). A request that exceeds the
+bound MUST answer `429` with `Retry-After` and a fragment that says how long to
+wait (the control's label carries it), MUST NOT queue behind the running sweep,
+and MUST NOT emit the status event. The object browser's metadata snapshot is
+bounded the same way and shares the session's budget: a request refused a rebuild
+MUST serve the last published snapshot — stale, not wrong — so a page always
+renders, and the staleness is at most one cooldown. `Retry-After` here follows
+the same rule as the login throttle's refusal (viewer-security §5).
 
 The top bar MUST render the build's module version beside the wordmark, so a
 page in a bug report identifies the producing binary. It comes from build info —
@@ -387,7 +399,8 @@ Viewer tests MUST cover:
 - direct-link and htmx selection behavior;
 - accessible table/sort/status markup and CSS asset headers;
 - session/role/CSRF/error behavior and bounded raw-byte preview;
-- response hygiene: `Retry-After` on a throttled login, `Cache-Control:
+- response hygiene: `Retry-After` on a throttled login and on a refused
+  expensive operation, `Cache-Control:
   no-store` (and `Vary: Cookie`) on every response, empty rejection bodies, and
   no response body carrying a Go error string or a filesystem path.
 

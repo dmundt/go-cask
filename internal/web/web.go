@@ -96,7 +96,10 @@ type Server struct {
 	cfg           Config
 	sessions      *sessions
 	loginThrottle *throttle
-	meta          *metaCache
+	// expensive bounds the two routes that do O(store) work per request:
+	// verify-all and a metadata rebuild (limit.go).
+	expensive *expensiveOps
+	meta      *metaCache
 	// trusted is the parsed Config.TrustedProxies: the peers whose forwarded
 	// client address the login throttle may believe (viewer-security §5.2).
 	trusted *trustedProxy
@@ -131,10 +134,34 @@ type snapshotState struct {
 // the walk and never blocks a reader that already has a fresh snapshot. The
 // freshness rule and the error contract are unchanged: a failed build reports
 // its error and publishes nothing, so the next caller retries.
-func (s *Server) metadataSnapshot(ctx context.Context) (*index.Snapshot, error) {
+//
+// A rebuild is an expensive operation (limit.go), so it is admitted through the
+// session's budget and the single slot. A refused request never queues work:
+// it serves the published snapshot — stale, not wrong — when there is one, and
+// when there is none it waits under snapshotMu for the build already running
+// (the waiters re-check freshness, so exactly one walk happens). A session that
+// refreshes faster than the cooldown therefore sees a snapshot up to the
+// cooldown older instead of forcing another walk per refresh (viewer-design §3).
+func (s *Server) metadataSnapshot(ctx context.Context, session string) (*index.Snapshot, error) {
 	if current := s.snapshot.Load(); current != nil && time.Since(current.builtAt) < snapshotRefreshInterval {
 		return current.snapshot, nil
 	}
+	if _, ok := s.expensive.begin(session); ok {
+		defer s.expensive.end()
+		return s.rebuildSnapshot(ctx)
+	}
+	if current := s.snapshot.Load(); current != nil {
+		return current.snapshot, nil
+	}
+	// Cold start: nothing published yet, so there is nothing to serve. The
+	// build below serializes on snapshotMu and re-checks freshness, so every
+	// waiter returns the one walk's result rather than starting its own.
+	return s.rebuildSnapshot(ctx)
+}
+
+// rebuildSnapshot builds and publishes the metadata snapshot: one walk at a
+// time, freshness re-checked under the lock.
+func (s *Server) rebuildSnapshot(ctx context.Context) (*index.Snapshot, error) {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
 	// Another handler may have built the snapshot while this one waited for
@@ -185,6 +212,7 @@ func New(store *fs.Backend, cfg Config) (*Server, error) {
 		cfg:           cfg,
 		sessions:      newSessions(),
 		loginThrottle: newThrottle(5, time.Minute),
+		expensive:     newExpensiveOps(),
 		meta:          newMetaCache(),
 		trusted:       trusted,
 		tmpl:          tmpl,

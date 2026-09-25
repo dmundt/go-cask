@@ -341,7 +341,7 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 		state.Selected != "" || state.Deselected {
 		return result, nil
 	}
-	snapshot, err := s.metadataSnapshot(ctx)
+	snapshot, err := s.metadataSnapshot(ctx, id)
 	if err != nil {
 		return objectPageResult{Page: objectPage{Selected: -1}}, err
 	}
@@ -377,7 +377,7 @@ func (s *Server) defaultObjectPage(ctx context.Context, id string, state objectB
 // offers, and whether the requested type was among them: a filter naming a type
 // no object carries is a malformed request, not an empty page.
 func (s *Server) objectRows(ctx context.Context, id string, state objectBrowserState) (rows []objectRow, types []string, typeFound bool, total int, matchedSize int64, err error) {
-	snapshot, err := s.metadataSnapshot(ctx)
+	snapshot, err := s.metadataSnapshot(ctx, id)
 	if err != nil {
 		return nil, nil, false, 0, 0, err
 	}
