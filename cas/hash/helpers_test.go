@@ -1,6 +1,8 @@
 package hash
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -62,5 +64,35 @@ func TestFormatDigestAndParseDigest(t *testing.T) {
 	}
 	if _, err := ParseDigest("sha256", "sha256:0a0b0", 3); err == nil {
 		t.Fatal("ParseDigest should reject mismatched digest width")
+	}
+}
+
+// TestParseDigestReportsAWellFormedDigestOfTheWrongWidth pins the width branch:
+// hex that parses but is not the algorithm's canonical size is rejected by
+// ValidateDigestSize and the caller keeps both the offending text and the
+// underlying cause on the error chain (cas.ErrInvalidDigest).
+func TestParseDigestReportsAWellFormedDigestOfTheWrongWidth(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+	}{
+		{"bare hex one byte short", "0a0b0c"},
+		{"prefixed hex one byte short", "sha256:0a0b0c"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := ParseDigest("sha256", tc.text, 4)
+			if err == nil {
+				t.Fatalf("ParseDigest(%q, size 4) = %s, want an error", tc.text, d)
+			}
+			if !errors.Is(err, cas.ErrInvalidDigest) {
+				t.Fatalf("ParseDigest(%q, size 4) = %v, want cas.ErrInvalidDigest", tc.text, err)
+			}
+			if !strings.Contains(err.Error(), tc.text) {
+				t.Fatalf("ParseDigest(%q, size 4) = %v, want it to quote the input", tc.text, err)
+			}
+			if d != nil {
+				t.Fatalf("ParseDigest(%q, size 4) = %s, want no digest", tc.text, d)
+			}
+		})
 	}
 }

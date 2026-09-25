@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	iofs "io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -146,6 +149,96 @@ func digestKeys(digests []cas.Digest) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// basePathReporter is the optional interface a backend implements when its
+// object bytes live under a directory the caller can name. It mirrors
+// cas/verify/sidecar's own seam: the durable backends report a base (fs the path
+// passed to New, packfs the loose tree inside it), while the in-memory
+// reference implementation has no durable bytes and does not.
+type basePathReporter interface {
+	BasePath() string
+}
+
+// TestBackendConformanceBasePath asserts the shared contract of that report: a
+// backend that names a base path names one that exists and really is the
+// directory its objects live under, because a maintenance layer above the
+// backend — cas/verify/sidecar's records, and the Clean sweep a caller runs over
+// it — places its own files beside those bytes.
+func TestBackendConformanceBasePath(t *testing.T) {
+	for _, bc := range conformanceBackends() {
+		t.Run(bc.name, func(t *testing.T) {
+			ctx := context.Background()
+			backend := bc.open(t, t.TempDir())
+			defer closeBackend(t, backend)
+
+			reporter, ok := backend.(basePathReporter)
+			if !ok {
+				t.Skip("backend keeps no durable base path")
+			}
+			base := reporter.BasePath()
+			info, err := os.Stat(base)
+			if err != nil {
+				t.Fatalf("BasePath() = %q: %v", base, err)
+			}
+			if !info.IsDir() {
+				t.Fatalf("BasePath() = %q, want an existing directory", base)
+			}
+
+			payloads := conformancePayloads()
+			for _, payload := range payloads {
+				putObject(t, backend, payload)
+			}
+
+			// Every digest-named object file must be below the reported base:
+			// the base is the store's own tree, not its parent, not the pack
+			// directory and not a sibling.
+			beneath := map[string]bool{}
+			err = filepath.WalkDir(base, func(path string, entry iofs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				beneath[entry.Name()] = true
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("walk BasePath() %q: %v", base, err)
+			}
+			for _, payload := range payloads {
+				if name := sha256.Of(payload).String(); !beneath[name] {
+					t.Errorf("object %s is not stored beneath BasePath() %q", name, base)
+				}
+			}
+
+			// And the converse: every digest-named file beneath the base is an
+			// object the backend lists, so the reported tree is exactly the
+			// store's own — a base pointing at a parent directory would pick up
+			// another store's objects here.
+			listed, err := backend.List(ctx)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			listedKeys := digestKeys(listed)
+			for _, d := range listed {
+				if !beneath[d.String()] {
+					t.Errorf("List reports %s, which has no file beneath BasePath() %q", d, base)
+				}
+			}
+			for name := range beneath {
+				// Only digest-named files are objects; a pack or index file
+				// beside them is not one (and the loose tree holds no other).
+				if _, parseErr := cas.ParseDigest(name); parseErr != nil {
+					continue
+				}
+				if !slices.Contains(listedKeys, name) {
+					t.Errorf("BasePath() %q holds the object file %s, which List does not report", base, name)
+				}
+			}
+		})
+	}
 }
 
 // TestBackendConformance asserts the cas.Backend guarantees over every backend
