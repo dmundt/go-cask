@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v33
+version: v34
 ---
 
 # CLI — go-cask
@@ -24,6 +24,10 @@ Contract for `cmd/cask`, the single binary: thin CLI over the cas library plus, 
   selected backend and reports its `cas.Capabilities`, so `put`/`get`/`list`/
   `meta`/`stats`/`verify`/`gc`/`prune`/`clean` work over either backend
   (backend-architecture §5). Without the flag the CLI behaves exactly as before.
+  The open/refuse matrix is therefore **either backend for every store operation,
+  `fs` only for the viewer**: `web` is the single refusal, and its message names
+  the operation, the backend and the remedy instead of reporting a bare
+  unsupported operation (§2, viewer-design §1).
 - The hash algorithm is a **client** constant: `cmd/cask` digests and validates with `cas/hash/sha256` (`sha256.Format` renders the printable `sha256:hexdigest` form; `sha256.Parse` accepts it or bare hex). No **store operation** takes an algorithm flag — the core names no algorithm (cas-core §4.2). Both viewer subcommands take `-hash-algo` (`sha256`, `sha512`, `sha512_256`): a reader must know which algorithm to validate and decode with — `web` for the viewer, `seed-preview` for the preview graph it seeds — and the two MUST agree or the viewer finds no graph (§2, §4).
 - `web` is the **viewer shape**: starts the embedded viewer (backend-architecture §3) with the store from `-store` and role=token pairs from `-tokens` (viewer-security). The startup admin token is generated and shown once on **stdout** — an interactive stdout, or any run asking for it with `-show-token` — **only for a loopback bind**, or supplied by the operator with `-token-file`/`CASK_VIEWER_TOKEN`; never logged at any level (§4, viewer-security §5.1, §9, §11). A non-loopback bind prints no login link and displays no token: the session cookie is always `Secure` (viewer-security §7), so the notice names the bind and the `https://` expectation instead. Config file deferred.
 
@@ -62,8 +66,13 @@ Contract for `cmd/cask`, the single binary: thin CLI over the cas library plus, 
 - `web` requires the `fs` backend: the viewer reads per-object physical
   metadata through the concrete filesystem backend, so `web -backend packfs` is
   refused with the same `cas.ErrUnsupported` error (exit 1) rather than reading
-  a directory other than the one `-store` named. The viewer's own `-backend`
-  defaults to the global flag (cli.md §1).
+  a directory other than the one `-store` named. The refusal names the operation,
+  the backend **and the remedy** — open a loose store (`-backend fs`, or `-store`
+  with a loose store's directory) — because creating a packed store with the CLI
+  and then being unable to inspect it is the likely support question; a packed
+  object has no file of its own to stat (its loose copy and its pack record are
+  two different answers to "how large is it, and how old"). The viewer's own
+  `-backend` defaults to the global flag (cli.md §1, viewer-design §1).
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges and
   alternating root-reachable segments. The frames are the current format

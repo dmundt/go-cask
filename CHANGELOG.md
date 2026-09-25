@@ -241,6 +241,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cask web -backend packfs` fails with an actionable message — the operation,
+  the backend, and the remedy (open a loose store with `-backend fs` or `-store`
+  pointing at a loose store directory) — instead of a bare "unsupported
+  operation". The limitation is now stated where the flags are documented
+  (`cli.md` §1/§2), in the viewer's own spec (`viewer-design.md` §1) and in
+  `backend-architecture.md`: the viewer reads each object's size and modification
+  time from its own file, and a packed object has none (its loose copy and its
+  pack record answer those two questions differently). Every other subcommand
+  keeps working over both backends.
 - `cask verify` takes the `-hash-algo` the viewer and `seed-preview` already
   accept, so a store addressed by `sha512` or `sha512_256` can be verified
   instead of failing every object on digest width before a byte is read:

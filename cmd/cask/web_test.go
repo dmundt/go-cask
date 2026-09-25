@@ -5,7 +5,22 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/dmundt/go-cask/internal/store"
 )
+
+// TestRunWebRefusesPackedStore pins the operator-facing refusal at the CLI
+// boundary: a packed store is a legitimate choice for every other subcommand,
+// so `web` must fail (exit 1) instead of starting a viewer that cannot read it.
+// The message itself — operation, backend and remedy — is pinned in
+// internal/store (cli.md §1, §2, viewer-design §1).
+func TestRunWebRefusesPackedStore(t *testing.T) {
+	code := runWeb(context.Background(), modeFlags{store: t.TempDir()},
+		[]string{"-backend", string(store.KindPackFS), "-bind", "127.0.0.1:0", "-no-open"})
+	if code != 1 {
+		t.Fatalf("runWeb(-backend packfs) exit = %d, want 1", code)
+	}
+}
 
 // TestSplitList pins the -trusted-proxy value grammar: a comma-separated
 // list whose entries are trimmed and whose empty entries are dropped, so

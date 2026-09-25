@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v40
+version: v41
 ---
 
 # Viewer Design — go-cask
@@ -33,6 +33,15 @@ operator, including the §3 reference states.
   metadata view as `sha256`, but MUST NOT prefix a displayed digest.
 - The object browser is the sole operational workspace and viewer landing at
   `/viewer/`.
+- **Loose objects only.** The viewer lists through the concrete filesystem
+  backend and reads each object's physical size and modification time from its
+  own file, so `cask web -backend packfs` is refused with `cas.ErrUnsupported`
+  and a message naming the remedy (open a loose store) rather than served with
+  numbers that describe a pack file instead of an object. Pack support is a
+  possible parity step, not a present capability: a packed object's loose copy
+  and its pack record are two different answers to "how large is it, and how
+  old", and that answer belongs here before the viewer promises any age-based
+  view over packs (cli.md §1, §2; go-cask#189).
 - Out of scope: mutable object editing, uploads, buckets, charting, JSON APIs,
   browser storage, client-side application state, custom JavaScript. htmx is the
   only script shipped.

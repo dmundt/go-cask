@@ -2,7 +2,7 @@
 type: Specification
 title: Backend Architecture — go-cask
 description: How the go-cask backend is put together — process and binary layout (cmd/cask thin main over internal/), the viewer server (started by `cask web`), middleware pipeline, storage backend selection, configuration, observability, and deployment shapes.
-version: v24
+version: v25
 ---
 
 # Backend Architecture — go-cask
@@ -47,7 +47,7 @@ How the `cas` library is composed into a runnable system (binary layout, HTTP la
 
 - Config selects the backend: `fs` (Git-like fan-out) or `memory` (tests/ephemeral) — cas-core §4.4–4.5.
 - The `cask` CLI selects the backend per invocation with `-backend fs` (default) or `-backend packfs` (a loose tree plus append-only pack files, `cas/backend/packfs`). One shared internal constructor (`internal/store`) opens it and returns `cas.Capabilities` with it, so every subcommand is backend-agnostic: `put`/`get`/`list`/`meta`/`stats` use the minimal `Backend` contract, `verify` runs through `cas.Verify`/`cas.VerifyAll`, `gc`/`prune` use the backend's native `Prune` when it has one and `cas.Sweep` otherwise, `clean` uses `cas.Cleaner`. An operation a backend cannot perform fails with `cas.ErrUnsupported` naming operation and backend (cli §2).
-- The viewer is the one exception: `internal/web.New` reads per-object physical metadata through the concrete `*fs.Backend`, so `cask web -backend packfs` is refused with the same `cas.ErrUnsupported` error rather than served from a directory other than `-store` named.
+- The viewer is the one exception: `internal/web.New` reads per-object physical metadata through the concrete `*fs.Backend`, so `cask web -backend packfs` is refused with the same `cas.ErrUnsupported` error rather than served from a directory other than `-store` named. The refusal is actionable (it names the remedy: open a loose store) because a packed store is a legitimate choice for every other subcommand, and a packed object has no file of its own whose size and modification time the viewer could report (cli §1, §2; viewer-design §1).
 - Every CLI command opens and closes its store, so a backend holding a write handle open (packfs keeps its active pack file for appends and persists its index through it) releases it before the command returns; nothing depends on a separate flush step.
 - Optional advisory bloom front ends MAY wrap a backend or a custom store implementation for hot-path member checks, but never replace the backend's authoritative `Exists`. The backend remains the only correctness authority; the bloom layer is a performance aid for front-end lookup reduction.
 - The viewer and CLI talk to the library **in-process only** — no remote backend, no client SDK. Serving other machines is an app concern (copy the `examples/api` pattern; run as that app's server); the product ships no such server.
