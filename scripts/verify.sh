@@ -369,6 +369,7 @@ go test -run=^$ -fuzz=FuzzCodecRoundTrip -fuzztime=5s ./cas/codec/json/
 
 echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
+./scripts/test-dep-graph.sh
 ./scripts/test-land-lane.sh
 ./scripts/test-version-fields.sh
 
@@ -527,6 +528,16 @@ cd "$repo_root"
 if [[ "$fail_doc" -ne 0 ]]; then
   exit 1
 fi
+
+echo "== package graph =="
+# docs/design/package-graph.md is generated from `go list` by dep-graph.sh, which
+# owns it exclusively: `--check` regenerates into a scratch directory and
+# compares, and never writes the document. A change that adds, removes or
+# re-points a local import must refresh the document in the same change, so a
+# stale graph fails here rather than being noticed by a reader. It runs in both
+# scopes — it costs one `go list`, and the `go` toolchain is required in the
+# documentation scope anyway by the website-examples step below.
+./scripts/dep-graph.sh --check
 
 echo "== website footer =="
 # The published footer is one line, composed by website/macros.py from the

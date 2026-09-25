@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v7
+version: v8
 ---
 
 # Agent instructions — `scripts/`
@@ -19,6 +19,11 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
 ## Rules
 
 - Write shell scripts in bash with `set -euo pipefail`.
+- A new helper script MUST be executable in the index, not only on disk. On a
+  checkout with `core.fileMode=false` (the Windows toolchain here) `chmod +x`
+  changes nothing git records, so stage it with `git add --chmod=+x <path>` or
+  `git update-index --chmod=+x <path>`. A `100644` script passes a local gate run
+  and fails CI with `Permission denied`.
 - Prefer a single command path for a workflow; do not duplicate the same logic in multiple scripts when one wrapper can call the shared logic.
 - Treat `./scripts/verify.sh` as the repo preflight gate for design changes, release prep, and CI parity checks.
 - Keep GitHub release notes synchronized with `CHANGELOG.md`; include the standard `Full Changelog:` compare link for each release.

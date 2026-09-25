@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v5
+version: v6
 ---
 
 # Scripts — go-cask
@@ -18,6 +18,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 | [`worktree.sh`](./worktree.sh) | Creates/removes a task worktree with its `.git` in the relative form, so both the Windows and the WSL git resolve it (an absolute path makes WSL git walk up to the primary checkout). `add <name> [<branch>]` / `remove <name>` / `lock [<name>...]` / `prune` (refuses — see below) / `list`. Every worktree it creates carries git's `locked` file, which is what stops `git worktree prune` from deleting a registration whose admin `gitdir` is in the other toolchain's path form. |
 | [`security.sh`](./security.sh) | Installs the pinned `govulncheck` version and runs the repository security scan. |
 | [`docs-only.sh`](./docs-only.sh) | Classifies a Git diff as documentation-only for CI scope selection. |
+| [`dep-graph.sh`](./dep-graph.sh) | Generates `docs/design/package-graph.md`, the local package dependency graph as a Mermaid flowchart, from `go list`. It owns that document: the no-argument run rewrites it and moves its frontmatter `version` only when the graph actually changed, and `--check` reports a stale document without writing it. `verify.sh` runs `--check` in both scopes. |
+| [`test-dep-graph.sh`](./test-dep-graph.sh) | Regression test for that ownership split: a fresh document at `v1`, an unchanged regeneration as a byte-for-byte no-op, a version bump when the graph changes, and `--check` writing nothing in every case (stubbed `go` in throwaway git repositories). |
 | [`release.sh`](./release.sh) | Release wrapper that coordinates the consistent release flow from the repo root. |
 | [`release-notes.sh`](./release-notes.sh) | Generates GitHub release notes from `CHANGELOG.md` and ensures the standard `Full Changelog:` compare URL is present. |
 | [`bench-baseline.sh`](./bench-baseline.sh) | Captures benchmark output and is the only writer of the canonical `benchmarks/data/baseline.txt` reference dump. |
@@ -40,6 +42,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 - Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - `bench-baseline.sh` owns `benchmarks/data/baseline.txt`: only a deliberate run (without `--capture-only`) rewrites it, and it archives the previous dump first. `bench-compare.sh` captures through `bench-baseline.sh --capture-only`, so comparing can never replace the reference it compares against; `scripts/test-bench-scripts.sh` (run by `verify.sh`) enforces that split.
+- `dep-graph.sh` owns `docs/design/package-graph.md` and is its only writer: `--check` regenerates into a scratch directory and compares, so the gate can report a stale graph without any way to overwrite it; `scripts/test-dep-graph.sh` (run by `verify.sh`) enforces that split.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
 - `run-examples.sh` runs the examples that terminate on their own (`artifacts`, `bloom`, `files`, `notes`, `pack`), each with the subcommand that completes, and `--list` names them together with the manual `api` example.
@@ -63,6 +66,8 @@ This directory holds the repo's operational helper scripts. They are the single 
 ./scripts/bench-baseline.sh                 # refresh the canonical reference dump (archives the old one)
 ./scripts/bench-compare.sh                  # diff a fresh run against the committed reference
 ./scripts/test-bench-scripts.sh             # regression test for the two helpers above
+./scripts/dep-graph.sh                      # regenerate the package dependency graph
+./scripts/dep-graph.sh --check              # report a stale graph; writes nothing
 ```
 
 When a script's behavior changes, update this README, the matching workflow, and any affected docs in the same change.
