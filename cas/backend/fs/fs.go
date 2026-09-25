@@ -412,50 +412,13 @@ func (s *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) 
 // (olderThan <= 0 removes them all). It removes both "<hex>.tmp" and the
 // collision fallbacks "<hex>.tmp.<n>" that createTempExcl may leave behind.
 // Walk and removal errors are returned, not swallowed.
+//
+// The sweep is cleanTemp (policy.go), the one implementation of the temp-file
+// convention: Clean runs it over this backend's base with this backend's walk
+// seam, and fs.CleanTemp runs the same rules over another tree that follows the
+// same convention (cas/backend/packfs sweeps its pack directory with it).
 func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-	cutoff := time.Now().Add(-olderThan)
-	removed := 0
-	err := s.walkDir(s.base, func(path string, d fs.DirEntry, err error) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil // entry vanished during concurrent cleanup/write
-			}
-			return err
-		}
-		if d.IsDir() || !isTempFile(d.Name()) {
-			return nil
-		}
-		if olderThan > 0 {
-			fi, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if fi.ModTime().After(cutoff) {
-				return nil
-			}
-		}
-		if err := os.Remove(path); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil // removed by a concurrent sweep
-			}
-			return err
-		}
-		removed++
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return removed, nil // the store directory itself is gone: nothing to clean
-		}
-		return removed, fmt.Errorf("cas: clean: %w", err)
-	}
-	return removed, nil
+	return cleanTemp(ctx, s.base, olderThan, s.walk)
 }
 
 // isTempFile reports whether name is an object temp file: "<hex>.tmp" or a

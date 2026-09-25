@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v41
+version: v42
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -641,8 +641,10 @@ gofmt -l .
   `fs.ValidateBase` before creating the base, so an empty path, `.`, a
   filesystem or volume root, or a parent-traversal path is rejected up front;
   the check is pure path arithmetic and does no I/O, so the nesting half of the
-  rule is still the caller's to keep. `fs.ValidateBase`, `fs.EnsureBase` and
-  `fs.CleanupTemp` are the exported pre-flight for a caller that owns the base
+  rule is still the caller's to keep. `fs.ValidateBase`, `fs.EnsureBase`,
+  `fs.CleanupTemp` and `fs.CleanTemp` — the last of which adds the age threshold
+  and the removed count, and is the sweep `packfs.Clean` reuses for its pack
+  directory — are the exported pre-flight for a caller that owns the base
   path before a backend exists (cas-core §4.4).
 - Serialization format: RESOLVED and implemented — the TLV envelope
   `[version u8 = 2][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`

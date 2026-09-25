@@ -132,9 +132,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   backend (packfs flushes its active pack there), `CachedRepository.GetTag`
   completes the cached getters, and `(*ResolvedObject).References()` reports the
   union's outgoing references so callers stop re-deriving them.
+- `fs.CleanTemp(ctx, root, olderThan) (int, error)` exports the temp-file sweep
+  `fs.Backend.Clean` runs — the `<name>.tmp`/`<name>.tmp.<n>` convention with an
+  age threshold and a removed count — for a caller that owns a second tree
+  following the same convention. `fs.CleanupTemp` is that sweep with the age
+  fixed at 0, so the exported helpers and `Backend.Clean` cannot drift apart.
 
 ### Changed
 
+- `packfs.Clean` sweeps its `<base>/packs` directory through `fs.CleanTemp`
+  instead of its own scratch-name predicate, so both trees under a packed base
+  use one convention. A name outside it (`notes.tmp.old`, `name.tmp.extra`) is no
+  longer deleted from `packs/`; everything packfs itself writes — the
+  `.put-*.tmp` spool files and the `index.json.tmp` rename scratch — is still
+  reclaimed, as is every `<hex>.tmp`/`<hex>.tmp.<n>` loose leftover.
 - The three compression wrappers keep their names and their `MaxDecodedBytes`,
   but `flate.ErrDecodedTooLarge`, `gzip.ErrDecodedTooLarge` and
   `zlib.ErrDecodedTooLarge` are now one value behind three names, produced by one

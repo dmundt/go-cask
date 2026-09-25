@@ -283,24 +283,52 @@ func TestPackfsCleanToleratesMissingPackDirAndCancellation(t *testing.T) {
 	}
 }
 
-// TestIsTempFileRecognizesScratchNames pins the scratch-name predicate Clean
-// relies on, including the suffix forms os.CreateTemp produces and the
-// near-misses that must NOT be treated as scratch.
-func TestIsTempFileRecognizesScratchNames(t *testing.T) {
-	for _, tc := range []struct {
+// TestPackfsCleanFollowsTheLooseTempConvention pins the scratch-name scope Clean
+// shares with the loose backend through fs.CleanTemp: the names packfs itself
+// writes — the ".put-*.tmp" spool files and the "index.json.tmp" rename scratch —
+// are reclaimed, a near-miss such as "name.tmp.extra" is not treated as scratch
+// at all, and a plain foreign file is left alone. Sharing one predicate with fs
+// is the point: the two trees under one base cannot disagree about what a
+// leftover is.
+func TestPackfsCleanFollowsTheLooseTempConvention(t *testing.T) {
+	ctx := context.Background()
+	backend, err := New(filepath.Join(t.TempDir(), "convention"), WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+
+	cases := []struct {
 		name string
-		want bool
+		gone bool
 	}{
 		{".put-123.tmp", true},
-		{"object.tmp", true},
-		{"name.tmp.extra", true},
-		{"object.pack", false},
+		{"index.json.tmp", true},
+		{"index.json.tmp.1", true},
+		{"name.tmp.extra", false},
+		{"notes.txt", false},
 		{"tmpfile", false},
-		{".tmp-holder", false},
-		{"", false},
-	} {
-		if got := isTempFile(tc.name); got != tc.want {
-			t.Errorf("isTempFile(%q) = %v, want %v", tc.name, got, tc.want)
+	}
+	for _, tc := range cases {
+		if err := os.WriteFile(filepath.Join(backend.packDir, tc.name), []byte("scratch"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed, err := backend.Clean(ctx, 0)
+	if err != nil {
+		t.Fatalf("Clean(0) = %v, want nil", err)
+	}
+	if removed != 3 {
+		t.Fatalf("Clean(0) removed %d entries, want 3 (the convention names only)", removed)
+	}
+	for _, tc := range cases {
+		_, err := os.Stat(filepath.Join(backend.packDir, tc.name))
+		if tc.gone && !os.IsNotExist(err) {
+			t.Errorf("Clean left the scratch file %s: %v", tc.name, err)
+		}
+		if !tc.gone && err != nil {
+			t.Errorf("Clean removed %s, which is not a scratch name: %v", tc.name, err)
 		}
 	}
 }

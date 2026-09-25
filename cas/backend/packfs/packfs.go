@@ -899,6 +899,9 @@ func (b *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) 
 }
 
 // Clean removes stale temporary files left by pack writes and loose fs writes.
+// The loose tree is swept by its own backend; the pack directory is swept by
+// fs.CleanTemp, which is the sweep the loose backend runs, so both trees agree
+// on what counts as a leftover and one implementation serves both.
 func (b *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -907,50 +910,8 @@ func (b *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 	if err != nil {
 		return removed, err
 	}
-	cutoff := time.Now().Add(-olderThan)
-	err = filepath.WalkDir(b.packDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if d.IsDir() || !isTempFile(d.Name()) {
-			return nil
-		}
-		if olderThan > 0 {
-			fi, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if fi.ModTime().After(cutoff) {
-				return nil
-			}
-		}
-		if err := os.Remove(path); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil
-			}
-			return err
-		}
-		removed++
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return removed, nil
-		}
-		return removed, fmt.Errorf("cas: clean pack dir: %w", err)
-	}
-	return removed, nil
-}
-
-func isTempFile(name string) bool {
-	i := strings.Index(name, ".tmp")
-	if i < 0 {
-		return false
-	}
-	return i+4 == len(name) || strings.HasPrefix(name[i+4:], ".")
+	packed, err := fsbackend.CleanTemp(ctx, b.packDir, olderThan)
+	return removed + packed, err
 }
 
 // Close closes the active pack file.
