@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Website Authoring Guide
+description: The authoring guide for the published site under website/ — developer-facing content and terminology, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
+version: v1
+---
+
 # Website Authoring Guide
 
 This directory contains the published go-cask documentation site. It is a

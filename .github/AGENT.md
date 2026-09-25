@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: GitHub repository operations
+description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
+version: v1
+---
+
 # GitHub repository operations
 
 This directory contains repository automation and GitHub configuration

@@ -1,8 +1,8 @@
 ---
-type: Guide
-title: Scripts — go-cask
+type: Agent Instructions
+title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v10
+version: v11
 ---
 
 # Agent instructions — `scripts/`

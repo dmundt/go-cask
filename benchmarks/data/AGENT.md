@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Agent instructions — `benchmarks/data`
+description: The rules for benchmarks/data — the canonical benchmark JSON is the source of truth, its schema lives beside it, and runner metadata stays intact so results remain machine-specific and traceable.
+version: v1
+---
+
 # Agent instructions — `benchmarks/data`
 
 This folder stores the canonical benchmark JSON files and the schema used to validate them.

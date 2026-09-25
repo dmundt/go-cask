@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/design/)
 description: This file governs docs/design/ — non-normative design docs (core-overview pointer, viewer-brief, mockups). Follows the conventions in docs/AGENT.md.
-version: v6
+version: v7
 tags: [go-cask]
 status: stable
 ---

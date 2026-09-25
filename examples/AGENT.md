@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Examples
 description: Rules for runnable example programs under examples/, including folder conventions, README requirements, test expectations, and the allowed scope of teaching code.
-version: v2
+version: v3
 ---
 
 # AGENT — go-cask Examples
