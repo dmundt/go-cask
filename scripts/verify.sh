@@ -228,9 +228,44 @@ fi
 echo "== go vet =="
 go vet ./...
 
-echo "== import boundary check =="
-if grep -RInE 'dmundt/go-cask/examples|dmundt/go-cask/gitlike' cas internal cmd >/dev/null 2>&1; then
-  echo "cas/, internal/, and cmd/ must not import examples/ or the gitlike app layer." >&2
+echo "== layer matrix check =="
+# AGENTS.md, "Layers and citizen classes": cas/ -> gitlike/ -> examples/, with
+# the product (cmd/**, internal/**) beside the chain rather than above it. The
+# `case` below IS the matrix, one row per layer: the local import prefixes that
+# layer may use, everything else being a violation. Only production imports are
+# checked — `go list`'s .Imports omits imports that appear solely in _test.go
+# files — so a cas/** test may keep importing internal/test.
+#
+# This replaces a five-line grep that only covered the product side; the three
+# rows nobody checked were cas/ -> internal|cmd, everything out of gitlike, and
+# the whole examples/ row (go-cask#386).
+module_path="$(go list -m -f '{{.Path}}')"
+layer_violations=""
+while read -r layer_pkg layer_imports; do
+  [[ -n "$layer_pkg" ]] || continue
+  case "$layer_pkg" in
+  "$module_path"/cas | "$module_path"/cas/*) allowed="$module_path/cas" ;;
+  "$module_path"/gitlike) allowed="$module_path/cas" ;;
+  "$module_path"/internal | "$module_path"/internal/*) allowed="$module_path/cas $module_path/internal" ;;
+  "$module_path"/cmd | "$module_path"/cmd/*) allowed="$module_path/cas $module_path/internal" ;;
+  "$module_path"/examples/*) allowed="$module_path/cas $module_path/gitlike" ;;
+  "$module_path"/benchmarks*) allowed="$module_path/cas $module_path/gitlike" ;;
+  *) allowed="" ;;
+  esac
+  for layer_imp in $layer_imports; do
+    [[ "$layer_imp" == "$module_path"/* ]] || continue
+    layer_ok=0
+    for layer_allow in $allowed; do
+      case "$layer_imp" in
+      "$layer_allow" | "$layer_allow"/*) layer_ok=1 ;;
+      esac
+    done
+    [[ "$layer_ok" -eq 1 ]] || layer_violations="${layer_violations}  ${layer_pkg#${module_path}/} imports ${layer_imp#${module_path}/}"$'\n'
+  done
+done <<<"$(go list -f '{{.ImportPath}} {{join .Imports " "}}' ./...)"
+if [[ -n "$layer_violations" ]]; then
+  echo "forbidden import between layers (AGENTS.md, \"Layers and citizen classes\"):" >&2
+  printf '%s' "$layer_violations" >&2
   exit 1
 fi
 

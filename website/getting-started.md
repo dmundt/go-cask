@@ -86,7 +86,9 @@ go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080
 ```
 
 Each `examples/` program is self-contained and documented in its own
-`README.md`, which lists its full command set.
+`README.md`, which lists its full command set. An example imports the module's
+libraries (`cas`, and `gitlike` for the reference object model) and nothing else
+outside itself.
 
 ## Next steps
 

@@ -35,7 +35,7 @@ CASK is a Git-like, content-addressable store for Go: bytes keyed by content dig
 A **single-host content-addressable store**. Each named spec is the normative contract:
 - **No network surface ships** — product = `cas` + CLI + embedded viewer; no CAS JSON API, SDK or server binary. HTTP exposure is an app pattern ([examples/](examples/)) — backend-architecture §1.
 - **Viewer is a byte-layer admin tool** — objects/bytes/integrity, never typed references; product code never imports [examples/](examples/) (viewer-design §7, coding-guidelines §9).
-- **Dependencies one-directional** — [cas/](cas/), [internal/](internal/), [cmd/](cmd/) never import [examples/](examples/); examples are self-contained except the shared `gitlike` library.
+- **Dependencies one-directional** — [cas/](cas/) → [gitlike/](gitlike/) → [examples/](examples/); [cas/](cas/), [internal/](internal/) and [cmd/](cmd/) never import [examples/](examples/), and the product never imports [gitlike/](gitlike/). Examples may import `cas` and `gitlike`, and nothing else outside themselves.
 - **Lean generic core** — app-agnostic [cas/](cas/) that names no hash algorithm (the client injects a `cas.Hasher`; `cas/hash/sha256` is go-cask's default), reference `fs`+`mem` backends plus opt-in `packfs`, and a JSON codec; only the cas-core §7.1 surface is stable.
 - **Byte layer policy-free** — GC/prune take app roots; no per-object pinned property; the store never interprets typed references (consistency §4).
 - **Concurrent by construction** — writes safe across processes (unique temps + atomic rename); sweeps (`gc`/`prune`/`clean`) hold an exclusive lock and reclaim only objects older than `--min-age`, so fresh writes survive (cas-core §6).

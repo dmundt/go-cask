@@ -35,17 +35,19 @@ every change:
 
 - **Single-host kit**: no network JSON API, no SDK, no server binary
   (backend-architecture §1) — HTTP exposure is an `examples/api` pattern.
-- **One-directional dependencies**: `cas`/`internal`/`cmd` MUST NOT import
-  `examples/`; examples MUST NOT import `internal/` and are self-contained
-  except the `gitlike` shared reference library (coding-guidelines §9,
-  examples §2 rule 11).
+- **One-directional dependencies**: `cas` → `gitlike` → `examples`; the product
+  (`cmd`, `internal`) sits beside that chain and MUST NOT import `gitlike` or
+  `examples/`. Examples MUST NOT import `internal/`, `cmd/` or another example —
+  `cas` and `gitlike` are ordinary imports, not exceptions: `gitlike` is a
+  2nd-class library at the application layer (coding-guidelines §9,
+  examples §2 rule 11, AGENTS.md "Layers and citizen classes").
 - **Byte-layer viewer**: `internal/web` shows objects, bytes, and integrity —
   no typed references or graphs (viewer-design §7).
 - **Lean generic core**: only the cas-core §7.1 surface is stable; adding
   exported surface is a spec change first (library-design §1).
 - **Policy-free byte layer**: GC/prune take app-supplied roots; roots are
   pins — there is no per-object pinned property (consistency §4).
-- **Examples teach; gitlike is the shared reference**: runnable examples teach seams; `gitlike/` is a reference/copy-source object model the product never imports.
+- **Examples teach; gitlike is the reference library**: runnable examples teach seams; `gitlike/` is a 2nd-class reference object model apps and examples import, and the product never imports.
 
 ### The dev loop
 

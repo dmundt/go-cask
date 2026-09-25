@@ -90,11 +90,16 @@ sort_unique() { printf '%s' "$1" | LC_ALL=C sort -u; }
 # label the reader sees.
 node_id() { printf '%s' "${1//[^A-Za-z0-9]/_}"; }
 
+# The layers are the two axes AGENTS.md states, not just directory depth:
+# gitlike is a 2nd-class *library* at the application layer, not an application,
+# so it gets its own layer between the cas helpers and the apps. One table, one
+# authority: AGENTS.md, "Layers and citizen classes".
 layer_of() {
   case "$1" in
   cas) printf 'CORE' ;;
   cas/backend | cas/backend/*) printf 'BYTE' ;;
   cas/*) printf 'HELP' ;;
+  gitlike | gitlike/*) printf 'REFERENCE' ;;
   internal/*) printf 'INTERNAL' ;;
   *) printf 'APPS' ;;
   esac
@@ -102,7 +107,8 @@ layer_of() {
 
 layer_title() {
   case "$1" in
-  APPS) printf 'Applications - gitlike, cmd/cask, examples, benchmarks' ;;
+  APPS) printf 'Applications - cmd/cask, examples, benchmarks' ;;
+  REFERENCE) printf 'Reference library - gitlike' ;;
   INTERNAL) printf 'internal - not importable outside the module' ;;
   HELP) printf 'cas helper and typed layer' ;;
   BYTE) printf 'cas/backend - byte layer' ;;
@@ -141,7 +147,7 @@ generate_body() {
   leaves="$(sort_unique "$raw_leaves")"
 
   printf 'flowchart TD\n'
-  for group in APPS INTERNAL HELP BYTE CORE; do
+  for group in APPS REFERENCE INTERNAL HELP BYTE CORE; do
     printf '  subgraph %s["%s"]\n' "$group" "$(layer_title "$group")"
     while read -r node; do
       [[ -n "$node" ]] || continue
@@ -205,8 +211,9 @@ PROSE
 | Core | `CORE` | The generic `cas` core: `Store[T]`, `Digest`, `Hasher`, `Codec[T]`, the envelope. |
 | Byte layer | `BYTE` | `cas/backend` and its `fs`, `mem`, `packfs` and `snapshot` implementations. |
 | Helpers | `HELP` | The typed and maintenance layer under `cas/`: codecs, hashers, caches, bloom filters, verification, `pack`, `refs`, `repo`. |
+| Reference library | `REFERENCE` | `gitlike`: the reference object model apps and examples build on. A 2nd-class library, not an application. |
 | Internal | `INTERNAL` | `internal/*`, not importable outside this module. |
-| Applications | `APPS` | `gitlike`, `cmd/cask`, `examples/*` and `benchmarks`. |
+| Applications | `APPS` | `cmd/cask` (the product binary), `examples/*` and `benchmarks`. |
 
 Packages that import no local package are drawn as leaves.
 

@@ -111,7 +111,10 @@ func (r *Resolver) ResolveAny(ctx context.Context, d cas.Digest) (*ResolvedObjec
 }
 
 // resolvedObjectOf maps a resolved concrete object onto the typed union — the
-// one place the app's three model types become union fields.
+// one place the app's three model types become union fields. It mirrors
+// gitlike's own union mapping on purpose: this example builds the pattern itself
+// rather than importing the reference library (examples spec §3.3, rule 5), so
+// the resemblance is the point and not duplication to collapse (go-cask#386).
 func resolvedObjectOf(obj casrepo.Object) (*ResolvedObject, error) {
 	switch o := obj.(type) {
 	case *Note:
