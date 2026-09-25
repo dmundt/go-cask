@@ -124,9 +124,11 @@ auto-merge only after signature verification and required checks pass.
 ## Serialized landing
 
 Website changes take the same landing lane as code
-(`AGENTS.md`, "Serialized landing, worktrees and gates"): hold
-`scripts/land-lane.sh` for the whole landing, and start the next revision of an
-artifact only after the previous one has merged.
+(`AGENTS.md`, "The pull request is the lane, worktrees and gates"): claim the
+lane with `scripts/pr-lane.sh claim <issue>` and hold it for the whole landing,
+and start the next revision of an artifact only after the previous one has
+merged. The lane is the open pull request; push early and open it as a draft so
+other sessions can see the landing before its decision is final.
 
 The footer was redesigned five times in three hours (`#203` → `#220` → `#224` →
 `#236` → `#239`, six pull requests). No single change was wrong; the waste was

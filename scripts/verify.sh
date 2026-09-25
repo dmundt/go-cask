@@ -371,6 +371,7 @@ echo "== helper script behaviour =="
 ./scripts/test-bench-scripts.sh
 ./scripts/test-dep-graph.sh
 ./scripts/test-land-lane.sh
+./scripts/test-pr-lane.sh
 ./scripts/test-version-fields.sh
 
 fi # scope == full
