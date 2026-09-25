@@ -1,8 +1,29 @@
 name: CodeQL
 
+# Advanced setup, scoped by changed paths (.github/AGENT.md, "Code scanning").
+#
+# Do NOT enable the repository's default setup for code scanning: GitHub then
+# DISABLES this workflow (it did, on 2026-09-22, and nothing said so), and the
+# analyses become unscoped — actions and go on every pull request and every push,
+# plus javascript-typescript and python over four vendored or build-time files
+# that have never produced a finding. Turning it off and re-enabling this
+# workflow is the whole fix.
+#
+# `push` on main is what keeps the Security tab's default-branch alerts current;
+# CodeQL's own validation warns without it, and the default setup's "Push on main"
+# runs were doing that job until now. The path filters keep a documentation merge
+# from starting a run at all, and the scope job below narrows it further, so a Go
+# merge analyzes Go and a workflow merge analyzes the workflows.
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/**
   schedule:
     - cron: '30 18 * * 0'
   workflow_dispatch:
@@ -32,16 +53,38 @@ jobs:
         id: changes
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+          # A pull request and a push both have a base to diff against; a
+          # scheduled or manual run has nothing to compare, so it analyzes
+          # everything. Every fallback below widens the analysis rather than
+          # narrowing it: a narrowed run is a silently unanalyzed change.
+          everything() {
             echo "actions_changed=true" >> "$GITHUB_OUTPUT"
             echo "go_changed=true" >> "$GITHUB_OUTPUT"
+          }
+
+          case "$EVENT" in
+          pull_request | push) ;;
+          *)
+            everything
+            exit 0
+            ;;
+          esac
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "scope: no base to diff for a $EVENT event; analyzing everything" >&2
+            everything
+            exit 0
+          fi
+          if ! changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"; then
+            echo "scope: git diff $BASE_SHA..$HEAD_SHA failed; analyzing everything" >&2
+            everything
             exit 0
           fi
 
-          changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
           if grep -Eq '^\.github/workflows/' <<< "$changed_files"; then
             echo "actions_changed=true" >> "$GITHUB_OUTPUT"
           else

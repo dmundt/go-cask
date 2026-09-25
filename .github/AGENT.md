@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v2
+version: v3
 ---
 
 # GitHub repository operations
@@ -23,9 +23,11 @@ enabled:
 
 - Require resolved review conversations, and keep stale-review dismissal on.
 - Require these status checks: `verify`, `security`, `platforms`,
-  `Analyze (actions)`, and `Analyze (go)`. Keep `strict` off: an up-to-date
-  branch is not required, because the land lane serializes landings instead
-  (root `AGENTS.md`, "Serialized landing, worktrees and gates").
+  `Analyze (actions)`, and `Analyze (go)`. The two CodeQL contexts come from
+  `.github/workflows/codeql.yml`, the repository's advanced setup, which is why
+  its workflow must stay enabled (see "Code scanning"). Keep `strict` off: an
+  up-to-date branch is not required, because the land lane serializes landings
+  instead (root `AGENTS.md`, "Serialized landing, worktrees and gates").
 - Keep the approving-review count at zero and approval-after-last-push off: in
   this single-account repository the pull-request author and the only possible
   reviewer are the same account, so a required approval would deadlock every
@@ -115,6 +117,36 @@ the host that already paid for it.
   `Analyze (go)`) stay what branch protection names — a skipped job must still
   report, or the landing gate disappears.
 
+## Code scanning
+
+CodeQL here is **advanced setup**: `.github/workflows/codeql.yml` runs two scoped
+analyses and produces the required `Analyze (actions)` and `Analyze (go)`
+contexts. Neither is switched on by GitHub.
+
+- **Keep the repository's default setup OFF**
+  (`gh api repos/dmundt/go-cask/code-scanning/default-setup` must report
+  `"state": "not-configured"`). Enabling it **disables this workflow** — GitHub
+  deactivated it on 2026-09-22, seven minutes after default setup was
+  configured, and the only symptom was which analyses appeared — and it replaces
+  the scoped analyses with unscoped ones: `actions` and `go` on every pull request
+  and every push, plus `javascript-typescript` and `python` over
+  `internal/web/htmx.min.js` and `website/javascripts/mermaid-10.9.5.min.js`
+  (vendored, minified), two small site scripts, and `website/macros.py` — five
+  files that have never produced a finding, at roughly two minutes of runner time
+  per pull request and per push to `main`.
+- **`codeql.yml` analyzes what changed, on both triggers.** A pull request is
+  diffed against its base and a push to `main` against `github.event.before`; the
+  actions analysis runs only when `.github/workflows/**` changed and the Go one
+  only when a `.go`/`go.mod`/`go.sum` file changed. A scheduled or manual run has
+  no base, so it analyzes everything.
+- **The `push` trigger on `main` is what keeps the Security tab current.**
+  CodeQL's own validation warns without it — the default-branch alerts are then
+  refreshed only by the weekly scan. Its path filters keep a documentation merge
+  from starting a run at all.
+- Do not add a language to this workflow without the same treatment: an
+  analysis that cannot be scoped to a change belongs in the weekly scan, not in
+  every pull request.
+
 ## Validation
 
 After changing branch protection or repository settings, verify them:
@@ -124,4 +156,6 @@ gh api repos/dmundt/go-cask/branches/main/protection
 gh api repos/dmundt/go-cask
 gh api repos/dmundt/go-cask/private-vulnerability-reporting
 gh api repos/dmundt/go-cask/automated-security-fixes
+gh api repos/dmundt/go-cask/code-scanning/default-setup
+gh workflow list --all
 ```
