@@ -12,7 +12,9 @@
 #   1. the land-lane holder identity must not embed a toolchain-specific path, or
 #      a lane taken in one toolchain is invisible to the other's pre-push hook;
 #   2. the gate stamp must survive a gate run in another worktree, or a branch
-#      that was verified green is refused at push time.
+#      that was verified green is refused at push time;
+#   3. the slot's staleness must measure IDLE time, not age since acquisition, or
+#      a live landing is evicted mid-gate and two landings hold the lane (#325).
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -114,6 +116,100 @@ for _round in 1 2 3; do
 done
 rm -f "$lane_owner"
 check "three rounds of four simultaneous acquirers leave exactly one holder" "3" "$clean_rounds"
+
+# ---- 2c. staleness is idle time, and an eviction is on the record --------------
+# The slot used to compare against the time it was ACQUIRED, so a landing whose
+# gate plus push crossed LAND_LANE_STALE_MINUTES was evicted mid-flight by the
+# next session's acquire — and `release` then told it "only the holder releases
+# it", which is also what a session that never held the lane is told (#325). The
+# evicted session could not tell the two apart.
+#
+# The contenders are two more linked worktrees, so a takeover needs no clock: the
+# victim's own slot is aged in place, exactly as a slot that stopped being
+# refreshed would look after the window passed.
+victim="$scratch/lease-victim"
+usurper="$scratch/lease-usurper"
+git worktree add -q "$victim" -b lease-victim
+git worktree add -q "$usurper" -b lease-usurper
+cp "$root/scripts/land-lane.sh" "$victim/scripts/land-lane.sh"
+cp "$root/scripts/land-lane.sh" "$usurper/scripts/land-lane.sh"
+chmod +x "$victim/scripts/land-lane.sh" "$usurper/scripts/land-lane.sh"
+
+lane_dir="$(git rev-parse --path-format=absolute --git-common-dir)/dsh-land-lane"
+lane_owner="$lane_dir/owner"
+lane_takeover="$lane_dir/takeover"
+run_in() { # run_in <dir> <minutes> <args...> : sets run_status and run_out
+  # `var="$(cmd)"` carries cmd's exit status, so under `set -e` an expected
+  # refusal would end the run before run_status is read; capture it explicitly.
+  # Reset first: a caller must never read a previous call's status.
+  local dir="$1" minutes="$2"
+  shift 2
+  run_status=0
+  run_out="$(cd "$dir" && LAND_LANE_STALE_MINUTES="$minutes" ./scripts/land-lane.sh "$@" 2>&1)" || run_status=$?
+}
+rm -f "$lane_owner" "$lane_takeover"
+
+run_in "$victim" 0 acquire 325
+check "the victim holds the lane it claimed" "0" "$run_status"
+
+# It is the holder, so it can push its own slot's deadline out — and that must not
+# cost it the slot. This is the call the old script did not have at all.
+before_epoch="$(cut -f2 "$lane_owner")"
+sleep 1
+run_in "$victim" 90 renew
+after_epoch="$(cut -f2 "$lane_owner")"
+check "renew succeeds for the holder" "0" "$run_status"
+check "renew moves the idle deadline" "later" \
+  "$([[ "$after_epoch" -gt "$before_epoch" ]] && echo later || echo same)"
+run_in "$victim" 90 status
+check "renew keeps the holder in the slot" "0" "$run_status"
+
+# The window can be set to zero minutes, so a slot is over-age the moment it is
+# touched unless it is renewed. A slot with a real window is refused instead.
+run_in "$usurper" 90 acquire 999
+check "a fresh slot is not taken over" "1" "$run_status"
+
+# Age the victim's slot as an unrefreshed one would look after the window, then
+# let the usurper take it. No clock is involved and the victim does nothing wrong.
+IFS=$'\t' read -r s_pid s_epoch s_label s_who s_token <"$lane_owner"
+printf '%s\t%s\t%s\t%s\t%s\n' "$s_pid" "$(($(date -u +%s) - 600))" "$s_label" "$s_who" "$s_token" >"$lane_owner"
+run_in "$usurper" 1 acquire 999
+recorded="$(grep -c "	325	" "$lane_takeover" 2>/dev/null || true)"
+check "an idle slot is taken over when the window passes" "0" "$run_status"
+check "the takeover names the holder it evicted" "named" \
+  "$(grep -q "taking over from 325" <<<"$run_out" && echo named || echo unnamed)"
+check "the eviction is recorded for the previous holder" "1" "${recorded:-0}"
+check "the record says why the slot was taken" "expired" "$(cut -f5 "$lane_takeover" 2>/dev/null)"
+
+# The evicted holder is told what happened instead of being left to guess.
+run_in "$victim" 90 renew
+check "a non-holder cannot renew" "1" "$run_status"
+check "renew reports the holder it lost the slot to" "reported" \
+  "$(grep -q "does not hold the slot" <<<"$run_out" && grep -q "taken over from 325" <<<"$run_out" && echo reported || echo silent)"
+
+run_in "$victim" 90 release
+check "an evicted holder cannot release the slot" "1" "$run_status"
+check "release reports the eviction rather than blaming the caller" "reported" \
+  "$(grep -q "taken over from 325" <<<"$run_out" && echo reported || echo silent)"
+# Neither refusal may have disturbed the new holder's slot.
+run_in "$victim" 90 status
+check "the new holder still holds the slot after the refusals" "2" "$run_status"
+leftovers="$(find "$lane_dir" -maxdepth 1 -name 'owner.read.*' | wc -l | tr -d ' ')"
+check "the refusals left no slot copy behind" "0" "$leftovers"
+
+# The same worktree may not hand the slot to a second session: renewing is a
+# deliberate call, never a side effect of asking (that is what #299 was about).
+run_in "$victim" 0 acquire 325
+run_in "$victim" 0 acquire 326
+standing="$(cut -f3 "$lane_owner")"
+check "a second acquire in the holding worktree does not open a second landing" "0" "$run_status"
+check "a second acquire stays in the standing holder's slot" "already held" \
+  "$(grep -q "^land lane: already held by 325" <<<"$run_out" && echo "already held" || echo "handed out")"
+check "the slot still belongs to the standing holder" "325" "$standing"
+
+rm -f "$lane_owner" "$lane_takeover" "$lane_dir/repo-id"
+git worktree remove --force "$victim" 2>/dev/null || true
+git worktree remove --force "$usurper" 2>/dev/null || true
 
 # ---- 3. the gate stamp is a ledger, not a single slot -------------------------
 # The hook's own code decides here: a real commit is pushed to a bare remote with

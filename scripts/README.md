@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v6
+version: v7
 ---
 
 # Scripts — go-cask
@@ -14,7 +14,7 @@ This directory holds the repo's operational helper scripts. They are the single 
 | Script | Purpose |
 |---|---|
 | [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, helper-script behaviour, doc integrity, and the website example build plus shipped-package inventory check. Auto-detects a documentation-only change and runs the documentation gate instead (the scope CI applies; `VERIFY_SCOPE=full|docs` overrides). A green run stamps the commit in the shared git dir for the pre-push hook. |
-| [`land-lane.sh`](./land-lane.sh) | The single-slot landing lock that serializes who may push, so parallel sessions cannot invalidate each other's branch. `status` / `acquire <label>` / `release`; the slot lives in the shared git dir. |
+| [`land-lane.sh`](./land-lane.sh) | The single-slot landing lock that serializes who may push, so parallel sessions cannot invalidate each other's branch. `status` / `acquire [--force] <label>` / `renew` / `release`; the slot lives in the shared git dir. Staleness is idle time and only `renew` — the holder's own call — moves the deadline, so a long gate run or push keeps the lane; a takeover records the holder it evicted, so the evicted session is told what happened instead of reading the same refusal a session that never held the lane gets. |
 | [`worktree.sh`](./worktree.sh) | Creates/removes a task worktree with its `.git` in the relative form, so both the Windows and the WSL git resolve it (an absolute path makes WSL git walk up to the primary checkout). `add <name> [<branch>]` / `remove <name>` / `lock [<name>...]` / `prune` (refuses — see below) / `list`. Every worktree it creates carries git's `locked` file, which is what stops `git worktree prune` from deleting a registration whose admin `gitdir` is in the other toolchain's path form. |
 | [`security.sh`](./security.sh) | Installs the pinned `govulncheck` version and runs the repository security scan. |
 | [`docs-only.sh`](./docs-only.sh) | Classifies a Git diff as documentation-only for CI scope selection. |
