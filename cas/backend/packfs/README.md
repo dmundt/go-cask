@@ -15,6 +15,7 @@ The project’s canonical distinction is: `cas/backend/fs` is the filesystem bac
 - Every object is written **twice**: the loose copy through the atomic fs path (the durable one) and an append-only pack record. There is no size threshold and no object that stays only loose.
 - Nothing is filtered and nothing is compacted: `List`/`Stats` still walk the loose tree, inode count is unchanged, and `Delete` drops the pack index record without reclaiming the pack bytes — a packed store grows with every `Put` and never shrinks on its own.
 - The base directory belongs to exactly one store: it holds the loose tree (`<base>/loose`), the pack directory (`<base>/packs`) and the pack index. `packfs.New` validates it with `fs.ValidateBase` before creating anything — an empty path, `.`, a filesystem or volume root, or a parent-traversal path is rejected; a nested directory is accepted.
+- `Clean` sweeps both trees under that base: the loose tree through its own backend, the pack directory through `fs.CleanTemp`. One implementation and one `*.tmp`/`*.tmp.<n>` convention, so the two cannot disagree about what a leftover is, and a name outside the convention (`notes.tmp.old`) survives in either tree.
 - This is a storage backend, not the chunk/manifest helper package in [../pack](../../pack/README.md). The helper package is for payload splitting and metadata; the backend is for durable append-only object storage.
 
 ## Typical use

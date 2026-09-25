@@ -2,10 +2,12 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestValidateBase(t *testing.T) {
@@ -186,5 +188,92 @@ func TestCleanupTempReportsRemovalFailure(t *testing.T) {
 
 	if err := CleanupTemp(context.Background(), base); err == nil {
 		t.Fatal("CleanupTemp must report a temp file it cannot remove")
+	}
+}
+
+// TestCleanTempSweepsAnotherTree covers the export a second tree under a store
+// base uses (cas/backend/packfs sweeps `<base>/packs` with it): it counts what
+// it removed, honors the age threshold, and leaves a name that merely looks like
+// scratch alone.
+func TestCleanTempSweepsAnotherTree(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "packs")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(root, "index.json.tmp")
+	fresh := filepath.Join(root, ".put-2.tmp")
+	keep := filepath.Join(root, "name.tmp.extra")
+	for _, path := range []string{stale, fresh, keep} {
+		if err := os.WriteFile(path, []byte("scratch"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := CleanTemp(ctx, root, time.Hour)
+	if err != nil {
+		t.Fatalf("CleanTemp(1h) = %v, want nil", err)
+	}
+	if removed != 1 {
+		t.Fatalf("CleanTemp(1h) removed %d, want 1 (the stale scratch file)", removed)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("CleanTemp left the stale scratch file: %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("CleanTemp removed the fresh scratch file: %v", err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("CleanTemp removed a name that is not the temp convention: %v", err)
+	}
+
+	// A zero threshold means "no age limit", so the fresh scratch file goes too.
+	removed, err = CleanTemp(ctx, root, 0)
+	if err != nil {
+		t.Fatalf("CleanTemp(0) = %v, want nil", err)
+	}
+	if removed != 1 {
+		t.Fatalf("CleanTemp(0) removed %d, want 1 (the fresh scratch file)", removed)
+	}
+	if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+		t.Fatalf("CleanTemp(0) left the scratch file: %v", err)
+	}
+}
+
+// TestCleanTempEdges covers CleanTemp's guarded paths: an unusable root is
+// rejected before the walk, a root that does not exist is not an error (the
+// helper is advisory, and there is nothing to clean up in a tree that was never
+// created), and a canceled context stops the sweep before it removes anything.
+func TestCleanTempEdges(t *testing.T) {
+	ctx := context.Background()
+	if _, err := CleanTemp(ctx, "", 0); err == nil {
+		t.Fatal("CleanTemp(empty) = nil error, want error")
+	}
+	missing := filepath.Join(t.TempDir(), "never-created")
+	if removed, err := CleanTemp(ctx, missing, 0); err != nil || removed != 0 {
+		t.Fatalf("CleanTemp(missing root) = (%d, %v), want (0, nil)", removed, err)
+	}
+	for _, root := range []string{"..", ".." + string(filepath.Separator), filepath.Join("..", "sibling")} {
+		if _, err := CleanTemp(ctx, root, 0); err == nil {
+			t.Fatalf("CleanTemp(%q) = nil error, want rejection", root)
+		}
+	}
+
+	root := t.TempDir()
+	tempPath := filepath.Join(root, "stale.tmp")
+	if err := os.WriteFile(tempPath, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := CleanTemp(canceled, root, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CleanTemp(canceled ctx) = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("a canceled sweep must not remove files: %v", err)
 	}
 }
