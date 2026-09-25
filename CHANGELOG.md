@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Every `AGENT.md` in the repository now carries the same frontmatter —
+  `type`, `title` (identical to its H1), one-line `description` and a `version`
+  that moves on a material change — so a reader of a package-local guide can
+  tell how current it is. The seven guides that carried none (`cas/`,
+  `cas/codec/`, `cas/verify/`, `benchmarks/`, `benchmarks/data/`, `website/`,
+  `.github/`) gain it at `v1`; the rest are bumped. `docs/AGENT.md` §1.1 and
+  `docs/specs/AGENT.md` §3 state the rule.
 - The envelope **header census** is answerable without decoding a payload:
   `cas.PeekHeader` returns a frame's version, codec tag and type name in one
   pass over those fields. `cask list` gains `-type`/`-codec` filters and reports

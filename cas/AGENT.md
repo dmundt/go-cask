@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Agent instructions — `cas`
+description: The package-local guide for the core cas subtree — algorithm- and codec-agnostic boundaries, the byte/typed layer split, the canonical memory import aliases, and the repo-wide no-reflection rule with its one recorded exception.
+version: v1
+---
+
 # Agent instructions — `cas`
 
 This package-local guide applies to the core `cas` subtree.

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v28
+version: v29
 tags: [go-cask]
 status: stable
 ---
@@ -35,7 +35,7 @@ Long docs in this folder may add a shallow table of contents directly under the 
 
 - Pattern `<Topic>.md`, one topic per file, lowercase kebab-case domain noun. These files are the instruction set under `docs/specs/`, so filenames carry **no** `.instructions` suffix.
 - Topics are domain nouns: `api-design`, `backend-architecture`, `branch-naming`, `cas-core`, `cli`, `coding-guidelines`, `consistency`, `defaults`, `examples`, `extensions`, `frontend-architecture`, `library-design`, `object-versioning`, `operations`, `performance`, `testing-strategy`, `versioning`, `viewer-design`, `viewer-security`.
-- No redundant prefixes (never `go-`, never "instructions" inside a name). `-api`/`-design`/`-security` suffixes disambiguate viewer facets. This meta-guide is the sole `AGENT.md`.
+- No redundant prefixes (never `go-`, never "instructions" inside a name). `-api`/`-design`/`-security` suffixes disambiguate viewer facets. Within this folder this meta-guide is the sole `AGENT.md`; the package-local guides elsewhere in the repository (`cas/AGENT.md`, `scripts/AGENT.md`, `benchmarks/AGENT.md`, …) are instruction files under `docs/AGENT.md` §1.1 rather than members of this set.
 
 ## 3. Frontmatter (required)
 
@@ -52,6 +52,7 @@ version: v5
 
 - `type` is the OKF concept type (`docs/AGENT.md` §1.2): `Specification` for every topic file here, `Agent Instructions` for this meta-guide. `title` matches the H1 exactly (minus `# `). `description` is one line. `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not on cosmetic fixes (typos, formatting, wording, line endings). The gate checks that the field of a changed versioned file moved and nothing more: `./scripts/verify.sh` runs `scripts/check-version-fields.sh` and names the file, while whether the change was material stays a reviewer's call. No blank line before `---`.
 - Index files are the exception: this folder's `index.md` carries `okf_version: "0.2"` and **no** `type` (`docs/AGENT.md` §1.3), so its four keys are `okf_version`/`title`/`description`/`version`.
+- These keys describe this folder's topic files. The repository's `AGENT.md` guides — this meta-guide included, and every package-local guide outside this folder — carry the same four keys under `docs/AGENT.md` §1.1, with `title` identical to their H1 and `version` moving on a material change to the guide itself. When the two files disagree about an `AGENT.md`, `docs/AGENT.md` §1.1 owns the frontmatter rule and this section owns the topic-file shape.
 - `tags:` and `status:` are the only optional keys, and only where applicable (this meta-guide carries `tags: [go-cask]`, `status: stable`). No other keys.
 
 ## 4. Document structure

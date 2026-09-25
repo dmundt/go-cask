@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Agent instructions — `cas/verify`
+description: The package-local guide for cas/verify — keep integrity validation explicit and layered above the store, with caller-chosen hashers for checksum-addressed stores and the sidecar as the cheap second check over a strongly-addressed one.
+version: v1
+---
+
 # Agent instructions — `cas/verify`
 
 This package keeps integrity validation explicit and separate from the storage model.
