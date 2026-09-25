@@ -277,6 +277,7 @@ coverage_targets=(
   "90|./cas/refs|reference"
   "90|./cas/pack|reference"
   "90|./cas/codec/flate|codec"
+  "90|./cas/codec/internal/bounded|codec"
   "90|./cas/bloom/persistent|index"
   "90|./internal/store|seam"
   # Tier 80.

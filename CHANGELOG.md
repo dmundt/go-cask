@@ -112,6 +112,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The three compression wrappers keep their names and their `MaxDecodedBytes`,
+  but `flate.ErrDecodedTooLarge`, `gzip.ErrDecodedTooLarge` and
+  `zlib.ErrDecodedTooLarge` are now one value behind three names, produced by one
+  bounded body (`cas/codec/internal/bounded`): `errors.Is(err,
+  gzip.ErrDecodedTooLarge)` holds for a payload a caller read through `flate` or
+  `zlib` too, and the ceiling is defined in one place instead of three.
 - The `cas/pack` manifest helpers take the caller's `codec` and
   `context.Context` and name neither format themselves: the package no longer
   imports a codec at all, a nil codec is `pack.ErrNilCodec` instead of a silent
@@ -214,6 +220,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
   filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
   now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
+
+### Removed
+
+- `bloom.Indices` — a bit-position helper with no caller outside the package's
+  own tests (the three filters compute their positions inline, without the
+  allocation the helper's slice return forced). `bloom.Parameters` and
+  `bloom.ResolveIndexHash` are unchanged; `cas/bloom` is a helper layer outside
+  the frozen surface (cas-core §7.1), so the removal ships in `v1`.
 
 ### Fixed
 

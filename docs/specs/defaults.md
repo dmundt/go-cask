@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v41
+version: v42
 ---
 
 # Defaults and Behavior — go-cask
@@ -31,7 +31,7 @@ Single reference for "what is the default behavior?" and "what are the numbers?"
 | Default codec | JSON (`json.New[T]()`), uncompressed: no default constructor wraps a payload in a compression codec | cas-core §4.6 |
 | Default compression codec | `flate` (`cas/codec/flate`) is the wrapper for a payload that needs compressing (smallest of the three, no header); compression is opt-in, never applied by a default constructor | cas-core §4.6; extensions §3 |
 | Compact binary codec | optional app-defined payload codec (`binary.New(next, transform, restore)` or `binary.NewRaw(encode, decode)`) for stable, compact binary payloads | cas-core §4.6 |
-| Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` | cas-core §4.6 |
+| Decompression ceiling | `MaxDecodedBytes` = 1 GiB per `Decode` in `cas/codec/{flate,gzip,zlib}`; past it the codec returns `ErrDecodedTooLarge` — one value shared by all three, so `errors.Is` holds whichever one decoded the payload | cas-core §4.6 |
 | Header-peek ceiling | `PeekType` reads a header string field (codec tag or type name) of at most 4096 bytes; a larger declared length is `ErrCorrupt` and is never allocated | cas-core §4.6 |
 | Version-peek cost | `PeekVersion`/`Store.Version` read exactly one byte — the frame's leading version byte — independent of payload size; it is reported verbatim, including a version this build does not know, so only an empty stream or a read failure is `ErrCorrupt` | cas-core §4.6, §4.8 |
 | Read concurrency | `fs`: lock-free (`Get`/`Exists`/`List`/`Stats`); `mem` uses an `RWMutex`; `packfs` reads take its in-memory index mutex | cas-core §4.4, §4.14 |
