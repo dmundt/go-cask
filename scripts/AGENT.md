@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v11
+version: v12
 ---
 
 # Agent instructions — `scripts/`
@@ -34,36 +34,49 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
   helpers can write the same file, one of them gains a mode that never touches
   it, and a test in `verify.sh` pins the split (`test-bench-scripts.sh` is the
   reference for `bench-baseline.sh` versus `bench-compare.sh`).
-- The landing helpers are part of this layer: `land-lane.sh` serializes who may
-  push (one slot, in the shared git dir), `.githooks/pre-push` refuses a push
-  without the lane and a green stamp for the exact commit, and `verify.sh` writes
-  that stamp only on success. Keep them dependency-free, POSIX-sh safe for the
-  hook, and never make the hook re-run work the stamp already covers — the point
-  is that an unchanged commit costs nothing.
-- Three invariants of those helpers are load-bearing. First, on a host where the
-  gate and the push run in different toolchains (Windows: the race gate needs
-  WSL, the push needs the Windows git client), the lane's holder identity must
-  stay a portable token with no path in it — `land-lane.sh whoami` prints it for
-  debugging — because `D:/x/repo` and `/mnt/d/x/repo` never compare equal, which
-  would make a lane taken in one toolchain invisible to the other's hook. Second,
-  `$common/verify.ok` is a ledger with one line per verified commit, never a
-  single slot: overwriting it let a gate run in any other worktree invalidate a
-  verified branch and refuse its push. Third, the lane is claimed with an
-  exclusive create (`set -C`), never with a check followed by a write: two
-  waiters retrying on the same cadence both found the slot absent and both claimed
-  it, so two landings gated and pushed at once. `test-land-lane.sh` pins all
-  three.
-- The lane's staleness is IDLE time, never age since acquisition, and losing the
-  slot is recorded. `acquire` writes the moment the slot was last refreshed and
-  only `renew` — the holder's own verb — moves that moment forward, so a gate run
-  or push that outlasts `LAND_LANE_STALE_MINUTES` keeps the lane instead of being
-  evicted by the next session's `acquire` (#325). Renewing is never a side effect
-  of asking for the slot, or a second session in one worktree would collect a lane
-  it does not hold. A takeover drops the slot only after recording the holder it
-  evicts: the evicted holder has no other way to learn what happened, and without
-  the record `release` blames it in exactly the words it uses for a session that
-  never held the lane. `test-land-lane.sh` pins the idle deadline, the refusal of
-  a second acquirer in one worktree, and both diagnostics.
+- The landing helpers are part of this layer, in two layers that must not be
+  confused. `pr-lane.sh` owns the LANE: one open pull request is one lane, the
+  claim is a server-side compare-and-swap on the coordination ref
+  `refs/lane/<issue>`, and the lane is freed by merging or closing its PR and
+  running `release`. `land-lane.sh` owns the local ADVISORY slot: one slot in the
+  shared git dir that keeps two gate runs in one clone from overlapping, and it is
+  not a condition for pushing. `verify.sh` writes the gate stamp and
+  `.githooks/pre-push` refuses a push whose HEAD holds no stamp for that exact
+  commit — the one hard local rule, because it is what makes re-pushing an
+  unchanged commit free. Keep the helpers dependency-free, POSIX-sh safe for the
+  hook, and never make the hook re-run work the stamp already covers.
+- Four invariants of those helpers are load-bearing. First, the lane is claimed
+  with an atomic create on the REMOTE (`POST /git/refs` answers 422 when the ref
+  exists), never with a check followed by a write: two sessions that retry on the
+  same cadence would both find the lane free and both claim it — #299 is the
+  local-slot version of that bug. Second, the claim record is the annotated tag
+  object the ref points at, because a ref carries no timestamp: the record names
+  the claiming branch and worktree and dates the claim, which is what lets another
+  session tell a claim still inside its window from one that was abandoned.
+  Third, the local slot's holder identity must stay a portable token with no path
+  in it — on a host where the gate and the push run in different toolchains
+  (Windows: the race gate needs WSL, the push needs the Windows git client)
+  `D:/x/repo` and `/mnt/d/x/repo` never compare equal — because `whoami` prints
+  it and the hook reports the slot with it. Fourth, `$common/verify.ok` is a
+  ledger with one line per verified commit, never a single slot: overwriting it
+  let a gate run in any other worktree invalidate a verified branch and refuse its
+  push. `test-pr-lane.sh` pins the first two, `test-land-lane.sh` the last two.
+- Neither lane is a branch, and neither may become one. `refs/lane/<issue>` is a
+  coordination ref — outside the branch namespace
+  [`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md) §2 governs —
+  and nothing is ever committed to it: it is created, read and deleted through the
+  refs API (`POST`/`DELETE /git/refs/lane/<issue>`), never pushed to or fetched
+  as a branch.
+- The local slot's staleness is IDLE time, never age since acquisition, and losing
+  the slot is recorded. `acquire` writes the moment the slot was last refreshed
+  and only `renew` — the holder's own verb — moves that moment forward, so a gate
+  run or push that outlasts `LAND_LANE_STALE_MINUTES` keeps the lane instead of
+  being evicted by the next session's `acquire` (#325). Renewing is never a side
+  effect of asking for the slot, or a second session in one worktree would collect
+  a lane it does not hold. A takeover drops the slot only after recording the
+  holder it evicts: the evicted holder has no other way to learn what happened.
+  `test-land-lane.sh` pins the idle deadline, the refusal of a second acquirer in
+  one worktree, and both diagnostics.
 - `scripts/worktree.sh add` bases every task worktree on the freshly fetched
   `origin/main` (`-b <branch> origin/main`). A local `main` is not a substitute:
   in the primary checkout it can be behind the remote or hold another session's

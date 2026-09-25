@@ -1,24 +1,14 @@
 #!/bin/sh
-# Mechanical landing rules (AGENTS.md, "Serialized landing, worktrees and gates"):
+# Mechanical landing rules (AGENTS.md, "The pull request is the lane"):
 #
-#   1. this worktree holds the land lane — one landing at a time, so parallel
-#      sessions cannot invalidate each other's branch mid-flight;
-#   2. the gate ran green for the exact commit being pushed — and because the
-#      stamp is keyed by commit, re-pushing an unchanged commit costs nothing.
+#   1. the gate ran green for the exact commit being pushed — and because the
+#      stamp is keyed by commit, re-pushing an unchanged commit costs nothing;
+#   2. the lane itself is the open pull request, claimed on the remote
+#      (`refs/lane/<issue>`), so this hook only REPORTS the local advisory slot.
+#      Holding it is no longer a condition for pushing.
 #
 # Install once per clone:  git config core.hooksPath .githooks
 set -eu
-
-if ! ./scripts/land-lane.sh status >/dev/null 2>&1; then
-  cat >&2 <<'EOF'
-pre-push: the land lane is not held by this worktree.
-  Landing is serialized on purpose: every merge makes other branches "behind",
-  and a rebuild + full gate per race is wasted work.
-      ./scripts/land-lane.sh acquire <issue-or-label>
-      ./scripts/land-lane.sh release        # after the PR merges
-EOF
-  exit 1
-fi
 
 stamp="$(git rev-parse --path-format=absolute --git-common-dir)/verify.ok"
 head="$(git rev-parse HEAD)"
@@ -34,4 +24,17 @@ pre-push: no green gate for $head.
       VERIFY_SCOPE=full ./scripts/verify.sh    # force the whole gate
 EOF
   exit 1
+fi
+
+# Advisory, never a refusal. The lane lives on the remote and every clone sees
+# it; the local slot keeps two gate runs in ONE clone from overlapping, which is
+# worth a note and not worth blocking a push — a per-clone file must not be able
+# to stop a landing the server would have serialized anyway.
+if [ -x ./scripts/land-lane.sh ] && ! ./scripts/land-lane.sh status >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+pre-push: note — this worktree does not hold the local advisory slot.
+  Not required: the lane is the pull request, and 'scripts/pr-lane.sh status'
+  shows it. The local slot only keeps two gate runs in one clone from
+  overlapping, so a busy clone may still want it (scripts/land-lane.sh acquire).
+EOF
 fi

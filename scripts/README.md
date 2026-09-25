@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: Local automation for verification, releases, examples, and benchmarks; treated as the canonical repo helper layer for human operators and CI.
-version: v7
+version: v8
 ---
 
 # Scripts — go-cask
@@ -14,7 +14,9 @@ This directory holds the repo's operational helper scripts. They are the single 
 | Script | Purpose |
 |---|---|
 | [`verify.sh`](./verify.sh) | Central repo verification gate: formatting, module drift, vet, import checks, security scanning, race/coverage, fuzz smoke, helper-script behaviour, doc integrity, and the website example build plus shipped-package inventory check. Auto-detects a documentation-only change and runs the documentation gate instead (the scope CI applies; `VERIFY_SCOPE=full|docs` overrides). A green run stamps the commit in the shared git dir for the pre-push hook. |
-| [`land-lane.sh`](./land-lane.sh) | The single-slot landing lock that serializes who may push, so parallel sessions cannot invalidate each other's branch. `status` / `acquire [--force] <label>` / `renew` / `release`; the slot lives in the shared git dir. Staleness is idle time and only `renew` — the holder's own call — moves the deadline, so a long gate run or push keeps the lane; a takeover records the holder it evicted, so the evicted session is told what happened instead of reading the same refusal a session that never held the lane gets. |
+| [`pr-lane.sh`](./pr-lane.sh) | The landing lane: one open pull request is one lane. `claim <issue>` takes it with a server-side compare-and-swap on the coordination ref `refs/lane/<issue>` (an atomic create — it succeeds exactly once, so two sessions cannot both claim a lane), `check` reports whether a claim would succeed without claiming, `status [<issue>] [--json]` lists every lane on the remote with the pull request behind it, and `release <issue> [--force]` frees a lane whose PR merged or was closed. The ref points at a tag object naming the claiming branch and worktree and dating the claim; an open PR holds the lane, and a claim with no PR is honoured for `PR_LANE_STALE_MINUTES` (90) before the next claimer takes it over — no heartbeat to renew and no `--force` takeover. |
+| [`test-pr-lane.sh`](./test-pr-lane.sh) | Behaviour test for that lane against a stub `gh`: the atomic claim under four simultaneous claimers, the refusal while a PR is open, the claim window, the takeover of an abandoned claim, an unreadable record, and release. `verify.sh` runs it. |
+| [`land-lane.sh`](./land-lane.sh) | The local ADVISORY slot: one slot in the shared git dir that keeps two gate runs in ONE clone from overlapping, so a clone does not pay twice for the same tree. It no longer gates a push — the lane is the pull request (`pr-lane.sh`) and `.githooks/pre-push` only reports this slot. `status` / `acquire [--force] <label>` / `renew` / `release`. Staleness is idle time and only `renew` — the holder's own call — moves the deadline; a takeover records the holder it evicted. |
 | [`worktree.sh`](./worktree.sh) | Creates/removes a task worktree with its `.git` in the relative form, so both the Windows and the WSL git resolve it (an absolute path makes WSL git walk up to the primary checkout). `add <name> [<branch>]` / `remove <name>` / `lock [<name>...]` / `prune` (refuses — see below) / `list`. Every worktree it creates carries git's `locked` file, which is what stops `git worktree prune` from deleting a registration whose admin `gitdir` is in the other toolchain's path form. |
 | [`security.sh`](./security.sh) | Installs the pinned `govulncheck` version and runs the repository security scan. |
 | [`docs-only.sh`](./docs-only.sh) | Classifies a Git diff as documentation-only for CI scope selection. |
@@ -68,6 +70,9 @@ This directory holds the repo's operational helper scripts. They are the single 
 ./scripts/test-bench-scripts.sh             # regression test for the two helpers above
 ./scripts/dep-graph.sh                      # regenerate the package dependency graph
 ./scripts/dep-graph.sh --check              # report a stale graph; writes nothing
+./scripts/pr-lane.sh claim 389              # take the lane for an issue before starting
+./scripts/pr-lane.sh status                 # every lane on the remote and its pull request
+./scripts/pr-lane.sh release 389            # free the lane once its PR merged
 ```
 
 When a script's behavior changes, update this README, the matching workflow, and any affected docs in the same change.
