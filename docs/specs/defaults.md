@@ -2,7 +2,7 @@
 type: Specification
 title: Defaults and Behavior — go-cask
 description: The canonical reference for go-cask's basic design/architecture, default behavior, and every default value/constant — one place to look up how the system behaves out of the box and what the numbers are.
-version: v43
+version: v44
 ---
 
 # Defaults and Behavior — go-cask
@@ -124,7 +124,7 @@ Default targets, not absolutes, **aspirational**: nothing enforces them today (p
 | Library baseline | Go 1.24+ (`omitzero` JSON tags) | library-design §5 |
 | Dependencies | standard library plus approved `golang.org/x/sys` mmap support; additions need justification | coding-guidelines §3 |
 | Frontend scripting | htmx only; no hand-written JS; one scoped embedded viewer stylesheet | coding-guidelines §4 |
-| Lean-core budget | `cas/` ≤ ~1600 code lines (non-blank, non-comment; 906 today), ≤ ~45 exported identifiers (44 today) | library-design §1 |
+| Lean-core budget | `cas/` ≤ ~1600 code lines (non-blank, non-comment; 906 today), ≤ ~45 exported identifiers (45 today) | library-design §1 |
 | Stable core surface | identifiers in cas-core §7.1 | cas-core §7.1 |
 | Extension rule | extend don't modify; own packages; stable surface only | extensions §1 |
 

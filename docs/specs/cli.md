@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v32
+version: v33
 ---
 
 # CLI — go-cask
@@ -66,7 +66,13 @@ Contract for `cmd/cask`, the single binary: thin CLI over the cas library plus, 
   defaults to the global flag (cli.md §1).
 - `seed-preview` creates valid, deterministically addressed TLV envelopes with
   representative type names, payload sizes, deterministic graph edges and
-  alternating root-reachable segments. Each eight-object block holds a Root
+  alternating root-reachable segments. The frames are the current format
+  (`cas.EnvelopeVersion`), carrying the codec tag `preview` — the payload is a
+  synthetic byte pattern no shipped codec produced — and they are built by
+  `cas.EncodeEnvelope`, the writer `Store.Put` frames through, so a seeded digest
+  is the digest the store would have computed for the same bytes (a local copy of
+  the layout silently froze at version 1 before go-cask#187, and the addresses of
+  seeded objects change with the frame). Each eight-object block holds a Root
   (reachable, no inbound edges), orphans with inbound edges, and a Detached
   orphan entry (unreachable, no inbound edges), so the viewer can demonstrate
   all four reference states. Consecutive objects cycle through zero, one, two

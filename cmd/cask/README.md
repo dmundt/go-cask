@@ -216,7 +216,10 @@ one algorithm and reading with another finds no graph and shows no references.
 Every eight-object block includes a `Root` entry, orphans with inbound edges,
 and a `Detached` entry, so all four states are visible; every eighth object is
 written with tampered bytes that do not hash to their own address, so `verify`
-genuinely fails for it. An ordinary store stays reference-free until an
+genuinely fails for it. Seeded objects are current-format envelopes carrying the
+`preview` codec tag (the payload is a synthetic byte pattern no shipped codec
+produced), framed through the core's own writer so their digests match what the
+store would have written. An ordinary store stays reference-free until an
 embedding host supplies its own indexes (`web.Config`,
 [`internal/web/README.md`](../../internal/web/README.md)).
 

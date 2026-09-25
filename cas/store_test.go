@@ -153,6 +153,38 @@ func TestBackendContract(t *testing.T) {
 	}
 }
 
+// TestStoreFramesThroughEncodeEnvelope pins that what Store.Put stores is
+// exactly what the exported writer frames, so a tool that has to produce
+// stored bytes without a Store — `cask seed-preview`, which derives each
+// preview object's digest from its own frame — writes the same bytes and lands
+// on the same digest (go-cask#187).
+func TestStoreFramesThroughEncodeEnvelope(t *testing.T) {
+	backend := backmem.New()
+	s := newTestStore(t, backend)
+	ctx := context.Background()
+	note := test.Note{Title: "t", Body: "b"}
+
+	h, err := s.Put(ctx, note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := s.GetRaw(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := jsoncodec.New[test.Note]().Encode(note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := cas.EncodeEnvelope("json", note.Type(), payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, want) {
+		t.Fatalf("Store.Put stored %x, want the exported writer's %x", stored, want)
+	}
+}
+
 func TestStoreRoundTrip(t *testing.T) {
 	backend := backmem.New()
 	s := newTestStore(t, backend)

@@ -91,11 +91,55 @@ const envelopeVersionV1 byte = 1
 // this byte names the layout of the frame that carries it.
 const EnvelopeVersion byte = envelopeVersion
 
+// EncodeEnvelope frames payload as an envelope of the format this build writes:
+// [version u8 = EnvelopeVersion][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload].
+//
+// It is the writer counterpart of EnvelopeFromBytes/EnvelopeType: for a tool
+// that must produce stored bytes *without* a Store — `cask seed-preview` seeds a
+// deterministic preview graph, so it has to derive each object's digest from
+// exactly the bytes the store would have written — and for a consumer that
+// speaks the format directly. Store.Put frames through this same function, so
+// the tree holds one implementation of the layout (go-cask#187) and a format
+// bump cannot leave a second writer behind.
+//
+// codec is the writing codec's identity tag (cas.CodecNamer): empty is legal and
+// means "unspecified", exactly as a version 1 frame reads back. The caller owns
+// the payload, so this layer cannot derive the tag from it — the tag is
+// declared, never inferred.
+//
+// typ is the versioned object type name ("commit@1"). An empty name, or one
+// without "@", is rejected as ErrUnknownType: a reader decodes an unversioned
+// name as "<type>@1", so writing one would produce an object whose stored type
+// can never equal the decoded one — a write-only object. Enforcing it here
+// rather than in Store.marshal means every writer gets the same rule.
+//
+// The function is pure — no I/O, no context — so it takes neither a
+// context.Context nor a Backend.
+func EncodeEnvelope(codec, typ string, payload []byte) ([]byte, error) {
+	if typ == "" {
+		// An empty type name produces an envelope that decodeEnvelope rejects,
+		// i.e. an object the write succeeds on but Get can never read.
+		return nil, fmt.Errorf("%w: empty type name", ErrUnknownType)
+	}
+	if !strings.Contains(typ, "@") {
+		// Object[T].Type MUST return a versioned name "<type>@<major>"
+		// (object.go, object-versioning.md). decodeEnvelope reads a legacy
+		// unversioned name as "@1", so writing one produces an object whose
+		// stored type ("legacy@1") can never equal the decoded Type()
+		// ("legacy"): a write-only object. Reject it at the source instead.
+		return nil, fmt.Errorf("%w: type name %q is not versioned (want \"<type>@<major>\")", ErrUnknownType, typ)
+	}
+	return encodeEnvelope(codec, typ, payload), nil
+}
+
 // encodeEnvelope writes codec, typ and payload as
 // [version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload].
 // An empty codec is legal and means the writing codec declares no identity. The
 // encoded length is known up front, so the whole envelope is written into a
 // single pre-sized allocation (no growing buffer, no final copy).
+//
+// It is the layout itself, reached only through EncodeEnvelope, so what may be
+// framed is decided in one place.
 func encodeEnvelope(codec, typ string, payload []byte) []byte {
 	var lenBuf [binary.MaxVarintLen64]byte
 	nCodec := binary.PutUvarint(lenBuf[:], uint64(len(codec)))

@@ -10,6 +10,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cas.EncodeEnvelope(codec, typeName, payload)` exports the envelope writer
+  `Store.Put` frames through, for a tool that must produce stored bytes without a
+  store. `cask seed-preview` is that tool — it derives each preview object's
+  digest from the frame it is about to write — and it hand-rolled a **version 1**
+  layout, so a seeded store mixed formats with everything `cask put` writes and
+  carried no codec identity. Seeded objects are now format-version 2 frames
+  tagged `preview` (`cask seed-preview -hash-algo sha512` too). Migration: their
+  addresses change, so an already-seeded store keeps its old v1 objects beside
+  the new ones and the preview reference graph only sees the new set — re-run
+  `cask seed-preview`, then `cask gc` the old objects if they are unwanted.
 - `cas/verify/sidecar` records an optional per-object checksum beside a store's
   bytes, so a cheap check (`crc32`, `adler32` or `crc64`) can run over a store
   whose identity is a strong hash: the record lives at
