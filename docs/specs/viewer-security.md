@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v15
+version: v16
 ---
 
 # Viewer Security — go-cask
@@ -33,7 +33,8 @@ Everything else stays off by default (loopback §4, auth required §5).
 ## 4. Localhost only
 
 - Default bind SHALL be `127.0.0.1` or `localhost`; the viewer MUST NOT be exposed on all interfaces by default.
-- Network exposure requires an explicit config change (`bind`).
+- A loopback bind SHALL be pinned to an explicit numeric loopback address before the listener is created. The documented spellings are `127.0.0.1`, `localhost`, and `[::1]`; `localhost` MUST be resolved by the viewer to `127.0.0.1` rather than by the host resolver, so the bound address, the printed origin, and the host firewall's behaviour cannot differ between machines (cli.md §2, go-cask#337).
+- Network exposure requires an explicit config change (`bind`). Binding beyond loopback is also what makes a host firewall prompt for network access; the loopback default never prompts, so the prompt is the expected consequence of that deliberate override and not a viewer defect (cli.md §2).
 - If bind is a non-loopback address, the app MUST log a prominent startup warning, and MUST refuse to start unless HTTPS is enabled or explicit `allow_insecure_bind: true` is set.
 - A non-loopback bind MUST NOT get a printed login link: the session cookie is always `Secure` (§7), so the only login that can hold is over `https://` through a TLS-terminating proxy. The notice MUST name the bind and that `https://` expectation instead (cli.md §2).
 
@@ -282,6 +283,7 @@ implementation.
 ## 15. Compliance checklist
 
 - [x] Runs only via explicit `cask web`; loopback default; non-loopback requires HTTPS or `allow_insecure_bind: true` (§3–§4)
+- [x] A loopback bind is pinned to an explicit numeric loopback address before the listener exists (`localhost` → `127.0.0.1`), and a bare `:port`, `0.0.0.0:port`, or `[::]:port` is refused without the override like any other non-loopback bind (§4)
 - [x] Auth required; login throttled (5/caller-address/min, backoff, audit-logged without the token) (§5)
 - [x] A forwarded client address is believed only from a configured trusted proxy; with none, the peer address keys the throttle and the header is ignored (§5.2)
 - [x] Startup token accepted only by `POST /login` **or** the direct `GET /viewer/?token=` deep link (§5); regenerated per start; never stored in plaintext (§5); never logged at any level — shown once on stdout for a loopback bind only (interactive terminal, or a run passing `-show-token`), or supplied out of band via `-token-file`/`CASK_VIEWER_TOKEN` (§9, §11); both token-accepting endpoints admit a token only from the viewer's own origin (§5.1)

@@ -140,6 +140,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `cask web` pins its listener to an explicit numeric loopback address instead of
+  handing `-bind` to the host resolver. `-bind localhost:8080` now listens on
+  `127.0.0.1:8080` and prints that origin, rather than whichever of `127.0.0.1`
+  and `[::1]` the machine's hosts file preferred; `127.0.0.1` and `[::1]` are
+  unchanged. `-bind :8080` (every interface) is now refused like `0.0.0.0:8080`
+  unless `-allow-insecure-bind` is set, and the refusal and override messages
+  name the host firewall prompt that a bind beyond loopback triggers.
 - `packfs.Clean` sweeps its `<base>/packs` directory through `fs.CleanTemp`
   instead of its own scratch-name predicate, so both trees under a packed base
   use one convention. A name outside it (`notes.tmp.old`, `name.tmp.extra`) is no
