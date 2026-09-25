@@ -329,8 +329,9 @@ func TestLoadReportsAnUnopenableRecordPath(t *testing.T) {
 	backend, base := mustFS(t)
 	rec := crc32Recorder(t, backend)
 
-	// A self-referential symlink where the record belongs: opening it fails for
-	// a reason that is neither "no record" nor "a damaged record".
+	// A self-referential symlink where the record belongs: the record path
+	// exists (so this is not "no record"), and opening it fails — which is
+	// damage, because a record is either usable or cas.ErrCorrupt.
 	d := sha256.Of([]byte("record path cannot be opened"))
 	p := recordPath(base, d)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -340,10 +341,14 @@ func TestLoadReportsAnUnopenableRecordPath(t *testing.T) {
 		t.Skipf("this platform cannot create a symlink loop: %v", err)
 	}
 
-	if _, err := rec.Load(ctx, d); err == nil || !strings.Contains(err.Error(), "open record") {
+	_, err := rec.Load(ctx, d)
+	if err == nil || !strings.Contains(err.Error(), "open record") {
 		t.Errorf("Load with an unopenable record path = %v, want the open failure", err)
 	}
-	if _, err := rec.Load(ctx, d); err != nil && errors.Is(err, cas.ErrNotFound) {
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Errorf("Load with an unopenable record = %v, want cas.ErrCorrupt: Load documents an unreadable record as damage", err)
+	}
+	if errors.Is(err, cas.ErrNotFound) {
 		t.Errorf("an unopenable record path was reported as absent: %v", err)
 	}
 }
@@ -406,14 +411,17 @@ func TestLoadReportsAnUnreadableRecordFile(t *testing.T) {
 
 	// The open succeeds (a directory can be opened on a POSIX filesystem) and
 	// the read fails, so the record is present and damaged rather than absent.
-	// The failure is pinned only as "not absent": readRecord's read-error arm
-	// returns the I/O error unwrapped, unlike its oversized and wrong-digest
-	// arms, so it is NOT cas.ErrCorrupt even though Load's doc comment says a
-	// record that exists and cannot be read is (reported, not fixed here).
-	if _, err := rec.Load(ctx, d); err == nil || !strings.Contains(err.Error(), "read record") {
+	// The read-error arm and the open-error arm both report cas.ErrCorrupt, the
+	// same sentinel as the oversized and wrong-digest arms, because Load and
+	// Verify document a record that exists and cannot be read as damage.
+	_, err := rec.Load(ctx, d)
+	if err == nil || !strings.Contains(err.Error(), "read record") {
 		t.Errorf("Load with an unreadable record file = %v, want the read failure", err)
 	}
-	if _, err := rec.Load(ctx, d); err != nil && errors.Is(err, cas.ErrNotFound) {
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Errorf("Load with an unreadable record = %v, want cas.ErrCorrupt: Load documents an unreadable record as damage", err)
+	}
+	if errors.Is(err, cas.ErrNotFound) {
 		t.Errorf("an unreadable record was reported as absent: %v", err)
 	}
 }

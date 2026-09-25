@@ -291,6 +291,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cas/verify/sidecar` reports **every** way a record can be unusable as
+  `cas.ErrCorrupt`. The open and read failures returned a bare I/O error while
+  the oversized and wrong-digest arms wrapped the sentinel, so
+  `errors.Is(err, cas.ErrCorrupt)` was false for a record that could not be
+  read — contradicting what `Backend.Load` and `Verifier.Verify` document, and
+  making `cask verify --checksums <hash>` report an unreadable record as a
+  generic error instead of the damaged-record line it prints for the other two
+  arms. A record is derived metadata whose only source of truth is the store's
+  own bytes, so one that exists and cannot be trusted is damage; the underlying
+  I/O error stays on the chain. `Verifier.VerifyAll` still stops the pass rather
+  than marking such a digest bad, which is its documented contract.
 - `cas/codec/cbor` decodes CBOR **half-precision** floats (major 7, additional
   information 25) correctly. The 16-bit payload is IEEE 754 half precision — 1
   sign bit, 5 exponent bits, 10 mantissa bits — and was being reinterpreted as
