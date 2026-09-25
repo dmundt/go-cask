@@ -106,22 +106,3 @@ func TestParametersStaysWithinCeiling(t *testing.T) {
 		t.Fatalf("Parameters returned k=%d, want a positive probe count", k)
 	}
 }
-
-func TestIndicesMatchesExpectedProbeSequence(t *testing.T) {
-	custom := func(data []byte, i int) uint64 {
-		if len(data) == 0 {
-			return uint64(i)
-		}
-		return uint64(data[0]) + uint64(i)
-	}
-	got := Indices(custom, []byte{9}, 4, 10)
-	if len(got) != 4 {
-		t.Fatalf("Indices length = %d, want 4", len(got))
-	}
-	want := []uint64{9, 10, 11, 12}
-	for i := range got {
-		if got[i] != want[i]%10 {
-			t.Fatalf("Indices[%d] = %d, want %d", i, got[i], want[i]%10)
-		}
-	}
-}

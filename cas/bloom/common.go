@@ -81,13 +81,3 @@ func Parameters(expectedItems uint64, falsePositiveRate float64) (m uint64, k in
 	}
 	return m, k, nil
 }
-
-// Indices computes the Bloom bit positions for data using the supplied index
-// function and filter dimensions.
-func Indices(hash IndexHash, data []byte, k int, m uint64) []uint64 {
-	positions := make([]uint64, 0, k)
-	for i := range k {
-		positions = append(positions, hash(data, i)%m)
-	}
-	return positions
-}

@@ -343,7 +343,10 @@ func TestResolveIndexHash(t *testing.T) {
 	}
 }
 
-func TestParametersAndIndices(t *testing.T) {
+// TestParametersSizesAWorkableFilter pins that a configured size and rate yield
+// usable dimensions; the filters turn those into bit positions themselves, with
+// no shared position helper in the package.
+func TestParametersSizesAWorkableFilter(t *testing.T) {
 	m, k, err := Parameters(100, 0.01)
 	if err != nil {
 		t.Fatalf("Parameters(100, 0.01) returned unexpected error: %v", err)
@@ -351,18 +354,7 @@ func TestParametersAndIndices(t *testing.T) {
 	if m == 0 || k == 0 {
 		t.Fatalf("Parameters(100, 0.01) = (%d, %d), want positive values", m, k)
 	}
-
-	custom := func(data []byte, i int) uint64 {
-		return uint64(len(data) + i)
-	}
-	got := Indices(custom, []byte("abc"), 3, 10)
-	want := []uint64{3, 4, 5}
-	if len(got) != len(want) {
-		t.Fatalf("Indices() len = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Indices()[%d] = %d, want %d", i, got[i], want[i])
-		}
+	if k > int(m) {
+		t.Fatalf("Parameters(100, 0.01) = (%d, %d), want at most one probe per bit", m, k)
 	}
 }
