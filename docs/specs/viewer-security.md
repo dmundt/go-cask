@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v14
+version: v15
 ---
 
 # Viewer Security — go-cask
@@ -48,6 +48,12 @@ Everything else stays off by default (loopback §4, auth required §5).
   exponential backoff; each failure MUST be audit-logged without the submitted
   token value. The throttle keys on the **caller address** of §5.2, not
   necessarily the direct peer.
+- Authentication alone MUST NOT let one session monopolize the server: the
+  routes whose work is proportional to the store rather than to the request
+  (verify-all, a metadata-snapshot rebuild) are bounded per session and
+  server-wide, answer `429` + `Retry-After` when the bound is exceeded, and
+  never queue work behind a running operation (viewer-design §3, defaults.md).
+  The refusal is audit-logged like a throttled login.
 - **Preferred mechanism — startup-generated admin token:** grants the `admin`
   role. Further viewer/operator principals come from the configured identity
   provider (OIDC) or per-role tokens. Sessions MUST carry exactly one role

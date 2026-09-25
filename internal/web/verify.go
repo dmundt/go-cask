@@ -17,13 +17,31 @@ import (
 // session. It is the bulk counterpart of verifyFragment: one audit line per
 // object would flood the log, so it audits the sweep as a single event with
 // counts.
+//
+// The sweep is an expensive operation (limit.go): one runs at a time, and one
+// session may start one every cooldown. A refused request answers 429 with
+// Retry-After and a fragment that says how long to wait — it never queues
+// behind the running sweep, so a burst cannot multiply the work the store is
+// asked to do (viewer-design §3).
 func (s *Server) verifyAllFragment(w http.ResponseWriter, r *http.Request) {
+	id := sessionID(r)
+	if retryAfter, ok := s.expensive.begin(id); !ok {
+		seconds := retryAfterSeconds(retryAfter)
+		w.Header().Set("Retry-After", retryAfterHeader(retryAfter))
+		slog.Info("viewer audit", "action", "object.verify-all-refused", "session", sessionHandle(id), "retry-after", seconds)
+		w.WriteHeader(http.StatusTooManyRequests)
+		s.render(w, "verify-all-button", verifyAllState{
+			CSRF:  s.csrfFor(r),
+			Label: fmt.Sprintf("Busy — retry in %ds", seconds),
+		})
+		return
+	}
+	defer s.expensive.end()
 	digests, err := s.store.List(r.Context())
 	if err != nil {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
-	id := sessionID(r)
 	verified, corrupt, unchecked := 0, 0, 0
 	for _, h := range digests {
 		if err := r.Context().Err(); err != nil {

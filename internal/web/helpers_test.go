@@ -80,7 +80,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 // request carries the origin headers a browser attaches, because the viewer
 // accepts a token only from its own origin (viewer-security §5.1). Tests that
 // exercise the login path itself must present them.
-func postFormAsBrowser(t *testing.T, c *http.Client, target string, form url.Values) *http.Response {
+func postFormAsBrowser(t testing.TB, c *http.Client, target string, form url.Values) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -99,7 +99,7 @@ func postFormAsBrowser(t *testing.T, c *http.Client, target string, form url.Val
 }
 
 // login performs the startup-token login and returns an authed client.
-func login(t *testing.T, ts *httptest.Server, token string) *http.Client {
+func login(t testing.TB, ts *httptest.Server, token string) *http.Client {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	// Do not follow the 303 to the object browser: the login response itself is
@@ -135,7 +135,7 @@ func statusCode(t *testing.T, client *http.Client, target string) int {
 	return resp.StatusCode
 }
 
-func getBody(t *testing.T, client *http.Client, target string) string {
+func getBody(t testing.TB, client *http.Client, target string) string {
 	t.Helper()
 	resp, err := client.Get(target)
 	if err != nil {
