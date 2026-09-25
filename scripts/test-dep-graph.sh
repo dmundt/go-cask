@@ -84,6 +84,7 @@ if [[ "${1:-}" == "list" ]]; then
     'github.com/example/stub/cas|context io strings' \
     'github.com/example/stub/cas/backend/fs|context github.com/example/stub/cas' \
     'github.com/example/stub/cas/repo|github.com/example/stub/cas' \
+    'github.com/example/stub/gitlike|github.com/example/stub/cas github.com/example/stub/cas/repo' \
     'github.com/example/stub/internal/web|github.com/example/stub/cas'
   # Touching the marker file adds a package, which is how the test changes the
   # graph without touching any script.
@@ -135,6 +136,16 @@ expect_grep "the graph draws the core package" '^    cas\["cas"\]$' "$doc"
 expect_grep "the graph draws an edge to the core" '^  cas_backend_fs --> cas$' "$doc"
 expect_grep "the graph groups the byte layer" 'subgraph BYTE\[' "$doc"
 expect_grep "the graph groups the helper layer" 'subgraph HELP\[' "$doc"
+# gitlike is a 2nd-class library at the application layer, not an application
+# (AGENTS.md, "Layers and citizen classes"), so it gets its own REFERENCE layer
+# rather than being drawn among the apps.
+expect_grep "the graph groups the reference library" 'subgraph REFERENCE\[' "$doc"
+expect_grep "the reference library is titled" 'Reference library - gitlike' "$doc"
+if grep -A2 'subgraph REFERENCE\[' "$doc" | grep -q '^    gitlike\["gitlike"\]$'; then
+  pass "gitlike is drawn inside the reference layer"
+else
+  fail "gitlike is drawn inside the reference layer"
+fi
 expect_grep "the graph groups internal packages" 'subgraph INTERNAL\[' "$doc"
 # verify.sh's doc-integrity rule: every ```mermaid opener needs a closer. The
 # document also fences the shell snippet, so closers are counted, not paired.

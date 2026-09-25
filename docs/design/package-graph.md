@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by scripts/dep-graph.sh.
-version: v1
+version: v2
 generated: scripts/dep-graph.sh
 ---
 
@@ -21,7 +21,7 @@ vary with `GOOS` or `GOARCH`, so the file is reproducible on any host.
 
 ```mermaid
 flowchart TD
-  subgraph APPS["Applications - gitlike, cmd/cask, examples, benchmarks"]
+  subgraph APPS["Applications - cmd/cask, examples, benchmarks"]
     benchmarks["benchmarks"]
     cmd_cask["cmd/cask"]
     examples_api_demo["examples/api/demo"]
@@ -31,6 +31,8 @@ flowchart TD
     examples_files["examples/files"]
     examples_notes["examples/notes"]
     examples_pack["examples/pack"]
+  end
+  subgraph REFERENCE["Reference library - gitlike"]
     gitlike["gitlike"]
   end
   subgraph INTERNAL["internal - not importable outside the module"]
@@ -197,8 +199,9 @@ flowchart TD
 | Core | `CORE` | The generic `cas` core: `Store[T]`, `Digest`, `Hasher`, `Codec[T]`, the envelope. |
 | Byte layer | `BYTE` | `cas/backend` and its `fs`, `mem`, `packfs` and `snapshot` implementations. |
 | Helpers | `HELP` | The typed and maintenance layer under `cas/`: codecs, hashers, caches, bloom filters, verification, `pack`, `refs`, `repo`. |
+| Reference library | `REFERENCE` | `gitlike`: the reference object model apps and examples build on. A 2nd-class library, not an application. |
 | Internal | `INTERNAL` | `internal/*`, not importable outside this module. |
-| Applications | `APPS` | `gitlike`, `cmd/cask`, `examples/*` and `benchmarks`. |
+| Applications | `APPS` | `cmd/cask` (the product binary), `examples/*` and `benchmarks`. |
 
 Packages that import no local package are drawn as leaves.
 

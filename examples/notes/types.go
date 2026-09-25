@@ -89,6 +89,13 @@ func (a *Attachment) References() []cas.Digest { return nil }
 // bareType returns an object type's unversioned base name: "note" for typeNote.
 // The model's Type() is versioned ("note@1"); the ResolvedObject union's Type
 // field is the bare name its callers compare against.
+//
+// This is deliberately the same helper `gitlike/types.go` carries, as are the
+// union and resolver below: this example exists to show an app building its own
+// object model on cas/repo without `gitlike` (examples spec §3.3, rule 5), so
+// importing the reference library would delete the example's teaching content.
+// A repo-wide duplicate scan is expected to flag it (go-cask#386); the rule, not
+// the scan, decides here.
 func bareType(versioned string) string {
 	base, _, _ := strings.Cut(versioned, "@")
 	return base

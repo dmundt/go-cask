@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v44
+version: v45
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -375,6 +375,36 @@ flowchart TB
 The `cas` package is **generic only**. Everything marked *(gitlike)* lives in
 the separate `gitlike/` reference library and is NOT part of the core — apps
 build their own equivalents for their own types.
+
+### Layers and citizen classes
+
+Two axes, deliberately independent. **Class** says who may rely on a change and
+where it must be recorded; **layer** says what may import what.
+
+| Class | Trees | Promise | Change record |
+| --- | --- | --- | --- |
+| 1st | `cas/**` | the frozen core surface (cas-core §7.1, library-design §1): additive-compatible — a breaking change needs a major version or a recorded exception (versioning §1) | `CHANGELOG.md` |
+| 2nd | `gitlike`, `cmd/cask`, `internal/**` | shipped and gated, no frozen API: a breaking change may ride a MINOR with a changelog note (the `gitlike.Codecs` change is the precedent, versioning §1); the CLI is a program governed by cli.md | `CHANGELOG.md` |
+| 3rd | `examples/**` | none — teaching code a consumer copies, changed freely | the example's `README.md` |
+
+The dependency layers are `cas/` → `gitlike/` → `examples/`. The product
+(`cmd/cask`, `internal/**`) sits *beside* the chain, never above it.
+
+| From, may import | `cas/**` | `gitlike` | `internal/**` | `cmd/**` | `examples/**` |
+| --- | --- | --- | --- | --- | --- |
+| `cas/**` | yes | no | no | no | no |
+| `gitlike` | yes | — | no | no | no |
+| `internal/**`, `cmd/**` | yes | no | yes | yes | no |
+| `examples/**` | yes | yes | no | no | no |
+| `benchmarks` | yes | yes | no | no | no |
+
+`gitlike` is a library *at* the application layer — the shape an app's own
+object model takes, shipped as a reference — not an application and not an
+example: it is a package in this module, importable by apps and examples, and
+deliberately outside the frozen `cas` surface. `cmd/cask` and `gitlike` are
+2nd-class peers with no dependency between them. `scripts/verify.sh` runs this
+table as the layer matrix check, and `scripts/dep-graph.sh` draws `gitlike` in
+its own `REFERENCE` layer.
 
 ---
 

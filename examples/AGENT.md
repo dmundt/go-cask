@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Examples
 description: Rules for runnable example programs under examples/, including folder conventions, README requirements, test expectations, and the allowed scope of teaching code.
-version: v3
+version: v4
 ---
 
 # AGENT — go-cask Examples
@@ -15,7 +15,7 @@ Related: [AGENTS.md](../AGENTS.md), [docs/specs/examples.md](../docs/specs/examp
 
 - `examples/<name>/` is for runnable programs (`package main`) and their tests/docs.
 - Examples are teaching code, not library code. They must demonstrate real app wiring using the public API only.
-- `gitlike/` stays the shared reference library; it is not a runnable example.
+- `gitlike/` is the reference support library at the module root, not an example: a 2nd-class library at the application layer that apps and examples import (AGENTS.md, "Layers and citizen classes").
 - Do not change the core `cas` package to accommodate an example's convenience or missing feature. If a feature is missing, fix the library or spec instead of hacking around it in the example.
 
 ## 2. Mandatory structure
@@ -44,7 +44,7 @@ Keep the README short and direct. It should teach pattern and scope, not duplica
 
 - One focus per example: one real workflow, not a kitchen sink.
 - Use stdlib only. No external dependencies in example code.
-- Do not import another example package; only `gitlike` is the allowed shared dependency.
+- Do not import another example package, `internal/**` or `cmd/**`; the module's libraries (`cas/**`, `gitlike`) are ordinary imports. Rule 11 of `docs/specs/examples.md` §2 states it, and AGENTS.md carries the layer matrix.
 - Keep examples self-contained. Prefer teaching code inline rather than introducing a new helper package unless a second consumer justifies it.
 - Use secure defaults: `SHA-256` for identity, JSON for readable formats, and filesystem storage for durable examples.
 - Do not add `any` to example APIs. Prefer explicit typed models.

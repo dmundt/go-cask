@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v31
+version: v32
 ---
 
 # go-cask Rules Index
@@ -33,7 +33,8 @@ version: v31
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
 | `internal/design/` (design-rule checks the gate runs: no exported `any`, canonical `memory` import aliases, and one owner for the codec census label) | [`library-design.md`](specs/library-design.md) §5 + [`cas/AGENT.md`](../cas/AGENT.md) "Core rules" (the alias check) + [`cli.md`](specs/cli.md) §3 (the census convention) |
-| `gitlike/` | [`examples.md`](specs/examples.md) §2 + [`cas-core.md`](specs/cas-core.md) §4.12 |
+| `gitlike/` (2nd-class reference library at the application layer — not an app, not an example) | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
+| `examples/*` (3rd-class teaching code: no compatibility surface; may import `cas/**` and `gitlike`, never `internal/**`, `cmd/**` or another example) | [`examples.md`](specs/examples.md) §2 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
 | `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |
