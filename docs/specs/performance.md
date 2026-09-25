@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v22
+version: v23
 ---
 
 # Performance — go-cask
@@ -174,7 +174,9 @@ withdrawn — none of it is what runs.
   even after a sweep, and an idempotent re-`Put` grows it. The earlier requirement that GC "rewrite packs
   dropping unreachable objects" is withdrawn, not promised (cas-core §8 d12); compaction is an open
   follow-up (§12). Reclaiming space today means rebuilding — `cas/backend/snapshot.Export`/`Import`
-  (cas-core §4.3) into a fresh base — or deleting pack files an operator has decided are disposable.
+  (cas-core §4.3) into a fresh base — or deleting pack files an operator has decided are disposable. The
+  rebuild is a **Go-level** remedy: no `cask` subcommand wraps `Export`/`Import` (cli.md §2), so an
+  operator either writes those few lines against the library or removes packs by hand.
 - **Delete/Clean.** `Delete` unlinks the loose object and drops the record; the pack is untouched. `Clean`
   sweeps orphan `*.tmp` scratch older than the threshold in the loose tree and the pack directory.
 - **Aging.** `ModTime` reports the pack file's timestamp, not the object's first-`Put` time, so an age-gated

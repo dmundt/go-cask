@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v16
+version: v17
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -74,7 +74,7 @@ viewer mockup; it MUST NOT be copied into a `.md` file.
 
 ## 6. Constructor naming (in example code)
 
-Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `backmem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `prefetch.NewSmartCache`, `cas.New`). When code and example diverge the code wins — update the example (a non-compiling doc example is a defect).
+Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when the package exposes one primary type (`fs.New`, `backmem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `cas.New`), with `prefetch.NewSmartCache` the frozen-surface exception that keeps its name (cas-core §7.1). When code and example diverge the code wins — update the example (a non-compiling doc example is a defect).
 
 ## 7. Diagram and formatting rules
 

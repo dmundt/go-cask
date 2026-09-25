@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v70
+version: v71
 ---
 
 # CAS Core — go-cask
@@ -339,7 +339,7 @@ Every implementation rejects an absent digest with `ErrInvalidDigest` rather tha
 
 This interface is the **backend extension point**: any storage system (S3, BadgerDB, PostgreSQL, IPFS blockstore) plugs in by implementing these six methods (recipe §7.2). Shipped: `fs.Backend` (§4.4), `backmem.Backend` (§4.5), opt-in `packfs.Backend` (§4.14).
 
-Portable state transfer is intentionally a helper above this interface: `cas/backend/snapshot.Export` writes a deterministic archive of raw digests and payloads; `snapshot.Import` loads it into any backend. These helpers add no `Backend` methods, invoke no hasher or typed codec, and cannot promise atomic replacement for arbitrary implementations. Backend-specific APIs may offer stronger atomic restore guarantees; e.g. `mem.Backend.Restore` validates the complete archive before swapping its map.
+Portable state transfer is intentionally a helper above this interface: `cas/backend/snapshot.Export` writes a deterministic archive of raw digests and payloads; `snapshot.Import` loads it into any backend. These helpers add no `Backend` methods, invoke no hasher or typed codec, and cannot promise atomic replacement for arbitrary implementations. Backend-specific APIs may offer stronger atomic restore guarantees; e.g. `mem.Backend.Restore` validates the complete archive before swapping its map. They are a **library** remedy: the CLI ships no export/import subcommand (cli.md §2), so reclaiming a packed store's space with them is a few lines of Go (performance §9).
 
 ### 4.4 `fs.Backend` — the filesystem backend (`cas/backend/fs`)
 

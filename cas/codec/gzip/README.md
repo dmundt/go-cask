@@ -10,6 +10,14 @@ This is a stdlib-style compression wrapper for large or repetitive payloads. It 
 - This wrapper is useful when payloads are large or compressible and a cheaper on-disk representation is worth the extra decode step.
 - It is not the canonical store format and not a new object model.
 
+## Choosing among the three compression wrappers
+
+`gzip` is the interop choice: its header plus CRC-32 and length trailer let ordinary gzip tooling read the
+compressed payload, at the cost of the largest framing of the three. `flate` is the **default**
+(defaults.md) — raw DEFLATE with no header or trailer, the smallest output — and `zlib` sits between them
+for consumers that expect a zlib stream. All three compress the *inner* codec's output, are read back
+through the same package, and share one `ErrDecodedTooLarge` value and one ceiling (cas-core §4.6).
+
 ## Typical use
 
 ```go
