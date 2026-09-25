@@ -136,6 +136,33 @@ func TestWriteFileAtomicStopsOnCanceledContextAfterWrite(t *testing.T) {
 	}
 }
 
+// TestWriteFileAtomicStopsOnCanceledContextBeforeTemp covers the context check
+// that runs before the temp file exists: a context canceled while the manifest
+// directory is being created must publish nothing and leave no scratch behind.
+func TestWriteFileAtomicStopsOnCanceledContextBeforeTemp(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	path := filepath.Join(t.TempDir(), "state", "manifest.json")
+	cancel()
+
+	file := &failingFile{}
+	ops := opsFor(file, nil, nil)
+	created := false
+	ops.createTemp = func(dir, _ string) (tempFile, error) {
+		created = true
+		file.name = filepath.Join(dir, "manifest.json.tmp")
+		return file, nil
+	}
+	if err := writeFileAtomic(ctx, path, []byte("demo"), ops); !errors.Is(err, context.Canceled) {
+		t.Fatalf("writeFileAtomic with an early canceled context = %v, want context.Canceled", err)
+	}
+	if created {
+		t.Fatal("writeFileAtomic created a temp file after the context was canceled")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a canceled publish wrote its target: %v", err)
+	}
+}
+
 // TestWriteFileAtomicPublishesThroughRename is the success path of the seam: the
 // written bytes reach the target through the rename and the file is closed once.
 func TestWriteFileAtomicPublishesThroughRename(t *testing.T) {

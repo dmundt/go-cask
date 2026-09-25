@@ -115,6 +115,34 @@ func TestDigestRejectsLegacyText(t *testing.T) {
 	}
 }
 
+// TestDigestUnmarshalTextRejectsBeforeHexDecode documents the one branch of
+// UnmarshalText that is deliberately left uncovered (testing-strategy.md §5):
+// the guard above hex.Decode already rejects an odd length and any byte outside
+// [0-9a-f], which are the only two ways hex.Decode can fail, so its error arm is
+// unreachable and exists only as defence against a future change to hexRe.
+// Every shape hex.Decode would refuse is asserted to be refused earlier, with
+// the same sentinel.
+func TestDigestUnmarshalTextRejectsBeforeHexDecode(t *testing.T) {
+	refused := []string{"a", "abc", "0g", "gg", "AB", "ab\n", "ab cd", "sha256:ab"}
+	for _, s := range refused {
+		var d Digest
+		if err := d.UnmarshalText([]byte(s)); !errors.Is(err, ErrInvalidDigest) {
+			t.Fatalf("UnmarshalText(%q) = %v, want ErrInvalidDigest from the shape guard", s, err)
+		}
+	}
+	// The shapes that do reach hex.Decode all succeed, so the arm is only
+	// skipped, never silently producing a wrong digest.
+	for _, s := range []string{"00", "0a", "deadbeef"} {
+		var d Digest
+		if err := d.UnmarshalText([]byte(s)); err != nil {
+			t.Fatalf("UnmarshalText(%q) = %v, want nil", s, err)
+		}
+		if d.String() != s {
+			t.Fatalf("UnmarshalText(%q) = %q, want a round-trip", s, d.String())
+		}
+	}
+}
+
 // TestParseDigest pins the accepted shape (lowercase hex) and the rejections.
 func TestParseDigest(t *testing.T) {
 	ok := []string{"ab", "00", strings.Repeat("ab", 32)}

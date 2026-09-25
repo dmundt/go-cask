@@ -241,3 +241,27 @@ func (b listOneBackend) Exists(context.Context, cas.Digest) (bool, error) { retu
 func (b listOneBackend) Delete(context.Context, cas.Digest) error         { return nil }
 func (b listOneBackend) List(context.Context) ([]cas.Digest, error)       { return []cas.Digest{b.d}, nil }
 func (b listOneBackend) Stats(context.Context) (*cas.Stats, error)        { return &cas.Stats{}, nil }
+
+// TestVerifyAllStopsWhenContextIsCancelledDuringTheScan pins the per-object
+// cancellation check inside VerifyAll's loop: the check precedes the counter, so
+// the partial report comes back with the error instead of being discarded.
+func TestVerifyAllStopsWhenContextIsCancelledDuringTheScan(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := backmem.New()
+	d := sha256.Of([]byte("hello"))
+	if err := inner.Put(ctx, d, bytes.NewReader([]byte("hello"))); err != nil {
+		t.Fatal(err)
+	}
+	backend := cancelOnListBackend{Backend: inner, cancel: cancel}
+	report, err := cas.VerifyAll(ctx, backend, sha256.New())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("VerifyAll(ctx cancelled during List) = %v, want context.Canceled", err)
+	}
+	if report == nil {
+		t.Fatal("VerifyAll(cancelled) returned no report; the partial report must accompany the error")
+	}
+	if report.Checked != 0 {
+		t.Fatalf("VerifyAll(cancelled) Checked = %d, want 0 (cancellation precedes the first check)", report.Checked)
+	}
+}
