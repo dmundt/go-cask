@@ -101,8 +101,8 @@ func init() {
 		},
 		{
 			name:     "verify",
-			operands: "<hash>|--all [-checksums [-checksum <algo>]]",
-			summary:  "integrity check (single object or full scan; --checksums checks the recorded per-object checksum)",
+			operands: "<hash>|--all [-hash-algo <name>] [-checksums [-checksum <algo>]]",
+			summary:  "integrity check (single object or full scan; --hash-algo selects the address algorithm; --checksums checks the recorded per-object checksum)",
 			flags:    func() *flag.FlagSet { return verifyFlags(new(verifyArgs)) },
 			op:       opVerify,
 		},

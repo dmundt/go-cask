@@ -348,9 +348,10 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 
 // verifyArgs holds verify's flag values.
 type verifyArgs struct {
-	all       bool
-	checksums bool
-	checksum  string
+	all           bool
+	checksums     bool
+	checksum      string
+	hashAlgorithm string
 }
 
 // verifyFlags registers verify's flags over a; opVerify and the command table
@@ -358,12 +359,15 @@ type verifyArgs struct {
 // §2, §4). --all is the cli.md §2 alternative to a single <hash>.
 // --checksums switches the check from the object's address to the per-object
 // checksum recorded beside it (operations §6), and --checksum names which
-// recorded checksum to read.
+// recorded checksum to read. --hash-algo selects the algorithm the address is
+// expressed in, so a store addressed by anything but the default is still
+// verifiable (cli.md §2).
 func verifyFlags(a *verifyArgs) *flag.FlagSet {
 	flags := newFlagSet("verify")
 	flags.BoolVar(&a.all, "all", false, "verify every object in the store")
 	flags.BoolVar(&a.checksums, "checksums", false, "check the per-object checksum recorded beside each object instead of its address")
 	flags.StringVar(&a.checksum, "checksum", crc32.Name, "recorded checksum to check with --checksums ("+checksumNames()+")")
+	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, hashAlgoUsage)
 	return flags
 }
 
@@ -372,6 +376,10 @@ func opVerify(ctx context.Context, t *store.Store, args []string) error {
 	flags := verifyFlags(&a)
 	if err := parseFlags(flags, args); err != nil {
 		return err
+	}
+	algorithm, err := lookupDigestAlgorithm(a.hashAlgorithm)
+	if err != nil {
+		return usagef("invalid hash algorithm %q: %v", a.hashAlgorithm, err)
 	}
 	checksumSet := false
 	flags.Visit(func(f *flag.Flag) {
@@ -383,25 +391,25 @@ func opVerify(ctx context.Context, t *store.Store, args []string) error {
 		return usagef("verify --checksum needs --checksums")
 	}
 	if a.checksums {
-		return verifyChecksums(ctx, t, &a, flags)
+		return verifyChecksums(ctx, t, &a, flags, algorithm)
 	}
 	if a.all {
 		if flags.NArg() != 0 {
 			return usagef("verify --all takes no additional arguments")
 		}
-		return verifyAll(ctx, t)
+		return verifyAll(ctx, t, algorithm)
 	}
 	if flags.NArg() != 1 {
 		return usagef("verify needs exactly one <hash> or --all")
 	}
-	h, err := sha256.Parse(flags.Arg(0))
+	h, err := algorithm.Parse(flags.Arg(0))
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
-	if err := t.Verify(ctx, h, sha256.New()); err != nil {
+	if err := t.Verify(ctx, h, algorithm.hasher); err != nil {
 		return err
 	}
-	fmt.Printf("%s ok\n", sha256.Format(h))
+	fmt.Printf("%s ok\n", algorithm.Format(h))
 	return nil
 }
 
@@ -431,7 +439,7 @@ func checksumHasher(name string) (cas.Hasher, error) {
 // read-only maintenance check — it never records a checksum and never repairs
 // anything (operations §6). The object's address is not re-checked here; that is
 // plain `cask verify`.
-func verifyChecksums(ctx context.Context, t *store.Store, a *verifyArgs, flags *flag.FlagSet) error {
+func verifyChecksums(ctx context.Context, t *store.Store, a *verifyArgs, flags *flag.FlagSet, algorithm digestAlgorithm) error {
 	hasher, err := checksumHasher(a.checksum)
 	if err != nil {
 		return err
@@ -450,19 +458,19 @@ func verifyChecksums(ctx context.Context, t *store.Store, a *verifyArgs, flags *
 	if flags.NArg() != 1 {
 		return usagef("verify needs exactly one <hash> or --all")
 	}
-	h, err := sha256.Parse(flags.Arg(0))
+	h, err := algorithm.Parse(flags.Arg(0))
 	if err != nil {
 		return usagef("invalid hash: %v", err)
 	}
 	err = verifier.Verify(ctx, h)
 	switch {
 	case err == nil:
-		fmt.Printf("%s %s checksum ok\n", sha256.Format(h), a.checksum)
+		fmt.Printf("%s %s checksum ok\n", algorithm.Format(h), a.checksum)
 		return nil
 	case errors.Is(err, sidecar.ErrUnrecorded):
 		// Absence is unchecked, not corrupt: nothing was verified and nothing
 		// is wrong with the object (#196).
-		fmt.Printf("%s no %s checksum record\n", sha256.Format(h), a.checksum)
+		fmt.Printf("%s no %s checksum record\n", algorithm.Format(h), a.checksum)
 		return nil
 	case errors.Is(err, cas.ErrCorrupt):
 		fmt.Fprintf(os.Stderr, "%s %s: %v\n", checksumMismatchLabel, h, err)
@@ -532,9 +540,11 @@ func reconcileChecksums(ctx context.Context, t *store.Store, verb string) error 
 // The sweep runs through cas.VerifyAll, so a backend with no backend-native
 // Verify is verified identically (cli.md §2): a digest whose bytes no longer
 // match its address is reported (ErrDigestMismatch), while a read failure
-// aborts the run instead of being counted as corruption.
-func verifyAll(ctx context.Context, t *store.Store) error {
-	report, err := t.VerifyAll(ctx, sha256.New())
+// aborts the run instead of being counted as corruption. The algorithm is the
+// caller's (`-hash-algo`), because a digest the injected hasher cannot address
+// is refused by its width before its bytes are read.
+func verifyAll(ctx context.Context, t *store.Store, algorithm digestAlgorithm) error {
+	report, err := t.VerifyAll(ctx, algorithm.hasher)
 	if report != nil {
 		for _, h := range report.Bad {
 			// The digest is the whole diagnosis for a mismatch; render it the

@@ -99,6 +99,11 @@ type pruner interface {
 	Prune(ctx context.Context, reachable map[string]bool, minAge time.Duration, dryRun bool) ([]cas.Digest, error)
 }
 
+// The binding is compile-time: if fs.Backend.Prune's signature moves, the build
+// fails here instead of Store.Sweep silently taking the portable path and
+// running a different sweep than the backend's own.
+var _ pruner = (*fsbackend.Backend)(nil)
+
 // Open opens the store selected by opts over path. A missing path or an
 // unknown kind is a caller error; a backend failure is returned as it is, so
 // the CLI can classify it (cli.md §3).

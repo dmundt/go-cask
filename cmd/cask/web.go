@@ -20,10 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/go-cask/cas"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
-	sha512 "github.com/dmundt/go-cask/cas/hash/sha512"
-	sha512256 "github.com/dmundt/go-cask/cas/hash/sha512_256"
 	"github.com/dmundt/go-cask/internal/store"
 	"github.com/dmundt/go-cask/internal/web"
 )
@@ -124,7 +121,7 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags.StringVar(&a.store, "store", storeDefault, "filesystem store directory")
 	flags.StringVar(&a.backend, "backend", backendDefault, "storage backend: fs (the viewer needs the filesystem backend)")
 	flags.StringVar(&a.bind, "bind", "127.0.0.1:8080", "listen address")
-	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, "digest algorithm: sha256, sha512, or sha512_256")
+	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, hashAlgoUsage)
 	flags.StringVar(&a.tokens, "tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
 	flags.StringVar(&a.trustedProxy, "trusted-proxy", "", "comma-separated IPs/CIDRs whose forwarded client address the login throttle may believe (e.g. 10.0.0.0/8); empty trusts none")
@@ -197,11 +194,12 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		slog.Error("open store", "backend", kind, "err", err)
 		return 1
 	}
-	hasher, err := viewerHasher(a.hashAlgorithm)
+	algorithm, err := lookupDigestAlgorithm(a.hashAlgorithm)
 	if err != nil {
 		slog.Error("invalid viewer hash algorithm", "algorithm", a.hashAlgorithm, "err", err)
 		return 2
 	}
+	hasher := algorithm.hasher
 	references, err := previewReferences(ctx, backend, hasher)
 	if err != nil && !errors.Is(err, errNoPreviewGraph) {
 		slog.Error("build preview references", "err", err)
@@ -450,19 +448,6 @@ func viewerLocation(n loginNotice) string {
 		return "viewer at " + n.baseURL + "/viewer/"
 	}
 	return "viewer bound to " + n.bind + ": log in over https:// through a TLS-terminating proxy (session cookies are always Secure, so this bind's plain http:// cannot hold a session)"
-}
-
-func viewerHasher(name string) (cas.Hasher, error) {
-	switch name {
-	case sha256.Name:
-		return sha256.New(), nil
-	case sha512.Name:
-		return sha512.New(), nil
-	case sha512256.Name:
-		return sha512256.New(), nil
-	default:
-		return nil, fmt.Errorf("supported values are %q, %q, and %q", sha256.Name, sha512.Name, sha512256.Name)
-	}
 }
 
 // isLoopbackBind reports whether the bind address is loopback.
