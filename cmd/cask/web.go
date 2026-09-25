@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -359,8 +360,18 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 
 // loginURL is the documented direct-token login deep link (viewer-security
 // §5.1). It is the only URL that carries the token, and it is never logged.
+//
+// The token is percent-encoded rather than concatenated: it is arbitrary text
+// when the operator supplied it (-token-file, CASK_VIEWER_TOKEN), so a URL
+// reserved character would otherwise truncate or reinterpret the query the
+// browser sends — `&` starts a second parameter, `#` a fragment, `%` an escape.
+// The endpoint reads the query with r.URL.Query().Get("token"), which decodes
+// percent-escapes, so every token that works today still round-trips (#349).
+// An encoded token is also the one form that cannot carry a shell metacharacter
+// of its own into browserCommand's argument vector, which is what makes the
+// Windows launch in openBrowser injection-safe.
 func loginURL(baseURL, token string) string {
-	return baseURL + "/viewer/?token=" + token
+	return baseURL + "/viewer/?" + url.Values{"token": {token}}.Encode()
 }
 
 // resolveStartupToken returns the viewer's startup admin token and reports
@@ -481,6 +492,10 @@ func announceLogin(w io.Writer, n loginNotice) {
 // the notice's two conditions exactly: a bind whose origin can hold a login
 // (loopback) and an operator who did not suppress the display with
 // -show-token=false. -no-open skips it in any case (viewer-security §4, §11).
+// These are the conditions on the launch and they are not relaxed by the
+// injection fix: the URL is percent-encoded (loginURL) and the launcher takes it
+// as a plain argument (browserCommand), so neither the metacharacters nor the
+// reserved characters in a supplied token change when the launch may happen.
 func browserLaunchAllowed(noOpen bool, display displayChoice, baseURL string) bool {
 	return !noOpen && display != displaySuppressed && baseURL != ""
 }
@@ -535,10 +550,19 @@ func isLoopbackBind(addr string) bool {
 // browserCommand returns the command that opens a URL in the default browser
 // on the named GOOS. It is split from openBrowser so the per-platform mapping
 // can be tested without launching a browser on the test machine.
+//
+// No platform routes the URL through a command interpreter: Windows uses
+// rundll32's FileProtocolHandler, which takes the URL as a plain argument, where
+// it used to hand the document to cmd.exe. Go quotes an argument for
+// a CommandLineToArgvW consumer, and cmd.exe is not one: it re-parses `&`, `|`,
+// `^` and `%…%` itself, so the startup token — arbitrary operator-supplied text
+// — could become a second command (#349). The URL loginURL builds is
+// percent-encoded as well; the shell-free launcher is what keeps the token data
+// rather than command syntax whatever the URL holds (viewer-security §11).
 func browserCommand(goos, url string) (string, []string) {
 	switch goos {
 	case "windows":
-		return "cmd", []string{"/c", "start", url}
+		return "rundll32.exe", []string{"url.dll,FileProtocolHandler", url}
 	case "darwin":
 		return "open", []string{url}
 	default:

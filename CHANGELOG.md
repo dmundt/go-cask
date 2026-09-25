@@ -471,6 +471,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that carries the token deep link is skipped for a non-loopback bind and when
   `-show-token=false` suppresses the display, so the admin credential can no
   longer reach another process's argument vector either.
+- The login deep link `cask web` opens and prints percent-encodes its token, and
+  the Windows launch no longer goes through `cmd /c start`: it opens the URL
+  through `rundll32.exe url.dll,FileProtocolHandler`, which takes it as a plain
+  argument. An operator-supplied token holding a URL reserved character (`&`,
+  `#`, `%`, a space) now logs in instead of arriving truncated, and a token
+  holding a `cmd.exe` metacharacter can no longer become a second command. The
+  launch still happens only for a loopback bind and only when the display is not
+  suppressed with `-show-token=false`.
 - The viewer's HTTP responses are hygienic: a throttled login answers `429` with
   the `Retry-After` delay it is actually enforcing, a rejected token is answered
   `401` with no body — the reason appears on the login page, never in the

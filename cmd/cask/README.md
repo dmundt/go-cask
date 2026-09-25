@@ -100,10 +100,14 @@ not loopback displays no token at all: the notice names the bind and the
 
 Unless `-no-open` is given, `cask web` opens the default browser at the one-time
 deep link `http://<bind>/viewer/?token=<token>` and prints the same link in the
-startup notice. The link carries the raw token in the browser process's command
-line, so the launch is skipped for a non-loopback bind and when
-`-show-token=false` suppresses the display. The token is accepted only from the
-viewer's own origin — a
+startup notice. The link percent-encodes the token, so a supplied token holding
+a URL reserved character (`&`, `#`, `%`, a space) logs in instead of being
+truncated; on Windows the link is opened through `rundll32.exe
+url.dll,FileProtocolHandler` rather than `cmd /c start`, so the token is passed
+as data and never re-parsed as command line syntax. The link still carries the
+token in the browser process's command line, so the launch is skipped for a
+non-loopback bind and when `-show-token=false` suppresses the display. The token
+is accepted only from the viewer's own origin — a
 same-origin form post, link, or htmx request, or a top-level navigation with no
 initiator — and only once: the session cookie carries the session afterwards. A
 non-loopback bind prints no link at all, because an always-`Secure` cookie
