@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v23
+version: v24
 ---
 
 # Examples — go-cask
@@ -16,7 +16,7 @@ Three audiences: **doc readers** (a runnable program beats API signatures and ma
 ## 2. How to generate an example (rules)
 
 1. **Location:** `examples/<name>/` in the main module (no separate `go.mod` unless genuinely required). Runnable demo = `package main`; reusable pieces = subpackages. **`gitlike/` is the reference support library**, and it is not an example: it is a package at the module root (`package gitlike`), so it is not under `examples/` and needs no exception from the runnable rule. The reference object model apps (and `files`) build on; NOT part of `cas`.
-2. **Runnable:** `go build ./...`, `go run ./examples/<name>`, `go test ./examples/...` MUST pass (except `gitlike`, a library). The demo prints meaningful output (hashes, stats, traversal results).
+2. **Runnable:** `go build ./...`, `go run ./examples/<name>`, `go test ./examples/...` MUST pass. The demo prints meaningful output (hashes, stats, traversal results).
 3. **Std-lib only:** no external deps (coding-guidelines §3). Compression via `compress/gzip`; hashing is the client's job (`cas/hash/sha256`: `sha256.New()` for a store, `sha256.NewHasher()`/`sha256.Of` for hash-on-write) — the core names no algorithm, and no registry exists to extend.
 4. **Public APIs only:** documented exported API of `cas`/`gitlike`; never reach into unexported internals.
 5. **No `any` in example APIs:** define your own typed objects; for cross-type resolution use the supported `cas/repo` registry (or copy the `gitlike` pattern into your own package when you need something it does not express) — never extend `cas`/`gitlike`.
