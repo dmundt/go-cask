@@ -14,6 +14,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/index"
 )
 
 // v2Envelope builds a version 2 TLV envelope — the layout this build writes, with
@@ -74,7 +75,7 @@ func TestHeaderCensusInTheViewer(t *testing.T) {
 	for _, want := range []string{
 		"Envelope version", "Codec",
 		">2<", ">json<", // the current-format frame
-		">1<", ">unspecified<", // the version 1 frame
+		">1<", ">" + index.UnspecifiedCodec + "<", // the version 1 frame
 		">—<", // the headerless object
 	} {
 		if !strings.Contains(page, want) {

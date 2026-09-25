@@ -383,3 +383,32 @@ func TestBuildSnapshotHonorsCancellation(t *testing.T) {
 		t.Fatalf("BuildSnapshot(canceled) = %v, want context.Canceled", err)
 	}
 }
+
+// TestCodecLabelIsTheCensusValue pins the two answers the label helper owns: a
+// frame that carries no codec identity reads the documented UnspecifiedCodec,
+// and a frame that carries one reads that tag unchanged.
+//
+// The value IS UnspecifiedCodec rather than a literal, so the two surfaces that
+// render it cannot hold a copy that drifts: this package owns the string and
+// both read it (cli.md §2, viewer-design §3).
+func TestCodecLabelIsTheCensusValue(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		codec string
+		want  string
+	}{
+		{"a frame with no codec identity", "", UnspecifiedCodec},
+		{"a version 1 frame's absent tag", "", UnspecifiedCodec},
+		{"a codec tag as stored", "gzip+json", "gzip+json"},
+		{"a tag that merely resembles the unspecified value", "Unspecified", "Unspecified"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CodecLabel(tc.codec); got != tc.want {
+				t.Fatalf("CodecLabel(%q) = %q, want %q", tc.codec, got, tc.want)
+			}
+		})
+	}
+	if UnspecifiedCodec != "unspecified" {
+		t.Fatalf("UnspecifiedCodec = %q, want the documented %q (cli.md §2)", UnspecifiedCodec, "unspecified")
+	}
+}

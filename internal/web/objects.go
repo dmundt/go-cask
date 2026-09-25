@@ -494,7 +494,7 @@ func versionFilterValues(snapshot *index.Snapshot) []string {
 func codecFilterValues(snapshot *index.Snapshot) []string {
 	values := make([]string, 0, len(snapshot.Codecs))
 	for _, codec := range snapshot.Codecs {
-		values = append(values, codecLabel(codec))
+		values = append(values, index.CodecLabel(codec))
 	}
 	return values
 }
@@ -555,21 +555,9 @@ func codecCell(version byte, codec string) string {
 	if version == 0 {
 		return notReadLabel
 	}
-	return codecLabel(codec)
-}
-
-// unspecifiedCodec is how every viewer surface renders a frame that carries no
-// codec identity: a version 1 envelope, or a version 2 envelope whose codec
-// declared no tag. It matches the CLI's rendering (cli.md §2), so a filter, a
-// cell and a `cask meta` line name the same thing.
-const unspecifiedCodec = "unspecified"
-
-// codecLabel renders a codec tag, or the explicit unspecified value.
-func codecLabel(codec string) string {
-	if codec == "" {
-		return unspecifiedCodec
-	}
-	return codec
+	// The label itself belongs to the census, not to the viewer: it is the value
+	// the CLI's `list` and `meta` report for the same frame.
+	return index.CodecLabel(codec)
 }
 
 // prepareObjectRows adds template-only values after filtering, sorting, and

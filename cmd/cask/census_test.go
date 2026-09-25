@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dmundt/go-cask/internal/index"
 )
 
 // censusFixture seeds the store every census test reads: the deterministic
@@ -93,9 +95,9 @@ func TestListAndMetaAgreeOnTheHeader(t *testing.T) {
 			}
 		case 0:
 			sawRaw = true
-			if object.Type != "" || object.Codec != "unspecified" {
-				t.Fatalf("raw %s = {type %q, codec %q}, want no header and an unspecified codec",
-					object.Hash, object.Type, object.Codec)
+			if object.Type != "" || object.Codec != index.UnspecifiedCodec {
+				t.Fatalf("raw %s = {type %q, codec %q}, want no header and the census's unspecified codec %q",
+					object.Hash, object.Type, object.Codec, index.UnspecifiedCodec)
 			}
 		default:
 			t.Fatalf("%s reports frame version %d, want 2 (seeded) or 0 (raw)", object.Hash, object.Version)
