@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Agent instructions — `cas/codec`
+description: The package-local guide for the codec layer under cas/codec — the Encode/Decode contract, cascadeable wrappers with the inner codec first, constructor naming, deterministic bytes for content-addressed data, and no runtime type discovery.
+version: v1
+---
+
 # Agent instructions — `cas/codec`
 
 This package-local guide applies to the codec layer under `cas/codec`.

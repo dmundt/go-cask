@@ -71,12 +71,12 @@ no config file.
 |---|---|---|
 | `-store` | `./objects` | the store directory to inspect |
 | `-backend` | `fs` | must be `fs`: the viewer reads per-object physical metadata, so `packfs` is refused with an error naming the operation (exit 1) |
-| `-bind` | `127.0.0.1:8080` | listen address; a non-loopback address needs `-allow-insecure-bind` |
+| `-bind` | `127.0.0.1:8080` | listen address; the loopback spellings `127.0.0.1`, `localhost`, and `[::1]` are pinned to an explicit numeric address before listening (`localhost` → `127.0.0.1`), and any other address needs `-allow-insecure-bind` |
 | `-hash-algo` | `sha256` | `sha256`, `sha512`, or `sha512_256`; used to parse and validate digests and to verify, and shown in Metadata → Identity → Algorithm |
 | `-tokens` | empty | comma-separated `role=token` pairs for non-admin logins, for example `viewer=…,operator=…` |
 | `-token-file` | empty | file holding the startup admin token; used instead of generating one, and never displayed |
 | `-trusted-proxy` | empty | IPs, `ip:port` values, or CIDR blocks whose forwarded client address the login throttle may believe; empty trusts none, and a malformed entry fails startup |
-| `-allow-insecure-bind` | `false` | allow a non-loopback bind; startup then logs a prominent warning |
+| `-allow-insecure-bind` | `false` | allow a non-loopback bind; startup then logs a prominent warning, which also names the host firewall prompt such a bind triggers |
 | `-show-token` | terminal heuristic | `-show-token` forces the one-time login hint, `-show-token=false` never shows it and never opens the browser, and an absent flag shows it only on an interactive stdout; a loopback bind is required in every case |
 | `-no-open` | `false` | do not open the default browser |
 
@@ -237,6 +237,21 @@ embedding host supplies its own indexes (`web.Config`,
 - **`-allow-insecure-bind` is an escape hatch, not a deployment.** Startup logs
   a warning, no login link is printed, and plain `http://` still cannot hold a
   session.
+- **The bind address is pinned, not resolved.** `-bind` accepts the loopback
+  spellings `127.0.0.1`, `localhost`, and `[::1]`; `localhost` is resolved by
+  `cask` to `127.0.0.1` before the listener exists, so the listener, the printed
+  origin, the deep link, and the browser URL agree on every machine instead of
+  following the hosts file. A bare `:8080`, `0.0.0.0:8080`, or `[::]:8080`
+  listens on every interface and is refused like any other non-loopback address.
+- **A firewall prompt means the bind left loopback.** A host firewall
+  (Windows Defender Firewall, for one) prompts for a listener that reaches the
+  network, which is exactly what `-allow-insecure-bind` creates. The
+  `127.0.0.1:8080` default never prompts, so a prompt is the expected
+  consequence of the override rather than a viewer defect.
+- **Running inside WSL?** A viewer started in WSL2 and opened from the Windows
+  browser crosses the WSL localhost relay, and a prompt there names the relay
+  (`wslrelay.exe` or `vmmem`), not `cask`. No `-bind` value avoids that: use the
+  address WSL reports instead of changing the flags.
 
 ## Where the contracts live
 

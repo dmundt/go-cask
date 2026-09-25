@@ -1041,3 +1041,205 @@ func assertStoredCodec[T cas.Object[T]](t *testing.T, ctx context.Context, s *ca
 		t.Fatalf("stored codec = %q, want %q", env.Codec, want)
 	}
 }
+
+// --- Store guards and delegated failures ----------------------------------
+//
+// Every write and read path funnels through the same two pieces: encoded's
+// hash-then-key-check, and a delegation to the Backend. The fakes below make
+// each of those fail deterministically, so the store's own error arms are
+// asserted rather than assumed.
+
+// rejectingHasher returns a well-formed digest from Digest and then rejects it
+// in Validate. CheckDigest accepts the value, so this is the only way to reach
+// the arm where the client's algorithm — not the store — refuses a key.
+type rejectingHasher struct{ d cas.Digest }
+
+func (h rejectingHasher) Digest(io.Reader) (cas.Digest, error) { return h.d, nil }
+func (h rejectingHasher) Validate(cas.Digest) error            { return errors.New("rejected by algorithm") }
+
+// putErrorBackend fails every write and reports every probe as "absent", so a
+// store can fail at the backend after a successful encode. It embeds the
+// Backend interface rather than a concrete backend, so it deliberately does NOT
+// satisfy io.Closer even when the value it wraps does.
+type putErrorBackend struct {
+	cas.Backend
+	err error
+}
+
+func (b putErrorBackend) Put(context.Context, cas.Digest, io.Reader) error { return b.err }
+func (b putErrorBackend) Exists(context.Context, cas.Digest) (bool, error) { return false, nil }
+
+// existsErrorBackend fails the existence probe PutDedup uses to decide whether
+// the content is already stored.
+type existsErrorBackend struct {
+	cas.Backend
+	err error
+}
+
+func (b existsErrorBackend) Exists(context.Context, cas.Digest) (bool, error) { return false, b.err }
+
+// rawBackend hands out one caller-supplied reader for every digest, so a store
+// can be given a chosen frame, a failing read or a failing close.
+type rawBackend struct {
+	cas.Backend
+	reader io.ReadCloser
+}
+
+func (b rawBackend) Get(context.Context, cas.Digest) (io.ReadCloser, error) { return b.reader, nil }
+
+// readErrorReader fails every Read; Close succeeds, so the read arm is the one
+// the store reports.
+type readErrorReader struct{ err error }
+
+func (r readErrorReader) Read([]byte) (int, error) { return 0, r.err }
+func (r readErrorReader) Close() error             { return nil }
+
+// rawStore builds a store whose reads are served by reader.
+func rawStore(t *testing.T, reader io.ReadCloser) *cas.Store[test.Note] {
+	t.Helper()
+	return cas.New(rawBackend{Backend: backmem.New(), reader: reader}, jsoncodec.New[test.Note](), sha256.New())
+}
+
+// TestStoreCloseWithoutCloserBackend pins Close's no-op arm: the minimal
+// Backend contract has no Close, so a store over it needs no cleanup and
+// defer store.Close() is safe.
+func TestStoreCloseWithoutCloserBackend(t *testing.T) {
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close() over a backend without Close = %v, want nil", err)
+	}
+}
+
+// TestStoreCloseNilReceiver pins the other no-op arm: a nil *Store owns nothing,
+// so Close reports success instead of panicking.
+func TestStoreCloseNilReceiver(t *testing.T) {
+	var s *cas.Store[test.Note]
+	if err := s.Close(); err != nil {
+		t.Fatalf("(*Store[test.Note])(nil).Close() = %v, want nil", err)
+	}
+}
+
+// TestStoreRejectsDigestRefusedByHasher walks the shared key guard: Put hashes
+// the frame and then fails the check, and GetRaw/Exists/Delete apply the same
+// guard before touching the backend.
+func TestStoreRejectsDigestRefusedByHasher(t *testing.T) {
+	ctx := context.Background()
+	valid := sha256.Of([]byte("seed"))
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), rejectingHasher{d: valid})
+
+	// The guard names the operation it was applied for and wraps the client
+	// algorithm's own refusal, so both halves are asserted.
+	for _, tc := range []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{"Put", func() error { _, err := s.Put(ctx, test.Note{Title: "x"}); return err }, "store: put"},
+		{"GetRaw", func() error { _, err := s.GetRaw(ctx, valid); return err }, "store: get"},
+		{"Exists", func() error { _, err := s.Exists(ctx, valid); return err }, "store: exists"},
+		{"Delete", func() error { return s.Delete(ctx, valid) }, "store: delete"},
+	} {
+		err := tc.call()
+		if err == nil {
+			t.Fatalf("%s(digest the hasher refuses) = nil, want an error", tc.name)
+		}
+		if !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "rejected by algorithm") {
+			t.Fatalf("%s(refused digest) = %v, want the %q guard wrapping the hasher's refusal", tc.name, err, tc.want)
+		}
+	}
+}
+
+// TestStorePutReportsHasherDigestFailure pins the arm where the client's
+// algorithm cannot hash the frame at all.
+func TestStorePutReportsHasherDigestFailure(t *testing.T) {
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), digestErrorHasher{})
+	if _, err := s.Put(context.Background(), test.Note{Title: "x"}); err == nil || !strings.Contains(err.Error(), "digest failed") {
+		t.Fatalf("Put(digest error) = %v, want the hasher's failure", err)
+	}
+}
+
+// TestStorePutReportsBackendFailure pins Put's write delegation.
+func TestStorePutReportsBackendFailure(t *testing.T) {
+	want := errors.New("put failed")
+	s := cas.New(putErrorBackend{Backend: backmem.New(), err: want}, jsoncodec.New[test.Note](), sha256.New())
+	if _, err := s.Put(context.Background(), test.Note{Title: "x"}); !errors.Is(err, want) {
+		t.Fatalf("Put(backend error) = %v, want %v", err, want)
+	}
+}
+
+// TestStorePutDedupReportsProbeFailure pins the existence probe PutDedup makes
+// before it decides to write.
+func TestStorePutDedupReportsProbeFailure(t *testing.T) {
+	want := errors.New("exists failed")
+	s := cas.New(existsErrorBackend{Backend: backmem.New(), err: want}, jsoncodec.New[test.Note](), sha256.New())
+	if _, _, err := s.PutDedup(context.Background(), test.Note{Title: "x"}); !errors.Is(err, want) {
+		t.Fatalf("PutDedup(Exists error) = %v, want %v", err, want)
+	}
+}
+
+// TestStorePutDedupReportsWriteFailure pins the write PutDedup performs once the
+// probe reports the object is absent.
+func TestStorePutDedupReportsWriteFailure(t *testing.T) {
+	want := errors.New("put failed")
+	s := cas.New(putErrorBackend{Backend: backmem.New(), err: want}, jsoncodec.New[test.Note](), sha256.New())
+	if _, _, err := s.PutDedup(context.Background(), test.Note{Title: "x"}); !errors.Is(err, want) {
+		t.Fatalf("PutDedup(Put error) = %v, want %v", err, want)
+	}
+}
+
+// TestStoreGetReportsPayloadDecodeFailure pins the ErrCorrupt arm Get takes when
+// a frame names the store's own codec — so the mismatch check passes — and the
+// payload then fails to decode. It must not be reported as a codec mismatch.
+func TestStoreGetReportsPayloadDecodeFailure(t *testing.T) {
+	ctx := context.Background()
+	raw, err := cas.EncodeEnvelope("json", "note@1", []byte("{"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := rawStore(t, io.NopCloser(bytes.NewReader(raw)))
+	_, err = s.Get(ctx, sha256.Of(raw))
+	if !errors.Is(err, cas.ErrCorrupt) {
+		t.Fatalf("Get(bad payload) = %v, want ErrCorrupt", err)
+	}
+	if errors.Is(err, cas.ErrCodecMismatch) {
+		t.Fatal("Get(bad payload) reported ErrCodecMismatch although the frame names this store's own codec")
+	}
+}
+
+// TestStoreGetRawReportsReadFailure pins the arm that closes the reader and
+// reports the read failure rather than a second close error.
+func TestStoreGetRawReportsReadFailure(t *testing.T) {
+	want := errors.New("read failed")
+	s := rawStore(t, readErrorReader{err: want})
+	if _, err := s.GetRaw(context.Background(), sha256.Of([]byte("x"))); !errors.Is(err, want) {
+		t.Fatalf("GetRaw(read error) = %v, want %v", err, want)
+	}
+}
+
+// TestStoreTypeReportsCloseFailure pins Type's close delegation: the header
+// parsed, so a failing Close is the only error left to report.
+func TestStoreTypeReportsCloseFailure(t *testing.T) {
+	raw, err := cas.EncodeEnvelope("json", "note@1", []byte("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("close failed")
+	s := rawStore(t, failingCloseReader{Reader: bytes.NewReader(raw), err: want})
+	if _, err := s.Type(context.Background(), sha256.Of(raw)); !errors.Is(err, want) {
+		t.Fatalf("Type(close error) = %v, want %v", err, want)
+	}
+}
+
+// TestStoreVersionReportsCloseFailure pins Version's close delegation, the
+// one-byte counterpart of Type's.
+func TestStoreVersionReportsCloseFailure(t *testing.T) {
+	raw, err := cas.EncodeEnvelope("json", "note@1", []byte("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("close failed")
+	s := rawStore(t, failingCloseReader{Reader: bytes.NewReader(raw), err: want})
+	if _, err := s.Version(context.Background(), sha256.Of(raw)); !errors.Is(err, want) {
+		t.Fatalf("Version(close error) = %v, want %v", err, want)
+	}
+}

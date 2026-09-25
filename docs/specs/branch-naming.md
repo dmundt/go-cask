@@ -2,7 +2,7 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v6
+version: v7
 ---
 
 # Branch Naming — go-cask
@@ -13,6 +13,7 @@ Git branch rules: **one permanent branch, short-lived typed branches, optional r
 
 - `main` is the ONLY permanent branch; always releasable; all version tags land on it (versioning §3). Never force-pushed, never deleted.
 - Everything else is short-lived: branched from `main`, merged via PR, deleted after merge.
+- Every branch is created from the freshly fetched `origin/main` — the remote-tracking ref a task worktree branches from (`scripts/worktree.sh add` fetches, then `-b <branch> origin/main`). A local `main` is not a substitute: in the primary checkout it can be behind the remote or carry another session's uncommitted work. §3 owns the one exception.
 - Forbidden concepts: `develop`, `trunk`, per-developer branches, long-running integration branches. A branch living longer than a few days is too big — split it.
 - A branch name's type prefix is the contract, stating the branch's purpose.
 
@@ -36,6 +37,7 @@ Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the 
 | `experiment` | `main` | never | delete |
 
 - `release/vX.Y` exists only while that minor receives PATCH releases; created on demand, never preemptively (versioning §3/§5).
+- In the table's "Branch from" column, `main` means the freshly fetched `origin/main` (§1), never a local `main`; `hotfix` is the one type that may instead base on the open `release/vX.Y`.
 - Squash-merge or merge commits both acceptable — keep history readable (Conventional Commits, versioning §4); do not rebase `main`.
 
 ## 4. Interaction with versioning
@@ -47,6 +49,7 @@ Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the 
 ## 5. Checklist
 
 - [x] `main` is the only permanent branch; everything else short-lived
+- [x] Branches created from the freshly fetched `origin/main`, never a local `main`
 - [x] Branch names match `<type>/<NNN>-<kebab-description>` (type from §2, `NNN` the issue)
 - [x] ≤ 50 chars, lowercase/ASCII/hyphens; no forbidden names
 - [x] Feature/fix/hotfix branches merged via PR and deleted

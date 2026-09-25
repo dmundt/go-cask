@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Every `AGENT.md` in the repository now carries the same frontmatter —
+  `type`, `title` (identical to its H1), one-line `description` and a `version`
+  that moves on a material change — so a reader of a package-local guide can
+  tell how current it is. The seven guides that carried none (`cas/`,
+  `cas/codec/`, `cas/verify/`, `benchmarks/`, `benchmarks/data/`, `website/`,
+  `.github/`) gain it at `v1`; the rest are bumped. `docs/AGENT.md` §1.1 and
+  `docs/specs/AGENT.md` §3 state the rule.
 - The envelope **header census** is answerable without decoding a payload:
   `cas.PeekHeader` returns a frame's version, codec tag and type name in one
   pass over those fields. `cask list` gains `-type`/`-codec` filters and reports
@@ -140,6 +147,25 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Landing is coordinated through the pull request instead of a lock file inside
+  one clone. `scripts/pr-lane.sh` claims a lane for an issue with a server-side
+  compare-and-swap on the coordination ref `refs/lane/<issue>` — an atomic create
+  that succeeds exactly once, so two sessions cannot both claim one lane — and
+  `status` lists every lane on the remote with the pull request behind it, which
+  makes a landing in another clone, another machine or another person visible.
+  A lane with an open pull request is held; a claim that has no pull request yet
+  is honoured for 90 minutes (`PR_LANE_STALE_MINUTES`) and then taken over, so an
+  abandoned lane is reclaimed without a `--force` takeover and nobody has to judge
+  whether a holder is dead. `scripts/land-lane.sh` keeps its single slot but is
+  now advisory, and `.githooks/pre-push` refuses only a commit that has no green
+  gate stamp.
+- `cask web` pins its listener to an explicit numeric loopback address instead of
+  handing `-bind` to the host resolver. `-bind localhost:8080` now listens on
+  `127.0.0.1:8080` and prints that origin, rather than whichever of `127.0.0.1`
+  and `[::1]` the machine's hosts file preferred; `127.0.0.1` and `[::1]` are
+  unchanged. `-bind :8080` (every interface) is now refused like `0.0.0.0:8080`
+  unless `-allow-insecure-bind` is set, and the refusal and override messages
+  name the host firewall prompt that a bind beyond loopback triggers.
 - `packfs.Clean` sweeps its `<base>/packs` directory through `fs.CleanTemp`
   instead of its own scratch-name predicate, so both trees under a packed base
   use one convention. A name outside it (`notes.tmp.old`, `name.tmp.extra`) is no

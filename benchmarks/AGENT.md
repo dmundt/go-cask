@@ -1,3 +1,10 @@
+---
+type: Agent Instructions
+title: Agent instructions — `benchmarks`
+description: The package-local guide for the benchmarks subtree — suite boundaries, measurement rules, the codec/hash matrix, scale probes and result discipline; benchmarks measure performance and never define correctness or gate CI.
+version: v1
+---
+
 # Agent instructions — `benchmarks`
 
 This package-local guide freezes benchmark structure and measurement rules for

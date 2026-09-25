@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v17
+version: v18
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -35,11 +35,20 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 | `version:` | Always (custom key) | `v1` |
 | `tags:`/`status:` | Optional (`stable`/`draft`/`deprecated`) | |
 
-`type` and `version` are required. Other OKF keys (`sources`, `generated`, `verified`, `stale_after`, `tags`, `status`) are optional and MUST be used when applicable.
+`type` and `version` are required. Other OKF keys (`sources`, `generated`,
+`verified`, `stale_after`, `tags`, `status`) are optional and MUST be used when
+applicable.
+
+Every `AGENT.md` in the repository carries the same four keys, not only the ones
+under `docs/`: a package-local guide such as `cas/AGENT.md`, `scripts/AGENT.md`
+or `benchmarks/data/AGENT.md` gets its own `type`, `title` (identical to its
+H1), one-line `description` and `version` for exactly the reason a spec does —
+so a reader can tell how current the instructions are. The keys are the ones the
+table above lists; no package-local guide adds a key of its own.
 
 ### 1.2 Type values and locations
 
-`Specification` → every `docs/specs/` file; `Design Document` → every `docs/design/` file; `Guide` → `benchmarks/README.md` and similar how-to; `Agent Instructions` → any `AGENT.md`.
+`Specification` → every `docs/specs/` file; `Design Document` → every `docs/design/` file; `Guide` → `benchmarks/README.md` and similar how-to; `Agent Instructions` → every `AGENT.md`, wherever it lives (the root `AGENTS.md`, `docs/AGENT.md`, and the package-local guides under `cas/`, `cas/codec/`, `cas/verify/`, `benchmarks/`, `benchmarks/data/`, `examples/`, `scripts/`, `website/`, `.agents/` and `.github/`).
 
 ### 1.3 Index files
 
@@ -86,7 +95,7 @@ Go examples in these docs MUST name constructors per `coding-guidelines.md` §1:
 ## 8. Editing and maintenance checklist
 
 Before committing any change to a file in `docs/` (outside `docs/specs/`):
-- [ ] OKF frontmatter present (`type`, `title`, `description`, `version`; `okf_version: "0.2"` for indexes)
+- [ ] OKF frontmatter present (`type`, `title`, `description`, `version`; `okf_version: "0.2"` for indexes) — on every `AGENT.md` too, not only on files under `docs/` (§1.1)
 - [x] `version` bumped on material change — enforced by `scripts/check-version-fields.sh` from `verify.sh` (it detects a missing bump, not a cosmetic one)
 - [ ] No duplication — check `defaults.md` and owning specs first
 - [ ] Cross-references updated in ALL files mentioning the changed term

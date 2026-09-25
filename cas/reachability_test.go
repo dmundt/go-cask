@@ -136,3 +136,32 @@ func TestReachableRespectsContextCancellation(t *testing.T) {
 		t.Fatalf("Reachable(canceled ctx) = %v, want context.Canceled", err)
 	}
 }
+
+// TestWalkDigestsStopsWhenContextIsCancelledMidWalk pins the walk's per-node
+// check: the entry guard is not enough, because a cancellation that arrives
+// while the walk is running must stop it before the next node is expanded.
+func TestWalkDigestsStopsWhenContextIsCancelledMidWalk(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	child := test.DigestData([]byte("child"))
+
+	// Resolving the root hands back a child and cancels the context, so the
+	// child is on the stack but must never be resolved.
+	resolve := cas.NodeResolver(func(context.Context, cas.Digest) (cas.Node, []cas.Digest, error) {
+		cancel()
+		return test.Node{Name: "parent"}, []cas.Digest{child}, nil
+	})
+
+	var visited []string
+	err := cas.WalkDigests(ctx, resolve, []cas.Digest{test.DigestData([]byte("root"))},
+		func(d cas.Digest, _ cas.Node, _ []cas.Digest) error {
+			visited = append(visited, d.String())
+			return nil
+		})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WalkDigests(ctx cancelled mid-walk) = %v, want context.Canceled", err)
+	}
+	if len(visited) != 1 {
+		t.Fatalf("WalkDigests visited %d nodes, want 1: the child must not be expanded after cancellation", len(visited))
+	}
+}

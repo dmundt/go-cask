@@ -120,7 +120,7 @@ func webFlags(a *webArgs, storeDefault, backendDefault string) *flag.FlagSet {
 	flags := newFlagSet("web")
 	flags.StringVar(&a.store, "store", storeDefault, "filesystem store directory")
 	flags.StringVar(&a.backend, "backend", backendDefault, "storage backend: fs (the viewer needs the filesystem backend)")
-	flags.StringVar(&a.bind, "bind", "127.0.0.1:8080", "listen address")
+	flags.StringVar(&a.bind, "bind", "127.0.0.1:8080", "listen address; a loopback spelling (127.0.0.1, localhost, [::1]) is pinned to an explicit numeric loopback address, and any other address needs -allow-insecure-bind")
 	flags.StringVar(&a.hashAlgorithm, "hash-algo", sha256.Name, hashAlgoUsage)
 	flags.StringVar(&a.tokens, "tokens", "", "comma-separated role=token pairs for viewer login (e.g. admin=...,operator=...)")
 	flags.StringVar(&a.tokenFile, "token-file", "", "file holding the startup admin token (read instead of generating one; never printed)")
@@ -165,7 +165,17 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if !isLoopbackBind(a.bind) {
+	// The listener's address is pinned before the bind is judged: a documented
+	// loopback spelling (127.0.0.1, localhost, [::1]) is resolved here to an
+	// explicit numeric loopback address, so the listener, the printed origin,
+	// the browser URL and the host firewall's behaviour never depend on what
+	// this machine's resolver would have made of the name (#337). A value that
+	// is not a loopback spelling is passed through unchanged — the operator
+	// named the interface, and the refusal below is what guards it.
+	bind := a.bind
+	if pinned, ok := loopbackBindAddr(a.bind); ok {
+		bind = pinned
+	} else {
 		if !a.allowInsecure {
 			slog.Error("refusing to bind the viewer to a non-loopback address without HTTPS; set -allow-insecure-bind to override")
 			return 1
@@ -174,10 +184,14 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		// cannot disable that, so a browser reaching this bind over plain
 		// http:// will discard the cookie and never hold a session. The
 		// override therefore needs a TLS-terminating proxy in front of it to
-		// be usable at all — say so rather than let login fail silently.
+		// be usable at all — say so rather than let login fail silently. The
+		// same override is what makes the host firewall ask: a listener on a
+		// wildcard or non-loopback address is one the OS treats as reachable
+		// from the network, which the loopback default never is.
 		slog.Warn("viewer bound to a non-loopback address",
-			"bind", a.bind,
-			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session")
+			"bind", bind,
+			"note", "session cookies are always Secure, so log in over https:// (put a TLS-terminating proxy in front of this address); plain http:// logins will not hold a session",
+			"firewall", "binding beyond loopback is what makes the host firewall (Windows Defender Firewall, for one) prompt to allow network access; the 127.0.0.1 default never prompts")
 	}
 
 	kind, err := store.ParseKind(a.backend)
@@ -260,9 +274,9 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 		Handler:           root,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	listener, err := net.Listen("tcp", a.bind)
+	listener, err := net.Listen("tcp", bind)
 	if err != nil {
-		slog.Error("listen", "addr", a.bind, "err", err)
+		slog.Error("listen", "addr", bind, "err", err)
 		return 1
 	}
 	serverErr := make(chan error, 1)
@@ -450,17 +464,40 @@ func viewerLocation(n loginNotice) string {
 	return "viewer bound to " + n.bind + ": log in over https:// through a TLS-terminating proxy (session cookies are always Secure, so this bind's plain http:// cannot hold a session)"
 }
 
-// isLoopbackBind reports whether the bind address is loopback.
-func isLoopbackBind(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
+// loopbackBindAddr resolves a documented loopback bind spelling to the explicit
+// numeric address the viewer listens on, and reports whether the bind was one
+// (viewer-security §4, #337).
+//
+// Accepting `localhost` used to mean handing the name to net.Listen, which
+// leaves the address family to the host resolver: the same flag yielded
+// 127.0.0.1 on one machine and [::1] on another, so the printed login origin
+// and the address the operator's browser resolved could disagree even though
+// both are loopback. The viewer therefore picks the address itself —
+// `localhost` becomes 127.0.0.1, which every host resolves, while a numeric
+// loopback address is kept as written (127.0.0.2 is loopback too, and binding
+// it never prompts a host firewall). A non-loopback value is not resolved here:
+// the operator named that interface, and runWeb's refusal is what guards it.
+func loopbackBindAddr(bind string) (string, bool) {
+	host, port, err := net.SplitHostPort(bind)
 	if err != nil {
-		return false
+		return "", false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return net.JoinHostPort("127.0.0.1", port), true
 	}
 	ip := net.ParseIP(host)
-	if ip == nil {
-		return host == "localhost"
+	if ip == nil || !ip.IsLoopback() {
+		return "", false
 	}
-	return ip.IsLoopback()
+	return net.JoinHostPort(ip.String(), port), true
+}
+
+// isLoopbackBind reports whether the bind address is loopback — the one
+// question runWeb's refusal and the notice's printing rule both ask, so both
+// read their answer from loopbackBindAddr.
+func isLoopbackBind(addr string) bool {
+	_, ok := loopbackBindAddr(addr)
+	return ok
 }
 
 // browserCommand returns the command that opens a URL in the default browser

@@ -718,20 +718,32 @@ func TestVersionAndWebHelpers(t *testing.T) {
 	})
 
 	t.Run("bind and token helpers", func(t *testing.T) {
+		// The table pins both halves of #337 in one place, because both read
+		// their answer from loopbackBindAddr: whether the bind is loopback, and
+		// the explicit numeric address the viewer listens on instead of letting
+		// the host resolver pick the family.
 		for _, tc := range []struct {
-			addr string
-			want bool
+			addr     string
+			loopback bool
+			pinned   string
 		}{
-			{"127.0.0.1:8080", true},
-			{"[::1]:8080", true},
-			{"localhost:8080", true},
-			{"0.0.0.0:8080", false},
-			{"192.168.1.10:8080", false},
-			{"example.test:8080", false},
-			{"no-port", false},
+			{"127.0.0.1:8080", true, "127.0.0.1:8080"},
+			{"127.0.0.2:8080", true, "127.0.0.2:8080"},
+			{"[::1]:8080", true, "[::1]:8080"},
+			{"localhost:8080", true, "127.0.0.1:8080"},
+			{"LOCALHOST:8080", true, "127.0.0.1:8080"},
+			{"0.0.0.0:8080", false, ""},
+			{":8080", false, ""},
+			{"[::]:8080", false, ""},
+			{"192.168.1.10:8080", false, ""},
+			{"example.test:8080", false, ""},
+			{"no-port", false, ""},
 		} {
-			if got := isLoopbackBind(tc.addr); got != tc.want {
-				t.Fatalf("isLoopbackBind(%q) = %v, want %v", tc.addr, got, tc.want)
+			if got := isLoopbackBind(tc.addr); got != tc.loopback {
+				t.Fatalf("isLoopbackBind(%q) = %v, want %v", tc.addr, got, tc.loopback)
+			}
+			if got, ok := loopbackBindAddr(tc.addr); got != tc.pinned || ok != tc.loopback {
+				t.Fatalf("loopbackBindAddr(%q) = (%q, %v), want (%q, %v)", tc.addr, got, ok, tc.pinned, tc.loopback)
 			}
 		}
 		tok, err := randomToken()
