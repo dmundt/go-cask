@@ -23,6 +23,12 @@ const objectMetaCacheLimit = 50_000
 type objectMeta struct {
 	// Type is the decoded envelope type, empty when the object carries none.
 	Type string
+	// Version is the envelope frame version, 0 when the bytes carry no walkable
+	// header.
+	Version byte
+	// Codec is the writing codec's identity tag, "" both for a frame that
+	// carries none and for bytes with no header: Version tells the two apart.
+	Codec string
 	// Size is the stored payload size in bytes.
 	Size int64
 	// Written is the physical write time reported by the backend.
@@ -78,10 +84,14 @@ func (s *Server) objectMetaFor(ctx context.Context, d cas.Digest) objectMeta {
 		return meta
 	}
 	var meta objectMeta
-	if typ, err := index.HeaderType(ctx, s.store, d); err != nil {
+	// One header read reports the type, the frame version and the codec tag
+	// together (index.Header), so the inspector's three fields cost the same
+	// read the list row already pays.
+	version, codec, typ, err := index.Header(ctx, s.store, d)
+	if err != nil {
 		meta.Unreadable = true
 	} else {
-		meta.Type = typ
+		meta.Version, meta.Codec, meta.Type = version, codec, typ
 	}
 	if size, err := s.store.Size(ctx, d); err == nil {
 		meta.Size = size

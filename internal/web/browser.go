@@ -26,6 +26,11 @@ type objectBrowserState struct {
 	Query string
 	// Type filters rows by envelope type.
 	Type string
+	// Version filters rows by envelope frame version, as its decimal form.
+	Version string
+	// Codec filters rows by codec identity tag; "unspecified" selects the
+	// frames that carry none.
+	Codec string
 	// Size filters rows by stored size.
 	Size string
 	// Status filters rows by integrity state.
@@ -102,6 +107,21 @@ func parseObjectBrowserState(values url.Values, hasher cas.Hasher) (objectBrowse
 	}
 	state.Query = strings.ToLower(strings.TrimSpace(state.Query))
 	if state.Type, err = queryValue(values, "type"); err != nil {
+		return state, err
+	}
+	// Version and codec are read raw and validated against what the store
+	// actually holds where the snapshot is available (objects.go): their sets
+	// are properties of the store, not of the viewer, so a value the store does
+	// not contain is a malformed request rather than an empty page.
+	if state.Version, err = queryValue(values, "version"); err != nil {
+		return state, err
+	}
+	if state.Version != "" {
+		if _, parseErr := strconv.Atoi(state.Version); parseErr != nil {
+			return state, fmt.Errorf("invalid version: %w", parseErr)
+		}
+	}
+	if state.Codec, err = queryValue(values, "codec"); err != nil {
 		return state, err
 	}
 	if state.Size, err = enumValue(values, "size", "", objectSizeBands); err != nil {
@@ -196,6 +216,8 @@ var objectSortColumns = []struct {
 }{
 	{Key: "hash", Label: "Hash", Name: "hash"},
 	{Key: "type", Label: "Type", Name: "type"},
+	{Key: "version", Label: "Version", Name: "frame version"},
+	{Key: "codec", Label: "Codec", Name: "codec"},
 	{Key: "size", Label: "Size", Name: "size"},
 	{Key: "inbound", Label: "Inbound", Name: "inbound references", Class: "viewer-references"},
 	{Key: "status", Label: "Integrity", Name: "integrity", Class: "viewer-status-cell"},
@@ -319,6 +341,12 @@ func (state objectBrowserState) url() string {
 	if state.Type != "" {
 		values.Set("type", state.Type)
 	}
+	if state.Version != "" {
+		values.Set("version", state.Version)
+	}
+	if state.Codec != "" {
+		values.Set("codec", state.Codec)
+	}
 	if state.Size != "" {
 		values.Set("size", state.Size)
 	}
@@ -390,6 +418,16 @@ func matchesObjectRow(row *objectRow, state objectBrowserState) bool {
 	if state.Type != "" && row.Type != state.Type {
 		return false
 	}
+	// The header axes filter on the labels the table renders, so what the
+	// operator filters by is what the cell shows: a frame with no codec tag
+	// reads "unspecified" and is selected as `codec=unspecified`, while bytes
+	// with no walkable header (version 0) match no version and no codec.
+	if state.Version != "" && strconv.Itoa(int(row.Version)) != state.Version {
+		return false
+	}
+	if state.Codec != "" && row.Codec != state.Codec {
+		return false
+	}
 	// Integrity and reachability are independent axes, so each narrows the
 	// match on its own: a corrupt orphan needs both facts to match.
 	if state.Status != "" && row.Integrity != state.Status {
@@ -431,6 +469,10 @@ func sortObjectRows(rows []objectRow, state objectBrowserState) {
 		switch state.Sort {
 		case "type":
 			comparison = strings.Compare(left.Type, right.Type)
+		case "version":
+			comparison = cmp.Compare(left.Version, right.Version)
+		case "codec":
+			comparison = strings.Compare(left.Codec, right.Codec)
 		case "size":
 			comparison = cmp.Compare(left.Size, right.Size)
 		case "inbound":

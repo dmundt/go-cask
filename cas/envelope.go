@@ -294,10 +294,44 @@ func EnvelopeFromBytes(data []byte) (Envelope, error) {
 // header field.
 const maxPeekNameLen = 1 << 12
 
+// PeekHeader reads only the envelope header from r — the leading version byte,
+// the codec identity tag and the versioned type name — in one pass over exactly
+// those fields, and returns all three.
+//
+// It is the census read: a caller that reports which layout and which codec an
+// object was written with needs three fields that live in one walk, so reading
+// them one PeekVersion/PeekType call at a time would re-read the same bytes
+// three times. PeekType and PeekVersion remain for a caller that wants one
+// field; both resolve the layout through the same helper this does.
+//
+// The payload is never read, and the cost is independent of the object's size.
+// version is reported as stored — 1 or 2 for a layout this build knows — and
+// codec is "" when the frame carries no identity: a version 1 frame, or a
+// version 2 frame whose codec declared no tag. Both read back as "codec
+// unspecified" (viewer-design §3). A legacy unversioned type name reads back
+// with "@1" appended (object-versioning §2).
+//
+// It returns ErrCorrupt, naming the field, when the stream does not begin with a
+// usable version-2 or version-1 header: an absent or unreadable version byte, an
+// unsupported version, a truncated or oversized codec or type field, an empty
+// type name, or a type longer than maxPeekNameLen. A caller that must see a
+// version this build does not know — "written by a newer format" is an answer,
+// not damage — uses PeekVersion, which reports the byte verbatim.
+func PeekHeader(r io.Reader) (version byte, codec, typeName string, err error) {
+	rd := r
+	br, ok := r.(io.ByteReader)
+	if !ok {
+		adapter := byteReader{r: r}
+		br, rd = adapter, adapter
+	}
+	return peekHeader(br, rd, "peek header")
+}
+
 // PeekType reads only the envelope header from r —
 // [version u8][uvarint codecLen][codec][uvarint typeLen][type] — and returns
 // the versioned type name. The codec identity tag is stepped over, not
-// reported: EnvelopeFromBytes is the reader that reports it. The payload is
+// reported: PeekHeader reports it, and EnvelopeFromBytes is the reader that
+// reports the payload too. The payload is
 // never read: the stream is consumed exactly as far as the type field, so the
 // cost is independent of the object's size. An absent major version reads back
 // as "@1" (object-versioning §2).
@@ -324,37 +358,36 @@ func PeekType(r io.Reader) (string, error) {
 		adapter := byteReader{r: r}
 		br, rd = adapter, adapter
 	}
-	version, err := br.ReadByte()
+	_, _, typeName, err := peekHeader(br, rd, "peek type")
 	if err != nil {
-		return "", peekError("envelope version", err)
+		return "", err
+	}
+	return typeName, nil
+}
+
+// peekHeader walks the header fields once, labelling every failure with op (the
+// caller's operation name) so PeekType and PeekHeader report the same shape of
+// error for the same damaged bytes.
+func peekHeader(br io.ByteReader, rd io.Reader, op string) (version byte, codec, typeName string, err error) {
+	version, err = br.ReadByte()
+	if err != nil {
+		return 0, "", "", peekError(op, "envelope version", err)
 	}
 	if version != envelopeVersion && version != envelopeVersionV1 {
-		return "", fmt.Errorf("%w: peek type: unsupported envelope version %d", ErrCorrupt, version)
+		return 0, "", "", fmt.Errorf("%w: %s: unsupported envelope version %d", ErrCorrupt, op, version)
 	}
 	if version == envelopeVersion {
-		if err := skipPeekName(br, rd, "codec"); err != nil {
-			return "", err
+		if codec, err = readPeekName(br, rd, op, "codec", true); err != nil {
+			return 0, "", "", err
 		}
 	}
-	typeLen, err := binary.ReadUvarint(br)
-	if err != nil {
-		return "", peekError("type length", err)
+	if typeName, err = readPeekName(br, rd, op, "type", false); err != nil {
+		return 0, "", "", err
 	}
-	if typeLen == 0 {
-		return "", fmt.Errorf("%w: peek type: empty type name", ErrCorrupt)
-	}
-	if typeLen > maxPeekNameLen {
-		return "", fmt.Errorf("%w: peek type: type length %d exceeds %d", ErrCorrupt, typeLen, maxPeekNameLen)
-	}
-	name := make([]byte, typeLen)
-	if _, err := io.ReadFull(rd, name); err != nil {
-		return "", peekError("type", err)
-	}
-	typeName := string(name)
 	if !strings.Contains(typeName, "@") {
 		typeName += "@1" // legacy unversioned type name
 	}
-	return typeName, nil
+	return version, codec, typeName, nil
 }
 
 // PeekVersion reads only the envelope's leading version byte from r and returns
@@ -380,40 +413,45 @@ func PeekVersion(r io.Reader) (byte, error) {
 	}
 	version, err := br.ReadByte()
 	if err != nil {
-		return 0, peekError("envelope version", err)
+		return 0, peekError("peek version", "envelope version", err)
 	}
 	return version, nil
 }
 
-// skipPeekName consumes a length-prefixed header string field from a peek
-// stream without keeping it. An empty field is legal (an empty codec tag means
-// "unspecified"), while a declared length beyond maxPeekNameLen is a corrupt
-// header rather than something to skip on trust.
-func skipPeekName(br io.ByteReader, rd io.Reader, field string) error {
+// readPeekName consumes a length-prefixed header string field from a peek
+// stream and returns it. An empty field is legal only where the layout allows
+// one (an empty codec tag means "unspecified"); a declared length beyond
+// maxPeekNameLen is a corrupt header rather than a field to read on trust, and
+// an empty type name is refused like the byte-slice reader refuses it.
+func readPeekName(br io.ByteReader, rd io.Reader, op, field string, allowEmpty bool) (string, error) {
 	fieldLen, err := binary.ReadUvarint(br)
 	if err != nil {
-		return peekError(field+" length", err)
+		return "", peekError(op, field+" length", err)
 	}
 	if fieldLen > maxPeekNameLen {
-		return fmt.Errorf("%w: peek type: %s length %d exceeds %d", ErrCorrupt, field, fieldLen, maxPeekNameLen)
+		return "", fmt.Errorf("%w: %s: %s length %d exceeds %d", ErrCorrupt, op, field, fieldLen, maxPeekNameLen)
 	}
 	if fieldLen == 0 {
-		return nil
+		if !allowEmpty {
+			return "", fmt.Errorf("%w: %s: empty %s name", ErrCorrupt, op, field)
+		}
+		return "", nil
 	}
-	if _, err := io.CopyN(io.Discard, rd, int64(fieldLen)); err != nil {
-		return peekError(field, err)
+	name := make([]byte, fieldLen)
+	if _, err := io.ReadFull(rd, name); err != nil {
+		return "", peekError(op, field, err)
 	}
-	return nil
+	return string(name), nil
 }
 
 // peekError turns a header read failure into an ErrCorrupt that names the field
 // it happened in. End of stream needs no cause (there is nothing more to say),
 // while any other read error keeps its cause on the chain.
-func peekError(field string, err error) error {
+func peekError(op, field string, err error) error {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return fmt.Errorf("%w: peek type: truncated %s", ErrCorrupt, field)
+		return fmt.Errorf("%w: %s: truncated %s", ErrCorrupt, op, field)
 	}
-	return fmt.Errorf("%w: peek type: read %s: %w", ErrCorrupt, field, err)
+	return fmt.Errorf("%w: %s: read %s: %w", ErrCorrupt, op, field, err)
 }
 
 // byteReader adapts an io.Reader to io.ByteReader one byte at a time. PeekType

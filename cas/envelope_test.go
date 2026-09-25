@@ -478,6 +478,113 @@ func TestPeekTypeReadsOnlyTheHeader(t *testing.T) {
 	}
 }
 
+// TestPeekHeaderReadsOnlyTheHeader pins the census read's cost and its one-pass
+// shape: version, codec and type come from exactly the header bytes — including
+// the codec tag PeekType steps over — whatever the payload size, and the stream
+// is left positioned exactly after them.
+func TestPeekHeaderReadsOnlyTheHeader(t *testing.T) {
+	const typ = "blob@1"
+	for _, tc := range []struct {
+		name  string
+		codec string
+	}{
+		{"named codec", "gzip+json"},
+		{"unspecified codec", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, size := range []int{0, 7, 1 << 20} {
+				payload := bytes.Repeat([]byte("x"), size)
+				cr := &countingReader{r: bytes.NewReader(encodeEnvelope(tc.codec, typ, payload))}
+
+				version, codec, typeName, err := PeekHeader(cr)
+				if err != nil {
+					t.Fatalf("payload %d: PeekHeader = %v", size, err)
+				}
+				if version != EnvelopeVersion {
+					t.Fatalf("payload %d: version = %d, want %d", size, version, EnvelopeVersion)
+				}
+				if codec != tc.codec {
+					t.Fatalf("payload %d: codec = %q, want %q", size, codec, tc.codec)
+				}
+				if typeName != typ {
+					t.Fatalf("payload %d: type = %q, want %q", size, typeName, typ)
+				}
+				if want := headerSize(tc.codec, typ); cr.n != want {
+					t.Fatalf("payload %d: read %d bytes, want exactly the %d-byte header", size, cr.n, want)
+				}
+				rest, err := io.ReadAll(cr)
+				if err != nil {
+					t.Fatalf("payload %d: read rest = %v", size, err)
+				}
+				if want := headerTail(tc.codec, typ, payload); !bytes.Equal(rest, want) {
+					t.Fatalf("payload %d: %d bytes left, want the %d-byte framed tail", size, len(rest), len(want))
+				}
+			}
+		})
+	}
+}
+
+// TestPeekHeaderAgreesWithTheSingleFieldPeeks pins that the combined read and
+// the two single-field reads resolve one frame identically — they share the walk
+// — for every layout this build knows.
+func TestPeekHeaderAgreesWithTheSingleFieldPeeks(t *testing.T) {
+	for _, frame := range [][]byte{
+		encodeEnvelope("cbor", "note@1", []byte("payload")),
+		encodeEnvelope("", "note@1", nil),
+		v1Envelope("legacy", []byte("payload")),
+	} {
+		wantVersion, err := PeekVersion(bytes.NewReader(frame))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantType, err := PeekType(bytes.NewReader(frame))
+		if err != nil {
+			t.Fatal(err)
+		}
+		version, _, typeName, err := PeekHeader(bytes.NewReader(frame))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if version != wantVersion || typeName != wantType {
+			t.Fatalf("PeekHeader = (%d, %q), want (%d, %q)", version, typeName, wantVersion, wantType)
+		}
+	}
+}
+
+// TestPeekHeaderVersion1AndUnversioned pins the compatibility reading: a
+// version 1 frame reports version 1 and a codec that is explicitly unspecified,
+// and a legacy unversioned type name reads back with "@1".
+func TestPeekHeaderVersion1AndUnversioned(t *testing.T) {
+	version, codec, typeName, err := PeekHeader(bytes.NewReader(v1Envelope("legacy", []byte("payload"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != envelopeVersionV1 {
+		t.Fatalf("version = %d, want %d", version, envelopeVersionV1)
+	}
+	if codec != "" {
+		t.Fatalf("codec = %q, want unspecified", codec)
+	}
+	if typeName != "legacy@1" {
+		t.Fatalf("type = %q, want legacy@1", typeName)
+	}
+}
+
+// TestPeekHeaderRejectsAnUnknownVersion pins the boundary against PeekVersion:
+// the census read needs a layout it can walk, so an unknown version is damage to
+// it, while PeekVersion reports the byte verbatim for a caller that wants to
+// tell "newer format" from "damaged".
+func TestPeekHeaderRejectsAnUnknownVersion(t *testing.T) {
+	frame := []byte{9, 0, 0}
+	if _, _, _, err := PeekHeader(bytes.NewReader(frame)); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("PeekHeader(version 9) = %v, want ErrCorrupt", err)
+	}
+	version, err := PeekVersion(bytes.NewReader(frame))
+	if err != nil || version != 9 {
+		t.Fatalf("PeekVersion(version 9) = (%d, %v), want (9, nil)", version, err)
+	}
+}
+
 // TestPeekTypeVersion1Stream covers the version 1 stream: no codec field is
 // present, so the type follows the version byte directly.
 func TestPeekTypeVersion1Stream(t *testing.T) {

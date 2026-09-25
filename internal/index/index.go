@@ -5,6 +5,7 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -51,39 +52,52 @@ func EnvelopeType(data []byte) string {
 	return typ
 }
 
-// headerPrefixLimit bounds the bytes HeaderType reads. The TLV header is a few
-// dozen bytes for any realistic codec tag and type name, so this is generous;
-// it exists only so a hostile or damaged object cannot make a header read grow
-// with the object (the core's own per-field ceiling is 4 KiB).
+// headerPrefixLimit bounds the bytes a header read consumes when the object is
+// not an envelope the core's peek can walk: the peek reads one field at a time
+// and never more than the core's own per-field ceiling (4 KiB each for the codec
+// tag and the type name), so the worst case is bounded regardless of the
+// object's size.
 const headerPrefixLimit = 8 << 10
 
-// HeaderType reads only the envelope header of the object at d and returns its
-// versioned type name ("blob@1", …); "" when the bytes are not an envelope.
+// Header reads the envelope header of the object at d — its frame version, its
+// codec identity tag and its versioned type name ("blob@1", …) — in one pass,
+// and reports every field as absent (zero values) when the bytes are not an
+// envelope this build can walk.
 //
 // It is the one place the viewer's index, the inspector, and the cask CLI learn
-// an object's type from stored bytes — each used to read its own bounded prefix
-// (4 KiB in two places, 64 KiB in a third) and sniff it.
+// an object's header from stored bytes. The three fields live in one walk, so
+// reading them through cas.PeekHeader costs one open and exactly the header
+// bytes, independent of the payload: a CLI that lists a store, or a viewer that
+// rebuilds its snapshot, pays no more for a 1 GiB object than for an empty one.
 //
-// The read is a bounded prefix parsed by the index's best-effort EnvelopeType,
-// not cas.PeekType: a store legitimately holds raw, un-enveloped objects
-// (`cask put` writes the file's own bytes), and PeekType reports anything that
-// is not a valid header as cas.ErrCorrupt — which would relabel every raw object
-// as damaged. A non-nil error here therefore means "the object could not be
-// read", never "these bytes are not an envelope header".
-func HeaderType(ctx context.Context, backend cas.Backend, d cas.Digest) (string, error) {
+// Best-effort on purpose: a store legitimately holds raw, un-enveloped objects
+// (`cask put` writes the file's own bytes), and cas.PeekHeader reports anything
+// that is not a usable header as cas.ErrCorrupt — which would relabel every raw
+// object as damaged. Damaged bytes therefore read here as "no header", while a
+// non-nil error means the object could not be read at all.
+func Header(ctx context.Context, backend cas.Backend, d cas.Digest) (version byte, codec, typeName string, err error) {
 	rc, err := backend.Get(ctx, d)
 	if err != nil {
-		return "", err
+		return 0, "", "", err
 	}
-	prefix, err := io.ReadAll(io.LimitReader(rc, headerPrefixLimit))
-	if err != nil {
-		_ = rc.Close() // the read error is the one worth reporting
-		return "", fmt.Errorf("cas: read object header: %w", err)
+	version, codec, typeName, peekErr := cas.PeekHeader(io.LimitReader(rc, headerPrefixLimit))
+	if closeErr := rc.Close(); closeErr != nil {
+		return 0, "", "", fmt.Errorf("cas: close object header reader: %w", closeErr)
 	}
-	if err := rc.Close(); err != nil {
-		return "", fmt.Errorf("cas: close object header reader: %w", err)
+	if peekErr != nil {
+		if errors.Is(peekErr, cas.ErrCorrupt) || errors.Is(peekErr, cas.ErrUnknownType) {
+			return 0, "", "", nil // not an envelope header; not damage either
+		}
+		return 0, "", "", fmt.Errorf("cas: read object header: %w", peekErr)
 	}
-	return EnvelopeType(prefix), nil
+	return version, codec, typeName, nil
+}
+
+// HeaderType is Header's type-only convenience, kept for the callers that report
+// just the type (the inspector's metadata read).
+func HeaderType(ctx context.Context, backend cas.Backend, d cas.Digest) (string, error) {
+	_, _, typeName, err := Header(ctx, backend, d)
+	return typeName, err
 }
 
 // Entry is the immutable metadata used by the viewer query path. Keeping the
@@ -92,8 +106,15 @@ func HeaderType(ctx context.Context, backend cas.Backend, d cas.Digest) (string,
 type Entry struct {
 	// Digest identifies the object.
 	Digest cas.Digest
-	// Type is the decoded envelope type.
+	// Type is the decoded envelope type ("" when the bytes carry no header).
 	Type string
+	// Version is the envelope frame's leading version byte, 0 when the bytes
+	// carry no header this build can walk.
+	Version byte
+	// Codec is the writing codec's identity tag, "" both when the frame carries
+	// no identity (a version 1 frame, or a codec that declared no tag) and when
+	// the bytes carry no header at all: the two are told apart by Version.
+	Codec string
 	// Size is the object's stored byte count.
 	Size int64
 	// Written is the object's backend modification time.
@@ -109,6 +130,12 @@ type Snapshot struct {
 	Entries []Entry
 	// Types lists discovered object types.
 	Types []string
+	// Versions lists the envelope frame versions present, ascending. An object
+	// whose header could not be read contributes to none of these lists.
+	Versions []byte
+	// Codecs lists the writing codec tags present, ascending; "" is the
+	// "unspecified" tag and is listed as such when some object carries it.
+	Codecs []string
 	// Total is the number of indexed objects.
 	Total int
 	// Bytes is the total stored size of indexed objects.
@@ -134,15 +161,18 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 	}
 	s := &Snapshot{Entries: make([]Entry, 0, len(digests)), Total: len(digests)}
 	types := make(map[string]struct{})
+	versions := make(map[byte]struct{})
+	codecs := make(map[string]struct{})
 	for _, d := range digests {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		e := Entry{Digest: d}
-		if typ, err := HeaderType(ctx, source, d); err != nil {
+		version, codec, typ, err := Header(ctx, source, d)
+		if err != nil {
 			e.Unreadable = true
 		} else {
-			e.Type = typ
+			e.Version, e.Codec, e.Type = version, codec, typ
 		}
 		if e.Size, err = source.Size(ctx, d); err != nil {
 			e.Unreadable = true
@@ -152,8 +182,13 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 		if e.Written, err = source.ModTime(ctx, d); err != nil {
 			e.Unreadable = true
 		}
+		// An object whose header did not parse contributes to no census list:
+		// the viewer and the CLI must not invent a version, a codec or a type
+		// for bytes they could not read.
 		if e.Type != "" {
 			types[e.Type] = struct{}{}
+			versions[e.Version] = struct{}{}
+			codecs[e.Codec] = struct{}{}
 		}
 		s.Entries = append(s.Entries, e)
 	}
@@ -162,5 +197,15 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 		s.Types = append(s.Types, typ)
 	}
 	slices.Sort(s.Types)
+	s.Versions = make([]byte, 0, len(versions))
+	for version := range versions {
+		s.Versions = append(s.Versions, version)
+	}
+	slices.Sort(s.Versions)
+	s.Codecs = make([]string, 0, len(codecs))
+	for codec := range codecs {
+		s.Codecs = append(s.Codecs, codec)
+	}
+	slices.Sort(s.Codecs)
 	return s, nil
 }

@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v72
+version: v73
 ---
 
 # CAS Core — go-cask
@@ -445,6 +445,7 @@ func New[T Object[T]](backend Backend, codec Codec[T], hasher Hasher) *Store[T]
 | `GetRaw` | returns the serialized bytes (the TLV envelope) for inspection/tooling; never decodes, so never validates — and never parses the frame, so reports no envelope-level error: a damaged object comes back as its bytes; `EnvelopeFromBytes` (or `Get`) is the reader that reports `ErrCorrupt` |
 | `Type` | `backend.Get` → `PeekType` → close: reads the envelope header only, so the payload is never read or allocated. Reports the type as stored (which may be one this store cannot decode — `Get` rejects that), `ErrCorrupt` for an unusable header, and the backend's `ErrNotFound` for an absent object |
 | `Version` | `backend.Get` → `PeekVersion` → close: reads the frame's leading version byte and nothing else, so cost is one byte whatever the object's size. Reports the byte as stored — including a version this build does not know, which is the point: a caller compares it against `EnvelopeVersion` to tell "written by a newer format" from corrupt bytes without matching an error string. `ErrCorrupt` (naming the field) for a stream with no byte at all, and the backend's `ErrNotFound` for an absent object |
+| `PeekHeader` | the streaming census read: `[version][codecLen][codec][typeLen][type]` in one pass, returning **all three** fields — the frame version, the codec identity tag (empty = unspecified) and the versioned type name. It exists because the three fields live in one walk: a caller that reports which layout and which codec an object was written with would otherwise re-read the same bytes. `PeekType` and `PeekVersion` remain for a caller that wants one field, and all three resolve the layout through one helper. Reads no byte of the payload; `ErrCorrupt` naming the field for anything that is not a usable version 1 or 2 header — a caller that must see an unknown version byte verbatim uses `PeekVersion` (§4.6) |
 | `Exists` | delegates to `backend` |
 | `Delete` | delegates to `backend` |
 | `Close` | forwards to the backend when it implements `io.Closer`; idempotent — the backend close runs once, a second call is a no-op returning the first call's error |
@@ -644,7 +645,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | Area | Exported identifiers |
 |---|---|
 | `cas` — addressing | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
-| `cas` — typed layer | `Object[T]`, `Validator`, `Codec[T]`, `CodecNamer` (the optional codec-identity interface), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EncodeEnvelope` (the writer `Store.Put` frames through, for a tool without a store), `EnvelopeType`, `PeekType`, `PeekVersion`, `EnvelopeVersion` (the format version this build writes) |
+| `cas` — typed layer | `Object[T]`, `Validator`, `Codec[T]`, `CodecNamer` (the optional codec-identity interface), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EncodeEnvelope` (the writer `Store.Put` frames through, for a tool without a store), `EnvelopeType`, `PeekType`, `PeekHeader` (version, codec and type in one pass, for a store census), `PeekVersion`, `EnvelopeVersion` (the format version this build writes) |
 | `cas` — maintenance layer | `Verify`, `Verifier`, `NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Reachable`, `RefLister`, `RefListerFunc`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter` (§4.11) |
 | `cas` — batch layer | `BatchGetter`, `GetMany` (§4.13) |
 | `cas` — byte layer | `Backend`, `Stats` |
@@ -661,7 +662,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | Typed registry | `cas/repo`: `Object`, `Decoder`, `Resolver`, `Registry` (`Register`/`Resolve`), `NewRegistry`, `RegisterStore[T]`, `LookupStore[T]`, `Walk`, `Reachable`, `UnknownObject`, `UnknownTypeError` (library-design §1) |
 | `cas` — errors | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch`, `ErrUnsupported` |
 
-With the exported methods of the types named above, this table is the whole frozen surface: the 45 identifiers of `package cas` (17 functions, 20 types, the `EnvelopeVersion` constant, the seven sentinels — the same list as library-design §1, checked against `go doc ./cas`) plus every adjacent package the library ships. Everything not named here is internal and MUST NOT be relied upon; two groups sit outside it deliberately, each governed by its own spec — the reference layer `gitlike` (§4.12, a reference library, not part of the core) and the optional `cas/bloom`/`cas/pack` helpers. The surface stays additive-compatible (library-design §5).
+With the exported methods of the types named above, this table is the whole frozen surface: the 46 identifiers of `package cas` (18 functions, 20 types, the `EnvelopeVersion` constant, the seven sentinels — the same list as library-design §1, checked against `go doc ./cas`) plus every adjacent package the library ships. Everything not named here is internal and MUST NOT be relied upon; two groups sit outside it deliberately, each governed by its own spec — the reference layer `gitlike` (§4.12, a reference library, not part of the core) and the optional `cas/bloom`/`cas/pack` helpers. The surface stays additive-compatible (library-design §5).
 
 ### 7.2 Extension recipes
 

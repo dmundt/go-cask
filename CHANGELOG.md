@@ -10,6 +10,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The envelope **header census** is answerable without decoding a payload:
+  `cas.PeekHeader` returns a frame's version, codec tag and type name in one
+  pass over those fields. `cask list` gains `-type`/`-codec` filters and reports
+  `type`/`version`/`codec` in its `-json` objects, `cask meta` reports the frame
+  version and the codec, and `cask stats -json` gains a per-type, per-version and
+  per-codec census (each axis sums to the object count minus the objects that
+  carry no header — `unreadable` and `headerless`, the raw objects `put` writes).
+  The viewer's object table and inspector report the same three values from the
+  same read, the filter bar gains `version` and `codec` axes, and the URL
+  contract carries them. A frame without a codec tag reads `unspecified`
+  everywhere — never a blank — while bytes with no envelope header invent
+  nothing. Every read is header-only: the census costs no more for a gigabyte
+  object than for an empty one.
 - `cas.EncodeEnvelope(codec, typeName, payload)` exports the envelope writer
   `Store.Put` frames through, for a tool that must produce stored bytes without a
   store. `cask seed-preview` is that tool — it derives each preview object's
