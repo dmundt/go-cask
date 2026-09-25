@@ -33,8 +33,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"slices"
 	"sync"
 
 	"github.com/dmundt/go-cask/cas"
@@ -172,31 +170,6 @@ func LookupStore[T cas.Object[T]](r *Registry, typeName string) (*cas.Store[T], 
 	return store, nil
 }
 
-// envelopeHeaderLimit bounds the prefix read to learn an object's type,
-// mirroring gitlike's ResolveAny: the envelope header is a few dozen bytes for
-// any realistic type name, so this is generous while keeping the cost of
-// resolving an object's type independent of the object's size.
-const envelopeHeaderLimit = 1 << 10
-
-// readEnvelopeHeader reads a bounded prefix of the object stored at d, enough
-// to learn its type via cas.EnvelopeType without reading (or buffering) the
-// whole payload.
-func readEnvelopeHeader(ctx context.Context, backend cas.Backend, d cas.Digest) ([]byte, error) {
-	rc, err := backend.Get(ctx, d)
-	if err != nil {
-		return nil, err
-	}
-	prefix, err := io.ReadAll(io.LimitReader(rc, envelopeHeaderLimit))
-	if err != nil {
-		_ = rc.Close() // the read error is the one worth reporting
-		return nil, fmt.Errorf("cas/repo: read object header: %w", err)
-	}
-	if err := rc.Close(); err != nil {
-		return nil, fmt.Errorf("cas/repo: close object header reader: %w", err)
-	}
-	return prefix, nil
-}
-
 // Resolve determines the object's type from its self-describing envelope and
 // dispatches to the registered Decoder. It returns an *UnknownTypeError
 // (Unwrap() == cas.ErrUnknownType) for a type with no registered Decoder —
@@ -215,13 +188,9 @@ func (r *Registry) Resolve(ctx context.Context, d cas.Digest) (Object, error) {
 	if err := r.hasher.Validate(d); err != nil {
 		return nil, fmt.Errorf("cas/repo: resolve: %w", err)
 	}
-	prefix, err := readEnvelopeHeader(ctx, r.backend, d)
+	typeName, err := cas.HeaderType(ctx, r.backend, d)
 	if err != nil {
 		return nil, err
-	}
-	typeName, err := cas.EnvelopeType(prefix)
-	if err != nil {
-		return nil, fmt.Errorf("cas/repo: resolve %s: %w", d, err)
 	}
 	r.mu.RLock()
 	decode, ok := r.decoders[typeName]
@@ -266,7 +235,12 @@ func (u *UnknownObject) References() []cas.Digest { return nil }
 // guarantee gitlike's WalkGraph documents, so a deep object graph does not
 // exhaust the goroutine stack. It follows Object.References() across however
 // many distinct types res knows how to resolve, which is what makes it the
-// cross-type successor to the single-type cas.Walker[T].
+// cross-type successor to the single-type cas.Walker[T]. The traversal itself
+// is cas.WalkDigests: this function owns only what is specific to a
+// registry-backed walk — resolving a digest to its registered type and
+// classifying the failure — so a typed walk and a byte-layer one share one rule
+// set (at-most-once, explicit stack, context checked per node, references
+// followed in order).
 //
 // Two failure modes are handled differently, matching go-cask#136's
 // acceptance criteria:
@@ -277,58 +251,39 @@ func (u *UnknownObject) References() []cas.Digest { return nil }
 //   - Any other Resolve failure — most commonly cas.ErrNotFound for a
 //     reference that points at nothing, or cas.ErrCorrupt for a stored
 //     envelope that does not parse — aborts Walk immediately and is returned
-//     wrapped: a broken reference is a named error, not something the walk
-//     silently stops on or skips past. Damage in particular is never reported
-//     as an *UnknownObject: an object Walk cannot read is not a type it merely
-//     does not know.
+//     as the resolver's own wrapped error: a broken reference is a named
+//     error, not something the walk silently stops on or skips past. Damage in
+//     particular is never reported as an *UnknownObject: an object Walk cannot
+//     read is not a type it merely does not know.
 //
 // visit may itself return a non-nil error (including for an *UnknownObject) to
 // abort Walk early; that error is returned unwrapped.
 func Walk(ctx context.Context, res Resolver, roots []cas.Digest, visit func(d cas.Digest, obj Object) error) error {
-	if err := ctx.Err(); err != nil {
-		return err
+	resolve := func(ctx context.Context, d cas.Digest) (cas.Node, []cas.Digest, error) {
+		return resolveNode(ctx, res, d)
 	}
-	visited := make(map[string]bool)
-	stack := make([]cas.Digest, 0, len(roots))
-	for _, root := range roots {
-		if !root.IsZero() {
-			stack = append(stack, root)
-		}
-	}
-	for len(stack) > 0 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		d := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		key := d.String()
-		if visited[key] {
-			continue
-		}
-		visited[key] = true
+	return cas.WalkDigests(ctx, resolve, roots, func(d cas.Digest, node cas.Node, _ []cas.Digest) error {
+		return visit(d, node.(Object)) // resolveNode only ever returns an Object
+	})
+}
 
-		obj, err := res.Resolve(ctx, d)
-		if err != nil {
-			var ute *UnknownTypeError
-			if errors.As(err, &ute) {
-				if verr := visit(d, &UnknownObject{Digest: d, TypeName: ute.TypeName, Err: err}); verr != nil {
-					return verr
-				}
-				continue
-			}
-			return fmt.Errorf("cas/repo: walk: resolve %s: %w", d, err)
-		}
-		if err := visit(d, obj); err != nil {
-			return err
-		}
-		refs := obj.References()
-		for _, ref := range slices.Backward(refs) { // push reversed: keep reference order
-			if !ref.IsZero() && !visited[ref.String()] {
-				stack = append(stack, ref)
-			}
-		}
+// resolveNode reads d through res and classifies the outcome for the walk: a
+// successfully decoded object (whose references the walk reads from the node),
+// or an *UnknownObject, which is reported to visit and is a leaf because an
+// unknown type's references cannot be read — the resolve error travels in the
+// node's Err field rather than as this function's return, because an unknown
+// type must not abort the walk. Any other failure is returned for the walk to
+// abort on, exactly as the resolver wrapped it.
+func resolveNode(ctx context.Context, res Resolver, d cas.Digest) (cas.Node, []cas.Digest, error) {
+	obj, err := res.Resolve(ctx, d)
+	if err == nil {
+		return obj, nil, nil
 	}
-	return nil
+	var ute *UnknownTypeError
+	if errors.As(err, &ute) {
+		return &UnknownObject{Digest: d, TypeName: ute.TypeName, Err: err}, nil, nil
+	}
+	return nil, nil, err
 }
 
 // Reachable computes the complete, transitively-closed set of digests
@@ -344,7 +299,7 @@ func Walk(ctx context.Context, res Resolver, roots []cas.Digest, visit func(d ca
 // passing only entry-point roots without first expanding through Reachable (or
 // Walk) silently deletes anything those roots reference.
 func Reachable(ctx context.Context, res Resolver, roots []cas.Digest) (map[string]bool, error) {
-	reachable := make(map[string]bool, len(roots))
+	reachable := make(map[string]bool, len(roots)+1)
 	err := Walk(ctx, res, roots, func(d cas.Digest, _ Object) error {
 		reachable[d.String()] = true
 		return nil

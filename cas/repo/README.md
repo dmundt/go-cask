@@ -5,6 +5,7 @@ Package `repo` promotes gitlike's example-only `Codecs`/`Repository`/`Resolver`/
 ## Policy
 
 - `repo` never redefines the storage model: every operation is built on `Object[T].References()`, the existing "single source of truth for traversal, preloading, and GC reachability" (`cas/object.go`).
+- `repo` does not carry a traversal of its own either: `Walk` is an adapter over `cas.WalkDigests`, the core's one graph walk, so a registry walk and a `cas.Walker[T]` walk share a stack, a visited set and a rule set. What stays here is only what a registry walk adds — resolving a digest to its registered type and classifying the failure (go-cask#319).
 - A `Registry` maps a versioned type name (`Object.Type()`, e.g. `"blob@1"`) to a `Decoder`; `Register` and `RegisterStore` both fail at construction time when a type name collides, is empty, or the decoder/store is nil — never a nil-decoder panic at first use.
 - `Resolve` returns an `*UnknownTypeError` (`Unwrap() == cas.ErrUnknownType`) for a type nothing was registered for, never a nil dereference.
 - `Walk` and `Reachable` depend on the `Resolver` interface, not the concrete `*Registry`, so a test double can stand in for one.

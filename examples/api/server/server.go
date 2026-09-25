@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -250,16 +251,17 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rc, err := s.backend.Get(r.Context(), h)
+	// cas.HeaderType reads only the TLV header — a bounded prefix, never the
+	// payload — so learning an object's type does not buffer the object. Raw,
+	// un-enveloped bytes (which `cask put` legitimately writes) are ErrCorrupt
+	// to it, and this handler reports those as untyped rather than failing.
+	typ, err := cas.HeaderType(r.Context(), s.backend, h)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 4<<10)) // TLV header carries the type
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read failed"})
-		return
+		if !errors.Is(err, cas.ErrCorrupt) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		typ = ""
 	}
 	size, err := s.backend.Size(r.Context(), h)
 	if err != nil {
@@ -272,7 +274,7 @@ func (s *server) objectMeta(w http.ResponseWriter, r *http.Request) {
 		"hash":       h.String(),
 		"algorithm":  sha256.Name,
 		"size":       size,
-		"type":       envelopeType(data),
+		"type":       typ,
 		"references": []string{},
 	})
 }

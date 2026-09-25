@@ -264,7 +264,29 @@ func (c *CachedStore[T]) Preload(ctx context.Context, digests []cas.Digest) erro
 // are damaged, which is deliberately not in the tolerated set: "not my type" is
 // an expected shape of a shared store, while "cannot be read" is not, and the
 // preload must not report success over a graph it could not actually warm.
+//
+// d itself is always loaded, whatever the depth: depth 0 warms one object and
+// follows nothing. A digest is warmed at most once per call, so a diamond-shaped
+// graph is not re-read once per path to it — the same visited rule every other
+// walk in the library follows (cas.WalkDigests), and the same one the prefetch
+// recipe already applied: warming the same subtree twice is duplicate work, not
+// extra safety, because a load is memoized by the CachedObject it lands in.
 func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, depth int) error {
+	return c.preloadRecursive(ctx, d, depth, make(map[string]struct{}, depth))
+}
+
+// preloadRecursive warms d and then its references to depth levels, skipping
+// every digest already warmed in this call.
+func (c *CachedStore[T]) preloadRecursive(ctx context.Context, d cas.Digest, depth int, seen map[string]struct{}) error {
+	if d.IsZero() {
+		return nil // an absent reference is not an object to warm (cas-core §4.1)
+	}
+	key := d.String()
+	if _, ok := seen[key]; ok {
+		return nil
+	}
+	seen[key] = struct{}{}
+
 	obj, err := c.Get(ctx, d)
 	if err != nil {
 		return err
@@ -273,7 +295,7 @@ func (c *CachedStore[T]) PreloadRecursive(ctx context.Context, d cas.Digest, dep
 		return nil
 	}
 	for _, ref := range obj.References() {
-		err := c.PreloadRecursive(ctx, ref, depth-1)
+		err := c.preloadRecursive(ctx, ref, depth-1, seen)
 		if err != nil && !errors.Is(err, cas.ErrUnknownType) && !errors.Is(err, cas.ErrNotFound) {
 			return err
 		}

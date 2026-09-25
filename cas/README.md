@@ -8,6 +8,8 @@
 - `Hasher` is the caller-supplied algorithm seam.
 - `Codec[T]`, `Store[T]`, and `Object[T]` define the typed layer.
 - `Walker[T]` and the cache wrappers add traversal and read optimization.
+- `WalkDigests` is the one graph traversal those adapters share: `Walker[T]` is its typed adapter and `cas/repo.Walk` its cross-type one, so one stack, one visited set and one rule set serve every walk.
+- `HeaderType` is the one bounded envelope-header read: `PeekType`/`EnvelopeType` parse bytes a caller already holds, while `HeaderType` reads the prefix that names an object's type without buffering its payload.
 - `VerifyAll`/`Sweep`/`Capabilities` are the generic, backend-agnostic maintenance layer — they work against any `Backend`, not just `fs`.
 
 ## Default policy

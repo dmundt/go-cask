@@ -325,12 +325,13 @@ func TestResolveAnyUnknownType(t *testing.T) {
 	}
 }
 
-// --- objectType ---
+// --- header type ---
 
 // TestObjectTypeReturnsVersionedName pins that resolution compares the
 // versioned type name from the envelope header ("blob@1"), not a bare base
 // name: that is what makes a future "blob@2" unknown instead of decoded by the
-// @1 model.
+// @1 model. The header read is cas.HeaderType now — gitlike carries no reader
+// of its own — so the test probes that, on the same bytes.
 func TestObjectTypeReturnsVersionedName(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, backmem.New())
@@ -341,12 +342,12 @@ func TestObjectTypeReturnsVersionedName(t *testing.T) {
 	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	typ, err := NewResolver(repo).objectType(ctx, h)
+	typ, err := cas.HeaderType(ctx, repo.backend, h)
 	if err != nil {
-		t.Fatalf("objectType = %q, %v", typ, err)
+		t.Fatalf("cas.HeaderType = %q, %v", typ, err)
 	}
 	if typ != TypeBlob {
-		t.Fatalf("objectType = %q, want %q", typ, TypeBlob)
+		t.Fatalf("cas.HeaderType = %q, want %q", typ, TypeBlob)
 	}
 }
 
@@ -1219,12 +1220,12 @@ func TestObjectTypeRejectsMalformedEnvelope(t *testing.T) {
 	if err := repo.backend.Put(ctx, h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}
-	_, err := NewResolver(repo).objectType(ctx, h)
+	_, err := cas.HeaderType(ctx, repo.backend, h)
 	if !errors.Is(err, cas.ErrCorrupt) {
-		t.Fatalf("objectType on a malformed envelope = %v, want ErrCorrupt", err)
+		t.Fatalf("cas.HeaderType on a malformed envelope = %v, want ErrCorrupt", err)
 	}
 	if errors.Is(err, cas.ErrUnknownType) {
-		t.Fatalf("objectType on a malformed envelope = %v, must not be reported as an unknown type", err)
+		t.Fatalf("cas.HeaderType on a malformed envelope = %v, must not be reported as an unknown type", err)
 	}
 }
 
