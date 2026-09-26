@@ -2,12 +2,12 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v13
+version: v14
 ---
 
 # Agent instructions — `scripts/`
 
-This subtree contains the repo's operational command wrappers. Treat the scripts here as the canonical automation layer for verification, release notes, examples, and benchmarks.
+Subtree contains the repo's operational command wrappers. Treat the scripts here as the canonical automation layer for verification, release notes, examples, and benchmarks.
 
 ## Purpose
 
@@ -19,22 +19,22 @@ This subtree contains the repo's operational command wrappers. Treat the scripts
 ## Rules
 
 - Write shell scripts in bash with `set -euo pipefail`.
-- A new helper script MUST be executable in the index, not only on disk. On a
+- Every new helper script MUST be executable in the index, not only on disk. On a
   checkout with `core.fileMode=false` (the Windows toolchain here) `chmod +x`
   changes nothing git records, so stage it with `git add --chmod=+x <path>` or
   `git update-index --chmod=+x <path>`. A `100644` script passes a local gate run
   and fails CI with `Permission denied`.
-- Prefer a single command path for a workflow; do not duplicate the same logic in multiple scripts when one wrapper can call the shared logic.
+- Prefer a single command path for a workflow; never duplicate the same logic in multiple scripts when one wrapper can call the shared logic.
 - Treat `./scripts/verify.sh` as the repo preflight gate for design changes, release prep, and CI parity checks.
 - Keep GitHub release notes synchronized with `CHANGELOG.md`; include the standard `Full Changelog:` compare link for each release.
 - Keep docs and workflow references in sync when script behavior changes.
-- Do not add noisy background jobs or non-deterministic automation to the helper layer.
+- Never add noisy background jobs or non-deterministic automation to the helper layer.
 - Prefer explicit, easy-to-read output over hidden side effects.
 - A script that owns a committed artifact must own it exclusively: when two
   helpers can write the same file, one of them gains a mode that never touches
   it, and a test in `verify.sh` pins the split (`test-bench-scripts.sh` is the
   reference for `bench-baseline.sh` versus `bench-compare.sh`).
-- The landing helpers are part of this layer, in two layers that must not be
+- Landing helpers are part of this layer, in two layers that must not be
   confused. `pr-lane.sh` owns the LANE: one open pull request is one lane, the
   claim is a server-side compare-and-swap on the coordination ref
   `refs/lane/<issue>`, and the lane is freed by merging or closing its PR and
@@ -204,10 +204,10 @@ If the change affects release automation or changelog sync, also verify the gene
 
 ## Signed pull-request workflow
 
-When repository policy requires signed commits, rebuild PR branches locally from
+Repository policy requires signed commits: rebuild PR branches locally from
 current `main`; never use GitHub's server-side rebase or update-branch operation.
 Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, and push with `git push --force-with-lease`. Before every
-PR creation or update, run `./scripts/verify.sh` and confirm all configured
+`git verify-commit`, push with `git push --force-with-lease`. Before every PR
+creation or update, run `./scripts/verify.sh` and confirm all configured
 coverage thresholds pass. Enable auto-merge or merge only after signature
 verification, required checks, and coverage checks pass.
