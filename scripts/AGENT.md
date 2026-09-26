@@ -2,36 +2,36 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v14
+version: v15
 ---
 
 # Agent instructions — `scripts/`
 
-Subtree contains the repo's operational command wrappers. Treat the scripts here as the canonical automation layer for verification, release notes, examples, and benchmarks.
+Subtree contains repo's operational command wrappers. Treat scripts here as canonical automation layer for verification, release notes, examples, benchmarks.
 
 ## Purpose
 
 - Keep local developer workflows and CI in sync.
-- Centralize quiescent checks in `verify.sh` instead of spreading duplicate logic across workflows and docs.
-- Keep release automation deterministic and driven from `CHANGELOG.md`.
-- Keep example and benchmark runs simple enough to execute reliably from the repo root.
+- Centralize quiescent checks in `verify.sh`, not spreading duplicate logic across workflows and docs.
+- Keep release automation deterministic, driven from `CHANGELOG.md`.
+- Keep example and benchmark runs simple enough to execute reliably from repo root.
 
 ## Rules
 
-- Write shell scripts in bash with `set -euo pipefail`.
+- Write shell scripts in bash, `set -euo pipefail`.
 - Every new helper script MUST be executable in the index, not only on disk. On a
   checkout with `core.fileMode=false` (the Windows toolchain here) `chmod +x`
-  changes nothing git records, so stage it with `git add --chmod=+x <path>` or
-  `git update-index --chmod=+x <path>`. A `100644` script passes a local gate run
-  and fails CI with `Permission denied`.
-- Prefer a single command path for a workflow; never duplicate the same logic in multiple scripts when one wrapper can call the shared logic.
-- Treat `./scripts/verify.sh` as the repo preflight gate for design changes, release prep, and CI parity checks.
-- Keep GitHub release notes synchronized with `CHANGELOG.md`; include the standard `Full Changelog:` compare link for each release.
+  changes nothing git records: stage it with `git add --chmod=+x <path>` or
+  `git update-index --chmod=+x <path>`. A `100644` script passes a local gate run,
+  fails CI with `Permission denied`.
+- Prefer a single command path per workflow; never duplicate the same logic in multiple scripts when one wrapper can call the shared logic.
+- Treat `./scripts/verify.sh` as repo preflight gate: design changes, release prep, CI parity checks.
+- Keep GitHub release notes synchronized with `CHANGELOG.md`; include standard `Full Changelog:` compare link per release.
 - Keep docs and workflow references in sync when script behavior changes.
-- Never add noisy background jobs or non-deterministic automation to the helper layer.
+- Never add noisy background jobs or non-deterministic automation to helper layer.
 - Prefer explicit, easy-to-read output over hidden side effects.
-- A script that owns a committed artifact must own it exclusively: when two
-  helpers can write the same file, one of them gains a mode that never touches
+- A script owning a committed artifact must own it exclusively: when two
+  helpers can write the same file, one gains a mode that never touches
   it, and a test in `verify.sh` pins the split (`test-bench-scripts.sh` is the
   reference for `bench-baseline.sh` versus `bench-compare.sh`).
 - Landing helpers are part of this layer, in two layers that must not be
@@ -111,7 +111,7 @@ Subtree contains the repo's operational command wrappers. Treat the scripts here
 ## Dependencies and scope
 
 - Scripts may invoke `go`, `gofmt`, `git`, `benchstat`, and package-local helpers only when the repo already depends on them.
-- Keep scripts repo-root aware and avoid assumptions about the caller's current directory.
+- Keep scripts repo-root aware, avoid assumptions about the caller's current directory.
 - If a script changes user-visible behavior, update [`README.md`](./README.md) and any relevant workflow or spec references in the same change.
 
 ## Running the scripts on Windows
