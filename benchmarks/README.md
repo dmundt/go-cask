@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v14
+version: v15
 ---
 
 # Benchmarks — go-cask
@@ -57,7 +57,7 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 To refresh the reference dump for a machine or branch, run:
 
 ```bash
-./scripts/bench-baseline.sh
+go run ./cmd/buildtool bench-baseline
 ```
 
 It runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1` and writes the capture to
@@ -72,21 +72,22 @@ threshold and **not** a gate.
 To compare a fresh run against it, use:
 
 ```bash
-./scripts/bench-compare.sh
+go run ./cmd/buildtool bench-compare
 ```
 
 It picks the baseline **before** capturing — the committed `benchmarks/data/baseline.txt`, else the
-newest file in `benchmarks/data/archive/` — then captures through `bench-baseline.sh --capture-only`
-(into `benchmarks/data/current.txt` by default) and never writes the canonical reference itself, so a
-comparison cannot overwrite what it compares against. Pass a baseline path, or a baseline and a
-current path, to compare other files. It exits 1 when no baseline exists or when baseline and current
-resolve to the same file, warns when the two captures are byte-identical, and exits 2 with the manual
-`diff -u` hint when `benchstat` is absent. Nothing is scheduled: a maintainer refreshes the reference
-by hand, on demand, on a quiet machine. Because the capture uses `-count=1`, treat the `benchstat`
-output as a coarse smoke comparison and use `-count=5` or more (§5) for a real conclusion.
+newest file in `benchmarks/data/archive/` — then captures into `benchmarks/data/current.txt` by
+default and never writes the canonical reference itself, so a comparison cannot overwrite what it
+compares against. Pass a baseline path, or a baseline and a current path, to compare other files. It
+exits 1 when no baseline exists or when baseline and current resolve to the same file, warns when the
+two captures are byte-identical, and exits 2 with the manual `diff -u` hint when `benchstat` is
+absent. Nothing is scheduled: a maintainer refreshes the reference by hand, on demand, on a quiet
+machine. Because the capture uses `-count=1`, treat the `benchstat` output as a coarse smoke
+comparison and use `-count=5` or more (§5) for a real conclusion.
 
-The scripts' ownership split is asserted by a stub-based regression test that `./scripts/verify.sh`
-runs as its `== helper script behaviour ==` step; it executes no real benchmark.
+The commands' ownership split is asserted by an ordinary Go test
+(`go test ./cmd/buildtool/`), which drives them through injected collaborators and runs
+no real benchmark; the gate covers it in its race suite.
 
 ## 3. Regular perf suite
 

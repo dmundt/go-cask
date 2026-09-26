@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v32
+version: v50
 ---
 
 # go-cask Rules Index
@@ -33,6 +33,9 @@ version: v32
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
 | `internal/design/` (design-rule checks the gate runs: no exported `any`, canonical `memory` import aliases, and one owner for the codec census label) | [`library-design.md`](specs/library-design.md) §5 + [`cas/AGENT.md`](../cas/AGENT.md) "Core rules" (the alias check) + [`cli.md`](specs/cli.md) §3 (the census convention) |
+| `internal/build/core/` (**a separate Go module** — the reusable build engine: the change-set classification, the layer matrix, the coverage policy and its thresholds, the Markdown integrity rules, the committed package graph and its renderer, the frontmatter version rule, the site's Go fences, inventory tables and one-line footer, the dependency/module-graph guards, the pinned-toolchain resolution, the example-runner selection, the benchmark-capture decisions, the advisory landing slot's records, the server-side landing lane's ref record and verdict, the gate run's own scope and escape decisions, the gate stamp ledger and the linked worktree's link. It ships no table and imports nothing but the standard library) | [`internal/build/core/README.md`](../internal/build/core/README.md) (every package has one) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) "the build engine is its own module" |
+| `internal/build/` (go-cask's own policy for that engine — the layer matrix, the coverage tiers, the codec guards, the site's inventory tables and footer contract, the change-set patterns, and the package graph's prose — plus `shell/`, the archived scripts each Go port replaced) | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`internal/build/shell/README.md`](../internal/build/shell/README.md) + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" (the matrix) + [`testing-strategy.md`](specs/testing-strategy.md) §5 (the tiers) + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 (the Markdown rules) + [`website/AGENT.md`](../website/AGENT.md) (the site fences and footer) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 (the codec guards) |
+| `cmd/buildtool/` (the entry point for those build decisions; developer tooling, not the product CLI) | [`cmd/buildtool/README.md`](../cmd/buildtool/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
 | `gitlike/` (2nd-class reference library at the application layer — not an app, not an example) | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
 | `examples/*` (3rd-class teaching code: no compatibility surface; may import `cas/**` and `gitlike`, never `internal/**`, `cmd/**` or another example) | [`examples.md`](specs/examples.md) §2 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
@@ -42,9 +45,9 @@ version: v32
 | `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3 + [`performance.md`](specs/performance.md) §5.1 (bloom) |
 | `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
 | `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
-| any package under `cas/**` (coverage tier, `scripts/verify.sh` `coverage_targets` / `coverage_exempt`) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |
+| any package under `cas/**` (coverage tier, `internal/build/policy`'s coverage table and exemption register) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | `cas/bloom/` and its subpackages `cas/bloom/counting/`, `cas/bloom/standard/`, `cas/bloom/persistent/` | [`performance.md`](specs/performance.md) + [`consistency.md`](specs/consistency.md) + [`cas/bloom/README.md`](/cas/bloom/README.md) + [`coding-guidelines.md`](specs/coding-guidelines.md) §3 (`persistent` is the approved `golang.org/x/sys` mmap exception) |
-| `scripts/` | [`scripts/AGENT.md`](../scripts/AGENT.md) + [`scripts/README.md`](../scripts/README.md) |
+| `scripts/` (`buildtool.sh`, the launcher that finds Go and starts `cmd/buildtool`; `toolchain.sh`, the resolution it shares with `verify.sh` and `.githooks/pre-push`; and `verify.sh`, the gate's name for `buildtool verify`) | [`scripts/README.md`](../scripts/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
 | `benchmarks/` | [`benchmarks/AGENT.md`](/benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
