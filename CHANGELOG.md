@@ -147,8 +147,23 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The repository's verification gate is Go. `./scripts/verify.sh` keeps its name and its
+  verdict — it resolves the toolchain and runs `go run ./cmd/buildtool verify` — and every
+  step it used to hold in bash runs from there: formatting, module drift, build, vet, the
+  engine module's own suite, the layer matrix, the codec guards, the security scan, the
+  coverage tiers, the race suite and the fuzz smoke, followed by the documentation steps.
+  `VERIFY_SCOPE`, `VERIFY_JOBS` and the `VERIFY_SKIP_*` options are unchanged, and so is
+  the rule that a run which skipped a step writes no gate stamp. Two fixes came with the
+  move: the formatting step no longer walks every linked worktree under `.gocache`, where
+  another session's unformatted file could fail this session's gate, and the step list
+  itself is now covered by tests instead of only by a whole gate run. The gate also writes
+  the receipt CI reuses — it marks each check under the name scripts/gate-receipt.sh's
+  suite requires, so a renamed step costs a full CI run instead of a missed check — and it
+  cross-builds and vets windows/amd64 and linux/arm64 locally, so the failures the
+  platform matrix would find are found before the push.
 - Landing is coordinated through the pull request instead of a lock file inside
-  one clone. `scripts/pr-lane.sh` claims a lane for an issue with a server-side
+  one clone. `go run ./cmd/buildtool pr-lane claim <issue>` claims a lane for an
+  issue with a server-side
   compare-and-swap on the coordination ref `refs/lane/<issue>` — an atomic create
   that succeeds exactly once, so two sessions cannot both claim one lane — and
   `status` lists every lane on the remote with the pull request behind it, which
@@ -156,7 +171,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   A lane with an open pull request is held; a claim that has no pull request yet
   is honoured for 90 minutes (`PR_LANE_STALE_MINUTES`) and then taken over, so an
   abandoned lane is reclaimed without a `--force` takeover and nobody has to judge
-  whether a holder is dead. `scripts/land-lane.sh` keeps its single slot but is
+  whether a holder is dead. `go run ./cmd/buildtool land-lane` keeps its single
+  slot but is
   now advisory, and `.githooks/pre-push` refuses only a commit that has no green
   gate stamp.
 - `cask web` pins its listener to an explicit numeric loopback address instead of

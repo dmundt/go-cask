@@ -44,11 +44,11 @@ A **single-host content-addressable store**. Each named spec is the normative co
 ## Repository layout
 
 - [cas/](cas/) — the public core library (package `cas`): generic, app-agnostic, stable surface.
-- [internal/](internal/) — implementation details: viewer, index, and local helpers not meant to be imported outside the module; the viewer package starts at [internal/web/README.md](internal/web/README.md).
+- [internal/](internal/) — implementation details: viewer, index, the gate's build decisions (`internal/build/`), and local helpers not meant to be imported outside the module; the viewer package starts at [internal/web/README.md](internal/web/README.md).
 - [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs.
 - [examples/](examples/) — runnable example programs showing how to use the core and the reference model.
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
-- [cmd/](cmd/) — CLI entry point: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md).
+- [cmd/](cmd/) — command-line entry points: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md), plus `buildtool`, the gate's developer tool for the build decisions above.
 - [docs/specs/](docs/specs/) — the normative specification set; start at [docs/specs/AGENT.md](docs/specs/AGENT.md) and [docs/index.md](docs/index.md).
 - [docs/design/](docs/design/) — non-normative design/background material.
 - [AGENTS.md](AGENTS.md) — repo-root agent instructions and rule index entry point.

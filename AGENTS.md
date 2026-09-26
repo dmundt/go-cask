@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v47
+version: v48
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -78,15 +78,15 @@ one record every session, every clone and the operator can already see — the
 open pull request — and the server, not a file inside one clone, owns the
 serialization.
 
-- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<NNN>-<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `scripts/worktree.sh prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
-- **Every task worktree is based on the freshly fetched `origin/main`.** `scripts/worktree.sh add` fetches, then branches from `origin/main` (`-b <branch> origin/main`), and that remote-tracking ref is the only base a task worktree uses: a local `main` is never a substitute, because in the primary checkout it can be behind the remote or carry another session's uncommitted work. The one exception is the `hotfix` base [`docs/specs/branch-naming.md`](docs/specs/branch-naming.md) §3 defines (`release/vX.Y`).
+- **One worktree per task, created by `go run ./cmd/buildtool worktree add <task> <type>/<NNN>-<kebab>`** and removed with `go run ./cmd/buildtool worktree remove <task>` once the PR merges. The command writes the worktree's `.git` in the relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `buildtool worktree prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
+- **Every task worktree is based on the freshly fetched `origin/main`.** `buildtool worktree add` fetches, then branches from `origin/main` (`-b <branch> origin/main`), and that remote-tracking ref is the only base a task worktree uses: a local `main` is never a substitute, because in the primary checkout it can be behind the remote or carry another session's uncommitted work. The one exception is the `hotfix` base [`docs/specs/branch-naming.md`](docs/specs/branch-naming.md) §3 defines (`release/vX.Y`).
 - **Never `git add -A` and never `git commit -a`.** Stage the paths you touched: a shared tree otherwise sweeps another session's untracked files into your commit.
-- **Claim the lane before you start: `./scripts/pr-lane.sh claim <issue>`.** The lane is the issue's landing and its record is the pull request. The claim is a server-side compare-and-swap on the coordination ref `refs/lane/<NNN>` — creating it succeeds exactly once — so two sessions cannot both claim one lane however their attempts interleave, and every clone, machine and toolchain reads the same answer. Exit 0 means yours, 1 refused, 2 usage; `status` lists every lane with the PR behind it, and `release <issue>` frees it after the merge. It refuses a closed issue, an issue with an open PR, and a claim still inside its window, so also check `gh issue view NNN --json state` and `gh pr list --state all --limit 15` before starting. Re-read the owning spec immediately before asking a question — parallel PRs make premises stale within minutes.
+- **Claim the lane before you start: `go run ./cmd/buildtool pr-lane claim <issue>`.** The lane is the issue's landing and its record is the pull request. The claim is a server-side compare-and-swap on the coordination ref `refs/lane/<NNN>` — creating it succeeds exactly once — so two sessions cannot both claim one lane however their attempts interleave, and every clone, machine and toolchain reads the same answer. Exit 0 means yours, 1 refused, 2 usage; `status` lists every lane with the PR behind it, and `release <issue>` frees it after the merge. It refuses a closed issue, an issue with an open PR, and a claim still inside its window, so also check `gh issue view NNN --json state` and `gh pr list --state all --limit 15` before starting. Re-read the owning spec immediately before asking a question — parallel PRs make premises stale within minutes.
 - **Push early and open the pull request as a draft: the PR is the lease.** A claim with no PR is protected only by the 90-minute claim window (`PR_LANE_STALE_MINUTES`), after which the next claimer takes the lane over. That is what keeps liveness objective — an abandoned lane is reclaimed by the next session, and nobody has to guess whether a holder is dead or run a `--force` takeover. A lane whose PR is open is held, full stop; a lane whose PR was closed or merged is finished, and `release` clears it.
-- **The local advisory slot is not the lane.** `./scripts/land-lane.sh` keeps two gate runs in ONE clone from overlapping (`acquire` / `renew` / `release`; `status` exits 0 yours, 1 free, 2 someone else). Holding it is no longer a condition for pushing — it only saves this clone from gating the same tree twice.
+- **The local advisory slot is not the lane.** `go run ./cmd/buildtool land-lane` keeps two gate runs in ONE clone from overlapping (`acquire` / `renew` / `release`; `status` exits 0 yours, 1 free, 2 someone else). Holding it is no longer a condition for pushing — it only saves this clone from gating the same tree twice.
 - **Gate once per commit, at the right scope.** `./scripts/verify.sh` detects a documentation-only change and runs the documentation gate — the scope CI applies (`VERIFY_SCOPE=full` forces the whole gate, `VERIFY_SCOPE=docs` asserts the documentation scope). A green run stamps the commit in the shared git dir and writes the gate receipt, which `./scripts/gate-receipt.sh publish` (called best-effort by `.githooks/pre-push`) signs and pushes as `refs/gate/<sha>`; CI verifies that receipt instead of repeating the suite it covers, and runs the whole gate whenever it cannot ([`.github/AGENT.md`](.github/AGENT.md), "Local gate receipts"). The gate also cross-builds and vets `windows/amd64` and `linux/arm64` locally, so the failures the platform matrix would find are found before the push.
 - **Install the hook once per clone:** `git config core.hooksPath .githooks`. `.githooks/pre-push` refuses a push whose HEAD holds no green stamp for that exact commit — the one hard local rule, and re-pushing an unchanged commit costs no compute. The advisory slot is reported, never required.
-- **The gate runs in the worktree, under WSL, once per commit.** Do not look for a faster path: this host's WSL has no Linux `python3`, so a WSL-native clone on ext4 would push the documentation steps onto the Windows interpreter, which cannot read a non-Windows path, and the gate would fail after spending the whole Go suite. `./scripts/verify.sh` on `/mnt/d` is the one supported route.
+- **The gate runs in the worktree, under WSL, once per commit.** Do not look for a faster path: the race and coverage gate needs cgo and a C compiler, which the Windows toolchain cannot take from WSL's `gcc`, and coverage measured on Windows does not predict the gate. `./scripts/verify.sh` on `/mnt/d` is the one supported route.
 - **One decision or area per PR; append, don't rewrite.** Prefer adding a spec row or bullet over rewriting an existing line, and keep a documentation PR to one file where possible: additions auto-merge, rewrites conflict and cost a rebuild.
 - **The server serializes the landing; land with `gh pr merge --auto --squash`.** `main` requires its checks with `strict=false`, so a green, non-conflicting PR merges without a rebuild, and auto-merge is on GitHub's side — a clone that never held the local slot cannot corrupt anything. GitHub's "Update branch" button stays forbidden: a branch that fell behind is rebuilt locally with `git cherry-pick -S`, re-verified, and re-stamped. GitHub's own merge queue is the intended replacement for auto-merge once it is enabled on `main` (the REST API does not accept the `merge_queue` rule for this repository today, so it is enabled by the owner in the UI, and CI must then also run on `merge_group`).
 - **Website changes take the lane too.** A branch that touches `website/**` is a landing like any other: claim the lane for the whole landing, and finish one website decision before starting the next. The site footer was redesigned five times in three hours (`#203` → `#220` → `#224` → `#236` → `#239`, six PRs) by sessions that could not see each other's merge, and every step cost an issue, a branch, a PR and a review. Nothing about the gate changes: a `website/**`-only change is still documentation scope, so this orders the work without making it slower.
@@ -124,7 +124,8 @@ serialization.
 > that signed the branch head is verified locally with `git verify-commit`.
 > Before every GitHub release,
 > mirror the user-facing `CHANGELOG.md` entries into the release notes by
-> running `./scripts/release-notes.sh <new-tag> <previous-tag>`, include the
+> running `go run ./cmd/buildtool release --tag <new-tag> --from <previous-tag>`,
+> include the
 > full changelog link used by prior releases (`Full Changelog:` + compare URL),
 > and keep the release body aligned with the shipped changelog sections. The
 > workflow uses `actions/checkout@v7` and `actions/setup-go@v7`, then runs the
@@ -161,7 +162,8 @@ cas/       core library (package cas) — generic only; this spec defines it.
            here: backend/* (fs, mem, packfs), bloom, cache, codec, hash,
            pack, refs, repo, verify
 internal/  implementation detail (web — the viewer —, index, store, test,
-           website, design — the repo-wide design-rule checks);
+           design — the repo-wide design-rule checks — and build, the gate's
+           layer-matrix, coverage, website and Markdown-integrity decisions);
            not importable outside this module
 gitlike/  shared reference library (package gitlike) — Git-like object model
            on top of cas: Blob/Tree/Commit/Tag, Repository, Resolver,
@@ -403,9 +405,10 @@ The dependency layers are `cas/` → `gitlike/` → `examples/`. The product
 object model takes, shipped as a reference — not an application and not an
 example: it is a package in this module, importable by apps and examples, and
 deliberately outside the frozen `cas` surface. `cmd/cask` and `gitlike` are
-2nd-class peers with no dependency between them. `scripts/verify.sh` runs this
-table as the layer matrix check, and `scripts/dep-graph.sh` draws `gitlike` in
-its own `REFERENCE` layer.
+2nd-class peers with no dependency between them. The table above is enforced as
+data by `internal/build/layers`, which `scripts/verify.sh` calls as the layer
+matrix check, and `internal/build/depgraph` draws `gitlike` in its own `REFERENCE`
+layer.
 
 ---
 
