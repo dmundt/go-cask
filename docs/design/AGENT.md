@@ -31,7 +31,7 @@ version: v1
 ```
 
 - `version` = simple marker; bump by one on material change, not cosmetic fixes.
-- HTML + JSON files need no frontmatter — display/reference artifacts.
+- HTML and JSON files need no frontmatter — display/reference artifacts.
 - Markdown files MUST NOT contain raw HTML, HTML comments, tags, layout
   wrappers, or HTML/XML/SVG code fences; keep HTML only in dedicated
   non-Markdown mockup artifacts.
@@ -52,4 +52,4 @@ Repository policy requires signed commits: rebuild PR branches locally from
 current `main`; never use GitHub's server-side rebase or update-branch operation.
 Apply changes with `git cherry-pick -S`, verify every head commit with
 `git verify-commit`, push with `git push --force-with-lease`. Enable
-auto-merge only after signature verification + required checks pass.
+auto-merge only after signature verification and required checks pass.
