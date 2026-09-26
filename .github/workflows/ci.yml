@@ -3,9 +3,6 @@ name: CI
 permissions:
   contents: read
 
-env:
-  GOVULNCHECK_VERSION: v1.8.0
-
 # Enforces the gates required by the instruction set:
 #   coding-guidelines §9   — gofmt, go vet, go test, go build; no product → examples imports
 #   testing-strategy §5    — -race, tiered coverage gates, fuzz smoke
@@ -49,6 +46,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The toolchain comes first because the scope decision is Go: which of the
+      # jobs a change can affect is one table (internal/build/policy), read by
+      # `buildtool scope`, and the gate asks the same command for its own scope, so
+      # the two cannot hold two copies of the pattern list.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # Dependency set is small and verify checks module drift explicitly.
+          cache: false
+
       - name: Determine verification scope
         id: scope
         shell: bash
@@ -64,27 +72,11 @@ jobs:
             exit 0
           fi
 
-          changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
-          echo "docs_only=$(bash ./scripts/docs-only.sh "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
+          go run ./cmd/buildtool scope --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-          if grep -Eq '(^|/).*\.go$|^go\.(mod|sum)$' <<< "$changed_files"; then
-            echo "go_changed=true" >> "$GITHUB_OUTPUT"
-            echo "security_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "go_changed=false" >> "$GITHUB_OUTPUT"
-            if grep -Eq '^scripts/(security|verify)\.sh$|^\.github/workflows/ci\.yml$' <<< "$changed_files"; then
-              echo "security_changed=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "security_changed=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-          if grep -Eq '^website/|^mkdocs\.yml$|^requirements-docs\.(txt|lock)$|^\.github/workflows/website\.yml$' <<< "$changed_files"; then
-            echo "website_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "website_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
+      # No second toolchain step: the job installs Go above for the scope decision, and the
+      # receipt's own scope recomputation asks the same command, so the receipt is
+      # considered with Go already present. It still saves the gate itself.
       - name: Verify the local gate receipt
         id: receipt
         # Every failure here — no ref, an untrusted signature, a tree that is not
@@ -108,14 +100,6 @@ jobs:
             --tree "$(git rev-parse 'HEAD^{tree}')" \
             --base "$BASE_SHA" \
             --require-suite full
-
-      - name: Set up Go
-        if: steps.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          # Dependency set is small and verify checks module drift explicitly.
-          cache: false
 
       - name: Verify repo
         if: steps.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success' && hashFiles('**/*.go') != ''
@@ -161,7 +145,7 @@ jobs:
           cache: false
 
       - name: Run govulncheck
-        run: bash ./scripts/security.sh
+        run: go run ./cmd/buildtool security
 
   platform-matrix:
     needs: [verify, security]
