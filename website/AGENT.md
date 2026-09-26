@@ -2,21 +2,21 @@
 type: Agent Instructions
 title: Website Authoring Guide
 description: The authoring guide for the published site under website/ — developer-facing content and terminology, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
-version: v1
+version: v2
 ---
 
 # Website Authoring Guide
 
-This directory contains the published go-cask documentation site. It is a
-developer-facing companion to the authoritative repository documentation under
-`docs/specs/`; it does not replace those specifications.
+Directory contains published go-cask documentation site. Developer-facing
+companion to the authoritative repository documentation under
+`docs/specs/`; does not replace those specifications.
 
 ## Content
 
 - Write for Go developers evaluating or adopting go-cask.
-- State only behavior implemented in the repository. Link to source or a
+- State only behavior implemented in repository. Link to source or a
   specification when a contract needs detail.
-- Keep the tone direct and technical. Explain constraints, non-goals, and
+- Keep tone direct and technical. Explain constraints, non-goals,
   operational trade-offs alongside benefits.
 - Use `go-cask` for the project, `cas` for the core package, `Digest` for the
   content address, and `Hasher` for its algorithm provider.
@@ -25,7 +25,7 @@ developer-facing companion to the authoritative repository documentation under
 - Distinguish the generic `cas` core from the `gitlike` reference package.
 - Keep one concept per page. Prefer headings, prose, tables, lists, and
   runnable examples over landing-page components or promotional copy.
-- Budget the page, not the topic. The site is a landing layer: keep a page under
+- Budget the page, not the topic. Site is a landing layer: keep a page under
   roughly **120 lines** and prefer linking the owning spec over restating it.
   Material that needs more room than that is reference, and reference belongs to
   the spec that owns it under `docs/specs/` — or to the non-normative
@@ -53,7 +53,7 @@ developer-facing companion to the authoritative repository documentation under
   implementations — `var _ cas.Hasher = Hasher(nil)` together with
   `var _ Hasher = cas.Hasher(nil)`. The two assignments compile only while the
   method sets agree, so the page cannot drift from `cas`.
-- The inventory tables in `concepts/backends.md`, `concepts/hashes.md`,
+- Inventory tables in `concepts/backends.md`, `concepts/hashes.md`,
   `concepts/codecs.md`, and `specifications/object-format.md` MUST name every
   Go package directory under `cas/backend`, `cas/hash`, and `cas/codec`. The
   same gate step checks those tables against the tree, so adding or removing a
@@ -62,9 +62,9 @@ developer-facing companion to the authoritative repository documentation under
 - Every Go block MUST match the current public API; the gate's build and vet
   are the check.
 - Use fenced code blocks only for code, shell commands, and wire formats.
-- Use Markdown links to internal pages. Do not use raw HTML links or HTML
+- Use Markdown links to internal pages. Never use raw HTML links or HTML
   layout wrappers in Markdown pages.
-- Raw HTML is forbidden in every Markdown file: no tags, comments, layout
+- Raw HTML forbidden in every Markdown file: no tags, comments, layout
   wrappers, or HTML/XML/SVG code fences.
 - Use Mermaid only when it adds information unavailable in prose or a table.
   Keep diagrams small, directional, and free of decorative styling.
@@ -73,11 +73,11 @@ developer-facing companion to the authoritative repository documentation under
 
 - Keep the site document-first: strong typography, whitespace, thin dividers,
   and a neutral palette with restrained accent color.
-- Do not add shadows, decorative icons, pill badges, gradients, or card-grid
+- Never add shadows, decorative icons, pill badges, gradients, or card-grid
   layouts unless content comparison genuinely requires a table or panel.
 - Prefer sharp or near-sharp edges and avoid nested visual frames.
 - Code blocks MUST wrap long lines instead of exposing horizontal scrollbars.
-- Keep the top bar visible at every viewport width. On narrow screens, retain
+- Keep top bar visible at every viewport width. On narrow screens, retain
   the left hamburger, compact search control, and a right-aligned GitHub icon.
 - Keep search fields on the white page surface with the same thin gray border
   used by tables and section dividers.
@@ -95,7 +95,7 @@ MkDocs' search index, so local search is not a valid file-preview check.
 
 ## Build provenance in the footer
 
-The footer is one line, and `website/macros.py` is the only thing that completes
+Footer is one line, and `website/macros.py` is the only thing that completes
 it: the hook reads the checked-out revision with one call — `git log -1
 --format=%h %cs` — and writes the result back to `env.conf["copyright"]`, the
 value the theme's own footer partial renders, so the site needs no theme
@@ -122,10 +122,10 @@ MkDocs, and re-runs the module self-test when a Python interpreter is available.
 
 ## Signed pull-request workflow
 
-When repository policy requires signed commits, rebuild PR branches locally from
+Repository policy requires signed commits: rebuild PR branches locally from
 current `main`; never use GitHub's server-side rebase or update-branch operation.
 Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, and push with `git push --force-with-lease`. Enable
+`git verify-commit`, push with `git push --force-with-lease`. Enable
 auto-merge only after signature verification and required checks pass.
 
 ## Serialized landing

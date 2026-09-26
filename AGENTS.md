@@ -2,23 +2,23 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: The repo-root aggregator for AI agents — project context, architecture overview, design principles, usage, and pointers to the full specification set in docs/specs/ (cas-core, coding-guidelines, api-design, and the rest). Auto-read by any agent that honors AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v46
+version: v47
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
 
 ## Markdown policy
 
-Raw HTML is strictly forbidden in every Markdown file in this repository.
+Raw HTML strictly forbidden in every Markdown file in this repository.
 Documentation MUST use valid Markdown syntax only; do not add HTML tags,
 comments, layout wrappers, or embedded HTML blocks.
 
 ## Changelog and release-note policy
 
-`CHANGELOG.md` is a lean, user-facing record, not a development diary.
+`CHANGELOG.md` = lean, user-facing record, not development diary.
 Maintain one `Unreleased` section and one section per tagged release. Record
 only notable changes that affect library consumers, CLI users, operators, or
-the viewer's behavior and security.
+viewer's behavior and security.
 
 - Combine related changes into one clear bullet when they form one user-facing
   capability.
@@ -31,22 +31,22 @@ the viewer's behavior and security.
   headings only when they contain a notable entry. Do not create empty
   headings.
 - Update `CHANGELOG.md` for every notable user-visible change before commit.
-  Do not add entries for changes that are purely internal or temporary.
-- Before a release, move its finalized entries from `Unreleased` into the
-  versioned section and preserve the existing compare-link format.
-- GitHub release notes MUST mirror the corresponding user-facing changelog
-  section, use the same concise scope, and end with a `Full Changelog:` link
-  to the tag comparison. Correct older published notes when they contain
+  Do not add entries for changes purely internal or temporary.
+- Before release, move its finalized entries from `Unreleased` into
+  versioned section and preserve existing compare-link format.
+- GitHub release notes MUST mirror corresponding user-facing changelog
+  section, use same concise scope, and end with a `Full Changelog:` link
+  to tag comparison. Correct older published notes when they contain
   temporary or trivial material.
 
 ## Content-addressable terminology
 
-Use **content-addressable store** for CASK, go-cask, the `cas` package, a
+Use **content-addressable store** for CASK, go-cask, `cas` package, a
 `Backend`, or any concrete implementation. Use **content-addressable storage**
-for the general technique, architecture pattern, or conceptual explanation.
+for general technique, architecture pattern, or conceptual explanation.
 Expand `CAS` as **Content-Addressable Store** and `CASK` as **Content-Addressable
-Store Kit**. Do not replace one phrase with the other mechanically when context
-requires a different scope.
+Store Kit**. Do not replace one phrase with other mechanically when context
+requires different scope.
 
 ## Signed pull-request workflow
 
@@ -68,16 +68,17 @@ and the exact command are in [`scripts/AGENT.md`](scripts/AGENT.md), section
 
 On any platform, a gate run is green only when it ends with `verification
 passed`; a run that stops earlier failed even if nothing was echoed about it.
+
 ## The pull request is the lane, worktrees and gates (STRICT)
 
 Parallel sessions on one repository invalidate each other's branches: every merge
-makes the others "behind", each rebuild costs a gate run, and the rebuild window
-is long enough for the next merge to arrive first. Coordination therefore hangs
-off the one record every session, every clone and the operator can already see —
-the open pull request — and the server, not a file inside one clone, owns the
+makes others "behind", each rebuild costs a gate run, and the rebuild window
+long enough for next merge to arrive first. Coordination therefore hangs off the
+one record every session, every clone and the operator can already see — the
+open pull request — and the server, not a file inside one clone, owns the
 serialization.
 
-- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<NNN>-<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in the relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `scripts/worktree.sh prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
+- **One worktree per task, created by `scripts/worktree.sh add <task> <type>/<NNN>-<kebab>`** and removed with `scripts/worktree.sh remove <task>` once the PR merges. The wrapper writes the worktree's `.git` in relative form: a worktree created by the other toolchain records an absolute path, which makes `git` walk up to the primary checkout — and `verify.sh` refuses to run when it detects that, because the gate would silently test the wrong tree. The wrapper also locks the worktree: the reverse link in the shared git dir holds one toolchain's path form, so **never run `git worktree prune`** — the other toolchain sees a live worktree as prunable and a prune deletes its registration together with its index. `verify.sh` locks any registration it finds unprotected before it gates, and `scripts/worktree.sh prune` refuses outright: git has no pre-command hook and no alias can shadow a built-in, so git's own `locked` file is the whole protection. Never edit the primary checkout while another session may be using it.
 - **Every task worktree is based on the freshly fetched `origin/main`.** `scripts/worktree.sh add` fetches, then branches from `origin/main` (`-b <branch> origin/main`), and that remote-tracking ref is the only base a task worktree uses: a local `main` is never a substitute, because in the primary checkout it can be behind the remote or carry another session's uncommitted work. The one exception is the `hotfix` base [`docs/specs/branch-naming.md`](docs/specs/branch-naming.md) §3 defines (`release/vX.Y`).
 - **Never `git add -A` and never `git commit -a`.** Stage the paths you touched: a shared tree otherwise sweeps another session's untracked files into your commit.
 - **Claim the lane before you start: `./scripts/pr-lane.sh claim <issue>`.** The lane is the issue's landing and its record is the pull request. The claim is a server-side compare-and-swap on the coordination ref `refs/lane/<NNN>` — creating it succeeds exactly once — so two sessions cannot both claim one lane however their attempts interleave, and every clone, machine and toolchain reads the same answer. Exit 0 means yours, 1 refused, 2 usage; `status` lists every lane with the PR behind it, and `release <issue>` frees it after the merge. It refuses a closed issue, an issue with an open PR, and a claim still inside its window, so also check `gh issue view NNN --json state` and `gh pr list --state all --limit 15` before starting. Re-read the owning spec immediately before asking a question — parallel PRs make premises stale within minutes.
@@ -145,14 +146,14 @@ serialization.
 
 ## Project Context
 
-CASK is a reusable Go component implementing a **content-addressable store**: any
-binary blob is stored once under the hash of its content; identical content
-deduplicates automatically, objects are immutable, and objects reference each
-other by hash (a Git-like blob/tree/commit/tag model). The storage layer knows
+CASK = reusable Go component implementing a **content-addressable store**: any
+binary blob stored once under the hash of its content; identical content
+deduplicates automatically, objects immutable, objects reference each
+other by hash (a Git-like blob/tree/commit/tag model). Storage layer knows
 **nothing** about application object types — different apps and domains reuse
 the same physical store by layering their own typed objects on top.
 
-The repo layout is:
+Repo layout:
 
 ```text
 cas/       core library (package cas) — generic only; this spec defines it.
@@ -181,12 +182,12 @@ AGENTS.md  this file — the repo-root agent aggregator; points at the
            bundle per skill (cask-change: the change playbook)
 ```
 
-This block stays top-level on purpose: the per-package routing is
+Block stays top-level on purpose: the per-package routing is
 [`docs/index.md`](docs/index.md) (longest path match wins) and the
 one-line-per-tree list in [README.md](README.md) "Repository layout". Route
 through those instead of growing the block again.
 
-Website and docs policy: the public site lives under `website/` and is built with
+Website and docs policy: the public site lives under `website/`, built with
 MkDocs Material. It is a companion documentation layer, not the source of truth
 for the implementation; the normative design remains in `docs/specs/` and
 `AGENTS.md`. Prefer clear concept diagrams over ASCII-heavy pages, using Mermaid
@@ -281,8 +282,8 @@ Related specs that also constrain work in this repo:
 
 ## Conversation Summary (how the design evolved)
 
-The chat history moved through these stages; the **final state** is the fully
-type-safe, registry-free design:
+Chat history moved through these stages; **final state** = fully type-safe,
+registry-free design:
 
 1. Generic store + `Codec[T]` wrapper over a byte `Backend`.
 2. Git-like object store: objects are `[]byte` addressed by `Hash`, with typed
@@ -410,9 +411,9 @@ its own `REFERENCE` layer.
 
 ## Design Principles (Non-Negotiables)
 
-1. **Hash-addressed and immutable.** The key is the digest of the stored bytes;
-   objects are never mutated in place. Same bytes ⇒ same digest ⇒ stored once
-   (deduplication is automatic). The address covers the whole envelope — the
+1. **Hash-addressed and immutable.** Key = digest of the stored bytes;
+   objects never mutated in place. Same bytes ⇒ same digest ⇒ stored once
+   (deduplication automatic). Address covers the whole envelope — the
    frame version, the writing codec's identity tag and the type name, not just
    the payload (cas-core §8 decision 1) — so dedup is deliberately **per type and
    per codec**: identical logical content encoded with another codec, or written
