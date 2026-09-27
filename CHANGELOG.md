@@ -325,6 +325,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cask put` and `cask get` honor the `--` end-of-flags marker. It is forwarded
+  to the flag parser instead of being dropped, so a file whose name begins with
+  a dash — `cask put -- -json`, `cask put -- -data.bin` — is stored as data
+  rather than consumed as a flag or rejected as an undefined one, and nothing
+  after the marker is parsed as a flag.
 - `cas/verify/sidecar` reports **every** way a record can be unusable as
   `cas.ErrCorrupt`. The open and read failures returned a bare I/O error while
   the oversized and wrong-digest arms wrapped the sentinel, so
