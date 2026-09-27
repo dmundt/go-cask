@@ -67,6 +67,11 @@ func WalkDigests(ctx context.Context, resolve NodeResolver, roots []Digest, visi
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// The visited set is private and never handed out, so it keys on the raw
+	// digest bytes rather than their hex rendering: a walk stores one key per
+	// visited object and probes one per reference, and the hex form costs twice
+	// the bytes and twice the allocations for the same set (performance.md §4).
+	// The exported Reachable map keeps its documented hex keys.
 	visited := make(map[string]struct{})
 	stack := make([]Digest, 0, len(roots))
 	for _, root := range roots {
@@ -80,7 +85,7 @@ func WalkDigests(ctx context.Context, resolve NodeResolver, roots []Digest, visi
 		}
 		d := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		key := d.String()
+		key := string(d)
 		if _, ok := visited[key]; ok {
 			continue
 		}
@@ -100,7 +105,7 @@ func WalkDigests(ctx context.Context, resolve NodeResolver, roots []Digest, visi
 			if ref.IsZero() {
 				continue // an absent reference is not a missing object (cas-core §4.1)
 			}
-			if _, seen := visited[ref.String()]; !seen {
+			if _, seen := visited[string(ref)]; !seen {
 				stack = append(stack, ref)
 			}
 		}

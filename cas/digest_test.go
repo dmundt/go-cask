@@ -117,11 +117,11 @@ func TestDigestRejectsLegacyText(t *testing.T) {
 
 // TestDigestUnmarshalTextRejectsBeforeHexDecode documents the one branch of
 // UnmarshalText that is deliberately left uncovered (testing-strategy.md §5):
-// the guard above hex.Decode already rejects an odd length and any byte outside
-// [0-9a-f], which are the only two ways hex.Decode can fail, so its error arm is
-// unreachable and exists only as defence against a future change to hexRe.
-// Every shape hex.Decode would refuse is asserted to be refused earlier, with
-// the same sentinel.
+// the shape guard above hex.Decode already rejects an odd length and any byte
+// outside [0-9a-f], which are the only two ways hex.Decode can fail, so its
+// error arm is unreachable and exists only as defence against a future change
+// to isLowerHex. Every shape hex.Decode would refuse is asserted to be refused
+// earlier, with the same sentinel.
 func TestDigestUnmarshalTextRejectsBeforeHexDecode(t *testing.T) {
 	refused := []string{"a", "abc", "0g", "gg", "AB", "ab\n", "ab cd", "sha256:ab"}
 	for _, s := range refused {
@@ -192,7 +192,9 @@ func TestDigestMarshalAbsent(t *testing.T) {
 	}
 }
 
-// TestDigestStringIsHexOnly pins that the core's rendering names no algorithm.
+// TestDigestStringIsHexOnly pins that the core's rendering names no algorithm,
+// at either width the rendering has: the stack buffer the shipped hashers fit
+// in and the general path a wider client digest takes.
 func TestDigestStringIsHexOnly(t *testing.T) {
 	d := NewDigest(bytes.Repeat([]byte{0x0a}, 4))
 	if d.String() != "0a0a0a0a" {
@@ -200,6 +202,37 @@ func TestDigestStringIsHexOnly(t *testing.T) {
 	}
 	if strings.Contains(d.String(), ":") {
 		t.Fatalf("String() = %q must not carry an algorithm name", d.String())
+	}
+
+	// Wider than the stack buffer (128 hex characters), and still total: the
+	// core names no algorithm, so a client may hand it any width.
+	wide := NewDigest(bytes.Repeat([]byte{0xab}, 128))
+	if got, want := wide.String(), strings.Repeat("ab", 128); got != want {
+		t.Fatalf("wide String() = %q (len %d), want %q", got, len(got), want)
+	}
+}
+
+// TestIsLowerHex pins the shape helper UnmarshalText's strictness rests on:
+// lowercase hex digits only — hex.Decode would also take "A-F" — and the empty
+// string is not that shape.
+func TestIsLowerHex(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"", false},
+		{"0", true},
+		{"09af", true},
+		{"deadbeef", true},
+		{"AB", false},
+		{"aF", false},
+		{"0xab", false},
+		{"ab cd", false},
+		{"sha256:ab", false},
+	} {
+		if got := isLowerHex([]byte(tc.in)); got != tc.want {
+			t.Errorf("isLowerHex(%q) = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 

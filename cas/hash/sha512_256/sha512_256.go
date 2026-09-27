@@ -34,13 +34,15 @@ type Hasher struct{}
 func New() Hasher { return Hasher{} }
 
 // Digest implements cas.Hasher: it streams r through SHA-512/256 and returns
-// the digest bytes.
+// the digest bytes. The sum is appended into a fixed-width buffer so
+// NewDigest's copy is the call's only digest allocation.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
+	var sum [Size]byte
 	h := sha512.New512_256()
 	if _, err := io.Copy(h, r); err != nil {
 		return nil, fmt.Errorf("cas/sha512_256: %w", err)
 	}
-	return cas.NewDigest(h.Sum(nil)), nil
+	return cas.NewDigest(h.Sum(sum[:0])), nil
 }
 
 // Validate implements cas.Hasher: a digest must be present and exactly Size

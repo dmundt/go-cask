@@ -14,6 +14,7 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
 	sha256hash "github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // jsonCodec is a tiny in-package codec to keep the gitlike tests codec-agnostic
@@ -185,8 +186,8 @@ func TestStoredEnvelopeCarriesVersion(t *testing.T) {
 // --- References ---
 
 func TestReferences(t *testing.T) {
-	hb := mustDigest(t, strings.Repeat("ab", 32))
-	hc := mustDigest(t, strings.Repeat("cd", 32))
+	hb := test.MustDigest(t, strings.Repeat("ab", 32))
+	hc := test.MustDigest(t, strings.Repeat("cd", 32))
 
 	if got := (&Blob{}).References(); got != nil {
 		t.Errorf("blob refs = %v", got)
@@ -225,7 +226,7 @@ func TestResolverTyped(t *testing.T) {
 	if _, err := res.ResolveCommit(ctx, hb); err == nil {
 		t.Fatal("ResolveCommit on a blob must fail")
 	}
-	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
+	missing := test.MustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveBlob(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveBlob(missing) = %v, want ErrNotFound", err)
 	}
@@ -234,7 +235,7 @@ func TestResolverTyped(t *testing.T) {
 func TestResolverResolveAnyMissing(t *testing.T) {
 	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
-	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
+	missing := test.MustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := res.ResolveAny(context.Background(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
 	}
@@ -374,7 +375,7 @@ func TestPrintObject(t *testing.T) {
 		{&ResolvedObject{Type: "blob", Blob: &Blob{Data: make([]byte, 5)}}, "blob (5 bytes)"},
 		{&ResolvedObject{Type: "tree", Tree: &Tree{}}, "tree (0 entries)"},
 		{&ResolvedObject{Type: "commit", Commit: &Commit{Author: "alice", Message: "hi"}}, "commit by alice: hi"},
-		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(mustDigest(t, strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
+		{&ResolvedObject{Type: "tag", Tag: &Tag{Name: "v1", Target: ref(test.MustDigest(t, strings.Repeat("ab", 32)))}}, "tag \"v1\" -> " + strings.Repeat("ab", 4)},
 		{&ResolvedObject{Type: "other"}, "unknown type \"other\""},
 	}
 	for _, tc := range cases {
@@ -437,7 +438,7 @@ func TestWalkGraph(t *testing.T) {
 	}
 
 	// Missing root → ErrNotFound.
-	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
+	missing := test.MustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if err := WalkGraph(ctx, res, missing, func(*ResolvedObject) error { return nil }); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("WalkGraph(missing) = %v", err)
 	}
@@ -482,8 +483,8 @@ func TestWalkGraphTerminatesOnCycle(t *testing.T) {
 	ctx := context.Background()
 	backend := backmem.New()
 	repo := newRepo(t, backend)
-	dA := mustDigest(t, strings.Repeat("aa", 32))
-	dB := mustDigest(t, strings.Repeat("bb", 32))
+	dA := test.MustDigest(t, strings.Repeat("aa", 32))
+	dB := test.MustDigest(t, strings.Repeat("bb", 32))
 
 	storeEnvelopeAt := func(d cas.Digest, payload string) {
 		t.Helper()
@@ -512,7 +513,7 @@ func TestWalkGraphTerminatesOnCycle(t *testing.T) {
 // exist before its target). A digest shorter than the display width is rendered
 // whole — a client hasher may produce one, and the core names no algorithm.
 func TestPrintObjectTagTarget(t *testing.T) {
-	full := mustDigest(t, strings.Repeat("cd", 32))
+	full := test.MustDigest(t, strings.Repeat("cd", 32))
 	for _, tc := range []struct {
 		name   string
 		target cas.Digest
@@ -600,7 +601,7 @@ func TestCachedRepositoryMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	missing := mustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
+	missing := test.MustDigest(t, "0000000000000000000000000000000000000000000000000000000000000000")
 	if _, err := cached.GetCommit(ctx, missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("GetCommit(missing) = %v", err)
 	}
@@ -621,7 +622,7 @@ func TestPreloaderDefaultWorkers(t *testing.T) {
 	}
 	p := NewPreloader(ctx, cached, 0) // workers <= 0 → default
 	defer p.Stop()
-	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(mustDigest(t, strings.Repeat("ab", 32))), Author: "a"})
+	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(test.MustDigest(t, strings.Repeat("ab", 32))), Author: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,15 +674,6 @@ func TestPreloader(t *testing.T) {
 }
 
 // --- Helpers ---
-
-func mustDigest(t *testing.T, hexDigest string) cas.Digest {
-	t.Helper()
-	d, err := cas.ParseDigest(hexDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return d
-}
 
 // marshalEnvelope builds a version 1 TLV envelope over payload bytes
 // (test helper: production serialization is the cas Store codec). Version 1 has
@@ -791,7 +783,7 @@ func TestRepositoryErrorPaths(t *testing.T) {
 		t.Fatal("NewCachedRepository with maxSize 0 must error")
 	}
 	// ResolveAny of a missing object → ErrNotFound.
-	missing := mustDigest(t, strings.Repeat("00", 32))
+	missing := test.MustDigest(t, strings.Repeat("00", 32))
 	res := NewResolver(repo)
 	if _, err := res.ResolveAny(ctxBackground(), missing); !errors.Is(err, cas.ErrNotFound) {
 		t.Fatalf("ResolveAny(missing) = %v, want ErrNotFound", err)
@@ -933,7 +925,7 @@ func TestRepositoryCorruptionRecovery(t *testing.T) {
 func TestCommitRequiredTreeDecode(t *testing.T) {
 	ctx := ctxBackground()
 	repo := newRepo(t, backmem.New())
-	h := mustDigest(t, strings.Repeat("ab", 32))
+	h := test.MustDigest(t, strings.Repeat("ab", 32))
 
 	// Malformed references fail while decoding (cas.Digest.UnmarshalText).
 	for _, payload := range []string{
@@ -1008,7 +1000,7 @@ func TestCommitWithParentRoundTrip(t *testing.T) {
 // TreeEntry drop its hand-written marshaller: the cas.Digest field renders
 // itself as bare lowercase hex, and an absent reference is omitted.
 func TestDigestFieldsMarshalWithoutCustomCode(t *testing.T) {
-	h := mustDigest(t, strings.Repeat("ab", 32))
+	h := test.MustDigest(t, strings.Repeat("ab", 32))
 
 	backend, err := json.Marshal(TreeEntry{Name: "f", Hash: ref(h), Mode: "100644"})
 	if err != nil {
@@ -1039,8 +1031,8 @@ func TestStoredAddressesPinned(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, backmem.New())
 	hb := putBlob(t, repo, "hello")
-	treeHash := mustDigest(t, strings.Repeat("ab", 32))
-	parentHash := mustDigest(t, strings.Repeat("cd", 32))
+	treeHash := test.MustDigest(t, strings.Repeat("ab", 32))
+	parentHash := test.MustDigest(t, strings.Repeat("cd", 32))
 	ts := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 
 	cases := []struct {
@@ -1114,7 +1106,7 @@ func TestStoredAddressesPinned(t *testing.T) {
 // TestValidate pins the advisory validation contract: naming rules for entries
 // and tags, the mandatory commit tree, and absent optional references.
 func TestValidate(t *testing.T) {
-	h := mustDigest(t, strings.Repeat("ab", 32))
+	h := test.MustDigest(t, strings.Repeat("ab", 32))
 
 	if err := (&Commit{Tree: ref(h)}).Validate(); err != nil {
 		t.Errorf("commit with tree: %v", err)
@@ -1333,7 +1325,7 @@ func TestWalkGraphDanglingReference(t *testing.T) {
 	repo := newRepo(t, backmem.New())
 	res := NewResolver(repo)
 
-	missing := mustDigest(t, strings.Repeat("00", 32))
+	missing := test.MustDigest(t, strings.Repeat("00", 32))
 	hc, err := repo.Commits.Put(ctx, &Commit{Tree: ref(missing), Author: "a", Message: "dangling"})
 	if err != nil {
 		t.Fatal(err)

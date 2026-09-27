@@ -13,6 +13,7 @@ import (
 	adler32 "github.com/dmundt/go-cask/cas/verify/adler32"
 	crc32 "github.com/dmundt/go-cask/cas/verify/crc32"
 	crc64 "github.com/dmundt/go-cask/cas/verify/crc64"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func BenchmarkVerify(b *testing.B) {
@@ -39,7 +40,7 @@ func BenchmarkVerify(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			h := digestData([]byte(data))
+			h := test.DigestData([]byte(data))
 			if err := backend.Put(ctx, h, strings.NewReader(data)); err != nil {
 				b.Fatal(err)
 			}
@@ -70,7 +71,7 @@ func BenchmarkVerifyBaseline(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	h := digestData([]byte(data))
+	h := test.DigestData([]byte(data))
 	if err := backend.Put(ctx, h, strings.NewReader(data)); err != nil {
 		b.Fatal(err)
 	}

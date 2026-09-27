@@ -1,0 +1,2 @@
+go test fuzz v1
+string("cask-gate-receipt 1\nscope \r")

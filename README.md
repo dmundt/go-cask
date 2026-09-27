@@ -50,12 +50,12 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
 - [cmd/](cmd/) — command-line entry points: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md), plus `buildtool`, the gate's developer tool for the build decisions above.
 - [docs/index.md](docs/index.md) — the rule file index: read it first, then the spec it maps your path to.
-- [docs/specs/](docs/specs/) — the normative specification set (22 files: 20 specs + `AGENT.md` + `index.md`); start at [docs/specs/AGENT.md](docs/specs/AGENT.md).
+- [docs/specs/](docs/specs/) — the normative specification set (23 files: 21 specs + `AGENT.md` + `index.md`); start at [docs/specs/AGENT.md](docs/specs/AGENT.md).
 - [docs/design/](docs/design/) — non-normative design/background material: briefs, audits, mockups and implementation plans ([docs/design/index.md](docs/design/index.md)).
 - [website/](website/) — public site sources, built with MkDocs Material ([website/AGENT.md](website/AGENT.md)).
 - [scripts/](scripts/) — gate, landing and release tooling ([scripts/README.md](scripts/README.md), [scripts/AGENT.md](scripts/AGENT.md)).
 - [AGENTS.md](AGENTS.md) — repo-root agent router: the rules a session must obey, and the pointer to the spec that owns the path you are editing.
-- [.agents/skills/](.agents/skills/) — agent skills discovered at the project root, one directory bundle per skill (`cask-change`, the change playbook).
+- [.agents/skills/](.agents/skills/) — agent skills discovered at the project root, one directory bundle per skill (`cask-change`, the change playbook; `coordinate`, the multi-lane playbook).
 - [.github/](.github/) — CI configuration and automation only; no product code.
 
 ## Core interfaces at a glance

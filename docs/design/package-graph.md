@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/core/depgraph.
-version: v24
+version: v26
 generated: internal/build/core/depgraph
 ---
 
@@ -50,6 +50,7 @@ flowchart TD
     internal_build_core_layers["internal/build/core/layers"]
     internal_build_core_receipt["internal/build/core/receipt"]
     internal_build_core_release["internal/build/core/release"]
+    internal_build_core_taskstate["internal/build/core/taskstate"]
     internal_build_core_toolchain["internal/build/core/toolchain"]
     internal_build_core_verify["internal/build/core/verify"]
     internal_build_core_versioning["internal/build/core/versioning"]
@@ -157,10 +158,12 @@ flowchart TD
   cas_cache_prefetch --> cas
   cas_cache_prefetch --> cas_cache_mem
   cas_codec_binary --> cas
+  cas_codec_binary --> cas_codec_internal_bounded
   cas_codec_cbor --> cas
   cas_codec_flate --> cas
   cas_codec_flate --> cas_codec_internal_bounded
   cas_codec_gob --> cas
+  cas_codec_gob --> cas_codec_internal_bounded
   cas_codec_gzip --> cas
   cas_codec_gzip --> cas_codec_internal_bounded
   cas_codec_internal_bounded --> cas
@@ -196,6 +199,7 @@ flowchart TD
   cmd_buildtool --> internal_build_core_layers
   cmd_buildtool --> internal_build_core_receipt
   cmd_buildtool --> internal_build_core_release
+  cmd_buildtool --> internal_build_core_taskstate
   cmd_buildtool --> internal_build_core_toolchain
   cmd_buildtool --> internal_build_core_verify
   cmd_buildtool --> internal_build_core_versioning

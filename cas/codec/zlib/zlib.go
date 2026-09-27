@@ -3,6 +3,13 @@
 //
 // The zlib codec is a representation-layer optimization: it compresses
 // serialized payloads without changing object identity or store semantics.
+//
+// A Codec[T] is safe for concurrent use, and so is a stack of them: the
+// compressor and the decompressor are process-wide pool scratch rather than
+// fields of the codec, taken per call and Reset onto that call's destination
+// (go-cask#378). Pooling changes no bytes — a reset writer is a fresh writer —
+// so a pooled codec writes exactly what a newly built one writes and reads
+// every stream the unpooled code wrote.
 package zlib
 
 import (
@@ -12,6 +19,40 @@ import (
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/codec/internal/bounded"
 )
+
+// writers and readers pool the stdlib compressor and decompressor: a zlib
+// writer carries roughly a megabyte of match tables, so building one per call
+// spent that to store a 64-byte object, and building one reader per call spent
+// tens of kilobytes to inflate it. A pooled writer is handed back only by a
+// call that closed it cleanly, and a pooled reader only by a call that read its
+// stream to the end, so neither ever carries a failed stream into the next
+// call.
+var (
+	writers = bounded.NewWriterPool(func(w io.Writer) (bounded.Compressor, error) {
+		return zlib.NewWriter(w), nil
+	})
+	readers = bounded.NewReaderPool(func(r io.Reader) (bounded.Decompressor, error) {
+		zr, err := zlib.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
+		// zlib.Resetter is the contract of the reader zlib.NewReader returns, so
+		// the assertion cannot fail; TestStdlibReadersAreResetters fails long
+		// before a standard-library change could turn it into a panic here.
+		return decompressor{ReadCloser: zr, resetter: zr.(zlib.Resetter)}, nil
+	})
+)
+
+// decompressor adapts a compress/zlib reader to the pool's Decompressor
+// contract: compress/zlib's Reset takes a preset dictionary, and this codec
+// never writes one, so the adapter supplies nil — the same call zlib.NewReader
+// itself makes.
+type decompressor struct {
+	io.ReadCloser
+	resetter zlib.Resetter
+}
+
+func (d decompressor) Reset(r io.Reader) error { return d.resetter.Reset(r, nil) }
 
 // Codec[T] wraps a base codec and compresses bytes with zlib before storing or
 // after reading them back.
@@ -40,20 +81,16 @@ func New[T any](next cas.Codec[T]) Codec[T] {
 }
 
 // Encode serializes v with the wrapped codec and then zlib-compresses the
-// result.
+// result with a pooled writer, Reset onto this call's buffer.
 func (c Codec[T]) Encode(v T) ([]byte, error) {
-	return bounded.Encode(c.next, v, func(w io.Writer) (io.WriteCloser, error) {
-		return zlib.NewWriter(w), nil
-	})
+	return bounded.Encode(c.next, v, writers)
 }
 
-// Decode inflates the incoming data and then decodes it with the wrapped
-// codec. A payload that inflates past MaxDecodedBytes is rejected with
-// ErrDecodedTooLarge.
+// Decode inflates the incoming data with a pooled reader and then decodes it
+// with the wrapped codec. A payload that inflates past MaxDecodedBytes is
+// rejected with ErrDecodedTooLarge.
 func (c Codec[T]) Decode(data []byte) (T, error) {
-	return bounded.Decode(c.next, data, MaxDecodedBytes, func(r io.Reader) (io.ReadCloser, error) {
-		return zlib.NewReader(r)
-	})
+	return bounded.Decode(c.next, data, MaxDecodedBytes, readers)
 }
 
 // CodecName reports the codec identity tag written into the envelope:

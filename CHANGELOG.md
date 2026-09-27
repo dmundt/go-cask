@@ -163,7 +163,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   coverage tiers, the race suite and the fuzz smoke, followed by the documentation steps.
   `VERIFY_SCOPE`, `VERIFY_JOBS` and the `VERIFY_SKIP_*` options are unchanged, and so is
   the rule that a run which skipped a step writes no gate stamp. Two fixes came with the
-  move: the formatting step no longer walks every linked worktree under `.gocache`, where
+  move: the formatting step no longer walks every linked worktree under `.worktrees`, where
   another session's unformatted file could fail this session's gate, and the step list
   itself is now covered by tests instead of only by a whole gate run. The receipt CI reuses
   is Go as well — `go run ./cmd/buildtool gate-receipt`, the last rule that was still shell,
@@ -327,6 +327,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The gate receipt's reader no longer carries a field value containing a bare
+  carriage return. `Parse` reads a CRLF as one line ending, so a value whose CR
+  it kept came back shorter — or empty — the next time the receipt was rendered
+  and read: the record a verification compares was not the record the run wrote,
+  and the fuzzer that pins the round trip could rediscover the input and fail a
+  lane's gate through no fault of that lane. A line whose value carries a CR is
+  ignored, as a check name that cannot ride in the format already was.
 - `cask put` and `cask get` honor the `--` end-of-flags marker. It is forwarded
   to the flag parser instead of being dropped, so a file whose name begins with
   a dash — `cask put -- -json`, `cask put -- -data.bin` — is stored as data

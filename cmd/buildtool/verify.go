@@ -401,8 +401,8 @@ func (r *gateRun) checkVersionFields(base string) error {
 // stepGofmt reports every first-party file the formatting rule rejects.
 //
 // The file list is walked rather than handed to `gofmt -l .`, which recurses into
-// everything below the root — including `.gocache`, where this repository keeps its task
-// worktrees. Each of those holds a second copy of the tree, so a bare `gofmt -l .` checks
+// everything below the root — including `.gocache` and the task worktrees' own parent
+// directory. Each worktree holds a second copy of the tree, so a bare `gofmt -l .` checks
 // whichever branch another session happens to be working on, and an unformatted file in
 // somebody else's worktree fails this gate. One walk covers both modules: `gofmt` follows
 // the filesystem, so unlike `go build` and `go test` it does reach the nested engine.
@@ -430,13 +430,17 @@ func stepGofmt(r *gateRun) error {
 // skipping what is not this checkout's source:
 //
 //   - git's own directory;
-//   - the scratch directory, where the gate's steps and the repository's task worktrees
-//     live — a worktree holds a second copy of every file, so walking it would check a
+//   - the scratch directories that are not this checkout's source: `.gocache`, where the
+//     gate's steps and the website's generated output live, and the task worktrees' own
+//     parent — a worktree holds a second copy of every file, so walking it would check a
 //     branch this run was not asked about, or the gate's own generated output;
 //   - any directory that is itself a linked worktree of this repository, which carries a
 //     `.git` file rather than a directory.
 func goSourceFiles(root string) ([]string, error) {
 	var files []string
+	// The worktrees' directory comes from the policy table, so this rule follows a
+	// worktree wherever that table puts it.
+	worktrees := policy.Worktrees().Parent
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -445,7 +449,7 @@ func goSourceFiles(root string) ([]string, error) {
 			if path == root {
 				return nil
 			}
-			if entry.Name() == ".git" || entry.Name() == ".gocache" {
+			if entry.Name() == ".git" || entry.Name() == ".gocache" || entry.Name() == worktrees {
 				return fs.SkipDir
 			}
 			if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {

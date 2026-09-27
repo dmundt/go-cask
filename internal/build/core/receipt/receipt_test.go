@@ -101,6 +101,34 @@ func TestParseIsPermissiveAboutFieldsAndStrictAboutTheVersion(t *testing.T) {
 	}
 }
 
+// TestParseDoesNotCarryAValueWithCR pins the one character a value cannot keep. Parse reads
+// a CRLF as one line ending, so a value whose CR it carried would be written back as a CRLF
+// and come back shorter — or empty — on the next read, which makes `Parse(Render(r))` differ
+// from `r`. A line whose value carries a CR is ignored, as a check name the character set
+// cannot carry already was, so the accepted record is one a render round trips.
+func TestParseDoesNotCarryAValueWithCR(t *testing.T) {
+	t.Parallel()
+
+	parsed, err := Parse(Version + "\ncommit a\rb\nbase c\r\nscope full\nrun x\r")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if parsed.Commit != "" || parsed.Run != "" {
+		t.Errorf("Parse carried a value with a CR: commit %q, run %q", parsed.Commit, parsed.Run)
+	}
+	if parsed.Base != "c" || parsed.Scope != Full {
+		t.Errorf("Parse stopped reading a CRLF as one line ending: base %q, scope %q", parsed.Base, parsed.Scope)
+	}
+
+	again, err := Parse(Render(parsed))
+	if err != nil {
+		t.Fatalf("Parse(Render(record)): %v", err)
+	}
+	if again.Identity() != parsed.Identity() {
+		t.Errorf("the identity did not survive a render:\n%s\n%s", parsed.Identity(), again.Identity())
+	}
+}
+
 // TestParseScope pins the two tokens and refuses everything else: a scope is compared, not
 // interpreted, so a near-miss is a broken record.
 func TestParseScope(t *testing.T) {

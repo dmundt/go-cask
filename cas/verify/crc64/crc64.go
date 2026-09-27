@@ -38,16 +38,17 @@ func New() Hasher { return Hasher{} }
 // safe and avoids rebuilding the 256-entry table on every digest.
 var ecmaTable = crc64.MakeTable(crc64.ECMA)
 
-// Digest computes the CRC-64/ECMA digest of data read from r.
+// Digest computes the CRC-64/ECMA digest of data read from r. The fixed-width
+// buffer is a stack array, so NewDigest's copy is the call's only digest
+// allocation.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
+	var b [Size]byte
 	h := crc64.New(ecmaTable)
 	if _, err := io.Copy(h, r); err != nil {
 		return nil, fmt.Errorf("cas/verify/crc64: %w", err)
 	}
-	v := h.Sum64()
-	b := make([]byte, Size)
-	binary.BigEndian.PutUint64(b, v)
-	return cas.NewDigest(b), nil
+	binary.BigEndian.PutUint64(b[:], h.Sum64())
+	return cas.NewDigest(b[:]), nil
 }
 
 // Validate checks that d is a valid CRC-64/ECMA digest: present and exactly
