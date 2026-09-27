@@ -4,10 +4,11 @@
 package web
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
@@ -88,15 +89,18 @@ func formatBytes(size int64) string {
 // shortDigest renders a digest in the viewer's abbreviated form: the first 8
 // hex characters plus an ellipsis, or the whole digest when it is no longer
 // than that. The 8-character short form is cas.Digest.Prefix(8) — the helper
-// the package documents as this viewer's short form — so the marker is only
-// added when Prefix actually dropped something.
+// the package documents as this viewer's short form — taken here from the hex
+// form already rendered rather than encoded a second time inside Prefix: a
+// rendered object row therefore costs two hex renderings, not four
+// (performance.md §4). The marker is only added when the short form actually
+// dropped something.
 func shortDigest(d cas.Digest) string {
 	const shortChars = 8
 	full := d.String()
 	if len(full) <= shortChars {
 		return full
 	}
-	return d.Prefix(shortChars) + "…"
+	return full[:shortChars] + "…"
 }
 
 // Version reports the build's module version, rendered as the viewer and the
@@ -111,24 +115,57 @@ func Version() string {
 	return "dev"
 }
 
-// hexdump renders a classic 16-byte-row dump (offset, hex, ASCII).
+// hexdump renders a classic 16-byte-row dump (offset, hex, ASCII). The Bytes
+// tab renders one of these per inspector reveal over a preview of at most
+// previewLimit bytes, so each row is encoded in a single encoding/hex pass into
+// a reused stack buffer instead of formatting every byte through fmt
+// (performance.md §4: avoid fmt in hot paths, use encoding/hex directly, not
+// %x loops). The rendered columns are unchanged: an eight-digit lowercase
+// offset, space-separated lowercase byte pairs, and a printable-ASCII column
+// whose unreadable bytes are '.'.
 func hexdump(data []byte) []dumpRow {
-	var rows []dumpRow
+	rows := make([]dumpRow, 0, (len(data)+15)/16)
+	var encoded [16 * 2]byte
+	var spaced [16*3 - 1]byte
 	for off := 0; off < len(data); off += 16 {
-		end := min(off+16, len(data))
-		var hexParts []string
-		var ascii strings.Builder
-		for _, b := range data[off:end] {
-			hexParts = append(hexParts, fmt.Sprintf("%02x", b))
+		row := data[off:min(off+16, len(data))]
+
+		hex.Encode(encoded[:], row)
+		for i := range row {
+			if i > 0 {
+				spaced[i*3-1] = ' '
+			}
+			spaced[i*3] = encoded[i*2]
+			spaced[i*3+1] = encoded[i*2+1]
+		}
+
+		var ascii [16]byte
+		for i, b := range row {
 			if b >= 32 && b < 127 {
-				ascii.WriteByte(b)
+				ascii[i] = b
 			} else {
-				ascii.WriteByte('.')
+				ascii[i] = '.'
 			}
 		}
-		rows = append(rows, dumpRow{fmt.Sprintf("%08x", off), strings.Join(hexParts, " "), ascii.String()})
+
+		rows = append(rows, dumpRow{
+			Offset: hexOffset(off),
+			Hex:    string(spaced[:3*len(row)-1]),
+			ASCII:  string(ascii[:len(row)]),
+		})
 	}
 	return rows
+}
+
+// hexOffset renders a byte offset as the dump's eight-digit lowercase hex
+// column — the column fmt's %08x produced. A 32-bit byte position holds every
+// offset the bounded preview can reach (viewer-design §3).
+func hexOffset(off int) string {
+	var raw [4]byte
+	binary.BigEndian.PutUint32(raw[:], uint32(off))
+	var out [8]byte
+	hex.Encode(out[:], raw[:])
+	return string(out[:])
 }
 
 type dumpRow struct {
