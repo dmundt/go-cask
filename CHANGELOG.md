@@ -159,8 +159,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   itself is now covered by tests instead of only by a whole gate run. The gate also writes
   the receipt CI reuses — it marks each check under the name scripts/gate-receipt.sh's
   suite requires, so a renamed step costs a full CI run instead of a missed check — and it
-  cross-builds and vets windows/amd64 and linux/arm64 locally, so the failures the
+  cross-builds and vets windows/amd64, darwin/amd64, darwin/arm64 and linux/arm64
+  locally, so the failures the
   platform matrix would find are found before the push.
+- The platform matrix compiles the platforms it used to run, on Linux only. Every
+  target — `windows/amd64`, `darwin/amd64`, `darwin/arm64` and `linux/arm64` — is
+  cross-built and vetted on one Linux runner, so no Windows and no macOS runner is
+  used, and no non-Linux binary is executed anywhere in CI. What that buys is
+  stated rather than implied: those platforms are proven to compile and to pass
+  `go vet`, which type-checks their platform-tagged files and their tests, while
+  their runtime behaviour is no longer exercised by any run — Linux remains the
+  only platform whose tests execute.
 - Landing is coordinated through the pull request instead of a lock file inside
   one clone. `go run ./cmd/buildtool pr-lane claim <issue>` claims a lane for an
   issue with a server-side

@@ -8,8 +8,8 @@ permissions:
 #   testing-strategy §5    — -race, tiered coverage gates, fuzz smoke
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
-# The required verify context always runs. Expensive security and native
-# platform jobs run only for changes that can affect them.
+# The required verify context always runs. Expensive security and platform
+# jobs run only for changes that can affect them.
 #
 # The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
 # already ran it on this host before the branch was pushed, and `.githooks/pre-push`
@@ -147,26 +147,33 @@ jobs:
       - name: Run govulncheck
         run: go run ./cmd/buildtool security
 
+  # Every target is cross-compiled on the one Linux runner, so the matrix spends
+  # no Windows and no macOS runner. That buys the compilation gate and nothing
+  # more: a cross-build cannot execute the binary it produces, so these targets
+  # are proven to compile and vet, never to behave. Behaviour is the Linux
+  # `verify` job's to prove (testing-strategy §5).
   platform-matrix:
     needs: [verify, security]
     if: needs.verify.outputs.go_changed == 'true'
     name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: linux-arm64
-            runs-on: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-            smoke: true
           - name: windows-amd64
-            runs-on: windows-latest
             goos: windows
             goarch: amd64
-            smoke: true
+          - name: darwin-amd64
+            goos: darwin
+            goarch: amd64
+          - name: darwin-arm64
+            goos: darwin
+            goarch: arm64
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -177,19 +184,17 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+      # `go vet` carries its weight here: it type-checks the platform-tagged
+      # files AND their tests for the target, which a cross-build cannot run.
+      # CGO is off because there is no C toolchain for the target.
+      - name: Build and vet for ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
         run: |
           go build ./...
-
-      - name: Smoke test on native platform
-        if: ${{ matrix.smoke }}
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go test ./...
+          go vet ./...
 
   platforms:
     name: platforms

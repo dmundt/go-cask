@@ -533,14 +533,20 @@ func stepSecurity(r *gateRun) error {
 	return nil
 }
 
-// stepCrossPlatform cross-builds and vets the two platforms the matrix in CI pays separate
-// runners for, so the failures it would find are found before the push instead of after it.
+// stepCrossPlatform cross-builds and vets every target the CI matrix gates, so the
+// failures it would find are found before the push instead of after it.
 //
-// It does not replace the matrix: nothing here runs a Windows or an arm64 binary, and the
-// native test jobs stay. CGO is off because a cross-build has no C toolchain for the
-// target, which is also what makes the check independent of the host's compiler.
+// It is the matrix's local twin, not its replacement, and the two gate the same
+// four targets: neither runs a Windows, macOS or arm64 binary, because a
+// cross-build cannot execute what it produces. These platforms are therefore
+// compiled and vetted, never executed, anywhere (go-cask#390,
+// docs/specs/testing-strategy.md §5). CGO is off because a cross-build has no C
+// toolchain for the target, which is also what makes the check independent of the
+// host's compiler.
 func stepCrossPlatform(r *gateRun) error {
-	for _, target := range [][2]string{{"windows", "amd64"}, {"linux", "arm64"}} {
+	for _, target := range [][2]string{
+		{"windows", "amd64"}, {"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "arm64"},
+	} {
 		goos, goarch := target[0], target[1]
 		fmt.Fprintf(r.out, "  %s/%s\n", goos, goarch)
 		env := envWithAll([][2]string{{"GOOS", goos}, {"GOARCH", goarch}, {"CGO_ENABLED", "0"}})
