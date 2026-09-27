@@ -1,8 +1,8 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, the instruction-file router budget, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v21
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, the per-file instruction budget, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+version: v22
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -71,12 +71,13 @@ viewer mockup; it MUST NOT be copied into a `.md` file.
 
 ### 2.1 Instruction files are routers, and they have a budget
 
-An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into context at session start, so its bytes are a recurring cost. It routes; it does not specify.
+An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into context while an agent works in the tree it governs, so its bytes are a recurring cost. It routes; it does not specify.
 
-- Root `AGENTS.md` MUST stay **≤ 6 KiB**, and the gate enforces it: `internal/build/core/docs` measures the file against `internal/build/policy`'s table and `go run ./cmd/buildtool markdown-integrity` fails above it. The budget is a ceiling for the router, never a target to fill: `AGENTS.md` may be far smaller, and MUST NOT be grown to it.
-- A rule belongs to exactly one owning file; the router names that file and section. It carries no prose, no rationale, no restated rule, no duplicated diagram, table row or code example — moving a block out means moving its content to the owner, never deleting it.
+- **Every instruction file has a byte ceiling**, in `internal/build/policy`'s `InstructionBudgets` table: `internal/build/core/docs` measures each file against it and `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just above the file's size when the ceiling was added — room for a rule or two, none to grow into a specification. Raising one is a deliberate policy change in the change that needs it, never the fix for a failure.
+- Root `AGENTS.md` MUST stay **≤ 6 KiB**: read at the start of every session whatever the change, it is a router and MUST sit far below its ceiling — a ceiling, never a target to fill.
+- A rule belongs to exactly one owning file; the router names that file and section. An instruction file carries no prose, no rationale, no restated rule, no duplicated diagram, table row or code example — moving a block out means moving its content to the owner, never deleting it. Narration that states no rule (a past port, a dated incident, a status aside) is removed, and a rule its owner already states becomes a pointer.
 - The facts that make a file discoverable stay routed, not restated: the path→spec mapping is [`index.md`](index.md) and the tree list is [`../README.md`](../README.md) "Repository layout". Route through those instead of growing either into a second inventory.
-- The same style applies to every instruction file: fragments over sentences, tables over paragraphs, backticked paths over descriptions. Telegraphic is not terser rules — every rule, fact, path, command, identifier, number, link and code block survives the rewrite.
+- Telegraphic style, in every instruction file: fragments over sentences, tables over paragraphs, backticked paths over descriptions. Telegraphic is not terser rules — every rule, fact, path, command, identifier, number, link and code block survives the rewrite.
 
 ## 3. Adding a file
 
