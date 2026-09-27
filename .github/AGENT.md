@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v7
+version: v8
 ---
 
 # GitHub repository operations
@@ -36,6 +36,63 @@ enabled:
   linear history.
 - Reject force-pushes and branch deletion.
 - Never configure bypass allowances.
+
+## Issue labels
+
+Labels come from this vocabulary. Each label's description and colour are
+repository settings; adding, renaming, or removing a label is a change to this
+section in the same pull request, and the live repository MUST match the table
+(`gh label list`).
+
+| Label | Meaning |
+|---|---|
+| `accessibility` | A barrier affecting people with disabilities |
+| `agent-workflow` | Multi-session/agent landing coordination: the land lane, worktrees, gate stamps and their hooks |
+| `api` | Public API design or contract |
+| `bug` | Something is not working |
+| `chore` | Maintenance or ergonomics work |
+| `ci` | Build, gate and CI tooling |
+| `dependencies` | A dependency-file update (Dependabot) |
+| `documentation` | Improvements or additions to documentation |
+| `duplicate` | This issue or pull request already exists |
+| `enhancement` | A new feature or request |
+| `example` | Example programs and usage examples (examples/, README snippets) |
+| `github_actions` | A GitHub Actions update (Dependabot) |
+| `good first issue` | Good for newcomers |
+| `help wanted` | Extra attention is needed |
+| `invalid` | This does not seem right |
+| `parity` | A feature-parity gap across backends or the CLI |
+| `performance` | A performance improvement |
+| `python` | A Python documentation-dependency update (Dependabot) |
+| `question` | Further information is requested |
+| `security` | A security issue that needs attention |
+| `viewer` | Embedded object-browser viewer: screens, layout, filters, inspector, styling |
+| `wontfix` | This will not be worked on |
+
+Labels are additive: an issue carries one type label (`bug`, `enhancement`,
+`documentation`, `chore`, `performance`, `security`, `api`, `parity`) plus every
+area label that applies (`viewer`, `accessibility`, `example`, `agent-workflow`,
+`ci`).
+
+### The `viewer` label
+
+`viewer` marks work whose subject is the embedded object browser:
+
+- `internal/web/` — templates, the single stylesheet, the object table and its
+  columns, filters, the inspector, reference states, and integrity display;
+- the `cask web` server surface — startup-token handling, login/session, request
+  throttle, audit logging, and response hygiene;
+- `seed-preview` and the preview graph where the viewer is the consumer;
+- the viewer specs (`viewer-design.md`, `viewer-security.md`) and the viewer's
+  documentation page.
+
+It does not mark an issue that only mentions the viewer among other surfaces: a
+cross-cutting refactor, repository tooling, or a website/docs change whose
+subject is elsewhere stays unlabeled even when a viewer file appears in its
+evidence.
+
+List the viewer backlog with
+`gh issue list --state all --search 'label:viewer'`.
 
 ## Signed pull-request workflow
 
