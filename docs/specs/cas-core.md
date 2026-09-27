@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v80
+version: v81
 ---
 
 # CAS Core — go-cask
@@ -389,7 +389,7 @@ MkdirAll(dir) → open <path>.tmp (O_CREATE|O_EXCL) → io.Copy(f, r) → f.Sync
 Keeps objects in `map[string][]byte` keyed by **raw digest bytes** (`string(d)`) — no hex form, no algorithm — under a `sync.RWMutex`.
 - **Purpose:** fast, dependency-free, deterministic storage for unit/property/fuzz tests and benchmarks; **not persistent**.
 - **Contracts:** same `Backend` semantics as fs — idempotent `Put`; `Get` returns a reader the caller MUST close (missing → `ErrNotFound`); `Delete` no-op on missing; absent digest → `ErrInvalidDigest`; `List()` returns every stored digest.
-- **Buffering:** `Put` buffers the whole stream (`io.ReadAll`) through a context-checking reader, so a `Put` canceled mid-read stops and stores nothing (the guarantee fs gets from its streaming copy); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`). With `WithMaxSize` the read is bounded to the remaining budget first, so an oversized `Put` is rejected without allocating past the cap.
+- **Buffering:** `Put` buffers the whole stream (`io.ReadAll`) through a context-checking reader, so a `Put` canceled mid-read stops and stores nothing (the guarantee fs gets from its streaming copy); `Get` returns `io.NopCloser(bytes.NewReader)` over the stored slice (never mutated after `Put`). With `WithMaxSize` the read is bounded to the remaining budget first, so an oversized `Put` is rejected without allocating past the cap — at the `math.MaxInt64` ceiling the budget exceeds what any stream can deliver and `budget+1` would wrap, so the read is left unbounded there and `store`'s cap check is what rejects an overrun (go-cask#355).
 - **Concurrency:** `RWMutex` (lock-free rename trick doesn't apply; still far faster than disk).
 - **Stats/listing:** implements `Backend.Stats` (`*cas.Stats`) and `List`, rebuilding digests from map keys with `cas.NewDigest` (empty key skipped — `CheckDigest` makes it unreachable) and recomputing total bytes/object count per call — no desynchronized counter. No backend-native `Verify`/`GC`/`Prune`/`Clean`/`Size`/`ModTime` — but `cas.VerifyAll` and `cas.Sweep` (§4.11) work against it directly, needing only the minimal `Backend` interface.
 - **Construction:** `backmem.New(...)` (package `memory`, directory `cas/backend/mem`, imported as `backmem` because `cas/cache/mem` declares the same clause — go-cask#269; optional `backmem.WithMaxSize(n)` cap; 0 = unbounded); swap-in compatible with any `Store[T]`, `gitlike` repo, or HTTP handler taking a `Backend`.

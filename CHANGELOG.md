@@ -492,6 +492,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   removal can tell "nothing to remove" from "removed" by the exit status instead
   of by reading the message, which used to print `worktree removed` and exit 0
   having done nothing.
+- `mem.WithMaxSize(math.MaxInt64)` — the obvious spelling of "no practical
+  limit" — no longer stores an **empty** object and reports success. The
+  remaining budget is the int64 ceiling both on an empty backend and on a
+  re-Put of an existing key, and the one-byte overflow probe computed from it
+  wrapped to `MinInt64`, so the read returned nothing and zero bytes were
+  stored under the caller's digest; the loss surfaced only later as an empty
+  decode or a failed `Verify`, which reads as store corruption rather than as a
+  rejected write. The ceiling now stores the bytes it was given, and every
+  smaller cap behaves exactly as before.
 
 ### Security
 
