@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, local gate receipts, code scanning, and how to validate a settings change with the gh API.
-version: v10
+version: v11
 ---
 
 # GitHub repository operations
@@ -109,7 +109,7 @@ force-with-lease: signed-commit workflow, WSL gate command and coverage threshol
   after a checked pull request is merged.
 - Scope security scans to Go- and security-relevant changes, platform jobs to
   Go-relevant changes. Keep the platform matrix on Linux runners only: it cross-compiles
-  and vets windows/amd64, darwin/amd64, darwin/arm64 and linux/arm64
+  and vets windows/amd64, darwin/amd64, darwin/arm64, linux/amd64 and linux/arm64
   (`docs/specs/testing-strategy.md` §5), so no Windows and no macOS runner is paid for.
   Require the always-running `platforms` aggregate check so conditional matrix jobs
   still gate Go changes without blocking docs-only changes.

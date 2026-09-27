@@ -169,14 +169,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is Go as well — `go run ./cmd/buildtool gate-receipt`, the last rule that was still shell,
   with its behaviour cases as Go tests beside it — and it marks each check under the name
   that command's `suite` verb requires, so a renamed step costs a full CI run instead of a
-  missed check. The gate also cross-builds and vets windows/amd64, darwin/amd64, darwin/arm64
-  and linux/arm64
-  locally, so the failures the
-  platform matrix would find are found before the push.
+  missed check. The gate also cross-builds and vets windows/amd64, darwin/amd64, darwin/arm64,
+  linux/amd64 and linux/arm64 locally, so the failures the platform matrix would find are
+  found before the push.
 - The platform matrix compiles the platforms it used to run, on Linux only. Every
-  target — `windows/amd64`, `darwin/amd64`, `darwin/arm64` and `linux/arm64` — is
-  cross-built and vetted on one Linux runner, so no Windows and no macOS runner is
-  used, and no non-Linux binary is executed anywhere in CI. What that buys is
+  target — `windows/amd64`, `darwin/amd64`, `darwin/arm64`, `linux/amd64` and
+  `linux/arm64` — is cross-built and vetted on one Linux runner, so no Windows and
+  no macOS runner is used, and no non-Linux binary is executed anywhere in CI.
+  What that buys is
   stated rather than implied: those platforms are proven to compile and to pass
   `go vet`, which type-checks their platform-tagged files and their tests, while
   their runtime behaviour is no longer exercised by any run — Linux remains the
