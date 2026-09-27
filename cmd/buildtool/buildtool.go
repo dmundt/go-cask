@@ -56,6 +56,7 @@ import (
 	"github.com/dmundt/go-cask/internal/build/core/toolchain"
 	"github.com/dmundt/go-cask/internal/build/core/versioning"
 	"github.com/dmundt/go-cask/internal/build/core/website"
+	"github.com/dmundt/go-cask/internal/build/core/worktree"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -428,7 +429,7 @@ func benchBaseline(args []string, out, errOut io.Writer, deps benchDeps) error {
 
 	// Archive the previous reference before replacing it — never overwrite the
 	// capture just written, and never overwrite an existing archive.
-	if _, err := os.Stat(canonical); err == nil && !samePath(canonical, outFile) {
+	if _, err := os.Stat(canonical); err == nil && !worktree.SamePath(canonical, outFile) {
 		archive := bench.UniqueName(archiveDir, table.Stem+"-"+stamp, table.Extension, pathTaken)
 		if err := copyFile(canonical, archive); err != nil {
 			return err
@@ -436,7 +437,7 @@ func benchBaseline(args []string, out, errOut io.Writer, deps benchDeps) error {
 		fmt.Fprintf(out, "previous canonical baseline archived at %s\n", archive)
 	}
 
-	if samePath(canonical, outFile) {
+	if worktree.SamePath(canonical, outFile) {
 		fmt.Fprintf(out, "baseline saved to %s\n", outFile)
 		fmt.Fprintf(out, "canonical baseline already at %s\n", canonical)
 		return nil
@@ -519,7 +520,7 @@ func benchCompare(args []string, out, errOut io.Writer, deps benchDeps) error {
 		return fmt.Errorf("baseline not found: %s\n"+
 			"  pass an existing capture, or generate one with: go run ./cmd/buildtool bench-baseline", baseline)
 	}
-	if samePath(baseline, current) {
+	if worktree.SamePath(baseline, current) {
 		return fmt.Errorf("baseline and current are the same file: %s\n"+
 			"  comparing a capture with itself always reports no change; pick a different baseline", baseline)
 	}
@@ -585,25 +586,6 @@ func pathTaken(path string) bool {
 func pathExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-// samePath reports whether two paths name the same file. An existing pair is compared
-// by identity — the `-ef` test the shell helper used — so a relative and an absolute
-// spelling of one file are the same file; a pair that does not both exist is compared
-// by its cleaned absolute form, which is all that can be said about a path that is not
-// there.
-func samePath(a, b string) bool {
-	if left, err := os.Stat(a); err == nil {
-		if right, err := os.Stat(b); err == nil {
-			return os.SameFile(left, right)
-		}
-	}
-	left, errLeft := filepath.Abs(a)
-	right, errRight := filepath.Abs(b)
-	if errLeft != nil || errRight != nil {
-		return false
-	}
-	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 // sameContent reports whether two files hold the same bytes, which is how a comparison
@@ -1190,17 +1172,37 @@ func installedScanner(binDir, name, version string) (string, error) {
 }
 
 // envWith returns the process environment with one variable set, replacing any
-// existing value rather than appending a second copy of the name.
+// existing value rather than appending a second copy of the name. It is the one-variable
+// form of envWithAll, which the cross-platform step needs for three at once; the shape a
+// caller writes is the only difference between them.
 func envWith(name, value string) []string {
+	return envWithAll([][2]string{{name, value}})
+}
+
+// envWithAll returns the process environment with every named variable replaced, all at
+// once. Chaining envWith would not do it, because each call starts from the caller's
+// environment and would drop the replacement before it; appending the new values instead is
+// not equivalent either, because a duplicate entry leaves the reader with the value the
+// parent had.
+func envWithAll(values [][2]string) []string {
 	env := os.Environ()
-	kept := make([]string, 0, len(env)+1)
+	kept := make([]string, 0, len(env)+len(values))
 	for _, entry := range env {
-		if strings.HasPrefix(entry, name+"=") {
-			continue
+		replaced := false
+		for _, pair := range values {
+			if strings.HasPrefix(entry, pair[0]+"=") {
+				replaced = true
+				break
+			}
 		}
-		kept = append(kept, entry)
+		if !replaced {
+			kept = append(kept, entry)
+		}
 	}
-	return append(kept, name+"="+value)
+	for _, pair := range values {
+		kept = append(kept, pair[0]+"="+pair[1])
+	}
+	return kept
 }
 
 // toolOutput runs one tool invocation and returns its combined output, which is how a
