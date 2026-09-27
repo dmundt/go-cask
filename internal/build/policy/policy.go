@@ -18,8 +18,8 @@ import (
 // in these tables is built from.
 const ModulePath = "github.com/dmundt/go-cask"
 
-// Matrix is go-cask's layer table, mirroring AGENTS.md "Layers and citizen
-// classes". The order matters only for reporting: the first layer that claims a
+// Matrix is go-cask's layer table, mirroring library-design.md §1.1. The order
+// matters only for reporting: the first layer that claims a
 // package owns it.
 //
 // Keep it in step with that section: an arm here the prose does not state, or a

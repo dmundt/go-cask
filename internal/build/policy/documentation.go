@@ -1,5 +1,7 @@
 package policy
 
+import "github.com/dmundt/go-cask/internal/build/core/docs"
+
 // PackageReadmeTable is the frontmatter a package-level README under `internal/build`
 // carries.
 //
@@ -23,5 +25,21 @@ func PackageReadme() PackageReadmeTable {
 	return PackageReadmeTable{
 		Type:   "Guide",
 		Fields: []string{"type", "title", "description", "version"},
+	}
+}
+
+// InstructionBudgets returns the byte ceiling go-cask sets for each auto-read agent
+// instruction file, checked by the markdown-integrity step.
+//
+// The root `AGENTS.md` is the file the ceiling binds, and it is a router: read at the
+// start of every session whatever the change, it names the owner of each rule instead
+// of restating it, so its size is a recurring cost with nothing to spend it on.
+// 6 KiB is a ceiling, not a target — the router is expected to sit far below it — and
+// the rule behind the number, the style it enforces and the relocation the failure
+// asks for are docs/AGENT.md §2.1. A rule that no longer fits belongs in its owner;
+// raising this number is a policy change, not a fix.
+func InstructionBudgets() []docs.InstructionBudget {
+	return []docs.InstructionBudget{
+		{Path: "AGENTS.md", MaxBytes: 6 * 1024},
 	}
 }

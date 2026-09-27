@@ -72,14 +72,15 @@ commands:
                        hatches drop one expensive step each — a run that skipped
                        anything writes no gate stamp
   layer-matrix         check every package's imports against the dependency-layer
-                       matrix (AGENTS.md, "Layers and citizen classes")
+                       matrix (library-design.md §1.1)
   coverage-tier        check that every cas/ package carries a coverage tier or a
                        written exemption (testing-strategy.md §5)
   coverage-check       read measurement lines and enforce the thresholds; used by
                        the gate's coverage loop
   markdown-integrity   check the tracked Markdown files: no raw HTML, no
-                       HTML/XML/SVG fences, no dead link or file reference, and
-                       the CHANGELOG structure (docs/specs/AGENT.md §9)
+                       HTML/XML/SVG fences, no dead link or file reference, the
+                       CHANGELOG structure and the instruction-file byte ceilings
+                       (docs/specs/AGENT.md §9, docs/AGENT.md §2.1)
   website-examples     materialize every Go fence on the site, check the
                        shipped-package inventory tables, and build/vet the result
   website-footer       check the published footer's one-line contract, and run the
@@ -1596,8 +1597,8 @@ func readLines(in io.Reader) ([]string, error) {
 
 // runMarkdownIntegrity checks every tracked Markdown file: no raw HTML, no
 // HTML/XML/SVG fences, and no link or file reference that resolves to nothing,
-// plus the CHANGELOG structure rules. The file list is Git's, so the check
-// covers exactly what is committed.
+// plus the CHANGELOG structure rules and the instruction-file byte ceilings. The
+// file list is Git's, so the check covers exactly what is committed.
 func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 	flags := flag.NewFlagSet("markdown-integrity", flag.ContinueOnError)
 	flags.SetOutput(errOut)
@@ -1614,6 +1615,16 @@ func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 		return err
 	}
 
+	// A budgeted instruction file is read once, for both checks; the set handed to
+	// the budget rule holds exactly the budgeted files that exist, which is what
+	// lets it report a ceiling whose file is gone as stale.
+	budgets := policy.InstructionBudgets()
+	budgeted := make(map[string]bool, len(budgets))
+	for _, budget := range budgets {
+		budgeted[budget.Path] = true
+	}
+	var instructions []docs.File
+
 	var findings []docs.Finding
 	for _, name := range files {
 		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
@@ -1624,7 +1635,11 @@ func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 			Path:    name,
 			Content: string(content),
 		})...)
+		if budgeted[filepath.ToSlash(name)] {
+			instructions = append(instructions, docs.File{Path: name, Content: string(content)})
+		}
 	}
+	findings = append(findings, docs.CheckInstructionBudgets(budgets, instructions)...)
 
 	lines := docs.Report(findings)
 	for _, line := range lines {
@@ -1633,7 +1648,7 @@ func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 	if len(lines) != 0 {
 		return fmt.Errorf("%d Markdown integrity error(s)", len(lines))
 	}
-	fmt.Fprintf(out, "markdown integrity: %d files checked\n", len(files))
+	fmt.Fprintf(out, "markdown integrity: %d files checked, %d instruction budget(s)\n", len(files), len(budgets))
 	return nil
 }
 

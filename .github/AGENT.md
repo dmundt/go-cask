@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v6
+version: v7
 ---
 
 # GitHub repository operations
@@ -27,7 +27,7 @@ enabled:
   `.github/workflows/codeql.yml`, the repository's advanced setup, which is why
   its workflow must stay enabled (see "Code scanning"). Keep `strict` off: an
   up-to-date branch not required, because the land lane serializes landings
-  instead (root `AGENTS.md`, "Serialized landing, worktrees and gates").
+  instead ([`../docs/specs/landing.md`](../docs/specs/landing.md) §5).
 - Keep approving-review count at zero, approval-after-last-push off: in
   this single-account repository the pull-request author and the only possible
   reviewer are the same account, so a required approval would deadlock every

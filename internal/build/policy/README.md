@@ -1,8 +1,8 @@
 ---
 type: Guide
 title: policy (build) — go-cask
-description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, worktree table, landing lanes, gate table, package-graph prose.
-version: v5
+description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, instruction-file budgets, worktree table, landing lanes, gate table, package-graph prose.
+version: v6
 ---
 
 # policy
@@ -42,7 +42,7 @@ it.
 Each states a rule a specification owns; the specification omits the list → change touches
 one file:
 
-- `Matrix` mirrors [`AGENTS.md`](../../../AGENTS.md) "Layers and citizen classes". Arm
+- `Matrix` mirrors [`library-design.md`](../../../docs/specs/library-design.md) §1.1. Arm
   absent from the prose, or prose row absent here → drift.
 - `Coverage` = gate's contract with
   [`testing-strategy.md`](../../../docs/specs/testing-strategy.md) §5. Threshold edit
