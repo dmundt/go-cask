@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v21
+version: v22
 ---
 
 # Agent instructions — `scripts/`
@@ -55,7 +55,7 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   path from the allowed prefixes, so a local import no layer allowed looked
   third-party and escaped the gate) was found and pinned; and moving the step list
   is what exposed a `gofmt -l .` that walked every linked worktree under
-  `.gocache`, so an unformatted file in another session's worktree could fail this
+  `.worktrees`, so an unformatted file in another session's worktree could fail this
   one's gate. When a step needs a decision rather than a command, extract it — do
   not grow the list.
 - When two helpers must agree on a classification, one of them owns it and the

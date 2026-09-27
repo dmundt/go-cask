@@ -11,7 +11,7 @@ func TestGitFileIsRelative(t *testing.T) {
 	t.Parallel()
 
 	primary := filepath.Join(string(filepath.Separator)+"src", "go-cask")
-	worktreeDir := filepath.Join(primary, ".gocache", "wt-386")
+	worktreeDir := filepath.Join(primary, ".worktrees", "wt-386")
 	adminDir := Admin(filepath.Join(primary, ".git"), "wt-386")
 
 	content, err := GitFile(worktreeDir, adminDir)
@@ -137,7 +137,7 @@ func TestSamePathFollowsTheFilesystem(t *testing.T) {
 func TestResolvesRejectsOtherTrees(t *testing.T) {
 	t.Parallel()
 
-	worktreeDir := filepath.Join(string(filepath.Separator)+"src", "go-cask", ".gocache", "wt-386")
+	worktreeDir := filepath.Join(string(filepath.Separator)+"src", "go-cask", ".worktrees", "wt-386")
 	adminDir := Admin(filepath.Join(string(filepath.Separator)+"src", "go-cask", ".git"), "wt-386")
 
 	// The failure this whole package exists to prevent: a link that leads to another
