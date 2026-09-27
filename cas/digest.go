@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 )
 
 // Digest is a content digest — the key an object is stored under.
@@ -66,9 +65,23 @@ func (d Digest) Bytes() []byte {
 // String returns the lowercase-hex form, or "" for the absent digest. It is a
 // rendering of the bytes only — no algorithm name is involved, since the core
 // does not know one.
+//
+// The rendering is itself a hot path — it is the key a cache hit is looked up
+// under, once per cached object — so it fills a stack buffer and copies that
+// into one string, instead of hex.EncodeToString's byte slice plus string: one
+// allocation rather than two, and half the bytes (performance.md §4). The
+// buffer holds the widest shipped hasher (sha512: 64 bytes, 128 hex
+// characters); a digest wider than that — the core names no algorithm, so a
+// client may produce one — takes the general path, keeping the method total.
 func (d Digest) String() string {
 	if len(d) == 0 {
 		return ""
+	}
+	const stackHex = 128
+	if hex.EncodedLen(len(d)) <= stackHex {
+		var buf [stackHex]byte
+		n := hex.Encode(buf[:], d)
+		return string(buf[:n])
 	}
 	return hex.EncodeToString(d)
 }
@@ -120,15 +133,36 @@ func (d *Digest) UnmarshalText(b []byte) error {
 		*d = nil
 		return nil
 	}
-	if len(b)%2 != 0 || !hexRe.Match(b) {
-		return fmt.Errorf("%w: %q is not a hex digest", ErrInvalidDigest, b)
+	// The shape is checked by a byte loop rather than a regexp: the same
+	// strictness — lowercase hex only, which hex.Decode alone would not give,
+	// since it also accepts "A-F" — for a fraction of the cost, on the path
+	// every CLI argument, URL parameter and JSON reference round trip takes
+	// (performance.md §4). The input reaches the message as a string so the
+	// caller's string→[]byte conversion (ParseDigest's) does not escape and
+	// stays off the heap; rendering it costs nothing on the accepted path.
+	if len(b)%2 != 0 || !isLowerHex(b) {
+		return fmt.Errorf("%w: %q is not a hex digest", ErrInvalidDigest, string(b))
 	}
 	raw := make([]byte, hex.DecodedLen(len(b)))
 	if _, err := hex.Decode(raw, b); err != nil {
-		return fmt.Errorf("%w: %q", ErrInvalidDigest, b)
+		return fmt.Errorf("%w: %q", ErrInvalidDigest, string(b))
 	}
 	*d = Digest(raw)
 	return nil
+}
+
+// isLowerHex reports whether b is a non-empty run of lowercase hex digits: the
+// digest text shape UnmarshalText documents and enforces.
+func isLowerHex(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	for _, c := range b {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseDigest parses the canonical text form of a digest: lowercase hex. The
@@ -155,6 +189,3 @@ func CheckDigest(d Digest, what string) error {
 	}
 	return nil
 }
-
-// hexRe is the valid digest text shape: lowercase hex only.
-var hexRe = regexp.MustCompile(`^[0-9a-f]+$`)

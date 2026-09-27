@@ -33,16 +33,17 @@ type Hasher struct{}
 // New returns an Adler-32 CAS hasher.
 func New() Hasher { return Hasher{} }
 
-// Digest computes the Adler-32 digest of data read from r.
+// Digest computes the Adler-32 digest of data read from r. The fixed-width
+// buffer is a stack array, so NewDigest's copy is the call's only digest
+// allocation.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
+	var b [Size]byte
 	h := adler32.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return nil, fmt.Errorf("cas/verify/adler32: %w", err)
 	}
-	v := h.Sum32()
-	b := make([]byte, Size)
-	binary.BigEndian.PutUint32(b, v)
-	return cas.NewDigest(b), nil
+	binary.BigEndian.PutUint32(b[:], h.Sum32())
+	return cas.NewDigest(b[:]), nil
 }
 
 // Validate checks that d is a valid Adler-32 digest: present and exactly Size
