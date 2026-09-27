@@ -163,7 +163,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   coverage tiers, the race suite and the fuzz smoke, followed by the documentation steps.
   `VERIFY_SCOPE`, `VERIFY_JOBS` and the `VERIFY_SKIP_*` options are unchanged, and so is
   the rule that a run which skipped a step writes no gate stamp. Two fixes came with the
-  move: the formatting step no longer walks every linked worktree under `.gocache`, where
+  move: the formatting step no longer walks every linked worktree under `.worktrees`, where
   another session's unformatted file could fail this session's gate, and the step list
   itself is now covered by tests instead of only by a whole gate run. The receipt CI reuses
   is Go as well — `go run ./cmd/buildtool gate-receipt`, the last rule that was still shell,

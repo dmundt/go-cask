@@ -83,7 +83,7 @@ repo_id="$(cat "$repo_id_file" 2>/dev/null || echo repo-unknown)"
 
 # Worktree identity: the primary checkout is `<common-dir>` itself; a linked one
 # is identified by the name this repository gave it (`wt-<task>` under
-# `.gocache/`), a bare directory name and therefore toolchain-neutral.
+# `.worktrees/`), a bare directory name and therefore toolchain-neutral.
 worktree="primary"
 if [[ "$(git rev-parse --absolute-git-dir 2>/dev/null)" != "$(git rev-parse --path-format=absolute --git-common-dir)" ]]; then
   worktree="$(basename "$(git rev-parse --show-toplevel)")"

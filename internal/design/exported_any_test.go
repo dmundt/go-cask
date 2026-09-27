@@ -239,8 +239,9 @@ func scanRepo(t *testing.T) []finding {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			// `.gocache` holds other sessions' worktrees, and `site`/`vendor`
-			// are generated or third-party; none of them is this module's API.
+			// The scratch tree and the task worktrees live in dot-directories, and
+			// `site`/`vendor` are generated or third-party; none of them is this
+			// module's API.
 			if path != root && (strings.HasPrefix(name, ".") || name == "site" || name == "vendor" || name == "testdata") {
 				return filepath.SkipDir
 			}

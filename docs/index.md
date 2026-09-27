@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v53
+version: v54
 ---
 
 # go-cask Rules Index
@@ -48,8 +48,8 @@ version: v53
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`docs/specs/AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | `.github/copilot-instructions.md` | root [`AGENTS.md`](../AGENTS.md) |
-| `.agents/`, `.agents/skills/` | [`../.agents/AGENT.md`](../.agents/AGENT.md); a skill is its own `SKILL.md` ([`cask-change`](../.agents/skills/cask-change/SKILL.md)) |
+| `.agents/`, `.agents/skills/` | [`../.agents/AGENT.md`](../.agents/AGENT.md); a skill is its own `SKILL.md` ([`cask-change`](../.agents/skills/cask-change/SKILL.md), [`coordinate`](../.agents/skills/coordinate/SKILL.md)) |
 | `AGENTS.md` | [`docs/AGENT.md`](../docs/AGENT.md) §2.1 |
-| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](../AGENTS.md) + [`landing.md`](specs/landing.md) (worktree, lane, gate, landing) |
+| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](../AGENTS.md) + [`landing.md`](specs/landing.md) (worktree, lane, gate, landing) + [`coordination.md`](specs/coordination.md) (many landings: board, waves, gate serialization) |
 
 **Updating:** add/remove/re-target rows when rule files change; bump version on material change. A row carries paths and links only — an explanation belongs in the rule file it points at. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).

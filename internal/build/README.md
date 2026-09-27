@@ -2,7 +2,7 @@
 type: Guide
 title: build — go-cask
 description: The gate's build decisions — engine module, go-cask policy for it, archived shells — plus layout, commands, and where a new check goes.
-version: v6
+version: v7
 ---
 
 # build
@@ -51,6 +51,7 @@ Root module reaches it via `require` + local-path `replace`. Engine becomes own 
 | [`core/depgraph/`](./core/depgraph/README.md) | local package graph as committed Mermaid document |
 | [`core/versioning/`](./core/versioning/README.md) | frontmatter `version:` rule for changed files |
 | [`core/release/`](./core/release/README.md) | changelog sections → GitHub release notes; publish guards |
+| [`core/taskstate/`](./core/taskstate/README.md) | which branches carry work no pull request tracks |
 | [`core/bench/`](./core/bench/README.md) | benchmark capture naming; which capture a fresh run compares against |
 | [`core/examples/`](./core/examples/README.md) | which example programs a runner executes; which it never runs |
 | `policy/` | [go-cask tables + prose](./policy/README.md) for the engine |
@@ -86,6 +87,9 @@ go run ./cmd/buildtool release --tag <tag> [--from <prev>] [--publish]
    of its own). Nothing calls the step list by name: `scripts/verify.sh` is the gate's
    entry point and starts it.
 5. Table test in `core/`; reads real repository state → also one in `policy/` vs real tree.
+6. New package? `go run ./cmd/buildtool dep-graph --write`. The committed graph lists every
+   package in the module and the gate pins it byte-for-byte, so a package added without this
+   step fails `TestGraphDocRendersTheCommittedDocument` — and only after a whole gate run.
 
 ## Testing
 
