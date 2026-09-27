@@ -327,6 +327,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cas/codec/cbor` no longer decodes an integer it cannot represent. CBOR major
+  type 0 carries an **unsigned** argument while the value model decodes to
+  `int64`, and the argument was converted with `int64(length)` unchecked, so
+  `Encode(uint64(1<<63))` — which the encoder writes, because it encodes a
+  `uint64` as major type 0 — came back as `-9223372036854775808` instead of
+  failing: a manifest field a producer wrote as a large unsigned quantity
+  returned with a different sign after a storage round trip, and the two distinct
+  wire values `uint64` max and `-1` both decoded to `int64(-1)`, so a downstream
+  `size < 0`-style check was reasoning about a sign the decoder chose. An
+  argument above `MaxInt64` is now the new `cbor.ErrIntegerRange` for major type
+  0 and for major type 1 (whose value is `-1-argument`); `MaxInt64` and
+  `MinInt64` still decode, and no decoded value changes meaning.
 - The gate receipt's reader no longer carries a field value containing a bare
   carriage return. `Parse` reads a CRLF as one line ending, so a value whose CR
   it kept came back shorter — or empty — the next time the receipt was rendered
