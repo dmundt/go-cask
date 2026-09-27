@@ -8,34 +8,25 @@ permissions:
 #   testing-strategy §5    — -race, tiered coverage gates, fuzz smoke
 #   AGENT.md §9            — document integrity (mermaid balance, file refs)
 #
-# The required verify context always runs. Expensive security and platform
-# jobs run only for changes that can affect them.
-#
-# The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
-# already ran it on this host before the branch was pushed, and `.githooks/pre-push`
-# published that run as a signed receipt under `refs/gate/<head-sha>`
-# (`go run ./cmd/buildtool gate-receipt`, trust anchored in `.github/gate-signers`). The
-# `verify` job checks that receipt against the commit it is really testing — the
-# signature, the head commit, the tree of the checked-out merge result, the base
-# and the diff hash recomputed here, the scope, and the list of checks the gate
-# would otherwise repeat — and only then skips the suite. Anything short of that
-# (no receipt, a fork, an unsigned local gate, a branch that fell behind main, a
-# renamed gate step) leaves the receipt unusable and the whole gate runs below.
-# The fast path is entered by evidence; it cannot be entered by its absence, and
-# the required check names stay exactly what branch protection names.
-
-on:
-  pull_request:
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+# The required verify context always runs, and so does every other job: a scope
+# decision that cannot be made runs the work rather than skipping it, and each
+# job guards its own steps so a skipped or failed dependency never reads as a
+# green check. The three expensive jobs — `verify`, `security` and the platform
+# matrix — depend on the one `scope` job and nothing else, so a change that
+# touches Go pays for the longest of them instead of for the sum.
 
 jobs:
-  verify:
+  # The scope decision alone. It is its own job so the expensive jobs can depend
+  # on the verdict instead of on each other.
+  #
+  # It installs Go because the decision is Go: which of the jobs a change can
+  # affect is one table (internal/build/policy), read by `buildtool scope`, and
+  # the gate asks the same command for its own scope, so the two cannot hold two
+  # copies of the pattern list. It checks out full history because the decision is
+  # a diff.
+  scope:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       go_changed: ${{ steps.scope.outputs.go_changed }}
@@ -46,10 +37,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The toolchain comes first because the scope decision is Go: which of the
-      # jobs a change can affect is one table (internal/build/policy), read by
-      # `buildtool scope`, and the gate asks the same command for its own scope, so
-      # the two cannot hold two copies of the pattern list.
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -74,9 +61,32 @@ jobs:
 
           go run ./cmd/buildtool scope --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-      # No second toolchain step: the job installs Go above for the scope decision, and the
-      # receipt's own scope recomputation asks the same command, so the receipt is
-      # considered with Go already present. It still saves the gate itself.
+  # The gate itself, and the required `verify` context. It reads its verdicts from
+  # `scope` and runs beside `security` and the platform matrix.
+  #
+  # `!cancelled()` rather than a plain dependency: if `scope` fails its outputs are
+  # empty, and an empty verdict has to run the work rather than skip it, so every
+  # guard below skips only on the literal string `false`. Without it GitHub would
+  # skip this job when `scope` fails, and a skipped required check reads as a green
+  # one.
+  verify:
+    needs: scope
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # This job needs its own toolchain: it runs the gate, and the receipt
+      # recomputes the change's scope with the same command.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Verify the local gate receipt
         id: receipt
         # Every failure here — no ref, an untrusted signature, a tree that is not
@@ -86,7 +96,7 @@ jobs:
         # the job: the step's OUTCOME carries the verdict, and its status never
         # fails the build. On any non-pull-request run there is no head commit the
         # local gate could have covered, so the step does not run at all.
-        if: github.event_name == 'pull_request' && steps.scope.outputs.docs_only != 'true'
+        if: github.event_name == 'pull_request' && needs.scope.outputs.docs_only != 'true'
         continue-on-error: true
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -102,37 +112,37 @@ jobs:
             --require-suite full
 
       - name: Verify repo
-        if: steps.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success' && hashFiles('**/*.go') != ''
+        if: needs.scope.outputs.docs_only != 'true' && steps.receipt.outcome != 'success' && hashFiles('**/*.go') != ''
         env:
           VERIFY_SKIP_SECURITY: 'true'
         run: bash ./scripts/verify.sh
 
       - name: Verify documentation-only change
-        if: steps.scope.outputs.docs_only == 'true'
+        if: needs.scope.outputs.docs_only == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
       - name: Set up Python
-        if: steps.scope.outputs.website_changed == 'true'
+        if: needs.scope.outputs.website_changed == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
 
       - name: Install documentation dependencies
-        if: steps.scope.outputs.website_changed == 'true'
+        if: needs.scope.outputs.website_changed == 'true'
         run: python -m pip install --require-hashes -r requirements-docs.lock
 
       - name: Verify documentation site
-        if: steps.scope.outputs.website_changed == 'true'
+        if: needs.scope.outputs.website_changed == 'true'
         env:
           IMPRESSUM: CI verification address
         run: python -m mkdocs build --strict
 
   security:
-    needs: verify
-    if: needs.verify.outputs.security_changed == 'true'
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.security_changed != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -142,7 +152,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
 
       - name: Run govulncheck
         run: go run ./cmd/buildtool security
@@ -153,8 +163,8 @@ jobs:
   # are proven to compile and vet, never to behave. Behaviour is the Linux
   # `verify` job's to prove (testing-strategy §5).
   platform-matrix:
-    needs: [verify, security]
-    if: needs.verify.outputs.go_changed == 'true'
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.go_changed != 'false' }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -182,7 +192,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
 
       # `go vet` carries its weight here: it type-checks the platform-tagged
       # files AND their tests for the target, which a cross-build cannot run.
@@ -198,7 +208,7 @@ jobs:
 
   platforms:
     name: platforms
-    needs: [verify, security, platform-matrix]
+    needs: [scope, verify, security, platform-matrix]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -206,10 +216,34 @@ jobs:
       - name: Verify required platform results
         shell: bash
         env:
-          GO_CHANGED: ${{ needs.verify.outputs.go_changed }}
+          GO_CHANGED: ${{ needs.scope.outputs.go_changed }}
           PLATFORM_RESULT: ${{ needs.platform-matrix.result }}
         run: |
-          if [[ "$GO_CHANGED" == "true" && "$PLATFORM_RESULT" != "success" ]]; then
+          # Empty when `scope` failed, and an unknown verdict must demand the
+          # matrix rather than excuse it: only the literal `false` skips it.
+          if [[ "$GO_CHANGED" != "false" && "$PLATFORM_RESULT" != "success" ]]; then
             echo "platform matrix result: $PLATFORM_RESULT" >&2
             exit 1
           fi
+#
+# The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
+# already ran it on this host before the branch was pushed, and `.githooks/pre-push`
+# published that run as a signed receipt under `refs/gate/<head-sha>`
+# (`go run ./cmd/buildtool gate-receipt`, trust anchored in `.github/gate-signers`). The
+# `verify` job checks that receipt against the commit it is really testing — the
+# signature, the head commit, the tree of the checked-out merge result, the base
+# and the diff hash recomputed here, the scope, and the list of checks the gate
+# would otherwise repeat — and only then skips the suite. Anything short of that
+# (no receipt, a fork, an unsigned local gate, a branch that fell behind main, a
+# renamed gate step) leaves the receipt unusable and the whole gate runs below.
+# The fast path is entered by evidence; it cannot be entered by its absence, and
+# the required check names stay exactly what branch protection names.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
