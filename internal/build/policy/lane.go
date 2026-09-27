@@ -27,18 +27,28 @@ type LandLaneTable struct {
 	StaleMinutes int
 	// StaleEnv overrides StaleMinutes for one invocation.
 	StaleEnv string
+	// DeadGraceSeconds is how long a holder that is provably gone must have been idle
+	// before `acquire --takeover-dead` may take the slot. It is much shorter than the
+	// window because the two answer different questions: the window waits for a holder
+	// that might still be alive, while the grace only waits for the machine to finish
+	// noticing that this one is not.
+	DeadGraceSeconds int
+	// DeadGraceEnv overrides DeadGraceSeconds for one invocation.
+	DeadGraceEnv string
 }
 
 // LandLane returns go-cask's advisory-slot layout. It is a function rather than a
 // package-level variable so a caller cannot mutate the gate's policy by accident.
 func LandLane() LandLaneTable {
 	return LandLaneTable{
-		Dir:          "dsh-land-lane",
-		Owner:        "owner",
-		RepoID:       "repo-id",
-		Takeover:     "takeover",
-		Token:        "dsh-land-lane-mine",
-		StaleMinutes: 90,
-		StaleEnv:     "LAND_LANE_STALE_MINUTES",
+		Dir:              "dsh-land-lane",
+		Owner:            "owner",
+		RepoID:           "repo-id",
+		Takeover:         "takeover",
+		Token:            "dsh-land-lane-mine",
+		StaleMinutes:     90,
+		StaleEnv:         "LAND_LANE_STALE_MINUTES",
+		DeadGraceSeconds: 60,
+		DeadGraceEnv:     "LAND_LANE_DEAD_GRACE_SECONDS",
 	}
 }

@@ -23,6 +23,7 @@ func TestLandLaneTableIsWellFormed(t *testing.T) {
 		{"Takeover", table.Takeover},
 		{"Token", table.Token},
 		{"StaleEnv", table.StaleEnv},
+		{"DeadGraceEnv", table.DeadGraceEnv},
 	} {
 		if field.value == "" {
 			t.Errorf("%s is empty", field.name)
@@ -46,6 +47,22 @@ func TestLandLaneTableIsWellFormed(t *testing.T) {
 	// change to the documented contract, so it is pinned rather than merely validated.
 	if table.StaleMinutes != 90 {
 		t.Errorf("the idle window is %d minutes, want the documented 90", table.StaleMinutes)
+	}
+	if table.DeadGraceSeconds <= 0 {
+		t.Errorf("the dead-holder grace is %ds, want a positive number", table.DeadGraceSeconds)
+	}
+	if table.DeadGraceEnv != strings.ToUpper(table.DeadGraceEnv) {
+		t.Errorf("the override %q is not spelled as an environment variable", table.DeadGraceEnv)
+	}
+	// The grace answers a different question from the window — how long to wait for the machine
+	// to finish noticing a holder is gone, rather than how long to wait for a holder that might
+	// still be alive — so it must stay far shorter, or --takeover-dead would buy nothing.
+	if table.DeadGraceSeconds >= table.StaleMinutes*60 {
+		t.Errorf("the dead-holder grace (%ds) is not shorter than the idle window (%dm)",
+			table.DeadGraceSeconds, table.StaleMinutes)
+	}
+	if table.DeadGraceSeconds != 60 {
+		t.Errorf("the dead-holder grace is %ds, want the documented 60", table.DeadGraceSeconds)
 	}
 }
 

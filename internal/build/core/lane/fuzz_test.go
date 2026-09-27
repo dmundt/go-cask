@@ -46,7 +46,7 @@ func FuzzParseHolder(f *testing.F) {
 			if status := SlotStatus(&holder, holder.Who, holder.Token); status != Other {
 				t.Fatalf("an unreadable slot is reported as %v, want %v", status, Other)
 			}
-			if outcome := Decide(&holder, holder.Who, holder.Token, 0, false, holder.Since).Outcome; outcome != Unreadable {
+			if outcome := Decide(&holder, holder.Who, holder.Token, 0, 0, false, false, Unknown, holder.Since).Outcome; outcome != Unreadable {
 				t.Fatalf("an unreadable slot is decided as %v, want %v", outcome, Unreadable)
 			}
 			return
@@ -54,7 +54,7 @@ func FuzzParseHolder(f *testing.F) {
 		if SlotStatus(&holder, holder.Who, holder.Token) != Mine {
 			t.Fatalf("a holder is not recognised as its own with token %q", holder.Token)
 		}
-		if Decide(&holder, holder.Who, holder.Token, 0, false, holder.Since).Outcome != AlreadyMine {
+		if Decide(&holder, holder.Who, holder.Token, 0, 0, false, false, Unknown, holder.Since).Outcome != AlreadyMine {
 			t.Fatalf("a holder's own acquire does not report %v", AlreadyMine)
 		}
 	})
