@@ -39,16 +39,16 @@ type Hasher struct{}
 func New() Hasher { return Hasher{} }
 
 // Digest implements cas.Hasher by streaming r through CRC32-IEEE and returning a
-// 4-byte digest value.
+// 4-byte digest value. The fixed-width buffer is a stack array, so NewDigest's
+// copy is the call's only digest allocation.
 func (Hasher) Digest(r io.Reader) (cas.Digest, error) {
+	var b [Size]byte
 	h := crc32.NewIEEE()
 	if _, err := io.Copy(h, r); err != nil {
 		return nil, fmt.Errorf("cas/verify/crc32: %w", err)
 	}
-	v := h.Sum32()
-	b := make([]byte, Size)
-	binary.BigEndian.PutUint32(b, v)
-	return cas.NewDigest(b), nil
+	binary.BigEndian.PutUint32(b[:], h.Sum32())
+	return cas.NewDigest(b[:]), nil
 }
 
 // Validate implements cas.Hasher: a digest must be present and exactly Size
