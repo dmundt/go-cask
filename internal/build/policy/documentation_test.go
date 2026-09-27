@@ -152,17 +152,20 @@ func TestInstructionBudgetsCoverEveryInstructionFile(t *testing.T) {
 
 // instructionFiles returns every instruction file in the tree, as repository-relative
 // slash paths, sorted. The skip list is the trees that are not the repository: a linked
-// worktree under `.gocache` carries its own `AGENTS.md`, and counting it would demand a
-// ceiling for a file that this checkout does not own.
+// worktree carries its own `AGENTS.md`, and counting it would demand a ceiling for a file
+// that this checkout does not own.
 func instructionFiles(root string) ([]string, error) {
 	var paths []string
+	// The worktrees' directory comes from the policy table, so this rule follows a
+	// worktree wherever that table puts it.
+	worktrees := Worktrees().Parent
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", ".gocache", "site", "node_modules":
+			case ".git", ".gocache", "site", "node_modules", worktrees:
 				return filepath.SkipDir
 			}
 			return nil

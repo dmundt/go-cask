@@ -5,10 +5,13 @@ package policy
 //
 // The location is derived from the shared git directory rather than the working directory,
 // so the command behaves the same however it is invoked — including from a task worktree,
-// where a second task must still land in the primary checkout's own scratch tree.
+// where a second task must still land in the primary checkout.
 type WorktreeTable struct {
 	// Parent is the directory inside the primary checkout that holds the linked
-	// worktrees.
+	// worktrees. It is this repository's own directory, deliberately not the
+	// `.gocache` scratch tree: that one is shared with the gate's and the website's
+	// generated output, so a sweep of it is one step away from deleting a live
+	// worktree together with its index.
 	Parent string
 	// Prefix is the name the worktree directory and git's admin directory share.
 	Prefix string
@@ -32,7 +35,7 @@ type WorktreeTable struct {
 // variable so a caller cannot mutate the policy by accident.
 func Worktrees() WorktreeTable {
 	return WorktreeTable{
-		Parent:   ".gocache",
+		Parent:   ".worktrees",
 		Prefix:   "wt-",
 		Base:     "origin/main",
 		LockFile: "locked",
