@@ -170,6 +170,73 @@ func TestParsePackages(t *testing.T) {
 	}
 }
 
+// TestGoListArgsDisablesBuildVCS pins that every `go list` the tool runs carries
+// `-buildvcs=false`, in the position `go` needs it.
+//
+// `go list` stamps VCS metadata for a main package by shelling out to git, and every lane
+// here shares one `.git`: under a busy landing pipeline those git calls contend and the
+// package-graph step fails with "error obtaining VCS status: exit status 128". The graph
+// this tool reads needs no VCS metadata, so the flag removes the dependency instead of
+// retrying the flake. It is asserted here because the failure is concurrency-dependent -
+// no test can reproduce the contention - so the argument list is what pins the fix, and a
+// call site that loses the flag fails this test rather than waiting for the next busy night.
+func TestGoListArgsDisablesBuildVCS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "package graph",
+			args: []string{"-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./..."},
+			want: []string{"list", "-buildvcs=false", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./..."},
+		},
+		{
+			name: "codec guard dependencies",
+			args: []string{"-deps", "example.com/mod/gitlike"},
+			want: []string{"list", "-buildvcs=false", "-deps", "example.com/mod/gitlike"},
+		},
+		{
+			name: "module graph",
+			args: []string{"-m", "-json", "all"},
+			want: []string{"list", "-buildvcs=false", "-m", "-json", "all"},
+		},
+		{
+			name: "module path",
+			args: []string{"-m", "-f", "{{.Path}}"},
+			want: []string{"list", "-buildvcs=false", "-m", "-f", "{{.Path}}"},
+		},
+		{
+			name: "cas packages",
+			args: []string{"./cas/..."},
+			want: []string{"list", "-buildvcs=false", "./cas/..."},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := goListArgs(test.args)
+			if strings.Join(got, " ") != strings.Join(test.want, " ") {
+				t.Fatalf("goListArgs(%q) = %q, want %q", test.args, got, test.want)
+			}
+			// The position is the rule, not just the presence: `go` parses flags only
+			// before the first positional argument, so a late flag is a package name.
+			if got[0] != "list" || got[1] != "-buildvcs=false" {
+				t.Errorf("goListArgs(%q) = %q, want the flag directly after list", test.args, got)
+			}
+			// The caller's arguments survive in order, so the flag can never displace one.
+			for i, arg := range test.args {
+				if got[i+2] != arg {
+					t.Errorf("goListArgs(%q)[%d] = %q, want %q", test.args, i+2, got[i+2], arg)
+				}
+			}
+		})
+	}
+}
+
 // TestSplitLines pins command-output parsing: a trailing newline must not become
 // an empty entry, which would be read as a package path that names nothing.
 func TestSplitLines(t *testing.T) {

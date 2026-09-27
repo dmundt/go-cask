@@ -1033,7 +1033,7 @@ func runCodecGuards(args []string, out, errOut io.Writer) error {
 	}
 	dependencies := map[string][]string{}
 	for _, guard := range policy.CodecGuards() {
-		listed, err := goOutput("go", "list", "-deps", guard.Package)
+		listed, err := goList("-deps", guard.Package)
 		if err != nil {
 			return err
 		}
@@ -1237,7 +1237,7 @@ func runModuleGraph(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	graph, err := goOutput("go", "list", "-m", "-json", "all")
+	graph, err := goList("-m", "-json", "all")
 	if err != nil {
 		return err
 	}
@@ -1799,7 +1799,7 @@ func parse(flags *flag.FlagSet, args []string) error {
 // modulePath reads the module path from go.mod, which is what the matrix keys
 // its import prefixes on.
 func modulePath() (string, error) {
-	out, err := goList("list", "-m", "-f", "{{.Path}}")
+	out, err := goList("-m", "-f", "{{.Path}}")
 	if err != nil {
 		return "", err
 	}
@@ -1815,7 +1815,7 @@ func modulePath() (string, error) {
 // `go list`'s .Imports omits imports that appear solely in _test.go files, which
 // is the intended scope: a cas/** test may keep importing internal/test.
 func listPackages() ([]layers.Package, error) {
-	out, err := goList("list", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
+	out, err := goList("-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
 	if err != nil {
 		return nil, err
 	}
@@ -1841,7 +1841,7 @@ func parsePackages(list string) ([]layers.Package, error) {
 // listCasPackages asks Go for the packages under cas/, which is the tree the
 // coverage policy is total over.
 func listCasPackages() ([]string, error) {
-	out, err := goList("list", "./cas/...")
+	out, err := goList("./cas/...")
 	if err != nil {
 		return nil, err
 	}
@@ -1862,9 +1862,34 @@ func goOutput(name string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-// goList runs one `go list` invocation.
+// goList runs one `go list` invocation, which is always a read of the package,
+// dependency or module graph and never the build of a shipped binary.
+//
+// `go list` loads a main package's build information, and that shells out to git to
+// stamp VCS metadata. Every lane shares one `.git` here, so under the concurrent use of
+// a busy landing pipeline those git calls contend and the step fails with
+// "error obtaining VCS status: exit status 128" - a flake with nothing to do with the
+// tree being listed. No caller of this helper reads that metadata: the import graph,
+// the dependency set, the package list and the module graph are all VCS-independent, so
+// stamping is switched off here, once, where a new call site inherits it.
+//
+// A build that ships a binary must not come through here: `go build` keeps the default
+// stamping, and the gate's own build steps invoke `go` directly.
 func goList(args ...string) (string, error) {
-	return goOutput("go", args...)
+	return goOutput("go", goListArgs(args)...)
+}
+
+// goListArgs is the argument list goList runs, separate from running it so the
+// `-buildvcs=false` invariant is a value a test can assert rather than a flag a future
+// call site can forget. The subcommand is not a parameter: there is no way to ask this
+// helper for anything but a list.
+func goListArgs(args []string) []string {
+	// The flag comes before every caller argument: `go` accepts a flag only while it is
+	// still parsing flags, so a caller's first positional argument would otherwise turn
+	// this into a package name.
+	listed := make([]string, 0, len(args)+2)
+	listed = append(listed, "list", "-buildvcs=false")
+	return append(listed, args...)
 }
 
 // gitOutput runs one `git` invocation.
