@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -144,8 +143,8 @@ func verifyGate(out, errOut io.Writer) error {
 		return nil
 	}
 
-	// The race suite and the coverage loop need cgo and a C compiler, so refuse before
-	// spending minutes on the steps that do not.
+	// The race suite and the coverage measurement are one run and need cgo and a C
+	// compiler, so refuse before spending minutes on the steps that do not.
 	if os.Getenv("CGO_ENABLED") != "0" && !anyOnPath(table.Compilers) {
 		fmt.Fprint(errOut, verifyNoCompiler)
 		return exitStatus(1)
@@ -549,19 +548,49 @@ func stepSecurity(r *gateRun) error {
 // The targets are the policy table's rather than a list of this function's own: the
 // workflow holds the same set because it cannot import Go, so a test in
 // internal/build/policy pins the two together instead of a comment asking nicely.
+//
+// The targets are independent, so they run at once; each one's log is printed in the
+// table's order once they are all done, so a parallel run logs the same lines in the
+// same order as a serial one. The share of the caller's concurrency one target takes
+// is passed on to `go` itself, so five targets at once use the machine VERIFY_JOBS
+// asked for rather than five of them.
 func stepCrossPlatform(r *gateRun) error {
-	for _, target := range r.table.Platforms {
-		goos, goarch := target.GOOS, target.GOARCH
-		fmt.Fprintf(r.out, "  %s/%s\n", goos, goarch)
-		env := envWithAll([][2]string{{"GOOS", goos}, {"GOARCH", goarch}, {"CGO_ENABLED", "0"}})
-		for _, args := range [][]string{{"build", "./..."}, {"vet", "./..."}} {
-			if err := r.commandWithEnv(r.root, env, "go", args...); err != nil {
-				return err
-			}
+	targets := r.table.Platforms
+	width := fanWidth(r.jobs, len(targets))
+	share := fanShare(r.jobs, width)
+	logs := make([]string, len(targets))
+	errs := make([]error, len(targets))
+	fanOut(width, len(targets), func(index int) {
+		logs[index], errs[index] = r.crossPlatform(targets[index], share)
+	})
+
+	for index, target := range targets {
+		fmt.Fprintf(r.out, "  %s/%s\n", target.GOOS, target.GOARCH)
+		fmt.Fprint(r.out, logs[index])
+		if errs[index] != nil {
+			return errs[index]
 		}
 	}
 	r.mark(r.table.Checks.CrossPlatform)
 	return nil
+}
+
+// crossPlatform builds and vets one target and returns the log both commands wrote.
+// build comes first so vet reuses what it compiled.
+func (r *gateRun) crossPlatform(target policy.PlatformTarget, share int) (string, error) {
+	var log strings.Builder
+	env := envWithAll([][2]string{
+		{"GOOS", target.GOOS}, {"GOARCH", target.GOARCH}, {"CGO_ENABLED", "0"},
+	})
+	for _, args := range [][]string{
+		{"build", "-p", strconv.Itoa(share), "./..."},
+		{"vet", "-p", strconv.Itoa(share), "./..."},
+	} {
+		if err := r.commandInto(&log, r.root, env, "go", args...); err != nil {
+			return log.String(), err
+		}
+	}
+	return log.String(), nil
 }
 
 // stepHelperScripts and its step are gone, and deliberately not left in place empty: the
@@ -572,16 +601,20 @@ func stepCrossPlatform(r *gateRun) error {
 // so a step that ran `./scripts/test-*.sh` would have nothing to run.
 
 // stepRaceAndCoverage is the gate's one composite step: the coverage drift check, the
-// per-package measurements and the race suite, with the threshold decision applied after
-// the suite.
+// race suite and the per-package measurements, with the threshold decision applied
+// after the suite.
 //
-// It is one step, and the ordering is the reason. The shell that held it printed one
-// section for the three, and it kept the threshold decision until after the race suite so
-// one run reports both a failing suite and every package that missed its tier; splitting
-// them into separate steps would fail on the first and hide the second.
+// The suite and the measurement are one run. `go test -race -cover` is the race suite
+// with the coverage instrumentation on, and the profile it writes is the measurement:
+// the packages are tested once for both verdicts instead of twice, and the profile
+// attributes a number to a package by the file it came from rather than by the order a
+// log happened to print. Go writes that profile even when a test in the run failed,
+// which is what keeps the ordering this step exists for — one run still reports both a
+// failing suite and every package that missed its tier.
 func stepRaceAndCoverage(r *gateRun) error {
-	// The measurement table is read first, and always: an empty one would make the loop
-	// below run zero times and the gate report success having measured nothing.
+	// The measurement table is read first, and always: an empty one would leave the run
+	// below with nothing to attribute and the gate reporting success having measured
+	// nothing.
 	targets, err := coverageTargets(r)
 	if err != nil {
 		return err
@@ -592,25 +625,48 @@ func stepRaceAndCoverage(r *gateRun) error {
 		return err
 	}
 
+	// Two escape hatches, one run: either check alone still needs the pass, so it runs
+	// whenever either is wanted, carrying the instrumentation only when the measurement
+	// is. A measurement taken with the suite skipped keeps the run's failure out of the
+	// verdict, which is what skipping the suite means.
+	measure := !r.escape(fmt.Sprintf("coverage measurement (%d packages)", len(targets)), r.table.SkipCoverageEnv)
+	suite := !r.escape("go test -race ./...", r.table.SkipTestsEnv)
+	if !measure && !suite {
+		return nil
+	}
+
+	profile := ""
+	if measure {
+		if profile, err = tempProfile(); err != nil {
+			return err
+		}
+		defer os.Remove(profile)
+	}
+
+	// -p is how many packages are tested at once. Go keeps its own limit here, lower
+	// than the core count on a large machine, and the gate is the one caller that
+	// wants the whole machine.
+	args := []string{"test", "-race", "-p", strconv.Itoa(r.jobs)}
+	if profile != "" {
+		args = append(args, "-coverprofile="+profile)
+	}
+	args = append(args, "./...")
+	suiteErr := r.command(r.root, "go", args...)
+
 	var coverageErr error
-	if !r.escape(fmt.Sprintf("coverage measurement (%d packages)", len(targets)), r.table.SkipCoverageEnv) {
+	if measure {
 		r.section("coverage measurement")
-		if coverageErr = measureCoverage(r, targets); coverageErr == nil {
+		if coverageErr = measureCoverage(r, profile); coverageErr == nil {
 			r.coverageTiers = len(targets)
 			r.mark(r.table.Checks.CoverageTiers)
 		}
 	}
-
-	if !r.escape("go test -race ./...", r.table.SkipTestsEnv) {
-		// -p is how many packages are tested at once. Go keeps its own limit here, lower
-		// than the core count on a large machine, and the gate is the one caller that
-		// wants the whole machine.
-		if err := r.command(r.root, "go", "test", "-race", "-p", strconv.Itoa(r.jobs), "./..."); err != nil {
-			return err
+	if suite {
+		if suiteErr != nil {
+			return suiteErr
 		}
 		r.mark(r.table.Checks.TestRace)
 	}
-
 	return coverageErr
 }
 
@@ -629,121 +685,163 @@ func coverageTargets(r *gateRun) ([]string, error) {
 	return targets, nil
 }
 
-// measurement is one measured package: the run's own output, and the line the threshold
-// check reads.
-type measurement struct {
-	log  string
-	line string
+// tempProfile is the file the merged test pass writes its coverage profile into. It
+// lives in the system temporary directory rather than in the checkout: a run that
+// dropped its own scratch file into the tree it gates would be one more thing standing
+// between a commit and the receipt that names it.
+func tempProfile() (string, error) {
+	file, err := os.CreateTemp("", "buildtool-coverage-*.out")
+	if err != nil {
+		return "", fmt.Errorf("creating the coverage profile: %w", err)
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		return "", fmt.Errorf("closing the coverage profile %s: %w", name, err)
+	}
+	return name, nil
 }
 
-// measureCoverage runs each gated package's suite with the race detector and coverage, and
-// hands the measurements to the threshold decision.
+// measureCoverage reads the profile the merged test pass wrote and hands the
+// per-package measurements to the threshold decision.
 //
-// The loop is the gate's longest step, so it is fanned out over the concurrency the caller
-// was given. Each package's output is kept whole and the report is reassembled in the
-// table's own order, so a parallel run logs the same lines in the same order as a serial
-// one — a reader diffing two runs sees no difference. A package that fails is not a worker
-// failure: its missing or low number is the threshold decision's, and it is reported
-// there.
-func measureCoverage(r *gateRun, targets []string) error {
-	results := make([]measurement, len(targets))
-	workers := r.jobs
-	if workers > len(targets) {
-		workers = len(targets)
+// The targets come from the policy and the numbers from the profile, so a package the
+// run never measured is reported as measuring nothing rather than as zero: zero
+// coverage and no coverage are different failures, and the check says which. A profile
+// that cannot be read at all is the gate's own error rather than a verdict — an
+// unreadable record is not evidence that a package met its tier.
+func measureCoverage(r *gateRun, profile string) error {
+	contents, err := os.ReadFile(profile)
+	if err != nil {
+		return fmt.Errorf("reading the coverage profile %s: %w", profile, err)
 	}
-
-	work := make(chan int)
-	var wg sync.WaitGroup
-	for worker := 0; worker < workers; worker++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range work {
-				results[index] = r.measure(targets[index])
-			}
-		}()
+	module, err := modulePath()
+	if err != nil {
+		return err
 	}
-	for index := range targets {
-		work <- index
+	results, err := policy.Coverage().Measure(string(contents), module)
+	if err != nil {
+		return err
 	}
-	close(work)
-	wg.Wait()
 
 	lines := make([]string, 0, len(results))
 	for _, result := range results {
-		fmt.Fprint(r.out, result.log)
-		lines = append(lines, result.line)
+		measured := ""
+		if result.HasMeasurement() {
+			measured = trimFloat(result.Measured)
+		}
+		lines = append(lines, trimFloat(result.Threshold)+"|"+result.Package+"|"+measured)
 	}
 	return runCoverageCheck(nil, strings.NewReader(strings.Join(lines, "\n")+"\n"), r.out, r.errOut)
 }
 
-// measure runs one gated package's suite and renders its measurement line.
-//
-// The target is "<threshold>|<package>|<tier>", and the line the threshold check reads is
-// "<threshold>|<package>|<measured>" — the same first two fields, with the run's own
-// number in place of the tier. A run that printed no number leaves the field empty, which
-// the check reads as "no measurement" rather than as zero: zero coverage and no coverage
-// are different failures.
-func (r *gateRun) measure(target string) measurement {
-	fields := strings.Split(target, "|")
-	if len(fields) != 3 {
-		// The table is validated before it is printed, so this cannot happen; returning the
-		// target unchanged keeps the check's error naming the line rather than panicking.
-		return measurement{line: target}
-	}
-	stdout, stderr, _ := r.output(r.root, "go", "test", "-race", "-cover", fields[1])
-	log := stdout + stderr
-	return measurement{
-		log:  log,
-		line: fields[0] + "|" + fields[1] + "|" + measuredCoverage(log),
-	}
-}
-
-// coverageLine matches the last coverage percentage a `go test -cover` run reports.
-var coverageLine = regexp.MustCompile(`coverage: ([0-9.]+)%`)
-
-// measuredCoverage reads the percentage out of a captured run, or the empty string when
-// the run reported none.
-func measuredCoverage(log string) string {
-	matches := coverageLine.FindAllStringSubmatch(log, -1)
-	if len(matches) == 0 {
-		return ""
-	}
-	return matches[len(matches)-1][1]
-}
-
 // stepFuzz smoke-fuzzes the policy's targets for a few seconds each: the readers that
 // parse what the repository and its tools hand them, from the module that owns them.
+//
+// Each target is a few seconds of wall time and none of them depends on another, so
+// they run at once and each one's log is printed in the table's order afterwards. The
+// share of the caller's concurrency one target gets is passed on as -parallel: without
+// it N concurrent targets would start N × NumCPU fuzz workers, and the gate would take
+// the machine N times over. The seed corpus — the corpus regression a smoke exists to
+// catch — runs before any worker does, whatever the share is.
 func stepFuzz(r *gateRun) error {
 	if r.escape(fmt.Sprintf("fuzz smoke (%d targets)", len(r.table.Fuzz)), r.table.SkipFuzzEnv) {
 		return nil
 	}
-	for _, target := range r.table.Fuzz {
-		dir := r.root
-		if target.Engine {
-			dir = r.engineDir
-		}
-		if err := r.command(dir, "go", "test", "-run=^$", "-fuzz="+target.Target,
-			"-fuzztime="+verifyFuzzTime, target.Package); err != nil {
-			return err
+	targets := r.table.Fuzz
+	width := fanWidth(r.jobs, len(targets))
+	share := fanShare(r.jobs, width)
+	logs := make([]string, len(targets))
+	errs := make([]error, len(targets))
+	fanOut(width, len(targets), func(index int) {
+		logs[index], errs[index] = r.fuzzTarget(targets[index], share)
+	})
+
+	for index, target := range targets {
+		fmt.Fprintf(r.out, "  %s %s\n", target.Package, target.Target)
+		fmt.Fprint(r.out, logs[index])
+		if errs[index] != nil {
+			return errs[index]
 		}
 	}
 	r.mark(r.table.Checks.FuzzSmoke)
 	return nil
 }
 
-// commandWithEnv runs one command with a replaced environment, which the cross-platform
-// step needs: the target platform and CGO_ENABLED=0 have to reach `go` itself.
-func (r *gateRun) commandWithEnv(dir string, env []string, name string, args ...string) error {
+// fuzzTarget runs one smoke-fuzz target and returns the log it wrote.
+func (r *gateRun) fuzzTarget(target policy.FuzzTarget, share int) (string, error) {
+	dir := r.root
+	if target.Engine {
+		dir = r.engineDir
+	}
+	var log strings.Builder
+	err := r.commandInto(&log, dir, nil, "go", "test", "-run=^$", "-fuzz="+target.Target,
+		"-fuzztime="+verifyFuzzTime, "-parallel", strconv.Itoa(share), target.Package)
+	return log.String(), err
+}
+
+// commandInto runs one command and adds both of its streams to one log, which a step
+// that runs several commands at once needs: two targets streaming into the run's
+// writers at the same time would interleave into something no reader can follow. env
+// replaces the environment; a nil env inherits the caller's.
+func (r *gateRun) commandInto(log io.Writer, dir string, env []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.Stdout = r.out
-	cmd.Stderr = r.errOut
+	cmd.Stdout = log
+	cmd.Stderr = log
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
 	}
 	return nil
+}
+
+// fanWidth is how many items of a step may run at once: the caller's concurrency, and
+// never more items than there are.
+func fanWidth(jobs, count int) int {
+	width := jobs
+	if width > count {
+		width = count
+	}
+	if width < 1 {
+		width = 1
+	}
+	return width
+}
+
+// fanShare is how much of the caller's concurrency one item may use while `width`
+// items run at once. VERIFY_JOBS is what the caller allows the gate to use in total,
+// so a step that fans out divides it instead of multiplying it.
+func fanShare(jobs, width int) int {
+	if width < 1 {
+		return 1
+	}
+	share := jobs / width
+	if share < 1 {
+		share = 1
+	}
+	return share
+}
+
+// fanOut calls run once per index, over `width` goroutines at a time. It is the one
+// place a step fans out, so every concurrent step divides the caller's concurrency the
+// same way.
+func fanOut(width, count int, run func(index int)) {
+	work := make(chan int)
+	var wg sync.WaitGroup
+	for worker := 0; worker < width; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range work {
+				run(index)
+			}
+		}()
+	}
+	for index := 0; index < count; index++ {
+		work <- index
+	}
+	close(work)
+	wg.Wait()
 }
 
 // envWithAll lives beside envWith in buildtool.go: one environment filter, two shapes, so

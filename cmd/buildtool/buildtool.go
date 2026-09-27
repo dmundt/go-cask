@@ -76,7 +76,7 @@ commands:
   coverage-tier        check that every cas/ package carries a coverage tier or a
                        written exemption (testing-strategy.md §5)
   coverage-check       read measurement lines and enforce the thresholds; used by
-                       the gate's coverage loop
+                       the gate's coverage measurement
   markdown-integrity   check the tracked Markdown files: no raw HTML, no
                        HTML/XML/SVG fences, no dead link or file reference, the
                        CHANGELOG structure and the instruction-file byte ceilings
