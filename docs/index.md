@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v51
+version: v52
 ---
 
 # go-cask Rules Index
@@ -34,10 +34,10 @@ version: v51
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
 | `internal/design/` (design-rule checks the gate runs: no exported `any`, canonical `memory` import aliases, and one owner for the codec census label) | [`library-design.md`](specs/library-design.md) §5 + [`cas/AGENT.md`](../cas/AGENT.md) "Core rules" (the alias check) + [`cli.md`](specs/cli.md) §3 (the census convention) |
 | `internal/build/core/` (**a separate Go module** — the reusable build engine: the change-set classification, the layer matrix, the coverage policy and its thresholds, the Markdown integrity rules, the committed package graph and its renderer, the frontmatter version rule, the site's Go fences, inventory tables and one-line footer, the dependency/module-graph guards, the pinned-toolchain resolution, the example-runner selection, the benchmark-capture decisions, the advisory landing slot's records, the server-side landing lane's ref record and verdict, the gate run's own scope and escape decisions, the gate stamp ledger and the linked worktree's link. It ships no table and imports nothing but the standard library) | [`internal/build/core/README.md`](../internal/build/core/README.md) (every package has one) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) "the build engine is its own module" |
-| `internal/build/` (go-cask's own policy for that engine — the layer matrix, the coverage tiers, the codec guards, the site's inventory tables and footer contract, the change-set patterns, and the package graph's prose — plus `shell/`, the archived scripts each Go port replaced) | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`internal/build/shell/README.md`](../internal/build/shell/README.md) + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" (the matrix) + [`testing-strategy.md`](specs/testing-strategy.md) §5 (the tiers) + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 (the Markdown rules) + [`website/AGENT.md`](../website/AGENT.md) (the site fences and footer) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 (the codec guards) |
+| `internal/build/` (go-cask's own policy for that engine — the layer matrix, the coverage tiers, the codec guards, the site's inventory tables and footer contract, the change-set patterns, and the package graph's prose — plus `shell/`, the archived scripts each Go port replaced) | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`internal/build/shell/README.md`](../internal/build/shell/README.md) + [`library-design.md`](specs/library-design.md) §1.1 (the matrix) + [`testing-strategy.md`](specs/testing-strategy.md) §5 (the tiers) + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 (the Markdown rules) + [`website/AGENT.md`](../website/AGENT.md) (the site fences and footer) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 (the codec guards) |
 | `cmd/buildtool/` (the entry point for those build decisions; developer tooling, not the product CLI) | [`cmd/buildtool/README.md`](../cmd/buildtool/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
-| `gitlike/` (2nd-class reference library at the application layer — not an app, not an example) | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
-| `examples/*` (3rd-class teaching code: no compatibility surface; may import `cas/**` and `gitlike`, never `internal/**`, `cmd/**` or another example) | [`examples.md`](specs/examples.md) §2 + [`AGENTS.md`](../AGENTS.md) "Layers and citizen classes" |
+| `gitlike/` (2nd-class reference library at the application layer — not an app, not an example) | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 + [`library-design.md`](specs/library-design.md) §1.1 |
+| `examples/*` (3rd-class teaching code: no compatibility surface; may import `cas/**` and `gitlike`, never `internal/**`, `cmd/**` or another example) | [`examples.md`](specs/examples.md) §2 + [`library-design.md`](specs/library-design.md) §1.1 |
 | `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
 | `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
 | `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |
@@ -54,6 +54,7 @@ version: v51
 | `.github/copilot-instructions.md` (a pointer for clients that never read `AGENTS.md`; it states no rule of its own) | root [`AGENTS.md`](../AGENTS.md) |
 | `.agents/` (agent tooling: skills and their guide) | [`../.agents/AGENT.md`](../.agents/AGENT.md) governs it; a skill is also its own `SKILL.md` (see the row below) |
 | `.agents/skills/` (agent skills discovered at the project root) | the skill's own `SKILL.md` (directory bundle `<name>/SKILL.md`): [`../.agents/skills/cask-change/SKILL.md`](../.agents/skills/cask-change/SKILL.md) points at the rule files for a change |
-| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
+| `AGENTS.md` (the root router; its byte ceiling) | [`docs/AGENT.md`](../docs/AGENT.md) §2.1 |
+| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) + [`landing.md`](specs/landing.md) (worktree, lane, gate, landing) |
 
 **Updating:** add/remove/re-target rows when rule files change; bump version on material change. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).

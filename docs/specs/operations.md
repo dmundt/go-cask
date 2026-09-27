@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v18
+version: v19
 ---
 
 # Operations — go-cask
@@ -152,7 +152,7 @@ The core puts no payload checksum inside the TLV envelope. The object digest alr
 
 `<base>` is the directory the backend reports as `BasePath()`: for `fs` the path passed to `fs.New`; for `packfs` the loose tree at `<base>/loose`, the directory its `List`, `Stats` and `Clean` operate on.
 
-`.meta` is the one sanctioned resident under a store's base (AGENTS.md, "The store base belongs to exactly one store"): every file in it falls outside both rules that make a base single-owner. The `.json` suffix keeps a record out of `List`/`Stats`, which read a digest from the last path element only; the `.tmp` suffix puts a crashed write inside the backend's own scratch reclamation. A record is never an object, and an object without a record is never damage.
+`.meta` is the one sanctioned resident under a store's base (cas-core §4.4): every file in it falls outside both rules that make a base single-owner. The `.json` suffix keeps a record out of `List`/`Stats`, which read a digest from the last path element only; the `.tmp` suffix puts a crashed write inside the backend's own scratch reclamation. A record is never an object, and an object without a record is never damage.
 
 ### 6.2 Record, version 1
 

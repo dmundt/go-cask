@@ -1,19 +1,23 @@
 ---
 type: Agent Instructions
 title: Website Authoring Guide
-description: The authoring guide for the published site under website/ — developer-facing content and terminology, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
-version: v3
+description: The authoring guide for the published site under website/ — developer-facing content, the MkDocs Material build, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
+version: v4
 ---
 
 # Website Authoring Guide
 
 Directory contains published go-cask documentation site. Developer-facing
 companion to the authoritative repository documentation under
-`docs/specs/`; does not replace those specifications.
+`docs/specs/`; does not replace those specifications, which stay the source of
+truth for the implementation. Built with MkDocs Material from `website/`; the
+generated `site/` directory is never committed and MUST stay ignored.
 
 ## Content
 
-- Write for Go developers evaluating or adopting go-cask.
+- Write for Go developers evaluating or adopting go-cask. Keep the pages
+  developer-focused: architecture, stores, hashes, codecs, backends, recipes,
+  and the public changelog.
 - State only behavior implemented in repository. Link to source or a
   specification when a contract needs detail.
 - Keep tone direct and technical. Explain constraints, non-goals,
@@ -68,7 +72,9 @@ companion to the authoritative repository documentation under
 - Raw HTML forbidden in every Markdown file: no tags, comments, layout
   wrappers, or HTML/XML/SVG code fences.
 - Use Mermaid only when it adds information unavailable in prose or a table.
-  Keep diagrams small, directional, and free of decorative styling.
+  Keep diagrams small, directional, and free of decorative styling. Prefer a
+  clear concept diagram over an ASCII-heavy page, and small SVG/PNG artwork
+  only where it adds signal.
 
 ## Visual direction
 
@@ -135,7 +141,7 @@ auto-merge only after signature verification and required checks pass.
 ## Serialized landing
 
 Website changes take the same landing lane as code
-(`AGENTS.md`, "The pull request is the lane, worktrees and gates"): claim the
+([`docs/specs/landing.md`](../docs/specs/landing.md) §5): claim the
 lane with `go run ./cmd/buildtool pr-lane claim <issue>` and hold it for the whole landing,
 and start the next revision of an artifact only after the previous one has
 merged. The lane is the open pull request; push early and open it as a draft so
