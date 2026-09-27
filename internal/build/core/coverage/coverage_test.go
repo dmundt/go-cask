@@ -388,6 +388,129 @@ func TestCheckResultsPassesAtTheBoundary(t *testing.T) {
 	}
 }
 
+// TestMeasure pins the profile reader the gate hands its own run's coverage record
+// to: a number is attributed to the package its file path names, a target the profile
+// never mentions measures nothing rather than zero, and a file outside the module is
+// not this policy's to measure.
+func TestMeasure(t *testing.T) {
+	t.Parallel()
+
+	policy := Policy{Targets: []Target{
+		{Threshold: 90, Package: "cas", Tier: "core"},
+		{Threshold: 80, Package: "cas/backend/fs", Tier: "backend"},
+		{Threshold: 80, Package: "cas/absent", Tier: "support"},
+	}}
+	profile := strings.Join([]string{
+		"mode: atomic",
+		"example.com/mod/cas/digest.go:10.2,12.4 3 1",
+		"example.com/mod/cas/digest.go:14.2,16.4 1 0",
+		"example.com/mod/cas/backend/fs/fs.go:8.1,9.2 4 2",
+		"example.com/other/pkg/x.go:1.1,2.2 9 9",
+		"",
+	}, "\n")
+
+	results, err := policy.Measure(profile, "example.com/mod")
+	if err != nil {
+		t.Fatalf("Measure: %v", err)
+	}
+	want := []Result{
+		{Threshold: 90, Package: "cas", Measured: 75},
+		{Threshold: 80, Package: "cas/absent", Measured: -1},
+		{Threshold: 80, Package: "cas/backend/fs", Measured: 100},
+	}
+	if len(results) != len(want) {
+		t.Fatalf("Measure = %+v, want one result per target (%d)", results, len(want))
+	}
+	for i := range want {
+		if results[i] != want[i] {
+			t.Errorf("Measure result %d = %+v, want %+v", i, results[i], want[i])
+		}
+	}
+}
+
+// TestMeasureRoundsTheWayTheSuitePrints pins the one rounding the decision makes: a
+// package whose statements are 89.96% covered is printed at 90.0% by the run itself,
+// so a gate that judged the unrounded pair would fail a package its own log reports
+// as passing.
+func TestMeasureRoundsTheWayTheSuitePrints(t *testing.T) {
+	t.Parallel()
+
+	policy := Policy{Targets: []Target{{Threshold: 90, Package: "cas", Tier: "core"}}}
+	// 2249 of 2500 statements is 89.96%.
+	profile := "mode: set\nexample.com/mod/cas/a.go:1.1,2.2 2249 1\nexample.com/mod/cas/a.go:3.1,4.2 251 0\n"
+	results, err := policy.Measure(profile, "example.com/mod")
+	if err != nil {
+		t.Fatalf("Measure: %v", err)
+	}
+	if len(results) != 1 || results[0].Measured != 90 {
+		t.Fatalf("Measure = %+v, want the package measured at 90", results)
+	}
+	if failures := CheckResults(results); len(failures) != 0 {
+		t.Errorf("CheckResults = %q, want a measurement printed as 90.0 to meet a 90 tier", failures)
+	}
+}
+
+// TestMeasureReportsNothingToMeasureAsNoMeasurement pins the two shapes that are not a
+// number: a target the profile never mentions, and one whose only block holds no
+// statements. "Nothing to cover" is not "covered nothing", and both must reach the
+// threshold check as a missing measurement rather than as a percentage.
+func TestMeasureReportsNothingToMeasureAsNoMeasurement(t *testing.T) {
+	t.Parallel()
+
+	policy := Policy{Targets: []Target{{Threshold: 90, Package: "cas", Tier: "core"}}}
+	for _, test := range []struct {
+		name    string
+		profile string
+	}{
+		{name: "a profile with no blocks", profile: "mode: set\n"},
+		{name: "a block with no statements", profile: "mode: set\nexample.com/mod/cas/a.go:1.1,2.2 0 0\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			results, err := policy.Measure(test.profile, "example.com/mod")
+			if err != nil {
+				t.Fatalf("Measure: %v", err)
+			}
+			if len(results) != 1 || results[0].HasMeasurement() {
+				t.Fatalf("Measure = %+v, want one target with no measurement", results)
+			}
+			if failures := CheckResults(results); len(failures) != 1 {
+				t.Errorf("CheckResults = %q, want the missing measurement reported", failures)
+			}
+		})
+	}
+}
+
+// TestMeasureRefusesAProfileItCannotRead pins the two shapes that must not be read
+// as a clean run: a profile that is not one, and a profile whose file paths do not
+// carry the module — the second would otherwise report every target as unmeasured
+// when the truth is that the reader and the run disagree.
+func TestMeasureRefusesAProfileItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	policy := Policy{Targets: []Target{{Threshold: 90, Package: "cas", Tier: "core"}}}
+	broken := []struct {
+		name    string
+		profile string
+	}{
+		{name: "no mode line", profile: "example.com/mod/cas/a.go:1.1,2.2 1 1\n"},
+		{name: "an empty profile", profile: ""},
+		{name: "a line that is not a block", profile: "mode: set\nthis is not a block\n"},
+		{name: "statements that are not a count", profile: "mode: set\nexample.com/mod/cas/a.go:1.1,2.2 many 1\n"},
+		{name: "a negative statement count", profile: "mode: set\nexample.com/mod/cas/a.go:1.1,2.2 -1 1\n"},
+		{name: "an execution count that is not a count", profile: "mode: set\nexample.com/mod/cas/a.go:1.1,2.2 1 lots\n"},
+		{name: "blocks named but none inside the module", profile: "mode: set\nexample.com/other/a.go:1.1,2.2 1 1\n"},
+	}
+	for _, test := range broken {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := policy.Measure(test.profile, "example.com/mod"); err == nil {
+				t.Errorf("Measure(%q) succeeded, want an error", test.profile)
+			}
+		})
+	}
+}
+
 // TestParseThreshold pins the table's own parser: the gate reads a number from
 // coverage output, so a threshold that is not a number has to be an error rather
 // than a comparison that quietly evaluates false.
