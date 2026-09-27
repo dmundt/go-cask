@@ -162,6 +162,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
           - name: linux-arm64
             goos: linux
             goarch: arm64
