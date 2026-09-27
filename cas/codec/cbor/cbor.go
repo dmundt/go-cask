@@ -13,6 +13,14 @@
 // levels: the stored bytes are untrusted, so a payload nested deeper than that
 // is reported as ErrTooDeep rather than recursed into until the goroutine stack
 // is exhausted.
+//
+// The integer model is signed int64. A CBOR unsigned integer (major type 0) and
+// a CBOR negative integer (major type 1, whose value is -1 minus its argument)
+// both decode to an int64, so an unsigned argument of 2^63 or more — which Encode
+// accepts, since it encodes a uint64 as major type 0 — has no representation
+// here and is reported as ErrIntegerRange rather than wrapping into a negative
+// int64. Every value that can be represented decodes unchanged, and no out-of-
+// range argument is ever reinterpreted.
 package cbor
 
 import (
@@ -61,6 +69,14 @@ var (
 	// bytes need not be damaged at all, only nested past what this decoder will
 	// descend into.
 	ErrTooDeep = fmt.Errorf("cbor: value nested deeper than %d levels", MaxDepth)
+	// ErrIntegerRange reports an integer the bytes carry but the value model
+	// cannot represent: an unsigned argument (major type 0) above MaxInt64, or
+	// the argument of a negative integer (major type 1, the value -1-argument)
+	// above MaxInt64. The bytes need not be damaged — the encoder writes both,
+	// since it encodes a uint64 as major type 0 — so this is a range failure,
+	// not a truncation one, and it is reported instead of converting the
+	// argument to int64 and handing back the wrapped number (go-cask#363).
+	ErrIntegerRange = errors.New("cbor: integer argument outside the int64 value model")
 )
 
 // New builds a CBOR codec from either an inner codec or the caller's conversion
@@ -430,8 +446,20 @@ func decodeOne(data []byte, depth int) (any, []byte, error) {
 
 	switch major {
 	case 0:
+		// The argument is unsigned and the value model is int64, so the
+		// comparison is against the maximum in its own type: int64(length)
+		// would convert 2^63 and above to a negative number rather than fail,
+		// and the two wire values would become one Go value (go-cask#363).
+		if length > math.MaxInt64 {
+			return nil, nil, fmt.Errorf("%w: unsigned %d exceeds MaxInt64", ErrIntegerRange, length)
+		}
 		return int64(length), data[headerLen:], nil
 	case 1:
+		// The value is -1-argument, so the argument may be at most MaxInt64:
+		// that is MinInt64 exactly, and one past it wraps the same way.
+		if length > math.MaxInt64 {
+			return nil, nil, fmt.Errorf("%w: negated %d is below MinInt64", ErrIntegerRange, length)
+		}
 		return -1 - int64(length), data[headerLen:], nil
 	case 2:
 		// The declared length is untrusted: reject it before converting to int
