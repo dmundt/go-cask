@@ -48,6 +48,11 @@ go run ./cmd/buildtool release --tag v1.3.0 --dry-run
   a stray argument), or a step cannot run at all for a reason the command documents —
   `bench-compare` exits 2 when `benchstat` is not installed, which the helper it
   replaced also did. The distinction matters: `2` is never a verdict on the tree.
+- `3` — a destructive verb did not do what it was asked: `worktree remove` refused a name
+  that is registered nowhere, a worktree with uncommitted changes, or one it could not
+  remove. The invocation was well formed and no rule failed — the removal simply did not
+  happen — so the command says so with its own status instead of a success line, and a
+  caller that scripts it can tell "nothing to remove" from "removed".
 
 A command that prints a list prints only the list on stdout, so a gate can capture it
 in a command substitution — `version-fields`, `coverage-tier --list` and
