@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v50
+version: v51
 ---
 
 # go-cask Rules Index
@@ -51,6 +51,7 @@ version: v50
 | `benchmarks/` | [`benchmarks/AGENT.md`](/benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
+| `.github/copilot-instructions.md` (a pointer for clients that never read `AGENTS.md`; it states no rule of its own) | root [`AGENTS.md`](../AGENTS.md) |
 | `.agents/` (agent tooling: skills and their guide) | [`../.agents/AGENT.md`](../.agents/AGENT.md) governs it; a skill is also its own `SKILL.md` (see the row below) |
 | `.agents/skills/` (agent skills discovered at the project root) | the skill's own `SKILL.md` (directory bundle `<name>/SKILL.md`): [`../.agents/skills/cask-change/SKILL.md`](../.agents/skills/cask-change/SKILL.md) points at the rule files for a change |
 | Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) |
