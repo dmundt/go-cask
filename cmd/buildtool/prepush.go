@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -29,7 +29,7 @@ const prePushAdvisory = "pre-push: note — this worktree does not hold the loca
 // at all — the WSL shell next to a Windows signing key is that case on this host.
 const prePushNoReceipt = "pre-push: note — the gate receipt was not published for this commit, so CI will run\n" +
 	"  the whole gate again. Publish it from the toolchain that signs your commits:\n" +
-	"      ./scripts/gate-receipt.sh publish\n" +
+	"      go run ./cmd/buildtool gate-receipt publish\n" +
 	"  (it needs gpg.format and user.signingkey; see scripts/AGENT.md)\n"
 
 // runPrePush applies the mechanical landing rules a push must satisfy.
@@ -86,28 +86,34 @@ func runPrePush(args []string, out, errOut io.Writer) error {
 }
 
 // publishReceipt signs the receipt as a commit object and pushes it to the coordination ref
-// CI reads (scripts/gate-receipt.sh). Every failure is reported and swallowed: the receipt
-// only saves CI the work, and a clone that cannot sign simply leaves CI to run the gate.
+// CI reads. Every failure is reported and swallowed: the receipt only saves CI the work, and
+// a clone that cannot sign simply leaves CI to run the gate.
 //
-// The helper is still shell, which is why this is a call rather than a function: porting it
-// retires the call, and `scripts/README.md` records it as the one rule with no Go home yet.
+// The signing is git's, so this is a call into the receipt command rather than a second
+// implementation of it: the key, its format and the principal are whatever this clone's git
+// configuration says, and a toolchain whose git cannot sign reports the refusal here and
+// changes nothing about the push.
 func publishReceipt(repo, remote, head string, errOut io.Writer) {
 	if os.Getenv("CASK_GATE_NO_PUBLISH") != "" {
 		return
 	}
-	script := filepath.Join(repo, filepath.FromSlash(policy.Verify().ReceiptScript))
-	if _, err := os.Stat(script); err != nil {
-		return
+	root := repo
+	if root == "" {
+		resolved, err := repoRoot()
+		if err != nil {
+			return
+		}
+		root = resolved
 	}
 
-	cmd := exec.Command("bash", script, "publish", "--quiet", "--sha", head, "--remote", remote)
-	cmd.Dir = repo
-	output, err := cmd.CombinedOutput()
-	if err == nil {
+	var note bytes.Buffer
+	if err := gateReceiptCommand(root, []string{
+		"publish", "--quiet", "--sha", head, "--remote", remote,
+	}, &note, &note, productionGateReceiptDeps()); err == nil {
 		return
 	}
-	if note := strings.TrimSpace(string(output)); note != "" {
-		fmt.Fprintf(errOut, "%s\n", note)
+	if text := strings.TrimSpace(note.String()); text != "" {
+		fmt.Fprintf(errOut, "%s\n", text)
 	}
 	fmt.Fprint(errOut, prePushNoReceipt)
 }

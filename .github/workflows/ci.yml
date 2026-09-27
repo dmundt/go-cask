@@ -14,7 +14,7 @@ permissions:
 # The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
 # already ran it on this host before the branch was pushed, and `.githooks/pre-push`
 # published that run as a signed receipt under `refs/gate/<head-sha>`
-# (`scripts/gate-receipt.sh`, trust anchored in `.github/gate-signers`). The
+# (`go run ./cmd/buildtool gate-receipt`, trust anchored in `.github/gate-signers`). The
 # `verify` job checks that receipt against the commit it is really testing — the
 # signature, the head commit, the tree of the checked-out merge result, the base
 # and the diff hash recomputed here, the scope, and the list of checks the gate
@@ -95,7 +95,7 @@ jobs:
           # refs/gate/* usually does not exist for a first push or a fork; that is
           # the ordinary case, not a failure.
           git fetch --no-tags --quiet origin '+refs/gate/*:refs/gate/*' || true
-          bash ./scripts/gate-receipt.sh verify \
+          go run ./cmd/buildtool gate-receipt verify \
             --sha "$HEAD_SHA" \
             --tree "$(git rev-parse 'HEAD^{tree}')" \
             --base "$BASE_SHA" \

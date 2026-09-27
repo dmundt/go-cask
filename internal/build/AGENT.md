@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `internal/build`
 description: Rule set for the build subtree — engine boundary, policy/engine split, nested-module trap that hides the engine from `go test ./...`, and where each new piece goes.
-version: v6
+version: v7
 ---
 
 # Agent instructions — `internal/build`
@@ -79,7 +79,8 @@ Green run ends `verification passed`; earlier stop = failed.
 
 Engine parses repository + tool input → fuzz targets beside the table tests:
 `core/coverage`, `core/versioning`, `core/lane`, `core/claim`, `core/gate`,
-`core/toolchain`, `core/changes`, `core/docs`, `core/verify`. Gate smoke-fuzzes them beside
+`core/toolchain`, `core/changes`, `core/docs`, `core/verify`, `core/receipt`. Gate
+smoke-fuzzes them beside
 the `cas` targets; engine suite
 runs `-race` there (engine pure → detector keeps it pure). Failing input → kept in
 `<package>/testdata/fuzz/`, committed → regression test. The set the gate runs is

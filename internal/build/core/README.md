@@ -2,7 +2,7 @@
 type: Guide
 title: build core — go-cask
 description: Build engine — separate Go module, checks a repository gate runs, every table caller-supplied; package list, shape, usage, testing.
-version: v5
+version: v6
 ---
 
 # core
@@ -22,6 +22,7 @@ tier → reusable. go-cask's answers: `../policy`. Wiring entry point: `cmd/buil
 | `lane` | landing-lane records: advisory slot, identity, staleness | [lane](./lane/README.md) |
 | `claim` | server-side lane: coordination ref, issue/branch matching, the shared verdict | [claim](./claim/README.md) |
 | `verify` | what a gate run covers, how many packages it builds at once, whether an escape hatch dropped a step | [verify](./verify/README.md) |
+| `receipt` | the gate receipt's format: parse, render, check-name rule, the evidence identity, the canonical changed-path list | [receipt](./receipt/README.md) |
 | `worktree` | relative `.git` link a linked worktree needs; lock protecting it | [worktree](./worktree/README.md) |
 | `toolchain` | where a `go install`ed tool lands; whether the installed one is the pinned release | [toolchain](./toolchain/README.md) |
 | `bench` | benchmark capture naming; which capture a fresh run compares against | [bench](./bench/README.md) |

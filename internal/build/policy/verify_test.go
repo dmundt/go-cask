@@ -167,50 +167,47 @@ func TestEveryEngineFuzzPackageIsSmokeFuzzed(t *testing.T) {
 	}
 }
 
-// receiptSuite reads the check names the receipt helper's `suite_full` lists, so the
-// script's own idea of the required checks can be compared with the table the gate records
-// them from. The helper is still shell — it signs the receipt, which is the part that has
-// to stay where the signing key is — and this pins the half of the pair that would
-// otherwise drift silently.
-func receiptSuite(t *testing.T, root string) []string {
-	t.Helper()
-
-	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(Verify().ReceiptScript)))
-	if err != nil {
-		t.Fatalf("read %s: %v", Verify().ReceiptScript, err)
-	}
-	source := string(content)
-	start := strings.Index(source, "suite_full=(")
-	if start < 0 {
-		t.Fatalf("%s no longer declares suite_full", Verify().ReceiptScript)
-	}
-	block := source[start:]
-	if end := strings.Index(block, ")"); end >= 0 {
-		block = block[:end]
-	}
-
-	var suite []string
-	for _, line := range strings.Split(block, "\n")[1:] {
-		if name := strings.TrimSpace(line); name != "" {
-			suite = append(suite, name)
-		}
-	}
-	sort.Strings(suite)
-	return suite
-}
-
-// TestVerifyChecksMatchTheReceiptSuite pins the two places the check names live against
-// each other: the table the gate records them from, and `suite_full`, which is what CI
-// requires of a receipt before it may skip its own run. A name that drifts costs a whole CI
-// run rather than a missed check — the safe direction, and the reason it could go
-// unnoticed for a long time.
-func TestVerifyChecksMatchTheReceiptSuite(t *testing.T) {
+// TestVerifySuiteHasNoDuplicateOrEmptyName pins the list CI requires of a receipt: it is
+// asked for by name, so a repeated name would make a receipt look complete that is missing
+// another, and an empty one could never be recorded — the gate's own check names are what
+// fills it, and the step list is the one owner now that the helper that also listed them is
+// Go.
+func TestVerifySuiteHasNoDuplicateOrEmptyName(t *testing.T) {
 	t.Parallel()
 
-	want := VerifySuite()
-	sort.Strings(want)
-	if got := receiptSuite(t, repoRoot(t)); !slices.Equal(got, want) {
-		t.Errorf("%s lists\n  %v\nbut the gate records\n  %v", Verify().ReceiptScript, got, want)
+	suite := VerifySuite()
+	if len(suite) == 0 {
+		t.Fatal("the receipt suite is empty, so no receipt could ever satisfy CI")
+	}
+	seen := map[string]bool{}
+	for _, name := range suite {
+		if name == "" {
+			t.Error("the receipt suite carries an empty name")
+			continue
+		}
+		if seen[name] {
+			t.Errorf("the receipt suite lists %q twice", name)
+		}
+		seen[name] = true
+	}
+	// Every name must be one the gate can actually record: the suite is a subset of the
+	// check names, and `govulncheck` is deliberately outside it.
+	recordable := map[string]bool{}
+	for _, name := range strings.Fields(strings.Join([]string{
+		Verify().Checks.Gofmt, Verify().Checks.ModTidy, Verify().Checks.Build,
+		Verify().Checks.ModuleGraph, Verify().Checks.Vet, Verify().Checks.CrossPlatform,
+		Verify().Checks.LayerMatrix, Verify().Checks.CodecGuards, Verify().Checks.Security,
+		Verify().Checks.TestRace, Verify().Checks.CoverageTiers, Verify().Checks.FuzzSmoke,
+		Verify().Checks.VersionFields, Verify().Checks.DocIntegrity,
+		Verify().Checks.PackageGraph, Verify().Checks.WebsiteFooter,
+		Verify().Checks.WebsiteExamples,
+	}, " ")) {
+		recordable[name] = true
+	}
+	for _, name := range suite {
+		if !recordable[name] {
+			t.Errorf("the receipt suite requires %q, which is not a name the gate records", name)
+		}
 	}
 }
 

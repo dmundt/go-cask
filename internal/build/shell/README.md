@@ -2,7 +2,7 @@
 type: Guide
 title: shell (build) — go-cask
 description: Shell scripts the build engine replaced; archived at parity, never executed.
-version: v4
+version: v5
 ---
 
 # shell
@@ -37,6 +37,8 @@ copy's header names the replacing command.
 | `pr-lane.sh` | `go run ./cmd/buildtool pr-lane` | who holds the server-side lane: compare-and-swap on `refs/lane/<NNN>`, the open pull request as the lease, the claim window, deliberate release |
 | `test-pr-lane.sh` | `cmd/buildtool/prlane_test.go` | the cases above, against a fake remote whose ref create is atomic under a mutex |
 | `worktree.sh` | `go run ./cmd/buildtool worktree` | worktree `.git` link relative, resolving to its own admin directory; registration locked against `git worktree prune` |
+| `gate-receipt.sh` | `go run ./cmd/buildtool gate-receipt` | the receipt's format, the identity lines that decide "same evidence", the check-name rule and the five verbs |
+| `test-gate-receipt.sh` | `cmd/buildtool/gatereceipt_test.go` | the cases above: the accept path and every refusal, in throwaway repositories with throwaway signing keys |
 
 ## Adding a script
 
