@@ -29,6 +29,9 @@ func slotFor(t *testing.T, root, name string, staleMinutes int) *landLaneSlot {
 		token:        filepath.Join(root, "worktrees", name, "dsh-land-lane-mine"),
 		who:          lane.Identity("clone-id", name, "main"),
 		staleMinutes: staleMinutes,
+		// The policy's own grace, so a fixture behaves like the real slot: a gone holder is
+		// not instantly evictable just because the test forgot the field.
+		deadGraceSeconds: 60,
 	}
 }
 
@@ -424,5 +427,99 @@ func TestLandLaneRenewNeverOverwritesAClaim(t *testing.T) {
 	// slot is occupied again, so a lost renewal leaves the slot directory as it found it.
 	if _, err := os.Stat(aside); err == nil {
 		t.Errorf("the lost renewal left its aside copy behind: %s", aside)
+	}
+}
+
+// TestLandLaneStatusCallsAGoneHolderEvictable pins the half of #387 that makes a dead holder
+// visible rather than merely takeable: `status` says the slot is evictable and exits 3, which is
+// a state of its own — not "held by someone else" (2), which a caller would wait out for nothing
+// when the holder's process no longer exists.
+func TestLandLaneStatusCallsAGoneHolderEvictable(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+
+	// A holder on this host, idle past the grace, whose process is gone.
+	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
+		t.Fatalf("creating the slot directory: %v", err)
+	}
+	gone := lane.Holder{
+		PID: "2", Since: now() - 120, Label: "386", Who: "other#primary:wt-other#main",
+		Token: "tok-other", Host: currentHost(), Start: "1234",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(gone), 0o644); err != nil {
+		t.Fatalf("writing the gone holder: %v", err)
+	}
+	restore := processStartFunc
+	// This host can tell, and there is no such process.
+	processStartFunc = func(pid string) (string, bool) { return "", true }
+	defer func() { processStartFunc = restore }()
+
+	out, errOut, status := runSlot(t, mine, "status")
+	if status != 3 {
+		t.Fatalf("status with a gone holder = %d, want 3 (out %q err %q)", status, out, errOut)
+	}
+	if !strings.Contains(out, "evictable") {
+		t.Errorf("status printed %q, want it to say the slot is evictable", out)
+	}
+
+	// And inside the grace the machine has not finished noticing: the holder is still just
+	// someone else, which is exit 2.
+	fresh := lane.Holder{
+		PID: "2", Since: now() - 5, Label: "386", Who: "other#primary:wt-other#main",
+		Token: "tok-other", Host: currentHost(), Start: "1234",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(fresh), 0o644); err != nil {
+		t.Fatalf("writing the fresh holder: %v", err)
+	}
+	out, _, status = runSlot(t, mine, "status")
+	if status != 2 || strings.Contains(out, "evictable") {
+		t.Errorf("status inside grace = %d %q, want 2 and no evictable note", status, out)
+	}
+
+	// A holder whose liveness cannot be read is never evictable, whatever the flag says.
+	processStartFunc = func(pid string) (string, bool) { return "", false }
+	if err := os.WriteFile(mine.owner, []byte(gone), 0o644); err != nil {
+		t.Fatalf("writing the gone holder: %v", err)
+	}
+	out, _, status = runSlot(t, mine, "status")
+	if status != 2 || strings.Contains(out, "evictable") {
+		t.Errorf("status with an unreadable process = %d %q, want 2 and no evictable note", status, out)
+	}
+}
+
+// TestLandLaneAcquireTakeoverDeadTakesAGoneHoldersSlot pins the takeover itself: the flag takes a
+// gone holder's slot after the grace without waiting the window out, and the eviction record says
+// the holder was gone rather than expired — the only trace the holder can read afterwards.
+func TestLandLaneAcquireTakeoverDeadTakesAGoneHoldersSlot(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
+		t.Fatalf("creating the slot directory: %v", err)
+	}
+	gone := lane.Holder{
+		PID: "2", Since: now() - 120, Label: "386", Who: "other#primary:wt-other#main",
+		Token: "tok-other", Host: currentHost(), Start: "1234",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(gone), 0o644); err != nil {
+		t.Fatalf("writing the gone holder: %v", err)
+	}
+	restore := processStartFunc
+	processStartFunc = func(pid string) (string, bool) { return "", true }
+	defer func() { processStartFunc = restore }()
+
+	// Without the flag the window still applies: a gone holder is not taken implicitly.
+	if _, errOut, status := runSlot(t, mine, "acquire", "387"); status == 0 {
+		t.Fatalf("acquire without the flag took a gone holder's slot: %q", errOut)
+	}
+
+	if _, errOut, status := runSlot(t, mine, "acquire", "--takeover-dead", "387"); status != 0 {
+		t.Fatalf("acquire --takeover-dead = %d (%q), want it to take the slot", status, errOut)
+	}
+	if holder := mine.read(); holder == nil || holder.Who != mine.who {
+		t.Fatalf("the slot is held by %+v, want this worktree", holder)
+	}
+	record := readFileOrEmpty(mine.takeover)
+	if !strings.Contains(record, lane.Dead) {
+		t.Errorf("the eviction record is %q, want it to say the holder was gone (%q)", record, lane.Dead)
 	}
 }

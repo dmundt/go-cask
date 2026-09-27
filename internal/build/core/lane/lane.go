@@ -48,6 +48,13 @@ type Holder struct {
 	Label string
 	Who   string
 	Token string
+	// Host and Start identify the process itself, which is the one thing the fields above
+	// cannot say: whether the holder is still running. They are appended to the record, so a
+	// five-field record written before them still parses — and a record with no host is never
+	// read as dead, because a slot may be held by a clone on another machine or by a toolchain
+	// that cannot name its host at all.
+	Host  string
+	Start string
 }
 
 // NoneToken is the token a record that carries none is read as. A holder without a
@@ -55,9 +62,12 @@ type Holder struct {
 // which is never "this worktree holds it".
 const NoneToken = "none"
 
-// Fields renders the record the slot holds: five tab-separated fields.
+// Fields renders the record the slot holds: seven tab-separated fields. The last two are
+// appended, so the five-field form a previous build wrote stays readable.
 func (h Holder) Fields() string {
-	return strings.Join([]string{h.PID, strconv.FormatInt(h.Since, 10), h.Label, h.Who, h.Token}, "\t")
+	return strings.Join([]string{
+		h.PID, strconv.FormatInt(h.Since, 10), h.Label, h.Who, h.Token, h.Host, h.Start,
+	}, "\t")
 }
 
 // ParseHolder reads a slot record. A record that is partial or unreadable yields the
@@ -90,6 +100,10 @@ func ParseHolder(record string) Holder {
 			if field != "" {
 				holder.Token = field
 			}
+		case 5:
+			holder.Host = field
+		case 6:
+			holder.Start = field
 		}
 	}
 	return holder
@@ -135,6 +149,11 @@ const (
 	Expired = "expired"
 	// Forced is an eviction by --force of a slot that was still inside its window.
 	Forced = "forced"
+	// Dead is an eviction of a slot whose holder is provably gone on this host and has been
+	// idle past the grace period. It is its own reason because the holder never chose to let
+	// go: the holder's next `renew` and `status` have to be able to say that, rather than
+	// report an ordinary expiry.
+	Dead = "dead"
 )
 
 // Fields renders the takeover record: the same four fields as a holder, with why the
@@ -147,6 +166,53 @@ func (t Takeover) Fields() string {
 func ParseTakeover(record string) Takeover {
 	holder := ParseHolder(record)
 	return Takeover{Holder: holder, How: holder.Token}
+}
+
+// UnknownHost is the host a record carries when its writer could not name one. It is not a
+// host name, so it never compares equal to this host, and a holder written under it is only
+// ever Unknown rather than dead.
+const UnknownHost = "unknown"
+
+// Liveness is what the record and this host can say about the holder's process.
+type Liveness int
+
+const (
+	// Alive: the host is this one and the same process is still running under that pid.
+	Alive Liveness = iota
+	// Gone: the host is this one and either nothing runs under that pid, or a different
+	// process does — the pid was recycled, which is why the start time is recorded at all.
+	Gone
+	// Unknown: nothing can be said. The record names no host, or another one; the pid is not
+	// a number; or this toolchain cannot read process start times. An unknown holder is never
+	// taken over: absence of evidence is not evidence.
+	Unknown
+)
+
+// LivenessOf judges the holder's process from its record and this host.
+//
+// processStart reports the start time of a running pid, and its ok result says whether this
+// toolchain can read one at all. The distinction is the whole point: "this host can tell, and
+// there is no such process" is Gone, while "this host cannot tell" is Unknown, and only Gone
+// may ever take a slot over.
+func LivenessOf(h Holder, thisHost string, processStart func(pid string) (string, bool)) Liveness {
+	if h.Host == "" || h.Host == UnknownHost || h.Host != thisHost {
+		return Unknown
+	}
+	pid, err := strconv.Atoi(h.PID)
+	if err != nil || pid <= 0 {
+		return Unknown
+	}
+	start, ok := processStart(h.PID)
+	if !ok {
+		return Unknown
+	}
+	if start == "" {
+		return Gone
+	}
+	if h.Start != "" && start != h.Start {
+		return Gone
+	}
+	return Alive
 }
 
 // Outcome is what an acquisition may do with the slot it found.
@@ -168,6 +234,11 @@ const (
 	TakeoverExpired
 	// TakeoverForced: --force takes another holder's slot whatever its idle time.
 	TakeoverForced
+	// TakeoverDead: --takeover-dead takes a slot whose holder is provably gone on this host
+	// and has been idle past the grace period. It is the one takeover that needs no idle
+	// window: a process that no longer exists cannot renew, so waiting the window out would
+	// hold every waiter for nothing.
+	TakeoverDead
 	// Unreadable: the slot exists but holds no holder yet, which is a claim in
 	// progress. It is never taken over: the winner creates the slot before it writes
 	// the record, and taking that half-written slot is how two acquirers end up
@@ -177,7 +248,7 @@ const (
 
 // TakesOver reports whether the outcome evicts the holder it found.
 func (o Outcome) TakesOver() bool {
-	return o == TakeoverExpired || o == TakeoverForced
+	return o == TakeoverExpired || o == TakeoverForced || o == TakeoverDead
 }
 
 // Decision is what an acquisition must do: the outcome, and the holder it found.
@@ -187,14 +258,16 @@ type Decision struct {
 }
 
 // Decide returns what the acquisition identified by who may do with the slot, with
-// this worktree's outstanding token (mine, or NoneToken when it holds none) and the
-// caller's idle window. A nil slot is a free one.
+// this worktree's outstanding token (mine, or NoneToken when it holds none), the
+// caller's idle window, how long a provably gone holder must have been idle before it may be
+// taken over (grace), and what this host can say about the holder's process.
 //
-// The two refusals are the whole point of the function. A slot held by this identity
+// The refusals are the whole point of the function. A slot held by this identity
 // through ANOTHER acquisition is not this session's to take, because nothing in the
 // worktree distinguishes the two sessions; and a slot inside its idle window is a live
-// landing, which the next session may only take with --force.
-func Decide(slot *Holder, who, mine string, window time.Duration, force bool, now int64) Decision {
+// landing, which the next session may only take with --force or, when the holder is provably
+// gone and grace has passed, with takeDead.
+func Decide(slot *Holder, who, mine string, window, grace time.Duration, force, takeDead bool, live Liveness, now int64) Decision {
 	if slot == nil {
 		return Decision{Outcome: Created}
 	}
@@ -206,14 +279,23 @@ func Decide(slot *Holder, who, mine string, window time.Duration, force bool, no
 		decision.Outcome = AlreadyMine
 	case slot.Who == who:
 		decision.Outcome = RefusedSameIdentity
-	case !force && slot.Idle(now) < window:
-		decision.Outcome = RefusedFresh
 	case force && slot.Idle(now) < window:
 		decision.Outcome = TakeoverForced
+	case takeDead && live == Gone && slot.Idle(now) >= grace:
+		decision.Outcome = TakeoverDead
+	case !force && slot.Idle(now) < window:
+		decision.Outcome = RefusedFresh
 	default:
 		decision.Outcome = TakeoverExpired
 	}
 	return decision
+}
+
+// Evictable reports whether the slot's holder is provably gone on this host and has been idle
+// past the grace period — the one state a caller may take over without waiting the window out,
+// and the one `status` reports as its own rather than as a plain "someone else's".
+func Evictable(slot *Holder, grace time.Duration, live Liveness, now int64) bool {
+	return slot != nil && slot.Known() && live == Gone && slot.Idle(now) >= grace
 }
 
 // Status is what `status` reports about the slot.
