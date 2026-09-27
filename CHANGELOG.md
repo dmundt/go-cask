@@ -469,6 +469,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   can no longer mistake an unreadable object for one they simply do not decode,
   which in a maintenance path such as a GC sweep meant treating a damaged
   manifest as a leaf and deleting the objects it referenced.
+- `go run ./cmd/buildtool worktree remove` no longer reports a removal it did not
+  perform: a name that is registered nowhere is refused with the diagnostic that
+  names it and the path that was checked, and a worktree whose checkout is gone
+  but whose registration survived is still cleared. A caller that scripts the
+  removal can tell "nothing to remove" from "removed" by the exit status instead
+  of by reading the message, which used to print `worktree removed` and exit 0
+  having done nothing.
 
 ### Security
 

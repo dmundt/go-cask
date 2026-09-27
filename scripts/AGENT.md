@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v17
+version: v18
 ---
 
 # Agent instructions — `scripts/`
@@ -211,6 +211,14 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   repo-root [`AGENTS.md`](../AGENTS.md); the link, the admin directory it must
   resolve to and the lock are `internal/build/core/worktree`'s, and
   `cmd/buildtool/worktree_test.go` pins them against a real repository.
+- **A destructive verb reports success only on evidence.** `go run ./cmd/buildtool
+  worktree remove <task>` exits 3 when it removed nothing — a name that is
+  registered nowhere, or a half of the worktree the removal left behind — and
+  says which, instead of printing the success line. The guard is not tidiness:
+  the fallback is `os.RemoveAll`, which returns nil for a path that is not there,
+  so without it the verb reported a removal it had not performed (#395). A verb
+  that removes, prunes or frees something names what it removed, and a verb that
+  removed nothing carries that in its exit status, not only in its message.
 
 ## The build engine is its own module
 
