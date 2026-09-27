@@ -179,7 +179,11 @@ func (f *Filter) Add(d cas.Digest) {
 	if f == nil || d.IsZero() {
 		return
 	}
-	data := d.Bytes()
+	// A view of the digest's own bytes, not a copy: a Digest is immutable
+	// (cas/digest.go) and the filter only reads this slice inside the probe
+	// loop, so d.Bytes() would allocate a fresh copy per operation on the hot
+	// path the filter exists to make cheap.
+	data := []byte(d)
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -202,7 +206,7 @@ func (f *Filter) Contains(d cas.Digest) bool {
 	if f == nil || d.IsZero() {
 		return false
 	}
-	data := d.Bytes()
+	data := []byte(d) // a read-only view; see Add
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
