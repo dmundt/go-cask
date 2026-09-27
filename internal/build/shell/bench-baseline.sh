@@ -2,7 +2,7 @@
 # ARCHIVED — superseded by `go run ./cmd/buildtool bench-baseline`.
 #
 # The capture, the naming convention and the archive-before-refresh rule are
-# internal/build/bench's and internal/build/policy's; the command runs them. Nothing
+# internal/build/core/bench's and internal/build/policy's; the command runs them. Nothing
 # runs this copy; see ../shell/README.md.
 set -euo pipefail
 

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v32
+version: v33
 tags: [go-cask]
 status: stable
 ---
@@ -122,7 +122,7 @@ Fix the **more specific** document to match the more general one, unless the spe
 - Mermaid for relationships/flow: `classDiagram` for object models, `flowchart` for flows; one diagram per concept next to what it visualizes.
 - **Mermaid blocks MUST be balanced** (every ```mermaid opener has a matching closer; unbalanced fences break rendering and swallow the rest of the file). The only exception is an explicitly stated illustrative fragment, labeled in the surrounding text. Never leave one unbalanced without that statement.
 - ASCII allowed alongside mermaid (raw/terminal) but box-aligned; prefer mermaid when both exist.
-- Code fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced. `html`, `xml` and `svg` fences are forbidden (the Markdown policy bans raw HTML; `internal/build/docs` enforces it, run by `./scripts/verify.sh` in both scopes).
+- Code fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced. `html`, `xml` and `svg` fences are forbidden (the Markdown policy bans raw HTML; `internal/build/core/docs` enforces it, run by `./scripts/verify.sh` in both scopes).
 
 ## 10. Editing and maintenance checklist
 
@@ -136,7 +136,7 @@ Before committing any change to a file in this folder:
 - [x] New files registered in `docs/specs/index.md` (and `docs/index.md` when a new path pattern appears)
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
-- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/docs`, which walks every tracked `.md` (mermaid balance stays a count in `scripts/verify.sh`)
+- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/core/docs`, which walks every tracked `.md` (mermaid balance included)
 
 ## 11. Signed pull-request workflow
 

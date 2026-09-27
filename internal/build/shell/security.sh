@@ -3,7 +3,7 @@
 #
 # This script installed the pinned govulncheck release and ran it. The pin now lives
 # once, in internal/build/policy; where the binary lands and whether the installed one
-# is the pinned release are internal/build/toolchain's decisions; and the gate and CI
+# is the pinned release are internal/build/core/toolchain's decisions; and the gate and CI
 # both run the command above. The archive also records a case the port fixed: this
 # script translated every GOBIN to the WSL /mnt form, which on a native Windows run
 # installs the scanner into a directory nothing looks in — the command translates only

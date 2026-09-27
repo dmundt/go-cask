@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v19
+version: v20
 ---
 
 # Agent instructions — `scripts/`
@@ -60,7 +60,7 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   not grow the list.
 - When two helpers must agree on a classification, one of them owns it and the
   other calls it. The change-set classification is the reference case: the rule is
-  `internal/build/changes`, go-cask's patterns are `internal/build/policy`, and the
+  `internal/build/core/changes`, go-cask's patterns are `internal/build/policy`, and the
   gate's scope decision and CI's scope job both call
   `go run ./cmd/buildtool scope`, so a second copy of the pattern list could only
   drift. The shell script that owned it is archived in `internal/build/shell`.
@@ -83,7 +83,7 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   a whole gate run.
 - A count is not a rule, and it may stay in shell — but a count over tracked
   files, beside a step already reading them, is better off in the package that
-  owns the rules. `internal/build/docs` walks every tracked `.md` for the
+  owns the rules. `internal/build/core/docs` walks every tracked `.md` for the
   Markdown integrity rules, so the mermaid-balance check reads the same files in
   the same pass instead of a second `git ls-files` and a `grep -c` per file in
   this script. The line is whether the step decides something: a rule belongs in
@@ -134,7 +134,7 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   helpers can write the same file, one of them gains a mode that never touches
   it, and a test pins the split. The benchmark pair is the reference and it is Go
   now: `cmd/buildtool bench-baseline` versus `cmd/buildtool bench-compare`, with
-  the rule in `internal/build/bench` and the file ownership pinned by
+  the rule in `internal/build/core/bench` and the file ownership pinned by
   `cmd/buildtool/bench_test.go`.
 - The landing helpers are part of this layer, in two layers that must not be
   confused, and both are Go now. `go run ./cmd/buildtool pr-lane` owns the LANE:
@@ -179,7 +179,10 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   pushes, and the reason `.githooks/pre-push` publishes best-effort after its stamp
   check rather than the WSL gate doing it. A toolchain that cannot sign cannot
   publish, and CI falls back; the hook says so and names the command.
-- The receipt is the one rule in this directory that has not moved to Go: the gate`n  calls `create` and the hook calls `publish`, so nothing is unrouted, but the format`n  and the three verbs are still shell. Porting them retires `test-gate-receipt.sh``n  into Go tests beside them.
+- The receipt is the one rule in this directory that has not moved to Go: the gate
+  calls `create` and the hook calls `publish`, so nothing is unrouted, but the format
+  and the three verbs are still shell. Porting them retires `test-gate-receipt.sh`
+  into Go tests beside them.
 - Four invariants of those helpers are load-bearing. First, the lane is claimed
   with an atomic create on the REMOTE (`POST /git/refs` answers 422 when the ref
   exists), never with a check followed by a write: two sessions that retry on the
@@ -262,7 +265,7 @@ that way:
 
 ## Releasing
 
-The release pair is no longer here: `internal/build/release` owns the notes and
+The release pair is no longer here: `internal/build/core/release` owns the notes and
 `cmd/buildtool` exposes them, with `CHANGELOG.md` as the single source they read.
 `release-notes` extracts the `## [<tag>]` section, rewrites its `###` groups to
 `##`, and appends the standard `Full Changelog:` compare link. `release` is the
@@ -321,7 +324,7 @@ tar xzf go.tgz
 run by the gate's `== website footer ==` step through
 `go run ./cmd/buildtool website-footer`, and by `internal/build/policy`'s footer
 tests). The documentation-integrity rules no longer embed a Python program — they are
-`internal/build/docs` — so the path-translating shim that step required is gone.
+`internal/build/core/docs` — so the path-translating shim that step required is gone.
 If `python3` is absent the gate's footer step fails where a shell's `command -v`
 finds nothing, and the footer tests skip that check locally with a note; the
 mirror below is still the way to make it run under WSL:

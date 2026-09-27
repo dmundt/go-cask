@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the buildtool launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/buildtool.
-version: v11
+version: v12
 ---
 
 # Scripts — go-cask
@@ -73,14 +73,14 @@ slot in the shared git dir that keeps two gate runs in one clone from overlappin
 `go run ./cmd/buildtool pre-push`.
 
 `verify.sh` also calls the build decisions that are not shell: the change-set
-classification (`internal/build/changes` over `internal/build/policy`'s rules), the
-dependency-layer matrix (`internal/build/layers`), the coverage tiers and thresholds
-(`internal/build/coverage`), the Markdown integrity rules (`internal/build/docs`), the
-site's Go fences, inventory tables and footer (`internal/build/website`), the benchmark
-capture decisions (`internal/build/bench`), the example table (`internal/build/examples`),
-the pinned toolchain (`internal/build/toolchain`), the landing lane
-(`internal/build/claim`) and the codec
-guards plus module-graph check (`internal/build/deps`). Each is a package with its own
+classification (`internal/build/core/changes` over `internal/build/policy`'s rules), the
+dependency-layer matrix (`internal/build/core/layers`), the coverage tiers and thresholds
+(`internal/build/core/coverage`), the Markdown integrity rules (`internal/build/core/docs`), the
+site's Go fences, inventory tables and footer (`internal/build/core/website`), the benchmark
+capture decisions (`internal/build/core/bench`), the example table (`internal/build/core/examples`),
+the pinned toolchain (`internal/build/core/toolchain`), the landing lane
+(`internal/build/core/claim`) and the codec
+guards plus module-graph check (`internal/build/core/deps`). Each is a package with its own
 tests, reached through `go run ./cmd/buildtool`, which exposes one subcommand per
 decision:
 
@@ -111,9 +111,9 @@ The gate executes them; it does not restate them.
 - Keep local scripts and CI behavior aligned. The workflow should call the same helper logic instead of duplicating commands.
 - `verify.sh` is a permanent thin shim, and it is now literally one: it resolves the toolchain and starts `buildtool.sh verify`. Do not add a pattern list, a threshold table, a `case` matrix or a step to it — the step list is `cmd/buildtool verify`'s `gateSteps`, and a decision behind a step belongs in `internal/build/core` with a test. The rule and its reasoning are in [`AGENT.md`](./AGENT.md) ("`verify.sh` stays forever").
 - `verify.sh` takes fast-turnaround options, and a run that uses one is not a verified run. `VERIFY_SKIP_TESTS`, `VERIFY_SKIP_COVERAGE`, `VERIFY_SKIP_FUZZ` and `VERIFY_SKIP_SECURITY` drop one step each; `VERIFY_FAST=true` drops all four. The run prints what it skipped and writes **no** gate stamp, so `.githooks/pre-push` still refuses to push that commit — the options save time on a working tree, never on a landing. Only the race suite (~79s) and the un-raced suite (~33s) are worth dropping; the rest are seconds.
-- No shell here owns a rule any more, so there is no helper-behaviour step left to skip: every helper's rule carries an ordinary Go test instead, and the gate reaches those through the race suite. `internal/build/core/depgraph` pins the committed graph byte-for-byte, `internal/build/core/versioning` pins the version-field decision, `cmd/buildtool/bench_test.go` pins the benchmark helpers' file ownership, `cmd/buildtool/prlane_test.go` pins the pull-request lane against a fake remote, and `cmd/buildtool/landlane_test.go` with `internal/build/core/gate` pin the advisory slot and the gate stamp.
-- A one-command delegation is not a violation of that rule, and the footer is the reference case. `website/macros.py --selftest` is one call whose whole rule — the pinned rendered line, the zone label, the guessed date — lives in `website/macros.py`, and the gate reaches it through `go run ./cmd/buildtool website-footer`. So it must NOT be re-implemented in Go: the command *calls* the hook and fails when the call is removed (`internal/build/policy`'s guards), while `internal/build/website` pins the contract around it — the declared base line, the composed shape, the deleted machinery. Extract a rule that is written out here; leave a call that already has an owner.
-- Never duplicate a classification or decision list across sibling helper scripts, and never re-implement in shell a rule a Go package already owns. Where the gate and CI must agree on one, the owning package is called by both: the gate and CI's scope job ask `go run ./cmd/buildtool scope` which paths count as documentation, and the gate asks `internal/build/layers` and `internal/build/coverage` — through the same command — whether the import matrix and the coverage tiers hold. The one thing that stays in shell is the toolchain resolution, because PATH can only be changed in the caller's shell; everything else, including the coverage loop and its fan-out, is the command's.
+- One helper here still owns a rule: `scripts/gate-receipt.sh` is shell until it is ported (#417), `scripts/test-gate-receipt.sh` is its behaviour test, and the gate's `helper script behaviour` step is theirs — so that step is the one a skipped run drops. Every other helper's rule carries an ordinary Go test instead, and the gate reaches those through the race suite. `internal/build/core/depgraph` pins the committed graph byte-for-byte, `internal/build/core/versioning` pins the version-field decision, `cmd/buildtool/bench_test.go` pins the benchmark helpers' file ownership, `cmd/buildtool/prlane_test.go` pins the pull-request lane against a fake remote, and `cmd/buildtool/landlane_test.go` with `internal/build/core/gate` pin the advisory slot and the gate stamp.
+- A one-command delegation is not a violation of that rule, and the footer is the reference case. `website/macros.py --selftest` is one call whose whole rule — the pinned rendered line, the zone label, the guessed date — lives in `website/macros.py`, and the gate reaches it through `go run ./cmd/buildtool website-footer`. So it must NOT be re-implemented in Go: the command *calls* the hook and fails when the call is removed (`internal/build/policy`'s guards), while `internal/build/core/website` pins the contract around it — the declared base line, the composed shape, the deleted machinery. Extract a rule that is written out here; leave a call that already has an owner.
+- Never duplicate a classification or decision list across sibling helper scripts, and never re-implement in shell a rule a Go package already owns. Where the gate and CI must agree on one, the owning package is called by both: the gate and CI's scope job ask `go run ./cmd/buildtool scope` which paths count as documentation, and the gate asks `internal/build/core/layers` and `internal/build/core/coverage` — through the same command — whether the import matrix and the coverage tiers hold. The one thing that stays in shell is the toolchain resolution, because PATH can only be changed in the caller's shell; everything else, including the coverage loop and its fan-out, is the command's.
 - Run `./scripts/verify.sh` before every commit or release prep pass.
 - Keep `CHANGELOG.md` and GitHub release notes synchronized.
 - `go run ./cmd/buildtool release --publish` resolves either `gh` or `gh.exe`, so it works in
@@ -122,15 +122,15 @@ The gate executes them; it does not restate them.
   for `gh` before running the publish guards, so a missing CLI is reported as
   itself rather than behind an unrelated failure.
 - Publish only from a clean `main` checkout: the release tag must exist, point
-  at `HEAD`, and be reachable from `main`. `internal/build/release` owns those
+  at `HEAD`, and be reachable from `main`. `internal/build/core/release` owns those
   guards and the note rendering; `cmd/buildtool` runs them.
 - Keep package-scoped fuzz corpora reviewed and checked in when a fuzz target changes, rather than letting random output become the only seed set.
 - Keep benchmark history in dated archive files under `benchmarks/data/archive/` and keep `benchmarks/data/baseline.txt` as the latest canonical comparison point.
 - `go run ./cmd/buildtool bench-baseline` owns `benchmarks/data/baseline.txt`: only a deliberate run (without `--capture-only`) rewrites it, and it archives the previous dump first. `go run ./cmd/buildtool bench-compare` captures for itself, so comparing can never replace the reference it compares against; `cmd/buildtool/bench_test.go` (run by the gate's race suite) enforces that split.
-- `internal/build/depgraph` owns `docs/design/package-graph.md` and is its only writer: the checking form renders the document in memory and compares, so the gate can report a stale graph without any way to overwrite it, and `--write` is the only mode that touches the file. `internal/build/depgraph`'s own test pins the render against the committed document.
+- `internal/build/core/depgraph` owns `docs/design/package-graph.md` and is its only writer: the checking form renders the document in memory and compares, so the gate can report a stale graph without any way to overwrite it, and `--write` is the only mode that touches the file. `internal/build/core/depgraph`'s own test pins the render against the committed document.
 - Keep scripts fail-fast and explicit: `set -euo pipefail` is the default for bash helpers in this repo.
 - Prefer repo-root execution. Scripts assume they are launched from the repository root unless a script explicitly documents otherwise.
-- `go run ./cmd/buildtool run-examples` runs the examples that terminate on their own (`artifacts`, `bloom`, `files`, `notes`, `pack`), each with the subcommand that completes it, and `--list` names them together with the manual `api` example. The table is `internal/build/policy`, the selection rule `internal/build/examples`.
+- `go run ./cmd/buildtool run-examples` runs the examples that terminate on their own (`artifacts`, `bloom`, `files`, `notes`, `pack`), each with the subcommand that completes it, and `--list` names them together with the manual `api` example. The table is `internal/build/policy`, the selection rule `internal/build/core/examples`.
 - The `api` example is a manual two-process pair, so no runner runs it: start the blocking server with `go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080`, then the demo client with `go run ./examples/api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md` in a second terminal (see [`examples/api/README.md`](../examples/api/README.md)).
 - `go run ./cmd/buildtool security` installs the pinned `govulncheck` version so local and CI vulnerability scans are reproducible. The pin is `internal/build/policy`'s, the override is `GOVULNCHECK_VERSION`; update the table deliberately.
 - CI sets `VERIFY_SKIP_SECURITY=true` because its required `security` job runs
