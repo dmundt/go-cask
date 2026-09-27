@@ -8,6 +8,13 @@
 // can expand without limit, so the ceiling, the one-byte-over probe and the
 // rule that the wrapped codec is never handed bytes this layer refused are
 // written once here.
+//
+// The compressor and the decompressor are as shared as the read is: a
+// flate-family writer carries roughly a megabyte of match tables, so `Encode`
+// takes a writer from a `WriterPool` and `Decode` a reader from a `ReaderPool`
+// rather than building either per call (go-cask#378). Each wrapper declares one
+// pool of each kind and passes it in; `pool.go` holds the machinery and the
+// concurrency contract.
 package bounded
 
 import (
@@ -32,9 +39,9 @@ var ErrNilCodec = errors.New("cas/codec: next codec is nil")
 // the payload through.
 var ErrDecodedTooLarge = fmt.Errorf("cas/codec: decoded payload exceeds %d bytes", MaxDecodedBytes)
 
-// Encode serializes v with next and then compresses the result with the writer
-// newWriter builds.
-func Encode[T any](next cas.Codec[T], v T, newWriter func(io.Writer) (io.WriteCloser, error)) ([]byte, error) {
+// Encode serializes v with next and then compresses the result with a writer
+// taken from writers.
+func Encode[T any](next cas.Codec[T], v T, writers *WriterPool) ([]byte, error) {
 	if next == nil {
 		return nil, ErrNilCodec
 	}
@@ -46,7 +53,7 @@ func Encode[T any](next cas.Codec[T], v T, newWriter func(io.Writer) (io.WriteCl
 
 	var buf bytes.Buffer
 	buf.Grow(len(payload) + len(payload)/8 + 64)
-	w, err := newWriter(&buf)
+	w, err := writers.get(&buf)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +64,10 @@ func Encode[T any](next cas.Codec[T], v T, newWriter func(io.Writer) (io.WriteCl
 	if err := w.Close(); err != nil {
 		return nil, err
 	}
+	// Only a writer that closed cleanly goes back to the pool: one that failed
+	// mid-stream is dropped instead, so the next call cannot inherit its broken
+	// state.
+	writers.put(w)
 	return buf.Bytes(), nil
 }
 
@@ -65,17 +76,16 @@ func Encode[T any](next cas.Codec[T], v T, newWriter func(io.Writer) (io.WriteCl
 // payload can expand without limit, so the read is capped rather than trusting
 // the stream. It is a parameter rather than the constant directly so a test can
 // exercise the ceiling without inflating a gigabyte.
-func Decode[T any](next cas.Codec[T], data []byte, maxDecoded int64, newReader func(io.Reader) (io.ReadCloser, error)) (T, error) {
+func Decode[T any](next cas.Codec[T], data []byte, maxDecoded int64, readers *ReaderPool) (T, error) {
 	var zero T
 	if next == nil {
 		return zero, ErrNilCodec
 	}
 
-	r, err := newReader(bytes.NewReader(data))
+	r, err := readers.get(bytes.NewReader(data))
 	if err != nil {
 		return zero, err
 	}
-	defer r.Close()
 
 	// The ceiling applies to the decompressed stream, not to data: a small
 	// compressed payload can expand far beyond its own size. LimitReader stops
@@ -83,11 +93,18 @@ func Decode[T any](next cas.Codec[T], data []byte, maxDecoded int64, newReader f
 	// "exactly at the limit" from "over it".
 	payload, err := io.ReadAll(io.LimitReader(r, maxDecoded+1))
 	if err != nil {
+		// A reader that failed mid-stream is closed and dropped, never parked.
+		_ = r.Close()
 		return zero, err
 	}
 	if int64(len(payload)) > maxDecoded {
+		_ = r.Close()
 		return zero, ErrDecodedTooLarge
 	}
+	// Close stays best-effort, as it was before pooling: the read reached the
+	// end of the stream, which is where the format's own checksum is validated.
+	_ = r.Close()
+	readers.put(r)
 	return next.Decode(payload)
 }
 
