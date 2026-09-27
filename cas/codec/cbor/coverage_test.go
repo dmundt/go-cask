@@ -60,7 +60,7 @@ func TestValueCodecCoverage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("appendEncodedValue(%T) = %v", val, err)
 		}
-		if _, _, err := decodeOne(encoded); err != nil {
+		if _, _, err := decodeOne(encoded, 0); err != nil {
 			t.Fatalf("decodeOne(%T) = %v", val, err)
 		}
 	}
@@ -93,7 +93,7 @@ func TestCBORInternalHelpers(t *testing.T) {
 
 func checkDecodeOne(t *testing.T, data []byte) error {
 	t.Helper()
-	v, rest, err := decodeOne(data)
+	v, rest, err := decodeOne(data, 0)
 	if err != nil {
 		return err
 	}
@@ -139,33 +139,33 @@ func TestReadLengthAndDecoderErrors(t *testing.T) {
 		}
 	}
 
-	if _, _, err := decodeOne(nil); err == nil {
+	if _, _, err := decodeOne(nil, 0); err == nil {
 		t.Fatal("empty input should error")
 	}
-	if _, _, err := decodeOne([]byte{0x82, 0x01}); err == nil {
+	if _, _, err := decodeOne([]byte{0x82, 0x01}, 0); err == nil {
 		t.Fatal("truncated array should error")
 	}
-	if _, _, err := decodeOne([]byte{0xA2, 0x01, 0x01}); err == nil {
+	if _, _, err := decodeOne([]byte{0xA2, 0x01, 0x01}, 0); err == nil {
 		t.Fatal("map key type should fail")
 	}
 	for _, validSimple := range [][]byte{{0xf4}, {0xf5}, {0xf6}} {
-		if _, _, err := decodeOne(validSimple); err != nil {
+		if _, _, err := decodeOne(validSimple, 0); err != nil {
 			t.Fatalf("simple value %x should decode: %v", validSimple, err)
 		}
 	}
-	if _, _, err := decodeOne([]byte{0xF8, 0x00}); err == nil {
+	if _, _, err := decodeOne([]byte{0xF8, 0x00}, 0); err == nil {
 		t.Fatal("unsupported simple value should error")
 	}
-	if _, _, err := decodeOne([]byte{0xF8, 0x1f}); err == nil {
+	if _, _, err := decodeOne([]byte{0xF8, 0x1f}, 0); err == nil {
 		t.Fatal("unsupported simple value 31 should error")
 	}
-	if _, _, err := decodeOne([]byte{0xFB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}); err == nil {
+	if _, _, err := decodeOne([]byte{0xFB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 0); err == nil {
 		t.Fatal("truncated float64 should error")
 	}
-	if _, _, err := decodeOne([]byte{0xF9, 0x3c, 0x00}); err != nil {
+	if _, _, err := decodeOne([]byte{0xF9, 0x3c, 0x00}, 0); err != nil {
 		t.Fatal("float16 value should decode without error")
 	}
-	if _, _, err := decodeOne([]byte{0xC0}); err == nil {
+	if _, _, err := decodeOne([]byte{0xC0}, 0); err == nil {
 		t.Fatal("unsupported major type should error")
 	}
 	if _, err := decodeMapValue([]byte{0x01}); err == nil {

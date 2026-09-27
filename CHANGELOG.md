@@ -560,6 +560,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ReadHeaderTimeout`, so a client that completes the header phase can no longer
   hold the connection and its goroutine open by dribbling or stalling a body.
 
+- `cas/codec/cbor` can no longer be made to terminate the process by a stored
+  payload. Its decoder bounded neither its recursion nor the stack, so a payload
+  of nested single-element arrays — under 2 MiB, and a legitimate `Put` because a
+  store addresses whatever bytes it is handed — exhausted the goroutine stack and
+  aborted the process with `fatal error: stack overflow`. That is a runtime
+  abort, not a panic, so a caller's `recover()` could not catch it and one
+  hostile object took down the whole program instead of one request. Nesting is
+  now bounded at `cbor.MaxDepth` (128 levels) and reported as the new
+  `cbor.ErrTooDeep`, distinct from a truncation error; a payload at or below the
+  limit decodes exactly as before.
+
 ## [v1.6.5] - 2026-09-22
 
 ### Added
