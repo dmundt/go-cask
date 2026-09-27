@@ -201,6 +201,9 @@ func TestVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The report writers are injectable: the summary lands on stdout and the
+	// per-object CORRUPT lines on stderr, never on the process streams.
+	var stdout, stderr bytes.Buffer
 	f := writeTempFile(t, work, "a.txt", "verify me")
 	if _, err := a.add(ctx, []string{f}); err != nil {
 		t.Fatal(err)
@@ -208,8 +211,14 @@ func TestVerify(t *testing.T) {
 	if _, err := a.commit(ctx, "c"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.verify(ctx); err != nil {
+	if err := a.verify(ctx, &stdout, &stderr); err != nil {
 		t.Fatalf("verify on clean store: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "0 corrupt") {
+		t.Fatalf("verify stdout = %q, want the summary", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("verify on a clean store wrote %q to stderr", stderr.String())
 	}
 
 	// Corrupt one stored object on disk.
@@ -229,8 +238,16 @@ func TestVerify(t *testing.T) {
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.verify(ctx); err == nil {
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.verify(ctx, &stdout, &stderr); err == nil {
 		t.Fatal("verify must report corruption")
+	}
+	if !strings.Contains(stderr.String(), "CORRUPT "+digests[0].String()) {
+		t.Fatalf("verify stderr = %q, want it to name %s", stderr.String(), digests[0])
+	}
+	if !strings.Contains(stdout.String(), "1 corrupt") {
+		t.Fatalf("verify stdout = %q, want the corrupt count", stdout.String())
 	}
 }
 
@@ -438,7 +455,7 @@ func TestErrorPaths(t *testing.T) {
 		t.Fatal("commit with no tree must error")
 	}
 	// verify on empty store: should not crash.
-	_ = a.verify(ctx)
+	_ = a.verify(ctx, &buf, &buf)
 }
 
 func TestCatTree(t *testing.T) {
