@@ -76,12 +76,21 @@ func helpRequest(args []string, newFlags func() *flag.FlagSet) (helpRequested, b
 // carrying the same "flag needs an argument" and "--" (end of flags) semantics
 // as the flag package. A flag the parser does not define is rejected here,
 // because the flag package would never see one placed after an operand.
+//
+// The "--" marker is forwarded rather than consumed, so the flag package
+// performs the end-of-flags handling itself: everything after the marker is an
+// operand, even a name that looks like a flag — `put -- -json` stores the file
+// "-json" instead of consuming it as the -json flag (cli.md §2, §4).
 func flagsFirst(flags *flag.FlagSet, args []string) ([]string, error) {
 	reordered := make([]string, 0, len(args))
 	operands := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
+			// The marker precedes every operand in the result: the flag
+			// package stops at the first non-flag argument, so operands
+			// collected before the marker go behind it too.
+			reordered = append(reordered, arg)
 			operands = append(operands, args[i+1:]...)
 			break
 		}

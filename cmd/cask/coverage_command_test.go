@@ -50,16 +50,9 @@ func TestHelpRequestedError(t *testing.T) {
 // TestFlagsFirstReordersAndHonorsTheMarker pins flagsFirst's contract directly,
 // because it is the seam that makes "put <file> [-json]" work: a flag and its
 // separate value move in front of the operands, and `--` ends the flag region —
-// everything after it is kept as an operand, in order, without further
-// reordering.
-//
-// The CLI-level consequence of the marker is recorded here as a limitation
-// rather than asserted as behaviour: `put -- -json` still exits 2, because
-// flagsFirst drops the `--` before handing the reordered slice to the flag
-// package, which then consumes the `-json` operand as its own flag. Storing a
-// file whose name IS a defined flag is therefore not reachable through the
-// marker; a file whose name is merely dashed (`-data.bin`) fails the same way
-// one step earlier, in flagsFirst's unknown-flag check.
+// the marker itself is forwarded in front of the operands, so the flag package
+// applies its own end-of-flags rule and keeps everything after it as an
+// operand, in order (go-cask#367).
 func TestFlagsFirstReordersAndHonorsTheMarker(t *testing.T) {
 	t.Run("operand then flag", func(t *testing.T) {
 		got, err := flagsFirst(putFlags(new(putArgs)), []string{"data.bin", "-json"})
@@ -86,8 +79,18 @@ func TestFlagsFirstReordersAndHonorsTheMarker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Equal(got, []string{"--json"}) {
-			t.Fatalf("flagsFirst(-- --json) = %v, want the marker's remainder kept as the operand list", got)
+		if !slices.Equal(got, []string{"--", "--json"}) {
+			t.Fatalf("flagsFirst(-- --json) = %v, want the marker forwarded ahead of its operands", got)
+		}
+	})
+
+	t.Run("end of flags after an operand", func(t *testing.T) {
+		got, err := flagsFirst(putFlags(new(putArgs)), []string{"data.bin", "--", "-json"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, []string{"--", "data.bin", "-json"}) {
+			t.Fatalf("flagsFirst(data.bin -- -json) = %v, want the marker ahead of every operand", got)
 		}
 	})
 

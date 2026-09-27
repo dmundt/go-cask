@@ -114,6 +114,55 @@ func TestPutGetFlagOrder(t *testing.T) {
 	}
 }
 
+// TestPutGetEndOfFlags pins the "--" (end of flags) marker end to end for the
+// operand-then-flag order cli.md §2 documents for put and get: the marker
+// reaches the flag package, so a name after it is an operand even when it looks
+// like a flag — a file called "-json" is stored and read back as data, and
+// "-h" is a file rather than a help request (go-cask#367).
+func TestPutGetEndOfFlags(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	// The operand is a bare dashed name, so the test must run where such a file
+	// lives: a path like <dir>/-json would not begin with a dash.
+	names := []string{"-json", "-data.bin", "-h"}
+	content := make(map[string]string, len(names))
+	for _, name := range names {
+		content[name] = "bytes stored under a dashed name: " + name
+		if err := os.WriteFile(name, []byte(content[name]), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mf := localMF(t)
+	for _, name := range names {
+		out, code := run(t, mf, "put", "--", name)
+		if code != 0 {
+			t.Fatalf("put -- %s exit %d, want 0: the marker makes %s an operand", name, code, name)
+		}
+		hash := strings.TrimSpace(strings.TrimSuffix(out, "(deduplicated)\n"))
+		if !strings.HasPrefix(hash, "sha256:") {
+			t.Fatalf("put -- %s printed %q, want the stored hash", name, out)
+		}
+		// The marker also covers the parser's own definitions: -json was not
+		// consumed as the flag, and -h did not become the usage text.
+		for _, args := range [][]string{{"get", "--", hash}, {"get", hash, "--"}} {
+			got, code := run(t, mf, args[0], args[1:]...)
+			if code != 0 || got != content[name] {
+				t.Fatalf("%v = (%q, %d), want %q and exit 0", args, got, code, content[name])
+			}
+		}
+	}
+
+	// After the marker nothing is a flag: "-o" is a third operand, a usage
+	// error rather than a silent write to the named file.
+	out, _ := run(t, mf, "put", "--", "-json")
+	hash := strings.TrimSpace(strings.TrimSuffix(out, "(deduplicated)\n"))
+	if _, code := run(t, mf, "get", "--", hash, "-o", filepath.Join(dir, "out.bin")); code != 2 {
+		t.Errorf("get -- <hash> -o <file> exit %d, want 2: the marker ends flag parsing", code)
+	}
+}
+
 // TestParseGlobalFlagForms covers the global flag forms cli.md §4 allows
 // (-store <path>, -store=<path>, --store=<path>) and the usage errors for an
 // unknown flag and a missing command.
