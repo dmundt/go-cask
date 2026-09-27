@@ -102,6 +102,15 @@ func Parse(payload string) (Record, error) {
 		if !found {
 			continue
 		}
+		// A value carrying a CR cannot ride in the format. Parse folds a CRLF into one
+		// line ending while it reads, so the CR render writes after such a value is the CR
+		// of the pair the next read collapses: the value comes back shorter — or empty —
+		// and the record is no longer the one the run wrote. Like a check name the
+		// character set cannot carry, the line is ignored rather than carried, so every
+		// value a parsed record reports is one a render is a fixed point of.
+		if strings.ContainsRune(value, '\r') {
+			continue
+		}
 		if name == fieldCheck {
 			// A check line whose value cannot ride in the format is a line this reader does
 			// not understand, like any other malformed one: it is ignored rather than

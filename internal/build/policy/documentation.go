@@ -48,7 +48,7 @@ func InstructionBudgets() []docs.InstructionBudget {
 	return []docs.InstructionBudget{
 		{Path: "AGENTS.md", MaxBytes: 6 * 1024},
 		{Path: ".agents/AGENT.md", MaxBytes: 8 * 1024},
-		{Path: ".github/AGENT.md", MaxBytes: 12 * 1024},
+		{Path: ".github/AGENT.md", MaxBytes: 10 * 1024},
 		{Path: "benchmarks/AGENT.md", MaxBytes: 8 * 1024},
 		{Path: "benchmarks/data/AGENT.md", MaxBytes: 2 * 1024},
 		{Path: "cas/AGENT.md", MaxBytes: 5 * 1024},
@@ -59,7 +59,7 @@ func InstructionBudgets() []docs.InstructionBudget {
 		{Path: "docs/specs/AGENT.md", MaxBytes: 13 * 1024},
 		{Path: "examples/AGENT.md", MaxBytes: 5 * 1024},
 		{Path: "internal/build/AGENT.md", MaxBytes: 5 * 1024},
-		{Path: "scripts/AGENT.md", MaxBytes: 26 * 1024},
+		{Path: "scripts/AGENT.md", MaxBytes: 20 * 1024},
 		{Path: "website/AGENT.md", MaxBytes: 9 * 1024},
 	}
 }
