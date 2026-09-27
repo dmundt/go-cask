@@ -24,6 +24,7 @@ import (
 	"github.com/dmundt/go-cask/cas/verify/crc32"
 	"github.com/dmundt/go-cask/cas/verify/crc64"
 	"github.com/dmundt/go-cask/cas/verify/sidecar"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 const metaDir = ".meta"
@@ -188,7 +189,7 @@ func TestRecordFilesAreInvisibleToListAndStats(t *testing.T) {
 			t.Fatalf("List returned a record file as an object: %s", d)
 		}
 	}
-	if !containsDigest(digests, first) || !containsDigest(digests, second) {
+	if !test.ContainsDigest(digests, first) || !test.ContainsDigest(digests, second) {
 		t.Fatalf("List = %v, want both stored objects", digests)
 	}
 	stats, err := backend.Stats(ctx)
@@ -433,7 +434,7 @@ func TestVerifyAllSeparatesBadFromUnrecorded(t *testing.T) {
 	if len(report.Unrecorded) != 1 || !report.Unrecorded[0].Equal(unrecorded) {
 		t.Errorf("Unrecorded = %v, want [%s]", report.Unrecorded, unrecorded)
 	}
-	if !containsDigest([]cas.Digest{intact}, intact) {
+	if !test.ContainsDigest([]cas.Digest{intact}, intact) {
 		t.Error("intact object missing from the checked set")
 	}
 }
@@ -462,11 +463,11 @@ func TestVerifyAllContinuesPastAnUnreadableRecord(t *testing.T) {
 		t.Errorf("Bad = %v, want none: an unreadable record is not a checksum mismatch", report.Bad)
 	}
 	for _, d := range []cas.Digest{unparsable, oversized} {
-		if !containsDigest(report.Unreadable, d) {
+		if !test.ContainsDigest(report.Unreadable, d) {
 			t.Errorf("Unreadable = %v, want it to name %s", report.Unreadable, d)
 		}
 	}
-	if containsDigest(report.Unreadable, intact) || containsDigest(report.Bad, intact) {
+	if test.ContainsDigest(report.Unreadable, intact) || test.ContainsDigest(report.Bad, intact) {
 		t.Errorf("the intact object %s was reported as damaged", intact)
 	}
 	// The single-object read stays loud about the same damage.
@@ -517,7 +518,7 @@ func TestWriterNeverPublishesARecordItsReaderRefuses(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Keys: %v", err)
 			}
-			if !containsDigest(keys, d) {
+			if !test.ContainsDigest(keys, d) {
 				t.Errorf("Keys = %v, want the record Put wrote for %s", keys, d)
 			}
 		})
@@ -678,7 +679,7 @@ func TestKeysListsSortedRecordedDigests(t *testing.T) {
 			t.Fatalf("Keys not sorted: %v", keys)
 		}
 	}
-	if !containsDigest(keys, first) || !containsDigest(keys, second) {
+	if !test.ContainsDigest(keys, first) || !test.ContainsDigest(keys, second) {
 		t.Errorf("Keys = %v, want %s and %s", keys, first, second)
 	}
 
@@ -994,16 +995,6 @@ func TestVerifierRejectsBadArguments(t *testing.T) {
 	if _, err := rec.Verifier(crc32.Name, nil).VerifyAll(ctx); err == nil {
 		t.Error("VerifyAll with a nil hasher succeeded, want an error")
 	}
-}
-
-// containsDigest reports whether the slice holds d.
-func containsDigest(digests []cas.Digest, d cas.Digest) bool {
-	for _, other := range digests {
-		if other.Equal(d) {
-			return true
-		}
-	}
-	return false
 }
 
 var (

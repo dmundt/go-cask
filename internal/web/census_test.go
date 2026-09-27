@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,25 +14,8 @@ import (
 	"github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/index"
+	"github.com/dmundt/go-cask/internal/test"
 )
-
-// v2Envelope builds a version 2 TLV envelope — the layout this build writes, with
-// the codec identity tag in front of the type name — for the viewer tests.
-func v2Envelope(codec, typeName string, payload []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteByte(2) // envelopeVersion
-	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(codec)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(codec)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(typeName)))
-	buf.Write(lenBuf[:n])
-	buf.WriteString(typeName)
-	n = binary.PutUvarint(lenBuf[:], uint64(len(payload)))
-	buf.Write(lenBuf[:n])
-	buf.Write(payload)
-	return buf.Bytes()
-}
 
 // seedHeaderCensus renders one store holding the three header shapes a census
 // must tell apart: a current-format frame with a codec tag, a version 1 frame
@@ -53,8 +35,8 @@ func seedHeaderCensus(t *testing.T) (ts *httptest.Server, admin *http.Client, ta
 		}
 		return d
 	}
-	tagged = put(v2Envelope("json", "blob@1", []byte("tagged")))
-	v1 = put(tlvEnvelope("note@1", []byte("v1")))
+	tagged = put(test.V2Envelope("json", "blob@1", []byte("tagged")))
+	v1 = put(test.TLVEnvelope("note@1", []byte("v1")))
 	raw = put([]byte("not an envelope"))
 	srv, err := New(backend, Config{StartupToken: testStartupToken})
 	if err != nil {

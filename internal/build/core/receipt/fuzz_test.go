@@ -19,6 +19,9 @@ func FuzzParse(f *testing.F) {
 	f.Add(Version + "\ncommit " + strings.Repeat("a", 4096) + "\n")
 	f.Add(Version + "\ncheck \n")
 	f.Add(Version + "\nscope\n")
+	// A field value carrying a CR: the seed `testdata/fuzz/FuzzParse/seed-cr-in-value`
+	// keeps it, and this line keeps it visible beside the property it broke.
+	f.Add(Version + "\nscope \r")
 	f.Add("cask-gate-receipt 1")
 
 	f.Fuzz(func(t *testing.T, payload string) {
