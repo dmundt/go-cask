@@ -29,7 +29,7 @@ func Inventories() []website.Inventory {
 // ordered, and the trees nest: `cas/backend/fs` is inside `cas`, so whichever of
 // the byte layer and the core is drawn first takes it.
 //
-// The grouping mirrors the arms AGENTS.md "Layers and citizen classes" states,
+// The grouping mirrors the arms library-design.md §1.1 states,
 // resolved the way the bash `case` this replaced resolved them: the narrower tree is
 // tested first, and each layer excludes the narrower one it contains.
 func GraphDoc() depgraph.Doc {

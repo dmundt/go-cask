@@ -1,8 +1,8 @@
 ---
 type: Specification
 title: Versioning — go-cask
-description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v20
+description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, release notes, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
+version: v21
 ---
 
 # Versioning — go-cask
@@ -43,7 +43,15 @@ Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
 ## 4. Commit and changelog conventions
 
 - **Commits:** Conventional Commits — `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `chore:`. A breaking change MUST add a `BREAKING CHANGE:` footer → MAJOR. These types drive the bump decision (§5).
-- **CHANGELOG.md** (keep-a-changelog, repo root): `## [Unreleased]` collects changes between releases; on release it becomes `## [vX.Y.Z] - <date>` and a new empty `Unreleased` is opened; group by Added / Changed / Fixed / Removed; note breaking changes prominently.
+- **CHANGELOG.md** (keep-a-changelog, repo root): `## [Unreleased]` collects changes between releases; on release it becomes `## [vX.Y.Z] - <date>` and a new empty `Unreleased` is opened; note breaking changes prominently.
+- **The changelog is a lean, user-facing record, not a development diary.** One `Unreleased` section and one section per tagged release; record only notable changes that affect library consumers, CLI users, operators, or the viewer's behavior and security.
+  - Group by `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`, and only where the group holds a notable entry — never create an empty heading.
+  - Combine related changes into one clear bullet when they form one user-facing capability.
+  - Describe outcome and user impact, not implementation history, review discussion, or individual commits.
+  - Omit test-only work, coverage changes, routine CI or dependency maintenance, internal refactors with no observable behavior change, formatting, release preparation, and temporary fixes.
+  - Update `CHANGELOG.md` before the commit for every notable user-visible change; add no entry for a change that is purely internal or temporary.
+  - Before a release, move that release's finalized entries from `Unreleased` into the versioned section and preserve the existing compare-link format.
+- **GitHub release notes mirror the changelog.** They MUST reproduce the corresponding user-facing `CHANGELOG.md` section with the same concise scope, ignore what the changelog ignored, and end with a `Full Changelog:` link to the tag comparison; correct older published notes that still carry temporary or trivial material. Render them with `go run ./cmd/buildtool release` rather than by hand (`scripts/AGENT.md`, "Releasing").
 
 ## 5. Release process
 

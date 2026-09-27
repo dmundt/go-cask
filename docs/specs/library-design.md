@@ -1,8 +1,8 @@
 ---
 type: Specification
 title: Library Design — go-cask
-description: The lean-core contract for the cas library — exported-surface budget, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v50
+description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
+version: v51
 ---
 
 # Library Design — go-cask
@@ -19,7 +19,29 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 - The mutable half of the store — named, atomically-written pointers to a `cas.Digest`, with a reflog — lives in `cas/refs` (`refs.Open(dir, opts...)`; `refs.WithClock`), never in `package cas`: `Store.Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`, the `Ref`/`Entry` types, `Option`, `ValidateName`, and the sentinels `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName`.
 - The typed, cross-type registry promoted from gitlike's example `Codecs`/`Repository`/`Resolver`/`WalkGraph` pattern lives in `cas/repo`, never in `package cas`: `Object`, `Decoder`, `Resolver`, `Registry`/`NewRegistry`, `Register`, `RegisterStore[T]`, `LookupStore[T]` (the typed, `any`-free way back to a registered store), `Walk`, `Reachable`, `UnknownObject`, and `UnknownTypeError` (`Unwrap() == cas.ErrUnknownType`).
 - The optional recorded-checksum maintenance layer lives in `cas/verify/sidecar`, never in `package cas`: `Backend` (a `cas.Backend` decorator), `New`, `WithBase`/`WithChecksum`/`WithDirSync`/`WithMaxRecordBytes`, `Record`/`RecordVersion`/`DefaultMaxRecordBytes`, `Verifier`, `VerifyReport`, `ReconcileReport`, and its two sentinels. It adds no identifier to `package cas` — the budget above is unchanged — because the distinction it names is its own: `ErrUnrecorded` separates "no record" from "no object" (both are `cas.ErrNotFound`), and `ErrChecksumAlgorithm` separates a reader change from damage (as `cas.ErrCodecMismatch` does one layer down).
-- The `gitlike` layer is NOT part of `cas`, and it is not an example either: it is a **2nd-class reference library at the application layer** — a package in this module (`github.com/dmundt/go-cask/gitlike`), shipped and coverage-gated, importable by apps and examples, and deliberately outside the frozen surface above, so a breaking change to it may ride a MINOR with a changelog note (the `gitlike.Codecs` change is the precedent, versioning §1). The product (`cmd/**`, `internal/**`) never imports it, and `examples/**` (3rd class: teaching code with no compatibility surface) may. AGENTS.md, "Layers and citizen classes", states the classes and the dependency matrix; `internal/build/layers` carries that table as data and `scripts/verify.sh` runs it.
+- The `gitlike` layer is NOT part of `cas`, and it is not an example either: it is a **2nd-class reference library at the application layer** — a package in this module (`github.com/dmundt/go-cask/gitlike`), shipped and coverage-gated, importable by apps and examples, and deliberately outside the frozen surface above, so a breaking change to it may ride a MINOR with a changelog note (the `gitlike.Codecs` change is the precedent, versioning §1). The product (`cmd/**`, `internal/**`) never imports it, and `examples/**` (3rd class: teaching code with no compatibility surface) may. §1.1 states the classes and the dependency matrix.
+
+### 1.1 Classes and layers
+
+Two axes, deliberately independent. **Class** says who may rely on a change and where it must be recorded; **layer** says what may import what. `internal/build/layers` carries the matrix below as data, `scripts/verify.sh` runs it as the layer-matrix check, and `internal/build/depgraph` draws `gitlike` in its own `REFERENCE` layer.
+
+| Class | Trees | Promise | Change record |
+| --- | --- | --- | --- |
+| 1st | `cas/**` | the frozen core surface (cas-core §7.1, §1 above): additive-compatible — a breaking change needs a major version or a recorded exception (versioning §1) | `CHANGELOG.md` |
+| 2nd | `gitlike`, `cmd/cask`, `internal/**` | shipped and gated, no frozen API: a breaking change may ride a MINOR with a changelog note (the `gitlike.Codecs` change is the precedent, versioning §1); the CLI is a program governed by `cli.md` | `CHANGELOG.md` |
+| 3rd | `examples/**` | none — teaching code a consumer copies, changed freely | the example's `README.md` |
+
+The dependency layers are `cas/` → `gitlike/` → `examples/`. The product (`cmd/cask`, `internal/**`) sits *beside* the chain, never above it.
+
+| From, may import | `cas/**` | `gitlike` | `internal/**` | `cmd/**` | `examples/**` |
+| --- | --- | --- | --- | --- | --- |
+| `cas/**` | yes | no | no | no | no |
+| `gitlike` | yes | — | no | no | no |
+| `internal/**`, `cmd/**` | yes | no | yes | yes | no |
+| `examples/**` | yes | yes | no | no | no |
+| `benchmarks` | yes | yes | no | no | no |
+
+`gitlike` is a library *at* the application layer — the shape an app's own object model takes, shipped as a reference — not an application and not an example: it is a package in this module, importable by apps and examples, and deliberately outside the frozen `cas` surface. `cmd/cask` and `gitlike` are 2nd-class peers with no dependency between them.
 
 ## 2. Error contract
 
@@ -59,7 +81,7 @@ var (
 2. Functional options for optional configuration — each backend declares its own `Option func(*itsConfig)` (`fs.Option`, `mem.Option`, `packfs.Option`), so an option built for one backend is a compile error against another instead of a silent no-op. Never positional `bool`/`int` soup.
 3. Zero values are usable where meaningful (the zero `Digest` is the absent reference, an empty store).
 4. Accept interfaces, return concrete types.
-5. No `any`/`interface{}` in the exported API: no exported value, parameter or result type may be `any`. An unconstrained type parameter (`Codec[T any]`, `Object[T any]`) is Go's constraint syntax rather than a value type, so it is not what this rule is about. One recorded exception (go-cask#191): the low-level CBOR codec is a dynamic value model by design, so `cas/codec/cbor` exports `NewValue() Codec[any]` and `NewMap() Codec[map[string]any]`; every other exported signature in the repo is `any`-free, and new `any` in an exported API needs the same explicit ratification. That ratification is mechanical: `internal/design` walks the module's exported declarations and fails on a value-position `any` outside its allow-list, which names exactly the two CBOR symbols above; the check fails on a stale entry too, so an exemption cannot outlive the `any` it was granted for.
+5. No `any`/`interface{}` in the exported API: no exported value, parameter or result type may be `any`. An unconstrained type parameter (`Codec[T any]`, `Object[T any]`) is Go's constraint syntax rather than a value type, so it is not what this rule is about. The rule covers exported **surface** positions only: an unexported field or method, a `package main` declaration, and a test file are outside it. One recorded exception (go-cask#191): the low-level CBOR codec is a dynamic value model by design, so `cas/codec/cbor` exports `NewValue() Codec[any]` and `NewMap() Codec[map[string]any]`; every other exported signature in the repo is `any`-free, and new `any` in an exported API needs the same explicit ratification. That ratification is mechanical: `internal/design` walks the module's exported declarations and fails on a value-position `any` outside its allow-list, which names exactly the two CBOR symbols above; the check fails on a stale entry too, so an exemption cannot outlive the `any` it was granted for.
 6. Names: no stutter (`cas.Store`, never `cas.CasStore`); initialisms correct (`URL`, `ID`, `HTTP`).
 7. Minimal method sets; prefer functions over methods when no state is involved.
 8. Streaming types (`io.Reader`/`io.ReadCloser`) used consistently; ownership ("caller MUST Close") documented.

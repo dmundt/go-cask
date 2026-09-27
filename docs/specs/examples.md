@@ -2,7 +2,7 @@
 type: Specification
 title: Examples — go-cask
 description: Guidance for generating example programs for CASK, plus four runnable examples (files, artifacts, notes, api) and the gitlike shared reference library — the viewer aspect is covered by the product object browser (internal/web). Every example ships a README.md documenting the `cas` core parts used and extended, a code walkthrough, and a Mermaid diagram.
-version: v24
+version: v25
 ---
 
 # Examples — go-cask
@@ -25,7 +25,7 @@ Three audiences: **doc readers** (a runnable program beats API signatures and ma
 8. **`README.md` is REQUIRED** in the example folder (plus the package comment), teaching the example. It MUST contain: **What it demonstrates** (primary aspect + acceptance, one short paragraph); **`cas` core parts used** (exact components/APIs, e.g. `Store[T]`, `json.New[T]()`, `cas.Digest` reference fields, the `sha256.New()`/`sha256.Of` hasher, `fs.WithFanOut`/`WithFanLevels`, `Verify`, `GC`, `cachemem.CachedStore[T]`/`lru.Cache`, `CachedObject[T]`); **What it extends** (a custom `Codec[T]`, an own `Object[T]`/repo/resolver, an HTTP surface — never a custom hash algorithm: the client merely injects `cas.Hasher`) and what it does NOT modify (stated explicitly) (`cas`/`gitlike` untouched); **Code walkthrough** (files and roles, key flow); **A Mermaid diagram** (balanced, AGENT.md §9); **How to run** (exact commands + expected output shape). Focused, concrete — docs for app authors.
 9. **Coverage:** the example set MUST keep covering the aspect matrix (§4); a duplicate-aspect example is discouraged unless it is a better teaching vehicle.
 10. **Never modify the libraries for an example's sake:** a missing feature is a spec/library change — raise it separately, never hack around it in the example.
-11. **Self-contained:** an example MUST NOT import another example's package, `internal/**` or `cmd/**`. The module's libraries — `cas/**` and `gitlike` — are ordinary imports, not exceptions: `gitlike` is a 2nd-class library at the application layer, so `files` importing it is the intended direction (AGENTS.md, "Layers and citizen classes", carries the full matrix). Examples never depend on `files`/`artifacts`/`notes`/`api`, and those never on each other.
+11. **Self-contained:** an example MUST NOT import another example's package, `internal/**` or `cmd/**`. The module's libraries — `cas/**` and `gitlike` — are ordinary imports, not exceptions: `gitlike` is a 2nd-class library at the application layer, so `files` importing it is the intended direction (library-design.md §1.1 carries the full matrix). Examples never depend on `files`/`artifacts`/`notes`/`api`, and those never on each other.
     - Decision (2026-09): cache/recipe helpers (`SmartCache` in notes, `CacheMonitor` in artifacts) stay **inlined** teaching code in their own example, not shared packages. Create a shared home only when a **second consumer of that same helper** exists; decide that home deliberately then.
 
 ## 3. Proposed examples

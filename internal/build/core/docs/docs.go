@@ -6,7 +6,7 @@
 // HTML/XML/SVG code fences, links and file references that point at nothing, and
 // the CHANGELOG structure the release notes depend on. A rule written as an
 // embedded script is executed by every developer and by CI but covered by no
-// test of its own, which is the failure AGENTS.md, "`verify.sh` stays forever",
+// test of its own, which is the failure scripts/AGENT.md, "`verify.sh` stays forever",
 // rules out for the gate.
 //
 // The checks live here as ordinary functions over (path, content) pairs, so they
@@ -15,7 +15,7 @@
 // which is what keeps these functions pure and testable.
 //
 // The rules themselves are stated in docs/specs/AGENT.md §9 (the Markdown and
-// documentation conventions) and AGENTS.md, "Changelog and release-note policy".
+// documentation conventions) and versioning.md §4.
 package docs
 
 import (

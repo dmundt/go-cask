@@ -23,11 +23,11 @@ boundary.
 ## Public docs versus normative specs
 
 This website explains the project for adopters: architecture, concepts,
-recipes, and accurate code examples. The normative implementation rules that
-constrain agent- and human-assisted changes to the repository live in
-`docs/specs/` and the repository root `AGENTS.md`. Keep that distinction: the
-public site should never need a reader to open `AGENTS.md` to understand how
-to use the library.
+recipes, and accurate code examples. The normative design that constrains
+agent- and human-assisted changes to the repository lives in `docs/specs/`; the
+repository root `AGENTS.md` is only a router that points at the spec owning the
+path being edited. Keep that distinction: the public site should never need a
+reader to open `AGENTS.md` to understand how to use the library.
 
 ## Before you submit a change
 

@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v21
+version: v22
 generated: internal/build/depgraph
 ---
 
@@ -249,6 +249,7 @@ flowchart TD
   internal_build_policy --> internal_build_core_coverage
   internal_build_policy --> internal_build_core_depgraph
   internal_build_policy --> internal_build_core_deps
+  internal_build_policy --> internal_build_core_docs
   internal_build_policy --> internal_build_core_examples
   internal_build_policy --> internal_build_core_layers
   internal_build_policy --> internal_build_core_website

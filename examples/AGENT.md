@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Examples
 description: Rules for runnable example programs under examples/, including folder conventions, README requirements, test expectations, and the allowed scope of teaching code.
-version: v5
+version: v6
 ---
 
 # AGENT — go-cask Examples
@@ -15,7 +15,7 @@ Related: [AGENTS.md](../AGENTS.md), [docs/specs/examples.md](../docs/specs/examp
 
 - `examples/<name>/` for runnable programs (`package main`) and their tests/docs.
 - Examples = teaching code, not library code. Must demonstrate real app wiring using public API only.
-- `gitlike/` = reference support library at module root, not example: 2nd-class library at application layer that apps and examples import (AGENTS.md, "Layers and citizen classes").
+- `gitlike/` = reference support library at module root, not example: 2nd-class library at application layer that apps and examples import (library-design.md §1.1).
 - Never change core `cas` package to accommodate an example's convenience or missing feature. Feature missing: fix library or spec instead of hacking around it in example.
 
 ## 2. Mandatory structure
@@ -44,7 +44,7 @@ Keep README short and direct. Should teach pattern and scope, not duplicate full
 
 - One focus per example: one real workflow, not a kitchen sink.
 - Use stdlib only. No external dependencies in example code.
-- Never import another example package, `internal/**` or `cmd/**`; module's libraries (`cas/**`, `gitlike`) are ordinary imports. Rule 11 of `docs/specs/examples.md` §2 states it, AGENTS.md carries layer matrix.
+- Never import another example package, `internal/**` or `cmd/**`; module's libraries (`cas/**`, `gitlike`) are ordinary imports. Rule 11 of `docs/specs/examples.md` §2 states it, library-design.md §1.1 carries the layer matrix.
 - Keep examples self-contained. Prefer teaching code inline rather than introducing a new helper package unless a second consumer justifies it.
 - Use secure defaults: `SHA-256` for identity, JSON for readable formats, filesystem storage for durable examples.
 - Never add `any` to example APIs. Prefer explicit typed models.
