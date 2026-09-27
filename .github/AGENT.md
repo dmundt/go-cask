@@ -1,48 +1,37 @@
 ---
 type: Agent Instructions
 title: GitHub repository operations
-description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v9
+description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, local gate receipts, code scanning, and how to validate a settings change with the gh API.
+version: v10
 ---
 
 # GitHub repository operations
 
-Directory contains repository automation and GitHub configuration
-conventions. Keep GitHub settings, workflow files, and these rules aligned.
-
-## Markdown policy
-
-Raw HTML strictly forbidden in every Markdown file in this repository.
-Use valid Markdown syntax only; never add HTML tags, comments, layout
-wrappers, or embedded HTML blocks.
+Repository automation and GitHub configuration. Keep settings, workflow files and
+these rules aligned.
 
 ## Main branch
 
-`main` accepts changes through pull requests only. Keep these protections
-enabled:
+`main` accepts changes through pull requests only. Keep these protections enabled:
 
 - Require resolved review conversations, keep stale-review dismissal on.
 - Require these status checks: `verify`, `security`, `platforms`,
-  `Analyze (actions)`, and `Analyze (go)`. The two CodeQL contexts come from
-  `.github/workflows/codeql.yml`, the repository's advanced setup, which is why
-  its workflow must stay enabled (see "Code scanning"). Keep `strict` off: an
-  up-to-date branch not required, because the land lane serializes landings
-  instead ([`../docs/specs/landing.md`](../docs/specs/landing.md) §5).
-- Keep approving-review count at zero, approval-after-last-push off: in
-  this single-account repository the pull-request author and the only possible
-  reviewer are the same account, so a required approval would deadlock every
-  pull request.
-- Enforce protections for administrators, require signed commits, require
-  linear history.
+  `Analyze (actions)`, `Analyze (go)` — the two CodeQL contexts come from
+  `.github/workflows/codeql.yml`, the repository's advanced setup, so its workflow
+  must stay enabled ("Code scanning"). Keep `strict` off: the land lane serializes
+  landings instead (`docs/specs/landing.md` §5).
+- Keep approving-review count at zero, approval-after-last-push off: author and only
+  possible reviewer are the same account, so a required approval deadlocks every PR.
+- Enforce protections for administrators, require signed commits, require linear
+  history.
 - Reject force-pushes and branch deletion.
 - Never configure bypass allowances.
 
 ## Issue labels
 
-Labels come from this vocabulary. Each label's description and colour are
-repository settings; adding, renaming, or removing a label is a change to this
-section in the same pull request, and the live repository MUST match the table
-(`gh label list`).
+Labels come from this vocabulary. Each label's description and colour are repository
+settings; add, rename or remove one with this section in the same pull request, and the
+live repository MUST match the table (`gh label list`).
 
 | Label | Meaning |
 |---|---|
@@ -69,145 +58,111 @@ section in the same pull request, and the live repository MUST match the table
 | `viewer` | Embedded object-browser viewer: screens, layout, filters, inspector, styling |
 | `wontfix` | This will not be worked on |
 
-Labels are additive: an issue carries one type label (`bug`, `enhancement`,
-`documentation`, `chore`, `performance`, `security`, `api`, `parity`) plus every
-area label that applies (`viewer`, `accessibility`, `example`, `agent-workflow`,
-`ci`).
+Additive: one type label (`bug`, `enhancement`, `documentation`, `chore`,
+`performance`, `security`, `api`, `parity`) plus every area label that applies
+(`viewer`, `accessibility`, `example`, `agent-workflow`, `ci`).
 
 ### The `viewer` label
 
-`viewer` marks work whose subject is the embedded object browser:
+Marks work whose subject is the embedded object browser:
 
 - `internal/web/` — templates, the single stylesheet, the object table and its
-  columns, filters, the inspector, reference states, and integrity display;
+  columns, filters, the inspector, reference states, integrity display;
 - the `cask web` server surface — startup-token handling, login/session, request
-  throttle, audit logging, and response hygiene;
+  throttle, audit logging, response hygiene;
 - `seed-preview` and the preview graph where the viewer is the consumer;
-- the viewer specs (`viewer-design.md`, `viewer-security.md`) and the viewer's
-  documentation page.
+- the viewer specs and page — `docs/specs/viewer-design.md`,
+  `docs/specs/viewer-security.md`.
 
-It does not mark an issue that only mentions the viewer among other surfaces: a
-cross-cutting refactor, repository tooling, or a website/docs change whose
-subject is elsewhere stays unlabeled even when a viewer file appears in its
-evidence.
+Not for an issue that mentions the viewer among other surfaces: a cross-cutting
+refactor, repository tooling or a website/docs change whose subject is elsewhere stays
+unlabeled.
 
 List the viewer backlog with
 `gh issue list --state all --search 'label:viewer'`.
 
 ## Signed pull-request workflow
 
-When signed commits are required, rebuild PR branches locally from current
-`main`; never use GitHub's server-side rebase or update-branch operation.
-Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, push with `git push --force-with-lease`. Before every
-PR creation or update, run `./scripts/verify.sh` and confirm all configured
-coverage thresholds pass. Enable auto-merge or merge only after signature
-verification, required checks, and coverage checks pass.
-
-On Windows, run that gate under WSL as described in
-[`scripts/AGENT.md`](../scripts/AGENT.md): the race and coverage gate needs cgo
-and a C compiler, which the Windows toolchain cannot take from WSL's `gcc`, and
-coverage measured on Windows does not predict the gate.
+Rebuild PR branches locally, sign and verify each head commit, re-gate, push
+force-with-lease: signed-commit workflow, WSL gate command and coverage thresholds are
+`docs/specs/landing.md` §4 and `scripts/AGENT.md` "Running the scripts on Windows".
 
 ## Merge and security settings
 
 - Allow squash merges only. Keep merge commits and rebase merges disabled.
-- Permit auto-merge only after branch protections pass. Delete merged head
-  branches automatically.
+- Permit auto-merge only after branch protections pass. Delete merged head branches
+  automatically.
 - Require web commit signoff.
-- Keep private vulnerability reporting, Dependabot alerts/security updates,
-  secret scanning, and secret-scanning push protection enabled.
-- GitHub currently reports secret-scanning non-provider patterns and validity
-  checks as unavailable for this repository. Re-enable them if GitHub exposes
-  support; never replace GitHub scanning with custom workflow logic.
+- Never replace GitHub scanning with custom workflow logic: keep private vulnerability
+  reporting, Dependabot alerts/security updates, secret scanning and secret-scanning
+  push protection enabled, and re-enable non-provider patterns and validity checks
+  once GitHub exposes them.
 
 ## Workflow policy
 
 - Grant workflows least-privilege permissions explicitly.
 - Pin third-party actions to full commit SHAs with a readable version comment.
-- Keep Dependabot updates configured for GitHub Actions, Go modules, and Python
-  documentation dependencies.
-- CI and CodeQL validate pull requests and support manual runs; CodeQL also
-  performs its weekly scheduled scan. Protected `main` does not repeat the
-  same validation after a checked pull request is merged.
-- Scope security scans to Go- and security-relevant changes, platform jobs
-  to Go-relevant changes. Keep the platform matrix on Linux runners only: it
-  cross-compiles and vets windows/amd64, darwin/amd64, darwin/arm64 and
-  linux/arm64, so no Windows and no macOS runner is paid for, and those targets
-  are compile-gated rather than executed — a cross-build cannot run what it
-  produces. The primary `verify` job is the only job that executes tests, and it
-  provides Linux amd64 build, race, test and coverage validation; behaviour on
-  any other platform is not verified by CI (testing-strategy §5). Require the
-  always-running `platforms` aggregate check
-  so conditional matrix jobs still gate Go changes without blocking docs-only
-  changes.
-- Cancel superseded pull-request runs through workflow concurrency.
-- Pages runs only for public documentation inputs.
-- Keep required-check names synchronized with the branch protection settings
-  when workflow job names change.
-- The `verify` job may skip the suite it would otherwise run, but only when a
-  signed local gate receipt covers the exact tree it is testing (see "Local gate
-  receipts"). Whatever it decides, the job still reports: the required context is
-  the job, never the step, and a skipped required check is a skipped landing gate.
+- Keep Dependabot updates configured for GitHub Actions, Go modules and Python
+  documentation dependencies (`.github/dependabot.yml`).
+- CI and CodeQL validate pull requests and support manual runs; CodeQL additionally
+  performs its weekly scheduled scan; protected `main` does not repeat the validation
+  after a checked pull request is merged.
+- Scope security scans to Go- and security-relevant changes, platform jobs to
+  Go-relevant changes. Keep the platform matrix on Linux runners only: it cross-compiles
+  and vets windows/amd64, darwin/amd64, darwin/arm64 and linux/arm64
+  (`docs/specs/testing-strategy.md` §5), so no Windows and no macOS runner is paid for.
+  Require the always-running `platforms` aggregate check so conditional matrix jobs
+  still gate Go changes without blocking docs-only changes.
+- Cancel superseded pull-request runs through workflow concurrency. Pages runs only for
+  public documentation inputs.
+- Keep required-check names synchronized with the branch protection settings when
+  workflow job names change.
+- The `verify` job may skip the suite it would otherwise run, but only when a signed
+  local gate receipt covers the exact tree it is testing ("Local gate receipts"). The
+  required context is the job, never the step: a skipped required check is a skipped
+  landing gate.
 
 ## Local gate receipts
 
-`scripts/verify.sh` runs the whole gate on the developer's host before a push,
+`scripts/verify.sh` runs the whole gate on the developer's host before a push;
 `.githooks/pre-push` publishes that green run as a signed receipt commit under the
 coordination ref `refs/gate/<head-sha>` (`go run ./cmd/buildtool gate-receipt publish`). The
-`verify` job verifies the receipt and skips only what the receipt covers, so the
-merge gate is unchanged in *what* it accepts while the duplicated compute moves to
-the host that already paid for it.
+`verify` job verifies the receipt and skips only what it covers.
 
 - **What CI checks before trusting a receipt.** The receipt commit's SSH signature
-  verifies against [`.github/gate-signers`](./gate-signers); the receipt is built
-  on the pull request's head commit (its parent) and carries the tree of the commit
-  CI is testing (the merge result, so a branch that fell behind `main` gets the full
-  gate instead of
-  passing on a tree nobody gated); its base is an ancestor of both the head and the
-  pull request's base; the diff hash recomputed in CI matches; its scope covers the
-  change; it lists every check the receipt's `suite` verb requires. Anything
-  short of that runs the whole gate — a fork, an unsigned local gate, a missing or
-  stale ref, a renamed gate step.
+  verifies against `.github/gate-signers`; the receipt is built on the pull request's
+  head commit (its parent) and carries the tree of the commit CI is testing, so a branch
+  behind `main` gets the full gate instead of passing on a tree nobody gated; its base
+  is an ancestor of both the head and the pull request's base; the diff hash recomputed
+  in CI matches; its scope covers the change; it lists every check the receipt's `suite`
+  verb requires. A fork, an unsigned local gate, a missing or stale
+  ref or a renamed gate step runs the whole gate.
 - **The signature is the anchor, the ref is not.** Push authority decided who
   could create the ref; the allow-list decides whose receipt may excuse a check.
   Rotating the signing key means adding its line to `.github/gate-signers`; until
-  then CI simply runs the full gate, the safe direction.
+  then CI runs the full gate, the safe direction.
 - **The fast path is entered by evidence, never by its absence.** No step may be
   skipped because a receipt is missing, unreadable or malformed, and the required
-  check names (`verify`, `security`, `platforms`, `Analyze (actions)`,
-  `Analyze (go)`) stay what branch protection names — a skipped job must still
-  report, or the landing gate disappears.
+  check names (`verify`, `security`, `platforms`, `Analyze (actions)`, `Analyze (go)`)
+  stay what branch protection names — a skipped job must still report, or the landing
+  gate disappears.
 
 ## Code scanning
 
 CodeQL here is **advanced setup**: `.github/workflows/codeql.yml` runs two scoped
-analyses and produces the required `Analyze (actions)` and `Analyze (go)`
-contexts. Neither switched on by GitHub.
+analyses and produces the required `Analyze (actions)` and `Analyze (go)` contexts.
 
 - **Keep the repository's default setup OFF**
   (`gh api repos/dmundt/go-cask/code-scanning/default-setup` must report
-  `"state": "not-configured"`). Enabling it **disables this workflow** — GitHub
-  deactivated it on 2026-09-22, seven minutes after default setup was
-  configured, only symptom which analyses appeared — and it replaces
-  the scoped analyses with unscoped ones: `actions` and `go` on every pull request
-  and every push, plus `javascript-typescript` and `python` over
-  `internal/web/htmx.min.js` and `website/javascripts/mermaid-10.9.5.min.js`
-  (vendored, minified), two small site scripts, and `website/macros.py` — five
-  files that have never produced a finding, at roughly two minutes of runner time
-  per pull request and per push to `main`.
-- **`codeql.yml` analyzes what changed, on both triggers.** A pull request is
-  diffed against its base and a push to `main` against `github.event.before`; the
-  actions analysis runs only when `.github/workflows/**` changed and the Go one
-  only when a `.go`/`go.mod`/`go.sum` file changed. A scheduled or manual run has
-  no base, so it analyzes everything.
-- **The `push` trigger on `main` keeps the Security tab current.**
-  CodeQL's own validation warns without it — default-branch alerts then
-  refreshed only by the weekly scan. Its path filters keep a documentation merge
-  from starting a run at all.
-- Never add a language to this workflow without the same treatment: an
-  analysis that cannot be scoped to a change belongs in the weekly scan, not in
-  every pull request.
+  `"state": "not-configured"`). Enabling it **disables this workflow** and replaces
+  the scoped analyses with unscoped ones: `actions` and `go` on every pull request and
+  every push, plus `javascript-typescript` and `python` over `internal/web/htmx.min.js`
+  and `website/javascripts/mermaid-10.9.5.min.js` (vendored, minified), two small site
+  scripts, and `website/macros.py`.
+- **`codeql.yml` analyzes what changed, on both triggers**; path filters and scopes are
+  its own.
+- Never add a language without the same treatment: an analysis that cannot be scoped to
+  a change belongs in the weekly scan, not in every pull request.
 
 ## Validation
 
