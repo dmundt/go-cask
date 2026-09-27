@@ -308,3 +308,50 @@ func TestPlatformTargetsMatchTheWorkflow(t *testing.T) {
 		}
 	}
 }
+
+// runnerValue matches one `runs-on:` value in a workflow, at any indentation, stopping at a
+// space or a `#` so a trailing comment cannot hide the value. A line whose first non-blank
+// character is `#` is a comment, not a declaration, and does not match.
+var runnerValue = regexp.MustCompile(`(?m)^[ \t]*runs-on:[ \t]*([^ \t#]+)`)
+
+// nonLinuxRunner matches the hosted runner families go-cask#390 removed. A matrix value
+// (`${{ matrix.runs-on }}`) is deliberately unmatched: the values it expands to are literal
+// `runs-on:` lines in the same file, which is how the Windows entry was spelled before
+// #419, so the check covers that form through the literal it points at.
+var nonLinuxRunner = regexp.MustCompile(`^(windows|macos)`)
+
+// TestNoWorkflowUsesAWindowsOrMacOSRunner pins the other half of the platform decision: no
+// job spends a Windows or a macOS runner, because those targets are cross-compiled on the
+// one Linux runner instead (go-cask#390).
+//
+// Nothing else would notice. The matrix says `ubuntu-latest` and nothing reads it, and the
+// smoke job #390 removed failed for a reason worth remembering: the tests it ran arrange
+// POSIX filesystem restrictions Windows does not reproduce, so a hosted runner reappearing
+// here is a decision to write down in #390's terms rather than a silent reintroduction of
+// a job that cannot mean what it looks like. The workflows are read from the tracked files,
+// as this package's other tree-reading tests do, so the answer is the repository's rather
+// than the working directory's.
+func TestNoWorkflowUsesAWindowsOrMacOSRunner(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	workflows := gitList(t, root, "ls-files", ".github/workflows/*.yml")
+	if len(workflows) == 0 {
+		t.Fatal("no workflow is tracked, so this test would prove nothing")
+	}
+
+	declared := 0
+	for _, file := range workflows {
+		// A Windows checkout can carry CRLF, and the line anchor above depends on it.
+		content := strings.ReplaceAll(readRepoFile(t, root, file), "\r\n", "\n")
+		for _, match := range runnerValue.FindAllStringSubmatch(content, -1) {
+			declared++
+			if nonLinuxRunner.MatchString(match[1]) {
+				t.Errorf("%s runs a job on %s: go-cask#390 cross-compiles those platforms on the one Linux runner, so a hosted Windows or macOS runner here is a decision to record, not a default", file, match[1])
+			}
+		}
+	}
+	if declared == 0 {
+		t.Fatal("no tracked workflow declares a runs-on:, so this test would prove nothing")
+	}
+}

@@ -2,7 +2,7 @@
 type: Guide
 title: policy (build) — go-cask
 description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, instruction-file budgets, worktree table, landing lanes, gate table, package-graph prose.
-version: v7
+version: v8
 ---
 
 # policy
@@ -60,7 +60,8 @@ one file:
   and names no dropped package; every `cas/` package carries a tier.
 - **real tree** — inventory tables match the site; committed graph = `GraphDoc` render;
   every directory under `internal/build` has a README its parent links to; the workflow's
-  platform matrix gates the same targets `Verify` hands the cross-platform step.
+  platform matrix gates the same targets `Verify` hands the cross-platform step; no tracked
+  workflow spends a Windows or a macOS runner (#390).
 
 Second kind reads the repository → slower than the engine's tests; only way to catch a
 drifted table.
