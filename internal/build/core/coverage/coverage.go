@@ -9,8 +9,9 @@
 //
 // The table lives here as data with its format checked (Policy.Validate), and the
 // comparison is a pure function over the package list Go reports, so both are
-// tested directly. The gate itself runs `go test -race -cover` per tier and fans the
-// loop out over the caller's concurrency: that is orchestration, and it lives in
+// tested directly. The gate itself runs `go test -race -cover` once over the
+// module and reads the profile that run writes (Policy.Measure): one pass answers
+// for the suite and for every tier, and that is orchestration, which lives in
 // cmd/buildtool beside the rest of the step list.
 //
 // The tier thresholds are the gate's contract with docs/specs/testing-strategy.md
@@ -20,7 +21,10 @@
 package coverage
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -166,11 +170,11 @@ type Result struct {
 	Threshold float64
 	// Package is the package that was measured.
 	Package string
-	// Measured is the coverage the run reported, or -1 when the run produced no
-	// coverage line at all — a compile failure, a panic, a test binary that
-	// exited before printing. It is deliberately not 0: zero coverage and no
-	// coverage are different failures, and the second one means the measurement
-	// never happened.
+	// Measured is the coverage the run reported, or -1 when it reported none — a
+	// compile failure, a panic, a test binary that exited before printing, or a
+	// profile holding no block for this package. It is deliberately not 0: zero
+	// coverage and no coverage are different failures, and the second one means the
+	// measurement never happened.
 	Measured float64
 }
 
@@ -231,6 +235,136 @@ func ParseResult(line string) (Result, error) {
 		measured = value
 	}
 	return Result{Threshold: threshold, Package: fields[1], Measured: measured}, nil
+}
+
+// Measure reads a `go test -coverprofile` profile and reports one result per gated
+// target, in the policy's own order.
+//
+// The profile is the run's own record — one line per basic block,
+// "<file>:<span> <statements> <count>" — so a package's number is read from what Go
+// wrote rather than guessed from what it printed, and one test pass can answer for
+// every target instead of one run per package. A target the profile never mentions
+// measured nothing, and is reported as such rather than as zero.
+//
+// modulePath is what the profile's file paths are prefixed with. A file that does
+// not carry it belongs to another module and is not this policy's to measure; a
+// profile that names blocks but not one of them inside the module is refused rather
+// than reported as a run that measured nothing, because that shape means the file
+// names and the module path disagree.
+func (p Policy) Measure(contents, modulePath string) ([]Result, error) {
+	if err := p.Validate(); err != nil {
+		return nil, fmt.Errorf("coverage policy: %w", err)
+	}
+	parsed, err := parseProfile(contents, strings.TrimSuffix(modulePath, "/"))
+	if err != nil {
+		return nil, err
+	}
+	if parsed.blocks > 0 && len(parsed.packages) == 0 {
+		return nil, fmt.Errorf(
+			"the coverage profile names %d block(s) and none inside module %q; its file paths cannot be matched against the policy",
+			parsed.blocks, modulePath)
+	}
+
+	results := make([]Result, 0, len(p.Targets))
+	for _, target := range p.Gated() {
+		result := Result{Threshold: target.Threshold, Package: target.Package, Measured: -1}
+		if measured, ok := parsed.packages[normalize(target.Package)]; ok && measured.total > 0 {
+			result.Measured = measured.percentage()
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+// profile is a read coverage profile: one tally per package inside the module, and
+// how many block lines it held in total, wherever they pointed.
+type profile struct {
+	packages map[string]tally
+	blocks   int
+}
+
+// tally is the statements a package's blocks hold and how many of them ran.
+type tally struct {
+	covered int
+	total   int
+}
+
+// percentage is the covered share of the statements, to the one decimal
+// `go test -cover` prints: the number the decision reads and the number a reader
+// sees come from the same pair, so a package cannot be reported at 90.0% and judged
+// below 90.
+func (t tally) percentage() float64 {
+	return math.Round(float64(t.covered)/float64(t.total)*1000) / 10
+}
+
+// parseProfile reads Go's coverage profile into one tally per package inside the
+// module.
+//
+// The format is Go's: a mode line, then one line per basic block. A file outside the
+// module is counted in blocks and tallied nowhere — it cannot be a target of this
+// policy, and the count is what lets Measure tell a profile it cannot read from one
+// that measured nothing.
+func parseProfile(contents, modulePath string) (profile, error) {
+	lines := strings.Split(contents, "\n")
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "mode: ") {
+		return profile{}, errors.New("the coverage profile does not start with a mode line")
+	}
+
+	parsed := profile{packages: map[string]tally{}}
+	for index, line := range lines[1:] {
+		number := index + 2
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return profile{}, fmt.Errorf(
+				"coverage profile line %d is not \"<file>:<span> <statements> <count>\": %q", number, line)
+		}
+		statements, err := strconv.Atoi(fields[1])
+		if err != nil || statements < 0 {
+			return profile{}, fmt.Errorf(
+				"coverage profile line %d holds %q statements, which is not a count", number, fields[1])
+		}
+		count, err := strconv.Atoi(fields[2])
+		if err != nil || count < 0 {
+			return profile{}, fmt.Errorf(
+				"coverage profile line %d holds %q as its execution count, which is not a count", number, fields[2])
+		}
+		parsed.blocks++
+
+		pkg, ok := packageOf(fields[0], modulePath)
+		if !ok {
+			continue
+		}
+		running := parsed.packages[pkg]
+		running.total += statements
+		if count > 0 {
+			running.covered += statements
+		}
+		parsed.packages[pkg] = running
+	}
+	return parsed, nil
+}
+
+// packageOf reports the module-relative package a profile line's file belongs to,
+// and whether it is inside the module at all. The file is written as
+// "<import path>/<file>.go:<span>", so the package is the directory in front of the
+// file name, with the module path stripped.
+func packageOf(field, modulePath string) (string, bool) {
+	file, _, ok := strings.Cut(field, ":")
+	if !ok {
+		return "", false
+	}
+	dir := path.Dir(file)
+	if dir == "." {
+		return "", false
+	}
+	relative, ok := strings.CutPrefix(dir, modulePath+"/")
+	if !ok || relative == "" {
+		return "", false
+	}
+	return relative, true
 }
 
 // ParseThreshold reads a percentage as the table writes it. It exists so a
