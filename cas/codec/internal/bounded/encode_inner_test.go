@@ -23,10 +23,10 @@ func TestEncodePropagatesInnerSerializationFailure(t *testing.T) {
 	boom := errors.New("inner encode exploded")
 	writerBuilt := false
 
-	data, err := Encode(failingCodec[payload]{err: boom}, payload{Name: "demo"}, func(io.Writer) (io.WriteCloser, error) {
+	data, err := Encode(failingCodec[payload]{err: boom}, payload{Name: "demo"}, NewWriterPool(func(io.Writer) (Compressor, error) {
 		writerBuilt = true
 		return noOpWriteCloser{}, nil
-	})
+	}))
 	if !errors.Is(err, boom) {
 		t.Fatalf("Encode with a failing inner codec = %v, want %v", err, boom)
 	}
@@ -47,11 +47,11 @@ func TestEncodeInnerSuccessStillCompresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob, err := Encode(next, payload{Name: "demo"}, flateWriter)
+	blob, err := Encode(next, payload{Name: "demo"}, flateWriterPool())
 	if err != nil {
 		t.Fatalf("Encode = %v", err)
 	}
-	got, err := Decode(next, blob, MaxDecodedBytes, flateReader)
+	got, err := Decode(next, blob, MaxDecodedBytes, flateReaderPool())
 	if err != nil {
 		t.Fatalf("Decode = %v", err)
 	}

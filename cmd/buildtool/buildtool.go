@@ -108,6 +108,9 @@ commands:
                        gate stamp for this exact commit, plus the advisory slot note
   worktree             task worktrees both toolchains resolve: add, remove, lock,
                        list; prune refuses and says why
+  task-status          report which branches carry work no pull request tracks: one
+                       line per branch against the base ref, then the branches worth
+                       acting on
   module-graph         check that go list -m reports this module as the main one
   version-fields       report versioned files whose frontmatter version: did not
                        move with the change (docs/AGENT.md); --base <rev> required,
@@ -195,6 +198,8 @@ func run(args []string, out, errOut io.Writer) error {
 		return runPrePush(args[1:], out, errOut)
 	case "worktree":
 		return runWorktree(args[1:], out, errOut)
+	case "task-status":
+		return runTaskStatus(args[1:], out, errOut)
 	case "module-graph":
 		return runModuleGraph(args[1:], out, errOut)
 	case "version-fields":
