@@ -1,11 +1,14 @@
 package persistent
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dmundt/go-cask/cas/bloom"
 )
 
 // TestFilterWithNoBackingBytesSyncsAndClosesAsANoOp pins syncLocked's empty-view
@@ -123,6 +126,87 @@ func TestReadPaddedReportsAnUnreadablePath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bloom/persistent: read persistent file") {
 		t.Fatalf("readPadded = %v, want the read step named", err)
+	}
+}
+
+// TestFilterPersistentShrinkingConfigDoesNotRetainTheOldFile pins the heap
+// fallback's buffer size: reopening an existing filter under a smaller
+// ExpectedItems must leave the filter holding a buffer sized for the new
+// bitset, never the previous, larger file. A reslice of the read result would
+// keep the whole old file reachable through Filter.raw for as long as the
+// filter is open, which on Windows — where the heap path is the only path — is
+// its entire lifetime. The file itself is not shrunk (NewFilter only ever
+// grows it), so the file size is asserted separately from the buffer size to
+// show the two are no longer tied together.
+//
+// The driver forces the heap path on every platform, so this is not a
+// Windows-only assertion: Linux otherwise maps the file and raw is a mapping
+// rather than a heap buffer.
+func TestFilterPersistentShrinkingConfigDoesNotRetainTheOldFile(t *testing.T) {
+	const bigItems, smallItems = 1 << 20, 64
+	path := filepath.Join(t.TempDir(), "shrink.bin")
+
+	bigBits, _, err := bloom.Parameters(bigItems, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bigTotal := headerSize + int((bigBits+7)/8)
+	smallBits, _, err := bloom.Parameters(smallItems, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	smallTotal := headerSize + int((smallBits+7)/8)
+	if bigTotal <= smallTotal {
+		t.Fatalf("test setup: big filter %d bytes is not larger than small filter %d bytes", bigTotal, smallTotal)
+	}
+
+	first, err := newFilter(Config{ExpectedItems: bigItems, FalsePositiveRate: 0.01}, path, readPaddedDriver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := newFilter(Config{ExpectedItems: smallItems, FalsePositiveRate: 0.01}, path, readPaddedDriver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.mapped {
+		t.Fatal("the forced heap driver reported a mapping")
+	}
+	if len(second.raw) != smallTotal || cap(second.raw) != smallTotal {
+		t.Fatalf("reopened heap fallback buffer = len %d cap %d, want len and cap %d (the new bitset), not the %d-byte old file",
+			len(second.raw), cap(second.raw), smallTotal, bigTotal)
+	}
+	if !bytes.HasPrefix(second.raw, magic[:]) {
+		t.Fatal("the resized heap buffer lost the header magic")
+	}
+	if fi, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if fi.Size() != int64(bigTotal) {
+		t.Fatalf("backing file size = %d, want %d: NewFilter grows the file and never shrinks it", fi.Size(), bigTotal)
+	}
+	// A nil driver makes closeLocked skip the unmap step, so the fallback buffer
+	// is released without being written back: the file stays at its old size,
+	// which is what the assertion above reads.
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readPaddedDriver is the default driver with the heap fallback forced: it
+// reports no mapping and delegates to the real readPadded, so a test can assert
+// the fallback buffer's size on a platform that would otherwise map the file.
+func readPaddedDriver() mmapDriver {
+	return mmapDriver{
+		mmapBytes: func(file *os.File, size int) (bool, []byte, error) {
+			buf, err := readPadded(file, size)
+			if err != nil {
+				return false, nil, err
+			}
+			return false, buf, nil
+		},
 	}
 }
 
