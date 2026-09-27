@@ -8,6 +8,11 @@
 // the tag is that codec's). It is not a byte-level stack: to transform another
 // codec's bytes, compose cas/codec/binary, whose transform/restore pair is that
 // seam.
+//
+// Decoding bounds how deeply a payload may nest arrays and maps at MaxDepth
+// levels: the stored bytes are untrusted, so a payload nested deeper than that
+// is reported as ErrTooDeep rather than recursed into until the goroutine stack
+// is exhausted.
 package cbor
 
 import (
@@ -33,6 +38,16 @@ type Codec[T any] struct {
 	decode func([]byte) (T, error)
 }
 
+// MaxDepth bounds how many arrays and maps a single Decode call will descend
+// into: an array or map at this depth is decoded, and a value nested one level
+// deeper is rejected with ErrTooDeep. The stored bytes are untrusted and the
+// decoder recurses once per container, so without the bound a crafted payload of
+// nested single-element arrays exhausts the goroutine stack and aborts the
+// process — a fatal error no caller's recover can catch. Real metadata and
+// manifest payloads nest a handful of levels deep, so the ceiling is far above
+// anything this codec exists for.
+const MaxDepth = 128
+
 var (
 	errNilEncode = errors.New("cbor: encode func is nil")
 	errNilDecode = errors.New("cbor: decode func is nil")
@@ -41,6 +56,11 @@ var (
 	// produces the stored bytes, so the inner codec could never run; New used to
 	// ignore it silently (go-cask#270).
 	errCodecStack = errors.New("cbor: an inner codec and conversion functions cannot both be set; use NewRaw for the conversion, or cas/codec/binary to transform an inner codec's bytes")
+	// ErrTooDeep reports a payload whose arrays and maps nest deeper than
+	// MaxDepth. It is deliberately distinct from the truncation errors: the
+	// bytes need not be damaged at all, only nested past what this decoder will
+	// descend into.
+	ErrTooDeep = fmt.Errorf("cbor: value nested deeper than %d levels", MaxDepth)
 )
 
 // New builds a CBOR codec from either an inner codec or the caller's conversion
@@ -197,7 +217,7 @@ func encodeMapValue(v map[string]any) ([]byte, error) {
 }
 
 func decodeAny(data []byte) (any, error) {
-	value, rest, err := decodeOne(data)
+	value, rest, err := decodeOne(data, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +376,14 @@ func halfToFloat64(bits uint16) float64 {
 	return v
 }
 
-func decodeOne(data []byte) (any, []byte, error) {
+// decodeOne decodes the first CBOR value in data and returns it with the bytes
+// after it. depth counts the arrays and maps already entered, so a payload can
+// drive this recursion only as deep as MaxDepth: past it the decode stops with
+// ErrTooDeep instead of growing the stack once more.
+func decodeOne(data []byte, depth int) (any, []byte, error) {
+	if depth > MaxDepth {
+		return nil, nil, ErrTooDeep
+	}
 	if len(data) == 0 {
 		return nil, nil, fmt.Errorf("cbor: unexpected end of input")
 	}
@@ -430,7 +457,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 		items := make([]any, 0)
 		cursor := payloadStart
 		for range length {
-			item, rest, err := decodeOne(data[cursor:])
+			item, rest, err := decodeOne(data[cursor:], depth+1)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -447,7 +474,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 		m := make(map[string]any)
 		cursor := payloadStart
 		for range length {
-			key, rest, err := decodeOne(data[cursor:])
+			key, rest, err := decodeOne(data[cursor:], depth+1)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -455,7 +482,7 @@ func decodeOne(data []byte) (any, []byte, error) {
 			if !ok {
 				return nil, nil, fmt.Errorf("cbor: map key must be a string")
 			}
-			value, rest2, err := decodeOne(rest)
+			value, rest2, err := decodeOne(rest, depth+1)
 			if err != nil {
 				return nil, nil, err
 			}
