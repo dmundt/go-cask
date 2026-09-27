@@ -208,6 +208,64 @@ func TestWorktreeRemoveRefusesUncommittedWork(t *testing.T) {
 	}
 }
 
+// TestWorktreeRemoveOfAnUnknownNameIsRefused pins the evidence rule: `os.RemoveAll` reports
+// success for a path that is not there, so the verb has to ask whether the worktree exists at
+// all. A mistyped name used to print `worktree removed` and exit 0 having done nothing, and the
+// `wt-` prefix is added by the command, so an already-prefixed name names nothing either.
+func TestWorktreeRemoveOfAnUnknownNameIsRefused(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+
+	for _, name := range []string{"missing", "wt-missing"} {
+		out, errOut, status := runWorktreeCommand(t, fixture.context, "remove", name)
+		if status != 3 {
+			t.Fatalf("removing %q = %d %q, want the documented status 3", name, status, errOut)
+		}
+		if out != "" {
+			t.Errorf("removing %q wrote %q to stdout; a removal that removed nothing must not report success", name, out)
+		}
+		for _, want := range []string{"no such worktree", "wt-" + name} {
+			if !strings.Contains(errOut, want) {
+				t.Errorf("removing %q does not name %q:\n%s", name, want, errOut)
+			}
+		}
+	}
+}
+
+// TestWorktreeRemoveClearsAHalfRemovedWorktree pins the state a removal still has to finish:
+// the checkout is gone but the registration is not. It is not "nothing to remove" — the half
+// that survived is exactly what the command is for — and the second call reports nothing left.
+func TestWorktreeRemoveClearsAHalfRemovedWorktree(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	table := policy.Worktrees()
+
+	if _, errOut, status := runWorktreeCommand(t, fixture.context, "add", "t4"); status != 0 {
+		t.Fatalf("add = %d\n%s", status, errOut)
+	}
+	dir := filepath.Join(fixture.context.parent, table.Prefix+"t4")
+	admin := worktree.Admin(fixture.context.common, table.Prefix+"t4")
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("removing the checkout by hand: %v", err)
+	}
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "remove", "t4")
+	if status != 0 {
+		t.Fatalf("removing a half-removed worktree = %d %q, want it to clear the registration", status, errOut)
+	}
+	if !strings.Contains(out, "worktree removed: "+table.Prefix+"t4") {
+		t.Errorf("the removal reported %q, want it to name the worktree", out)
+	}
+	if _, err := os.Stat(admin); !os.IsNotExist(err) {
+		t.Errorf("the admin directory survived: %v", err)
+	}
+
+	// The second call has nothing left to do, and says so with the status rather than a
+	// success line.
+	out, _, status = runWorktreeCommand(t, fixture.context, "remove", "t4")
+	if status != 3 || strings.Contains(out, "worktree removed") {
+		t.Errorf("re-removing = %d %q, want a refusal and no success line", status, out)
+	}
+}
+
 // TestWorktreePruneRefuses pins the refusal: prune is never performed, it is explained, and
 // the status is the one the wrapper used.
 func TestWorktreePruneRefuses(t *testing.T) {
