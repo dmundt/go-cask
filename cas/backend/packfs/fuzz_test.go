@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 func FuzzPackRoundTrip(f *testing.F) {
@@ -49,7 +50,7 @@ func FuzzPackRoundTrip(f *testing.F) {
 		if err != nil {
 			t.Fatalf("List() = %v, want nil", err)
 		}
-		if !containsDigest(list, d) {
+		if !test.ContainsDigest(list, d) {
 			t.Fatalf("List() = %v, want digest %s present", list, d)
 		}
 		stats, err := b.Stats(ctx)
@@ -66,13 +67,4 @@ func FuzzPackRoundTrip(f *testing.F) {
 			t.Fatalf("Exists() after Delete = (%v, %v), want (false, nil)", ok, err)
 		}
 	})
-}
-
-func containsDigest(list []cas.Digest, want cas.Digest) bool {
-	for _, d := range list {
-		if d.Equal(want) {
-			return true
-		}
-	}
-	return false
 }
