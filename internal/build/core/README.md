@@ -2,7 +2,7 @@
 type: Guide
 title: build core — go-cask
 description: Build engine — separate Go module, checks a repository gate runs, every table caller-supplied; package list, shape, usage, testing.
-version: v6
+version: v7
 ---
 
 # core
@@ -35,6 +35,7 @@ tier → reusable. go-cask's answers: `../policy`. Wiring entry point: `cmd/buil
 | `depgraph` | local package graph as committed Mermaid document | [depgraph](./depgraph/README.md) |
 | `versioning` | changed versioned file moved its frontmatter `version:` | [versioning](./versioning/README.md) |
 | `release` | changelog section → GitHub release notes; tag publish guards | [release](./release/README.md) |
+| `taskstate` | which branches carry work no pull request tracks | [taskstate](./taskstate/README.md) |
 
 ## Shape
 
