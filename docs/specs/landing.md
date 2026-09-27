@@ -2,7 +2,7 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v5
+version: v6
 ---
 
 # Landing — go-cask
@@ -26,6 +26,7 @@ Coordination therefore hangs off the one record every session, every clone and t
 - **Never edit the primary checkout while another session may be using it.**
 - **Every task worktree is based on the freshly fetched `origin/main`.** `buildtool worktree add` fetches, then branches from `origin/main` (`-b <branch> origin/main`), and that remote-tracking ref is the only base a task worktree uses: a local `main` is never a substitute, because in the primary checkout it can be behind the remote or carry another session's uncommitted work. The one exception is the `hotfix` base `branch-naming.md` §3 defines (`release/vX.Y`).
 - **Never `git add -A` and never `git commit -a`.** Stage the paths you touched: a shared tree otherwise sweeps another session's untracked files into your commit.
+- **A scratch tree is not storage.** `.gocache/` is the build cache and `.worktrees/` holds task worktrees; both are cleaned, and neither is tracked. Nothing durable lives in either — a record that must survive the session goes in a pull request.
 
 ## 3. The lane
 
