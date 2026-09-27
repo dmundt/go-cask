@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/cas/hash/sha256"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // TestBackendBasePathNamesTheStoreRoot pins Backend.BasePath: it reports exactly
@@ -200,7 +201,7 @@ func TestPutIsIdempotentWhenThePublishRenameFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := readAllAndClose(rc)
+	got, err := test.ReadAllAndClose(rc)
 	if err != nil {
 		t.Fatal(err)
 	}
