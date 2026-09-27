@@ -1,13 +1,13 @@
 ---
 type: Guide
 title: build — go-cask
-description: The gate's build decisions — engine module, go-cask policy for it, archived shells — plus layout, commands, and where a new check goes.
-version: v7
+description: The gate's build decisions — engine module, go-cask policy for it — plus layout, commands, and where a new check goes.
+version: v8
 ---
 
 # build
 
-The gate's build decisions. Three parts, separate:
+The gate's build decisions. Two parts, separate:
 
 - **[core](./core/README.md)** — build engine; *separate Go module*; own `go.mod`; no
   dependency beyond stdlib; versioned on its own. Reusable half: checks only, every table
@@ -15,8 +15,6 @@ The gate's build decisions. Three parts, separate:
 - **policy** ([`./policy/README.md`](./policy/README.md)) — go-cask's answers: layer
   matrix, coverage tiers, codec guards, inventory tables, footer contract, change-set
   classification, package-graph prose. Not reusable; another repository writes its own.
-- **shell** ([`./shell/README.md`](./shell/README.md)) — scripts the engine replaced,
-  archived at parity.
 
 `cmd/buildtool` wires engine + go-cask tables → gate step = one
 `go run ./cmd/buildtool <command>` call. Command list, exit-status contract:
@@ -55,7 +53,6 @@ Root module reaches it via `require` + local-path `replace`. Engine becomes own 
 | [`core/bench/`](./core/bench/README.md) | benchmark capture naming; which capture a fresh run compares against |
 | [`core/examples/`](./core/examples/README.md) | which example programs a runner executes; which it never runs |
 | `policy/` | [go-cask tables + prose](./policy/README.md) for the engine |
-| `shell/` | [scripts the engine replaced](./shell/README.md), archived at parity |
 
 ## Commands
 
