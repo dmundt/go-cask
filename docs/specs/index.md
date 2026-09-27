@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Specification Set
 description: Index of every instruction file by concern. See docs/index.md for path-first lookup.
-version: v5
+version: v6
 ---
 
 # go-cask Specification Set
@@ -31,4 +31,5 @@ All files in this folder. [`AGENT.md`](AGENT.md) governs them; start at [`docs/i
 | Go module versioning (tags, branches, releases) | [`versioning.md`](versioning.md) |
 | Branch naming patterns | [`branch-naming.md`](branch-naming.md) |
 | Landing (worktree, lane, gate, merge) | [`landing.md`](landing.md) |
+| Coordination (board, waves, gate serialization, landing verification) | [`coordination.md`](coordination.md) |
 | Meta-guide for this folder | [`AGENT.md`](AGENT.md) |
