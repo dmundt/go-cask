@@ -24,7 +24,7 @@ func assertDecodeFails(t *testing.T, data []byte) {
 			t.Fatalf("decoding %x panicked: %v", data, r)
 		}
 	}()
-	if _, _, err := decodeOne(data); err == nil {
+	if _, _, err := decodeOne(data, 0); err == nil {
 		t.Fatalf("decodeOne(%x) = nil error, want error", data)
 	}
 	if _, err := NewValue().Decode(data); err == nil {
@@ -83,7 +83,7 @@ func TestDecodeLengthBoundaryAccepted(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, rest, err := decodeOne(tt.data); err != nil {
+			if _, rest, err := decodeOne(tt.data, 0); err != nil {
 				t.Fatalf("decodeOne(%x) = %v, want success", tt.data, err)
 			} else if len(rest) != 0 {
 				t.Fatalf("decodeOne(%x) left %d trailing bytes", tt.data, len(rest))

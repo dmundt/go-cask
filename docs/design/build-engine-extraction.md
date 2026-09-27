@@ -2,7 +2,7 @@
 type: Design
 title: Build Engine Extraction — go-cask
 description: Decision brief for moving the build engine out of internal/ to build/engine so a second repository can import it — findings, name, change list, staged landings, acceptance.
-version: v1
+version: v2
 ---
 
 # Build Engine Extraction — go-cask
@@ -131,8 +131,8 @@ Mechanical, no behavior change.
    `docs/specs/library-design.md`, `docs/specs/testing-strategy.md`,
    `docs/design/index.md`, `scripts/README.md`, `scripts/AGENT.md`,
    `cmd/buildtool/README.md`, `internal/build/README.md`,
-   `internal/build/AGENT.md`, `internal/build/shell/README.md`,
-   `internal/build/core/README.md`, `website/AGENT.md` and
+   `internal/build/AGENT.md`, `internal/build/core/README.md`,
+   `website/AGENT.md` and
    `website/changelog.md`. Every changed versioned file bumps its frontmatter
    `version:` (`docs/AGENT.md` §5). The engine's 18 package READMEs link their
    siblings relatively and need no change; only the module README, which becomes

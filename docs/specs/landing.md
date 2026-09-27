@@ -2,7 +2,7 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v3
+version: v5
 ---
 
 # Landing — go-cask
@@ -33,7 +33,7 @@ Coordination therefore hangs off the one record every session, every clone and t
 - Exit 0 means yours, 1 refused, 2 usage; `status` lists every lane with the PR behind it, and `release <issue>` frees it after the merge. The claim refuses a closed issue, an issue with an open PR, and a claim still inside its window, so also check `gh issue view NNN --json state` and `gh pr list --state all --limit 15` before starting.
 - **Push early and open the pull request as a draft: the PR is the lease.** A claim with no PR is protected only by the 90-minute claim window (`PR_LANE_STALE_MINUTES`), after which the next claimer takes the lane over. That is what keeps liveness objective — an abandoned lane is reclaimed by the next session, and nobody has to guess whether a holder is dead or run a `--force` takeover. A lane whose PR is open is held, full stop; a lane whose PR was closed or merged is finished, and `release` clears it.
 - **Re-read the owning spec immediately before asking a question** — parallel PRs make premises stale within minutes.
-- **The local advisory slot is not the lane.** `go run ./cmd/buildtool land-lane` keeps two gate runs in ONE clone from overlapping (`acquire` / `renew` / `release`; `status` exits 0 yours, 1 free, 2 someone else). Holding it is not a condition for pushing — it only saves this clone from gating the same tree twice.
+- **The local advisory slot is not the lane.** `go run ./cmd/buildtool land-lane` keeps two gate runs in ONE clone from overlapping (`acquire` / `renew` / `release`, and `wait [--watch] [<label>] [<seconds>]` to queue for it rather than lose the race — default `LAND_LANE_WAIT_SECONDS`, exit 1 for a watched slot that is free, exit 3 when the wait ends with someone else still holding it; `status` exits 0 yours, 1 free, 2 someone else, 3 evictable — the holder's process is provably gone on this host, and `acquire --takeover-dead` takes it without waiting the window out). A holder is judged gone only when this host can say so: another host, no host recorded, or a toolchain that cannot read process start times is Unknown, and an unknown holder is never taken over. Holding it is not a condition for pushing — it only saves this clone from gating the same tree twice.
 - **One decision or area per PR; append, don't rewrite.** Prefer adding a spec row or bullet over rewriting an existing line, and keep a documentation PR to one file where possible: additions auto-merge, rewrites conflict and cost a rebuild.
 
 ## 4. The gate

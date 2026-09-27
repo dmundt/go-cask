@@ -146,18 +146,21 @@ func TestDecide(t *testing.T) {
 		window = 90 * time.Minute
 		fresh  = int64(10_000) // idle 0
 		stale  = int64(0)      // idle 10000s
+		grace  = 60 * time.Second
 	)
 	freshSlot := &Holder{PID: "1", Since: fresh, Label: "386", Who: me, Token: mine}
 	theirFresh := &Holder{PID: "2", Since: fresh, Label: "1", Who: other, Token: their}
 	theirStale := &Holder{PID: "3", Since: stale, Label: "1", Who: other, Token: their}
 
 	cases := []struct {
-		name  string
-		slot  *Holder
-		who   string
-		mine  string
-		force bool
-		want  Outcome
+		name     string
+		slot     *Holder
+		who      string
+		mine     string
+		force    bool
+		takeDead bool
+		live     Liveness
+		want     Outcome
 	}{
 		{name: "a free slot is claimed", slot: nil, who: me, mine: mine, want: Created},
 		{
@@ -184,11 +187,37 @@ func TestDecide(t *testing.T) {
 			name: "force on an idle holder is still an expiry",
 			slot: theirStale, who: me, mine: mine, force: true, want: TakeoverExpired,
 		},
+		{
+			// A provably gone holder is taken over once grace has passed, without waiting
+			// the window out: a process that no longer exists cannot renew.
+			name: "a gone holder is taken over after grace",
+			slot: &Holder{PID: "2", Since: now - 120, Label: "1", Who: other, Token: their},
+			who:  me, mine: mine, takeDead: true, live: Gone,
+			want: TakeoverDead,
+		},
+		{
+			// Inside the grace period the machine has not finished noticing, and the flag
+			// does not shorten the window for a holder that might still be alive.
+			name: "a gone holder inside grace is still refused",
+			slot: &Holder{PID: "2", Since: now - 5, Label: "1", Who: other, Token: their},
+			who:  me, mine: mine, takeDead: true, live: Gone, want: RefusedFresh,
+		},
+		{
+			// Without the flag nothing changes: liveness alone never takes a slot.
+			name: "a gone holder is not taken over without the flag",
+			slot: theirFresh, who: me, mine: mine, live: Gone, want: RefusedFresh,
+		},
+		{
+			// Unknown is the whole safety property: a holder on another host, or one whose
+			// process cannot be read, is never judged gone.
+			name: "an unknown holder is never taken over",
+			slot: theirFresh, who: me, mine: mine, takeDead: true, live: Unknown, want: RefusedFresh,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			decision := Decide(tc.slot, tc.who, tc.mine, window, tc.force, now)
+			decision := Decide(tc.slot, tc.who, tc.mine, window, grace, tc.force, tc.takeDead, tc.live, now)
 			if decision.Outcome != tc.want {
 				t.Errorf("Decide = %v, want %v", decision.Outcome, tc.want)
 			}
@@ -259,5 +288,100 @@ func TestSlotStatus(t *testing.T) {
 	if Free.ExitCode() != 1 || Mine.ExitCode() != 0 || Other.ExitCode() != 2 {
 		t.Errorf("exit codes = free %d, mine %d, other %d; want 1, 0, 2",
 			Free.ExitCode(), Mine.ExitCode(), Other.ExitCode())
+	}
+}
+
+// TestLivenessOfNeverReadsAnUnknownHolderAsDead pins the safety property the whole feature rests
+// on: only "this host can tell, and there is no such process" is Gone. Another host, a record
+// with no host at all, a pid that is not a number, and a toolchain that cannot read process start
+// times are every one of them Unknown — and an unknown holder is never taken over, because
+// absence of evidence is not evidence.
+func TestLivenessOfNeverReadsAnUnknownHolderAsDead(t *testing.T) {
+	t.Parallel()
+
+	const thisHost = "host-a"
+	cases := []struct {
+		name         string
+		host         string
+		pid          string
+		start        string
+		readStart    string
+		canReadStart bool
+		want         Liveness
+	}{
+		{name: "no host recorded", host: "", pid: "2", readStart: "9", canReadStart: true, want: Unknown},
+		{name: "the unknown-host sentinel", host: UnknownHost, pid: "2", readStart: "9", canReadStart: true, want: Unknown},
+		{name: "another host", host: "host-b", pid: "2", readStart: "9", canReadStart: true, want: Unknown},
+		{name: "a pid that is not a number", host: thisHost, pid: "not-a-pid", readStart: "9", canReadStart: true, want: Unknown},
+		{name: "a pid of zero", host: thisHost, pid: "0", readStart: "9", canReadStart: true, want: Unknown},
+		{name: "this toolchain cannot read start times", host: thisHost, pid: "2", canReadStart: false, want: Unknown},
+		{name: "the process is gone", host: thisHost, pid: "2", start: "9", readStart: "", canReadStart: true, want: Gone},
+		{name: "the same process is running", host: thisHost, pid: "2", start: "9", readStart: "9", canReadStart: true, want: Alive},
+		{name: "the pid was recycled", host: thisHost, pid: "2", start: "9", readStart: "77", canReadStart: true, want: Gone},
+		{
+			// A record written before the start field existed, about a pid that is running:
+			// it must read as alive, never as dead — an older writer's silence is not a
+			// claim that the process ended.
+			name: "a record with no start time on a live pid", host: thisHost, pid: "2",
+			readStart: "77", canReadStart: true, want: Alive,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			holder := Holder{PID: tc.pid, Host: tc.host, Start: tc.start}
+			reader := func(pid string) (string, bool) { return tc.readStart, tc.canReadStart }
+			if got := LivenessOf(holder, thisHost, reader); got != tc.want {
+				t.Errorf("LivenessOf = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHolderRecordReadsEveryShapeItHasEverHad pins the compatibility the two appended fields
+// depend on. A five-field record is one a previous build wrote, and it must stay readable: the
+// slot is shared by every worktree of a clone, written by whichever toolchain is running, so a
+// reader that demanded the new fields would refuse a live holder's slot.
+func TestHolderRecordReadsEveryShapeItHasEverHad(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		record string
+		want   Holder
+	}{
+		{
+			name:   "five fields, as a previous build wrote it",
+			record: "1\t100\t386\tabc#primary:wt-1#main\ttok",
+			want:   Holder{PID: "1", Since: 100, Label: "386", Who: "abc#primary:wt-1#main", Token: "tok"},
+		},
+		{
+			name:   "six fields, a host but no start time",
+			record: "1\t100\t386\tabc#primary:wt-1#main\ttok\thost-a",
+			want:   Holder{PID: "1", Since: 100, Label: "386", Who: "abc#primary:wt-1#main", Token: "tok", Host: "host-a"},
+		},
+		{
+			name:   "seven fields",
+			record: "1\t100\t386\tabc#primary:wt-1#main\ttok\thost-a\t1234",
+			want: Holder{
+				PID: "1", Since: 100, Label: "386", Who: "abc#primary:wt-1#main",
+				Token: "tok", Host: "host-a", Start: "1234",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ParseHolder(tc.record); got != tc.want {
+				t.Errorf("ParseHolder(%q) = %+v, want %+v", tc.record, got, tc.want)
+			}
+			// And the record renders back to the same seven fields, so a claim written by
+			// this build is read identically by the next one.
+			if got := tc.want.Fields(); got != ParseHolder(got).Fields() {
+				t.Errorf("Fields round-trip = %q, want it stable", got)
+			}
+		})
 	}
 }

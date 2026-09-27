@@ -66,13 +66,21 @@ func (d mmapDriver) flush(data []byte) error {
 // readPadded reads the current contents of file and returns them padded with
 // zero bytes (or truncated) to exactly size bytes. It backs the heap fallback
 // used when a real mapping is unavailable.
+//
+// The returned slice is a fresh exactly-sized buffer, never a reslice of the
+// read result. Reslicing is what makes the retention bug: os.ReadFile allocates
+// for the whole file, so a filter reopened with a smaller ExpectedItems would
+// keep the previous, larger file's buffer reachable through Filter.raw for as
+// long as it stays open — on Windows, where this fallback is the only path,
+// that is the filter's whole lifetime. The copy costs one allocation of the
+// bitset's own size and nothing else, and the fallback runs once per open, not
+// per operation.
 func readPadded(file *os.File, size int) ([]byte, error) {
 	buf, err := os.ReadFile(file.Name())
 	if err != nil {
 		return nil, fmt.Errorf("bloom/persistent: read persistent file: %w", err)
 	}
-	if len(buf) < size {
-		buf = append(buf, make([]byte, size-len(buf))...)
-	}
-	return buf[:size], nil
+	padded := make([]byte, size)
+	copy(padded, buf)
+	return padded, nil
 }
