@@ -276,6 +276,49 @@ func TestMemoryBackendWithMaxSize(t *testing.T) {
 	}
 }
 
+// TestMemoryBackendMaxSizeAtCeiling pins that WithMaxSize(math.MaxInt64) — the
+// obvious spelling of "no practical limit" — stores the bytes it was handed.
+// The remaining budget is MaxInt64 both on an empty backend (usedBytes == 0)
+// and on a re-Put of an existing key (usedBytes == len(existing)), and budget+1
+// wraps to MinInt64 there: io.LimitReader then reports EOF immediately, so Put
+// stored an empty object under the caller's digest and returned success, and
+// the corruption only surfaced at the next Get or Verify (go-cask#355).
+func TestMemoryBackendMaxSizeAtCeiling(t *testing.T) {
+	ctx := context.Background()
+	b := New(WithMaxSize(math.MaxInt64))
+	const payload = "the bytes the caller actually put"
+	h := sha256.Of([]byte(payload))
+
+	check := func(step string) {
+		t.Helper()
+		rc, err := b.Get(ctx, h)
+		if err != nil {
+			t.Fatalf("%s: Get = %v", step, err)
+		}
+		got, err := readAllAndClose(rc)
+		if err != nil {
+			t.Fatalf("%s: read stored object = %v", step, err)
+		}
+		if string(got) != payload {
+			t.Fatalf("%s: Get returned %q (%d bytes), want %q", step, got, len(got), payload)
+		}
+	}
+
+	if err := b.Put(ctx, h, strings.NewReader(payload)); err != nil {
+		t.Fatalf("Put on an empty backend at the ceiling = %v", err)
+	}
+	check("Put")
+
+	if err := b.Put(ctx, h, strings.NewReader(payload)); err != nil {
+		t.Fatalf("re-Put at the ceiling = %v", err)
+	}
+	check("re-Put")
+
+	if err := cas.Verify(ctx, b, h, sha256.New()); err != nil {
+		t.Fatalf("Verify at the ceiling = %v", err)
+	}
+}
+
 func TestMemoryBackendSnapshotRoundTripAndDeterminism(t *testing.T) {
 	ctx := context.Background()
 	source := New()
