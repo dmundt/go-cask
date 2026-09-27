@@ -2,7 +2,7 @@
 # ARCHIVED — superseded by `go run ./cmd/buildtool scope`.
 #
 # This script classified a Git diff as documentation-only. The rule now lives in
-# internal/build/changes (the classification) and internal/build/policy (the
+# internal/build/core/changes (the classification) and internal/build/policy (the
 # patterns), and the gate and CI's scope job both call the command above, so one
 # table serves them instead of a pattern list held in sync by a comment. Nothing
 # runs this copy; see ../shell/README.md.

@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: Design Docs — go-cask
 description: Non-normative design documents — orientation, design history, viewer briefs and implementation plans. See docs/index.md for top-level rule index.
-version: v8
+version: v9
 ---
 
 # Design Docs — go-cask
@@ -19,6 +19,6 @@ Non-normative. Inform, never override instruction specs.
 | [`viewer-implementation-plan.md`](viewer-implementation-plan.md) | Phased viewer implementation plan |
 | [`viewer-template-index.md`](viewer-template-index.md) | Viewer template component inventory and composition tree |
 | [`viewer-mockup-parity-audit.md`](viewer-mockup-parity-audit.md) | Viewer mockup comparison and intentional exclusions |
-| [`package-graph.md`](package-graph.md) | Generated local package dependency graph (Mermaid), owned by `internal/build/depgraph` |
+| [`package-graph.md`](package-graph.md) | Generated local package dependency graph (Mermaid), owned by `internal/build/core/depgraph` |
 | [`go-cask-viewer.html`](go-cask-viewer.html) | Viewer HTML mockup |
 | [`go-cask-object-browser.design.json`](go-cask-object-browser.design.json) | Object browser design artifact |

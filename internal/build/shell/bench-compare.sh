@@ -2,7 +2,7 @@
 # ARCHIVED — superseded by `go run ./cmd/buildtool bench-compare`.
 #
 # The baseline choice (explicit, then the committed reference, then the newest archived
-# capture) and the refusal to compare a capture with itself are internal/build/bench's
+# capture) and the refusal to compare a capture with itself are internal/build/core/bench's
 # and the command's; the command captures for itself rather than calling the other
 # helper, so the two scripts' file ownership is one function's. Nothing runs this copy;
 # see ../shell/README.md.

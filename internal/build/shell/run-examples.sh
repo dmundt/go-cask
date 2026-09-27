@@ -3,7 +3,7 @@
 #
 # Which examples exist, which of them terminate on their own and which arguments
 # complete each are now a table (internal/build/policy) read by a tested selection rule
-# (internal/build/examples); the command runs them. Nothing runs this copy; see
+# (internal/build/core/examples); the command runs them. Nothing runs this copy; see
 # ../shell/README.md.
 set -euo pipefail
 

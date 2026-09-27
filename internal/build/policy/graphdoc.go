@@ -47,8 +47,8 @@ func GraphDoc() depgraph.Doc {
 
 	return depgraph.Doc{
 		Title:           "Package Dependency Graph — go-cask",
-		Description:     "Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.",
-		Generator:       "internal/build/depgraph",
+		Description:     "Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/core/depgraph.",
+		Generator:       "internal/build/core/depgraph",
 		FrontmatterType: "Design Document",
 		Subgraphs: []depgraph.Subgraph{
 			{ID: "APPS", Title: "Applications - cmd/cask, examples, benchmarks", Claims: apps},
@@ -73,7 +73,7 @@ edge points from the importing package to the package it imports, so the
 applications sit at the top and ` + "`cas`" + ` — which imports no local package at all —
 sits at the bottom.
 
-The diagram is generated from ` + "`go list`" + ` by ` + "`internal/build/depgraph`" + `; edit that
+The diagram is generated from ` + "`go list`" + ` by ` + "`internal/build/core/depgraph`" + `; edit that
 package, not this file. Only production imports are drawn: imports that appear
 solely in ` + "`_test.go`" + ` files are excluded and the standard library is not drawn, so
 this is the consumer-visible build graph. The local package and edge sets do not
