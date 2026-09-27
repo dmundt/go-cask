@@ -24,6 +24,7 @@ import (
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/index"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // errNoDigest is the failure the injected hashers below report instead of
@@ -298,7 +299,7 @@ func symlinkObjectFixture(t *testing.T, base string, h cas.Digest) {
 func TestVerifyAllRecordsAnUnreadableObject(t *testing.T) {
 	ctx := context.Background()
 	task := newRouteTask(t, Config{StartupToken: testStartupToken})
-	good := tlvEnvelope("blob@1", []byte("sound"))
+	good := test.TLVEnvelope("blob@1", []byte("sound"))
 	goodDigest := sha256.Of(good)
 	if err := task.srv.store.Put(ctx, goodDigest, bytes.NewReader(good)); err != nil {
 		t.Fatal(err)
@@ -364,7 +365,7 @@ func TestVerifyAllRecordsAnUnreadableObject(t *testing.T) {
 func TestVerifyAllRecordsAMissingObject(t *testing.T) {
 	ctx := context.Background()
 	task := newRouteTask(t, Config{StartupToken: testStartupToken})
-	deleted := tlvEnvelope("blob@1", []byte("vanishes"))
+	deleted := test.TLVEnvelope("blob@1", []byte("vanishes"))
 	deletedDigest := sha256.Of(deleted)
 	if err := task.srv.store.Put(ctx, deletedDigest, bytes.NewReader(deleted)); err != nil {
 		t.Fatal(err)
@@ -452,7 +453,7 @@ func TestMetadataSnapshotRebuildsWhenThePublishedOneIsStale(t *testing.T) {
 
 	// An object stored after that walk is invisible to the published snapshot,
 	// so the only way the next caller can see it is a rebuild.
-	env := tlvEnvelope("blob@1", []byte("appeared later"))
+	env := test.TLVEnvelope("blob@1", []byte("appeared later"))
 	h := sha256.Of(env)
 	if err := backend.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
@@ -521,7 +522,7 @@ func TestMetadataSnapshotServesTheStaleSnapshotWhenRefused(t *testing.T) {
 	}
 
 	// A session with budget left walks the store and replaces it.
-	env := tlvEnvelope("blob@1", []byte("later"))
+	env := test.TLVEnvelope("blob@1", []byte("later"))
 	h := sha256.Of(env)
 	if err := backend.Put(context.Background(), h, bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
@@ -549,7 +550,7 @@ func TestRebuildSnapshotReportsAWalkFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := tlvEnvelope("blob@1", []byte("stored"))
+	env := test.TLVEnvelope("blob@1", []byte("stored"))
 	if err := backend.Put(context.Background(), sha256.Of(env), bytes.NewReader(env)); err != nil {
 		t.Fatal(err)
 	}

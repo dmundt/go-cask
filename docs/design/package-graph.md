@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/core/depgraph.
-version: v24
+version: v25
 generated: internal/build/core/depgraph
 ---
 
@@ -157,10 +157,12 @@ flowchart TD
   cas_cache_prefetch --> cas
   cas_cache_prefetch --> cas_cache_mem
   cas_codec_binary --> cas
+  cas_codec_binary --> cas_codec_internal_bounded
   cas_codec_cbor --> cas
   cas_codec_flate --> cas
   cas_codec_flate --> cas_codec_internal_bounded
   cas_codec_gob --> cas
+  cas_codec_gob --> cas_codec_internal_bounded
   cas_codec_gzip --> cas
   cas_codec_gzip --> cas_codec_internal_bounded
   cas_codec_internal_bounded --> cas

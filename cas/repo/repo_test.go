@@ -15,6 +15,7 @@ import (
 	jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/cas/repo"
+	"github.com/dmundt/go-cask/internal/test"
 )
 
 // Three independent test object types, so a graph can span more than one
@@ -158,8 +159,8 @@ func TestWalkTerminatesOnCycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dA := mustDigest(t, strings.Repeat("aa", 32))
-	dB := mustDigest(t, strings.Repeat("bb", 32))
+	dA := test.MustDigest(t, strings.Repeat("aa", 32))
+	dB := test.MustDigest(t, strings.Repeat("bb", 32))
 	storeEnvelope(t, backend, dA, "branch@1", branch{Label: "a", Children: []cas.Digest{dB}})
 	storeEnvelope(t, backend, dB, "branch@1", branch{Label: "b", Children: []cas.Digest{dA}})
 
@@ -189,7 +190,7 @@ func TestRegisterDuplicateTypeNameFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("second register with the same type name = nil, want an error")
 	}
-	if !contains(err.Error(), "leaf@1") {
+	if !strings.Contains(err.Error(), "leaf@1") {
 		t.Fatalf("duplicate error %q does not name the colliding type", err.Error())
 	}
 }
@@ -232,7 +233,7 @@ func TestWalkReportsUnknownTypeWithoutAborting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dUnknown := mustDigest(t, strings.Repeat("cc", 32))
+	dUnknown := test.MustDigest(t, strings.Repeat("cc", 32))
 	storeEnvelope(t, ts.backend, dUnknown, "mystery@1", map[string]string{"x": "y"})
 
 	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{hl, dUnknown}})
@@ -279,7 +280,7 @@ func TestWalkAbortsOnMissingReference(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
 
-	dMissing := mustDigest(t, strings.Repeat("dd", 32))
+	dMissing := test.MustDigest(t, strings.Repeat("dd", 32))
 	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{dMissing}})
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +301,7 @@ func TestWalkAbortsOnCorruptEnvelope(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
 
-	dCorrupt := mustDigest(t, strings.Repeat("ee", 32))
+	dCorrupt := test.MustDigest(t, strings.Repeat("ee", 32))
 	if err := ts.backend.Put(ctx, dCorrupt, bytes.NewReader([]byte{0xff})); err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +390,7 @@ func TestReachableTreatsUnknownTypeAsReachableLeaf(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
 
-	dUnknown := mustDigest(t, strings.Repeat("ee", 32))
+	dUnknown := test.MustDigest(t, strings.Repeat("ee", 32))
 	storeEnvelope(t, ts.backend, dUnknown, "mystery@1", map[string]string{"x": "y"})
 	hb, err := ts.branches.Put(ctx, branch{Label: "b", Children: []cas.Digest{dUnknown}})
 	if err != nil {
@@ -477,7 +478,7 @@ func TestLookupStoreWrongTypeReturnsNamingError(t *testing.T) {
 		t.Fatalf("LookupStore with the wrong T = %v, want a type-mismatch error, not cas.ErrUnknownType", err)
 	}
 	for _, want := range []string{"leaf@1", "repo_test.leaf", "repo_test.branch"} {
-		if !contains(err.Error(), want) {
+		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("LookupStore error %q does not name %q", err.Error(), want)
 		}
 	}
@@ -497,7 +498,7 @@ func TestWalkRespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	ts := newTestStores(t)
-	root := mustDigest(t, strings.Repeat("ff", 32))
+	root := test.MustDigest(t, strings.Repeat("ff", 32))
 	err := repo.Walk(ctx, ts.reg, []cas.Digest{root}, func(cas.Digest, repo.Object) error { return nil })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Walk(canceled ctx) = %v, want context.Canceled", err)
@@ -521,9 +522,9 @@ func TestWalkIgnoresAbsentRoots(t *testing.T) {
 }
 
 func TestUnknownTypeErrorMessage(t *testing.T) {
-	d := mustDigest(t, strings.Repeat("11", 32))
+	d := test.MustDigest(t, strings.Repeat("11", 32))
 	err := &repo.UnknownTypeError{Digest: d, TypeName: "mystery@1"}
-	if !contains(err.Error(), "mystery@1") || !contains(err.Error(), d.String()) {
+	if !strings.Contains(err.Error(), "mystery@1") || !strings.Contains(err.Error(), d.String()) {
 		t.Fatalf("UnknownTypeError.Error() = %q, want it to name both the digest and the type", err.Error())
 	}
 	if !errors.Is(err, cas.ErrUnknownType) {
@@ -577,7 +578,7 @@ func TestResolveRejectsInvalidDigest(t *testing.T) {
 func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
-	d := mustDigest(t, strings.Repeat("22", 32))
+	d := test.MustDigest(t, strings.Repeat("22", 32))
 	if err := ts.backend.Put(ctx, d, bytes.NewReader([]byte{0xff})); err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +602,7 @@ func TestResolveWrapsMalformedEnvelope(t *testing.T) {
 func TestResolveKeepsUnknownTypeForAnIntactEnvelope(t *testing.T) {
 	ctx := context.Background()
 	ts := newTestStores(t)
-	d := mustDigest(t, strings.Repeat("23", 32))
+	d := test.MustDigest(t, strings.Repeat("23", 32))
 	storeEnvelope(t, ts.backend, d, "mystery@1", map[string]string{"x": "y"})
 
 	_, err := ts.reg.Resolve(ctx, d)
@@ -634,7 +635,7 @@ func TestResolvePropagatesDecoderError(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	d := mustDigest(t, strings.Repeat("33", 32))
+	d := test.MustDigest(t, strings.Repeat("33", 32))
 	storeEnvelope(t, backend, d, "broken@1", map[string]string{})
 	if _, err := reg.Resolve(ctx, d); !errors.Is(err, wantErr) {
 		t.Fatalf("Resolve error = %v, want wrapping %v", err, wantErr)
@@ -651,7 +652,7 @@ func TestResolveRejectsNilObjectFromDecoder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	d := mustDigest(t, strings.Repeat("44", 32))
+	d := test.MustDigest(t, strings.Repeat("44", 32))
 	storeEnvelope(t, backend, d, "empty@1", map[string]string{})
 	if _, err := reg.Resolve(ctx, d); err == nil {
 		t.Fatal("Resolve for a decoder returning (nil, nil) = nil error, want an error")
@@ -699,8 +700,8 @@ func TestResolveWrapsReadHeaderFailure(t *testing.T) {
 	ctx := context.Background()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(erroringBackend{Backend: backmem.New(), failRead: true}, hasher)
-	d := mustDigest(t, strings.Repeat("55", 32))
-	if _, err := reg.Resolve(ctx, d); err == nil || !contains(err.Error(), "read object header") {
+	d := test.MustDigest(t, strings.Repeat("55", 32))
+	if _, err := reg.Resolve(ctx, d); err == nil || !strings.Contains(err.Error(), "read object header") {
 		t.Fatalf("Resolve error = %v, want a wrapped read-header failure", err)
 	}
 }
@@ -709,26 +710,13 @@ func TestResolveWrapsCloseHeaderFailure(t *testing.T) {
 	ctx := context.Background()
 	hasher := sha256.New()
 	reg := repo.NewRegistry(erroringBackend{Backend: backmem.New(), failClose: true}, hasher)
-	d := mustDigest(t, strings.Repeat("66", 32))
-	if _, err := reg.Resolve(ctx, d); err == nil || !contains(err.Error(), "close object header reader") {
+	d := test.MustDigest(t, strings.Repeat("66", 32))
+	if _, err := reg.Resolve(ctx, d); err == nil || !strings.Contains(err.Error(), "close object header reader") {
 		t.Fatalf("Resolve error = %v, want a wrapped close-header failure", err)
 	}
 }
 
 // --- Helpers ---
-
-func mustDigest(t *testing.T, hexDigest string) cas.Digest {
-	t.Helper()
-	d, err := cas.ParseDigest(hexDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return d
-}
-
-func contains(s, substr string) bool {
-	return bytes.Contains([]byte(s), []byte(substr))
-}
 
 // storeEnvelope writes a hand-built TLV envelope directly into backend at d,
 // bypassing the codec/Store layer entirely (test helper: production
