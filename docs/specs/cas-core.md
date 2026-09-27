@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v79
+version: v80
 ---
 
 # CAS Core — go-cask
@@ -61,6 +61,7 @@ flowchart TB
 Dependency rule: byte → nothing; typed → byte; application → typed. Caching wraps the typed layer without changing either. Algorithm is one more client-filled seam: `Store` holds a `Hasher` (§4.2); nothing in `cas` imports a concrete one. `cas` holds only generic primitives — the git-like object model is a shared reference library in `gitlike/` (§4.12); apps build their own types/repositories and MUST NOT add them to the core.
 
 - The boundary is deliberately boring and stable: the core stays generic (`cas/`), concrete storage backends live under `cas/backend/*`, helper/manifest logic lives in `cas/pack`, and object-model packages such as `gitlike/` stay layered on top rather than inside the core.
+- A package that helps rather than stores — `cas/pack`, `cas/bloom`, `cas/verify/*`, `cas/verify/sidecar` — stays a helper or maintenance layer: it MUST NOT become an implicit backend, and it MUST NOT redefine the storage model. A backends-only concern (a `Backend` method, an on-disk layout, an address rule) belongs to a backend under `cas/backend/*`.
 - A boundary that becomes hard to classify is a design defect, not a naming problem: clarify it in package names, docs and README text **before** touching behavior, and never blur it and then excuse the blur with a one-off exception.
 
 ### 3.2 How the core fits together

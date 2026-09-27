@@ -2,59 +2,54 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v52
+version: v53
 ---
 
 # go-cask Rules Index
 
-**Lookup:** for the file being edited, match its path against the first column (longest match wins), read the linked rule file, and apply it while planning and editing.
+**Lookup:** for the file being edited, match its path against the first column (longest match wins), read the linked rule file, and apply it while planning and editing. A row carries no rule: the rule file owns it, and the path column names the files it governs.
 
 | Path | Rule file |
 |---|---|
 | `cas/digest.go`, `cas/hasher.go`; `TestDigest*` / `FuzzParseDigest` | [`cas-core.md`](specs/cas-core.md) §4.1–4.3 |
-| `cas/backend/*` / `cas/backend/fs` / `cas/backend/mem` / `cas/backend/packfs` / `cas/backend/snapshot` / `cas/backend/stream.go` / `cas/backend/context.go` / `cas/backend/options.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 (`packfs` is a shipped backend, not a deferred extension) + architecture boundary rule: backends stay storage-only; the shared `cas/backend` contract is the streaming/context plumbing only (`ContextReader`, `WriteAll`, `ReadAll`, `ReadPayload`) — **each backend declares its own `Option` and there is no shared one**, so a cross-backend option is a compile error, not a silent no-op ([`library-design.md`](specs/library-design.md) §4.2); helper packages must not become implicit backends |
-| `cas/hash/` (the hasher helpers), `cas/hash/sha256/`, `cas/hash/sha512/`, `cas/hash/sha512_256/` (the shipped client hashers) | [`cas-core.md`](specs/cas-core.md) §4.2 + [`defaults.md`](specs/defaults.md) (the shipped default is `sha256`; the core names no algorithm) |
+| `cas/backend/*`, `cas/backend/fs`, `cas/backend/mem`, `cas/backend/packfs`, `cas/backend/snapshot`, `cas/backend/stream.go`, `cas/backend/context.go`, `cas/backend/options.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5, §4.14 + [`library-design.md`](specs/library-design.md) §4.2 |
 | `cas/backend.go` | [`cas-core.md`](specs/cas-core.md) §4.3–4.5 |
-| `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go` (the one graph traversal — `WalkDigests`/`Node`/`NodeResolver`, with `Reachable` on top — and the bounded header read), `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.9, §4.11, §4.13 + architecture boundary rule: verification/sweep/reachability are a separate, backend-agnostic maintenance layer above the storage contract (go-cask#137) |
-| `cas/verify/sidecar/*` | [`operations.md`](specs/operations.md) §6 + [`cas-core.md`](specs/cas-core.md) §4.11 + [`library-design.md`](specs/library-design.md) §1 + architecture boundary rule: an opt-in maintenance layer *above* a backend — a `cas.Backend` decorator that records per-object checksum at `<base>/.meta/<hex>.json` and validates stored bytes against the record; it is not a backend, holds no objects, adds no `cas` identifier, and the record never enters the hashed bytes |
-| `cas/verify/*` / `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + architecture boundary rule: verification helpers are maintenance-only and must not redefine the storage model; they are `cas.Hasher` implementations for a store deliberately addressed by that checksum, so they verify only objects addressed with it |
-| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go` (the typed adapter), `cas/batch.go` (`GetMany`/`BatchGetter`), `cas/envelope.go` (the TLV writer `EncodeEnvelope` plus the readers incl. `HeaderType`/`PeekVersion`) | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
-| `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 (stable surface) + [`defaults.md`](specs/defaults.md) (`flate` is the default compression wrapper; `MaxDecodedBytes` binds the decompressing wrappers) |
-| `cas/cache/validate.go` (the shared cache validation layer), `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
-| `cas/pack/` (app-facing manifest/helper layer) | [`cas-core.md`](specs/cas-core.md) §7 + architecture boundary rule: helper/manifest logic stays out of the core and is not a backend; a manifest read or write names the caller's codec (the package imports no codec) |
-| `cas/backend/fs/fs.go` (`Stats`/`Verify`/`GC`/`Prune`/`Clean`/`Size`), `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
-| `cas/refs/` (named mutable pointers, reflog) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`library-design.md`](specs/library-design.md) |
-| `cas/repo/` (typed cross-type registry, Walk, Reachable) | [`consistency.md`](specs/consistency.md) §4 (root set for GC) + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) |
-| `cmd/cask/` | [`cli.md`](specs/cli.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) for the user-facing `cask web` explanation |
+| `cas/hash/`, `cas/hash/sha256/`, `cas/hash/sha512/`, `cas/hash/sha512_256/` | [`cas-core.md`](specs/cas-core.md) §4.2 + [`defaults.md`](specs/defaults.md) §2 |
+| `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.9, §4.11, §4.13 |
+| `cas/verify/sidecar/*` | [`operations.md`](specs/operations.md) §6 + [`cas-core.md`](specs/cas-core.md) §4.11 + [`library-design.md`](specs/library-design.md) §1 |
+| `cas/verify/*`, `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + [`cas/verify/AGENT.md`](../cas/verify/AGENT.md) |
+| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go`, `cas/envelope.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
+| `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 + [`defaults.md`](specs/defaults.md) §2 |
+| `cas/cache/validate.go`, `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
+| `cas/pack/` | [`cas-core.md`](specs/cas-core.md) §7 + [`cas/pack/README.md`](../cas/pack/README.md) |
+| `cas/backend/fs/fs.go`, `cas/stats.go` | [`consistency.md`](specs/consistency.md) |
+| `cas/refs/` | [`consistency.md`](specs/consistency.md) §4 + [`library-design.md`](specs/library-design.md) §1 |
+| `cas/repo/` | [`consistency.md`](specs/consistency.md) §4 + [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 |
+| `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
+| `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
+| any package under `cas/**` (coverage tier) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |
+| `cas/bloom/`, `cas/bloom/counting/`, `cas/bloom/standard/`, `cas/bloom/persistent/` | [`performance.md`](specs/performance.md) + [`consistency.md`](specs/consistency.md) + [`cas/bloom/README.md`](../cas/bloom/README.md) + [`coding-guidelines.md`](specs/coding-guidelines.md) §3 |
+| `cmd/cask/` | [`cli.md`](specs/cli.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) |
+| `cmd/buildtool/` | [`cmd/buildtool/README.md`](../cmd/buildtool/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) + [`internal/web/README.md`](../internal/web/README.md) |
-| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) for the user-facing reference-states explanation |
+| `internal/web/` (objects, hexdump) | [`viewer-design.md`](specs/viewer-design.md) + [`internal/web/README.md`](../internal/web/README.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) |
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
-| `internal/design/` (design-rule checks the gate runs: no exported `any`, canonical `memory` import aliases, and one owner for the codec census label) | [`library-design.md`](specs/library-design.md) §5 + [`cas/AGENT.md`](../cas/AGENT.md) "Core rules" (the alias check) + [`cli.md`](specs/cli.md) §3 (the census convention) |
-| `internal/build/core/` (**a separate Go module** — the reusable build engine: the change-set classification, the layer matrix, the coverage policy and its thresholds, the Markdown integrity rules, the committed package graph and its renderer, the frontmatter version rule, the site's Go fences, inventory tables and one-line footer, the dependency/module-graph guards, the pinned-toolchain resolution, the example-runner selection, the benchmark-capture decisions, the advisory landing slot's records, the server-side landing lane's ref record and verdict, the gate run's own scope and escape decisions, the gate stamp ledger and the linked worktree's link. It ships no table and imports nothing but the standard library) | [`internal/build/core/README.md`](../internal/build/core/README.md) (every package has one) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) "the build engine is its own module" |
-| `internal/build/` (go-cask's own policy for that engine — the layer matrix, the coverage tiers, the codec guards, the site's inventory tables and footer contract, the change-set patterns, and the package graph's prose — plus `shell/`, the archived scripts each Go port replaced) | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`internal/build/shell/README.md`](../internal/build/shell/README.md) + [`library-design.md`](specs/library-design.md) §1.1 (the matrix) + [`testing-strategy.md`](specs/testing-strategy.md) §5 (the tiers) + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 (the Markdown rules) + [`website/AGENT.md`](../website/AGENT.md) (the site fences and footer) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 (the codec guards) |
-| `cmd/buildtool/` (the entry point for those build decisions; developer tooling, not the product CLI) | [`cmd/buildtool/README.md`](../cmd/buildtool/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
-| `gitlike/` (2nd-class reference library at the application layer — not an app, not an example) | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1 + [`library-design.md`](specs/library-design.md) §1.1 |
-| `examples/*` (3rd-class teaching code: no compatibility surface; may import `cas/**` and `gitlike`, never `internal/**`, `cmd/**` or another example) | [`examples.md`](specs/examples.md) §2 + [`library-design.md`](specs/library-design.md) §1.1 |
-| `examples/files/` | [`examples.md`](specs/examples.md) §3.1 |
-| `examples/artifacts/` | [`examples.md`](specs/examples.md) §3.2 |
-| `examples/notes/` | [`examples.md`](specs/examples.md) §3.3 |
-| `examples/api/` | [`examples.md`](specs/examples.md) §3.4 + [`api-design.md`](specs/api-design.md) |
-| `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3 + [`performance.md`](specs/performance.md) §5.1 (bloom) |
-| `cas/errors.go`; any exported `cas.*` | [`library-design.md`](specs/library-design.md) |
-| `cas/*_test.go` | [`testing-strategy.md`](specs/testing-strategy.md) |
-| any package under `cas/**` (coverage tier, `internal/build/policy`'s coverage table and exemption register) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |
-| `cas/bloom/` and its subpackages `cas/bloom/counting/`, `cas/bloom/standard/`, `cas/bloom/persistent/` | [`performance.md`](specs/performance.md) + [`consistency.md`](specs/consistency.md) + [`cas/bloom/README.md`](/cas/bloom/README.md) + [`coding-guidelines.md`](specs/coding-guidelines.md) §3 (`persistent` is the approved `golang.org/x/sys` mmap exception) |
-| `scripts/` (`buildtool.sh`, the launcher that finds Go and starts `cmd/buildtool`; `toolchain.sh`, the resolution it shares with `verify.sh` and `.githooks/pre-push`; and `verify.sh`, the gate's name for `buildtool verify`) | [`scripts/README.md`](../scripts/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
-| `benchmarks/` | [`benchmarks/AGENT.md`](/benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](/benchmarks/README.md) |
+| `internal/design/` | [`library-design.md`](specs/library-design.md) §1, §4.5 + [`cas/AGENT.md`](../cas/AGENT.md) + [`cli.md`](specs/cli.md) §3 |
+| `internal/build/core/` | [`internal/build/core/README.md`](../internal/build/core/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) ("the build engine is its own module") |
+| `internal/build/` | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`internal/build/shell/README.md`](../internal/build/shell/README.md) + [`library-design.md`](specs/library-design.md) §1.1 + [`testing-strategy.md`](specs/testing-strategy.md) §5 + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 + [`website/AGENT.md`](../website/AGENT.md) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 |
+| `gitlike/` | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1, §1.1 |
+| `examples/*` | [`examples.md`](specs/examples.md) §2 + [`library-design.md`](specs/library-design.md) §1.1 |
+| `examples/files/`, `examples/artifacts/`, `examples/notes/`, `examples/api/`, `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3.1–3.4 + [`api-design.md`](specs/api-design.md) (`api`) + [`performance.md`](specs/performance.md) §5.1 (`bloom`) |
+| `scripts/` | [`scripts/README.md`](../scripts/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
+| `benchmarks/` | [`benchmarks/AGENT.md`](../benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](../benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
-| `.github/workflows/ci.yml` | [`AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
-| `.github/copilot-instructions.md` (a pointer for clients that never read `AGENTS.md`; it states no rule of its own) | root [`AGENTS.md`](../AGENTS.md) |
-| `.agents/` (agent tooling: skills and their guide) | [`../.agents/AGENT.md`](../.agents/AGENT.md) governs it; a skill is also its own `SKILL.md` (see the row below) |
-| `.agents/skills/` (agent skills discovered at the project root) | the skill's own `SKILL.md` (directory bundle `<name>/SKILL.md`): [`../.agents/skills/cask-change/SKILL.md`](../.agents/skills/cask-change/SKILL.md) points at the rule files for a change |
-| `AGENTS.md` (the root router; its byte ceiling) | [`docs/AGENT.md`](../docs/AGENT.md) §2.1 |
-| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](/AGENTS.md) + [`landing.md`](specs/landing.md) (worktree, lane, gate, landing) |
+| `.github/workflows/ci.yml` | [`docs/specs/AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |
+| `.github/copilot-instructions.md` | root [`AGENTS.md`](../AGENTS.md) |
+| `.agents/`, `.agents/skills/` | [`../.agents/AGENT.md`](../.agents/AGENT.md); a skill is its own `SKILL.md` ([`cask-change`](../.agents/skills/cask-change/SKILL.md)) |
+| `AGENTS.md` | [`docs/AGENT.md`](../docs/AGENT.md) §2.1 |
+| Everything else | [`docs/specs/AGENT.md`](specs/AGENT.md) + root [`AGENTS.md`](../AGENTS.md) + [`landing.md`](specs/landing.md) (worktree, lane, gate, landing) |
 
-**Updating:** add/remove/re-target rows when rule files change; bump version on material change. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).
+**Updating:** add/remove/re-target rows when rule files change; bump version on material change. A row carries paths and links only — an explanation belongs in the rule file it points at. Sibling indexes: [`docs/design/index.md`](design/index.md), [`docs/specs/index.md`](specs/index.md).
