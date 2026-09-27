@@ -327,17 +327,14 @@ func landLaneRenew(slot *landLaneSlot, out, errOut io.Writer) error {
 			holder.Label + " — " + holder.Who + " does"))
 	}
 	renewed := lane.Holder{PID: holder.PID, Since: now(), Label: holder.Label, Who: holder.Who, Token: holder.Token}
-	if err := os.WriteFile(aside, []byte(renewed.Fields()+"\n"), 0o644); err != nil {
-		return fmt.Errorf("renewing %s: %w", slot.owner, err)
-	}
-	if slot.read() != nil {
-		// While the slot was held aside it was absent, so an acquirer may have seen it
-		// free and claimed it. The claim wins, and this renewal is reported as lost
-		// rather than overwriting it.
-		_ = os.Remove(aside)
-		return errors.New("land lane: an acquirer took the slot while renewing; this worktree no longer holds it")
-	}
-	if err := os.Rename(aside, slot.owner); err != nil {
+	// While the slot was held aside it was absent, so an acquirer may have seen it free and
+	// claimed it. The exclusive create decides between them: the claim wins, and this renewal
+	// reports that instead of overwriting it. The copy this renewal moved aside is dropped by
+	// the restore deferred above, which removes it as soon as the slot is occupied again.
+	if err := slot.publish(renewed.Fields() + "\n"); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return errors.New("land lane: an acquirer took the slot while renewing; this worktree no longer holds it")
+		}
 		return fmt.Errorf("renewing %s: %w", slot.owner, err)
 	}
 	fmt.Fprintf(out, "land lane: renewed by %s (%s); idle 0m\n", holder.Label, slot.who)
@@ -373,15 +370,29 @@ func landLaneRelease(slot *landLaneSlot, out, errOut io.Writer) error {
 // create is the whole concurrency story: of any number of simultaneous acquirers exactly
 // one wins, and every loser re-reads the winner's record and decides again.
 func (s *landLaneSlot) claim(label, token string) error {
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("creating the slot directory: %w", err)
-	}
 	// The record is built before the slot is created, so the window in which the slot
 	// exists and holds nobody is one write wide.
 	record := lane.Holder{
 		PID: strconv.Itoa(os.Getpid()), Since: now(), Label: label, Who: s.who, Token: token,
 	}.Fields() + "\n"
+	if err := s.publish(record); err != nil {
+		return err
+	}
+	return s.writeToken(token)
+}
 
+// publish puts a record into the slot with an exclusive create, the one commit point every
+// writer of this command shares. Of any number of simultaneous publishers exactly one wins,
+// and every loser learns it lost rather than overwriting the winner.
+//
+// It is deliberately the only way a record reaches the slot. A plain create, and a rename onto
+// the path, both replace whatever is already there — `os.Rename` replaces its destination on
+// every platform, not only on Windows — so a renewal that moved an aside copy onto the path
+// could destroy a claim another worktree had made in between (go-cask#387).
+func (s *landLaneSlot) publish(record string) error {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return fmt.Errorf("creating the slot directory: %w", err)
+	}
 	file, err := os.OpenFile(s.owner, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
@@ -393,7 +404,7 @@ func (s *landLaneSlot) claim(label, token string) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("writing %s: %w", s.owner, err)
 	}
-	return s.writeToken(token)
+	return nil
 }
 
 // takeAside moves the slot out of the way with a rename, which is atomic: of two racing

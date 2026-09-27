@@ -358,3 +358,71 @@ func slotLeftovers(t *testing.T, dir string) int {
 	}
 	return count
 }
+
+// TestLandLaneRenewNeverOverwritesAClaim pins the commit point the renewal was missing.
+//
+// Renewal used to move its aside copy onto the slot path with os.Rename — which replaces its
+// destination on every platform, not only on Windows. An acquirer that claimed the slot while
+// the renewal had it aside had its record silently destroyed, and the renewal reported success:
+// two worktrees believed they held the slot, and the one that lost could not find out.
+//
+// The exclusive create is now the only way a record reaches the slot, so the claim wins and the
+// renewal is told it lost. This test drives both halves: the publish that must refuse, and the
+// command that must leave another holder's record exactly as it found it.
+func TestLandLaneRenewNeverOverwritesAClaim(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+	if _, _, status := runSlot(t, mine, "acquire", "387"); status != 0 {
+		t.Fatalf("acquire failed: %d", status)
+	}
+
+	// The window: renew moves the holder's record aside before it publishes the renewal, so the
+	// slot is briefly absent and an acquirer can see it free.
+	aside, taken := mine.takeAside()
+	if !taken {
+		t.Fatal("takeAside failed; the fixture is not in the state the race needs")
+	}
+	acquirer := lane.Holder{
+		PID: "4242", Since: now(), Label: "387", Who: "other#primary:wt-other#main", Token: "other-token",
+	}.Fields() + "\n"
+	file, err := os.OpenFile(mine.owner, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		t.Fatalf("the acquirer could not claim the free slot: %v", err)
+	}
+	if _, err := file.WriteString(acquirer); err != nil {
+		t.Fatalf("writing the acquirer's record: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("closing the acquirer's record: %v", err)
+	}
+
+	// The renewal publishes into the slot the acquirer now holds. It must lose.
+	renewed := lane.Holder{
+		PID: "1", Since: now(), Label: "387", Who: mine.who, Token: mine.mine(),
+	}.Fields() + "\n"
+	if err := mine.publish(renewed); !errors.Is(err, os.ErrExist) {
+		t.Fatalf("publish onto a claimed slot = %v, want os.ErrExist", err)
+	}
+	if got := readFileOrEmpty(mine.owner); got != acquirer {
+		t.Fatalf("the acquirer's record was replaced:\n got %q\nwant %q", got, acquirer)
+	}
+
+	// End to end: the command renewing over another holder refuses and leaves that record
+	// untouched. The holder it finds is not this worktree, so the slot is not this worktree's to
+	// renew — and the record must come back exactly as it was.
+	_, errOut, status := runSlot(t, mine, "renew")
+	if status == 0 {
+		t.Fatal("renew over another holder = 0, want a refusal")
+	}
+	if !strings.Contains(errOut, "does not hold the slot") {
+		t.Errorf("renew over another holder reported %q, want it to say the slot is not held here", errOut)
+	}
+	if got := readFileOrEmpty(mine.owner); got != acquirer {
+		t.Errorf("the refusal changed the other holder's record:\n got %q\nwant %q", got, acquirer)
+	}
+	// And the renewal's own scratch is gone: the copy it moved aside is removed as soon as the
+	// slot is occupied again, so a lost renewal leaves the slot directory as it found it.
+	if _, err := os.Stat(aside); err == nil {
+		t.Errorf("the lost renewal left its aside copy behind: %s", aside)
+	}
+}
