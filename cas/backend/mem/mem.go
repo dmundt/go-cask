@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"sync"
 
@@ -24,7 +25,10 @@ type Option func(*config)
 
 // WithMaxSize caps the total stored bytes. 0 (the default) means unbounded.
 // Once the cap is set (> 0), every Put is checked before allocation and
-// rejected with an error if it would exceed the cap.
+// rejected with an error if it would exceed the cap. A cap at the int64
+// ceiling (math.MaxInt64) is accepted: the remaining budget then exceeds what
+// any stream can deliver, so no bounded reader applies and the cap check in
+// store is what rejects an overrun.
 func WithMaxSize(maxBytes int64) Option {
 	return func(c *config) { c.maxBytes = maxBytes }
 }
@@ -55,7 +59,9 @@ func New(opts ...Option) *Backend {
 // Put buffers r and stores it under d. Idempotent. When a max size is set, a
 // Put whose addition would exceed the cap is rejected with an error and no
 // entry is stored; buffering is bounded to the remaining budget first, so an
-// oversized Put cannot allocate past the cap.
+// oversized Put cannot allocate past the cap — except at the int64 ceiling,
+// where the budget bounds nothing a stream can deliver and the read is left
+// unbounded.
 func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -65,9 +71,13 @@ func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	}
 	key := string(d)
 	reader := r
-	if budget, capped := m.budget(key); capped {
+	if budget, capped := m.budget(key); capped && budget < math.MaxInt64 {
 		// One byte past the budget is enough to detect an overflow, so the
-		// read never buffers more than the cap allows.
+		// read never buffers more than the cap allows. At the ceiling
+		// budget+1 would wrap to MinInt64 and io.LimitReader reports EOF at
+		// once for a non-positive limit, storing an empty object under the
+		// caller's digest (go-cask#355), so the bound is skipped there: no
+		// stream can deliver MaxInt64 bytes, and store still enforces the cap.
 		reader = io.LimitReader(r, budget+1)
 	}
 	data, err := io.ReadAll(backend.ContextReader{Ctx: ctx, R: reader})
