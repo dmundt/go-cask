@@ -213,3 +213,98 @@ func TestVerifyChecksMatchTheReceiptSuite(t *testing.T) {
 		t.Errorf("%s lists\n  %v\nbut the gate records\n  %v", Verify().ReceiptScript, got, want)
 	}
 }
+
+// platformMatrixJob is the workflow job whose matrix holds the cross-compilation targets
+// the gate's cross-platform step must match.
+const platformMatrixJob = "platform-matrix"
+
+// jobBoundary matches the line that opens the next job in a workflow: exactly two spaces of
+// indentation followed by a non-space. A job's own keys are indented further, so the first
+// such line after a job's header is where that job ends.
+var jobBoundary = regexp.MustCompile(`(?m)^  \S`)
+
+// matrixGOOS and matrixGOARCH match the two values one matrix entry declares. The leading
+// class is spaces and tabs rather than `\s`, so a match cannot walk across a line break.
+var (
+	matrixGOOS   = regexp.MustCompile(`(?m)^[ \t]+goos:[ \t]*(\S+)[ \t]*$`)
+	matrixGOARCH = regexp.MustCompile(`(?m)^[ \t]+goarch:[ \t]*(\S+)[ \t]*$`)
+)
+
+// matrixTargets returns the "goos/goarch" pairs a workflow job's matrix declares, sorted.
+//
+// The workflow is YAML and this repository carries no YAML dependency — one would need the
+// coding-guidelines §3 exception process — so this reads the text, the way
+// TestScopeRulesMatchTheWorkflow reads it. Every entry declares exactly one goos and one
+// goarch, in that order, which is what makes the pairing sound without a real parser; the
+// counts are compared first so a half-edited entry is a loud failure rather than a
+// mispaired target.
+func matrixTargets(t *testing.T, workflow, job string) []string {
+	t.Helper()
+
+	// A Windows checkout can carry CRLF, and the anchors below are what makes the pairing
+	// sound, so the line endings are normalised rather than guessed at.
+	workflow = strings.ReplaceAll(workflow, "\r\n", "\n")
+
+	header := "\n  " + job + ":\n"
+	start := strings.Index(workflow, header)
+	if start < 0 {
+		t.Fatalf("%s declares no %s job", ciWorkflowPath, job)
+	}
+	block := workflow[start+len(header):]
+	if end := jobBoundary.FindStringIndex(block); end != nil {
+		block = block[:end[0]]
+	}
+
+	gooses := matrixGOOS.FindAllStringSubmatch(block, -1)
+	goarches := matrixGOARCH.FindAllStringSubmatch(block, -1)
+	if len(gooses) == 0 {
+		t.Fatalf("%s: the %s job's matrix declares no goos value", ciWorkflowPath, job)
+	}
+	if len(gooses) != len(goarches) {
+		t.Fatalf("%s: the %s job's matrix declares %d goos and %d goarch values; every entry needs one of each",
+			ciWorkflowPath, job, len(gooses), len(goarches))
+	}
+
+	targets := make([]string, 0, len(gooses))
+	for index := range gooses {
+		targets = append(targets, gooses[index][1]+"/"+goarches[index][1])
+	}
+	sort.Strings(targets)
+	return targets
+}
+
+// TestPlatformTargetsMatchTheWorkflow pins the cross-compilation target set to its one
+// owner, in both directions.
+//
+// The gate's cross-platform step reads Verify().Platforms; the CI platform-matrix job holds
+// the same set because a workflow is YAML and cannot read the table. Neither side fails
+// loudly when the two drift — whichever list is not updated simply gates less than the
+// other — and the quiet direction is the one that matters: a target the gate cross-builds
+// but the matrix never builds is a platform nobody builds in CI at all, while the reverse
+// costs a target its local cross-build only. So the pairs are compared here, and a failure
+// names the target that just one side gates.
+func TestPlatformTargetsMatchTheWorkflow(t *testing.T) {
+	t.Parallel()
+
+	table := Verify().Platforms
+	if len(table) == 0 {
+		t.Fatal("the gate cross-builds no platform, so this test would compare nothing")
+	}
+	want := make([]string, 0, len(table))
+	for _, target := range table {
+		want = append(want, target.GOOS+"/"+target.GOARCH)
+	}
+	sort.Strings(want)
+
+	got := matrixTargets(t, readRepoFile(t, repoRoot(t), ciWorkflowPath), platformMatrixJob)
+	for _, target := range want {
+		if !slices.Contains(got, target) {
+			t.Errorf("the gate cross-builds %s, which the %s job's matrix does not", target, platformMatrixJob)
+		}
+	}
+	for _, target := range got {
+		if !slices.Contains(want, target) {
+			t.Errorf("the %s job's matrix cross-builds %s, which Verify().Platforms does not gate", platformMatrixJob, target)
+		}
+	}
+}
