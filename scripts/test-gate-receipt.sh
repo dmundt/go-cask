@@ -191,7 +191,7 @@ expect_grep "verify lists the checks it relied on" "check go-test-race" "$work/o
 
 # The suite CI requires is the helper's own list, so this test asks for it instead
 # of restating it: a receipt that lists every member is accepted, and one that is
-# missing a member is refused — which is what keeps a renamed gate section from
+# missing a member is refused — which is what keeps a renamed gate step from
 # turning into a skipped check.
 run bash "$helper" suite
 expect_status "suite prints the required check list" 0 "$RC"

@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the buildtool launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/buildtool.
-version: v10
+version: v11
 ---
 
 # Scripts — go-cask
@@ -136,9 +136,10 @@ The gate executes them; it does not restate them.
 - CI sets `VERIFY_SKIP_SECURITY=true` because its required `security` job runs
   the same pinned scan separately; local `verify.sh` runs it by default.
 - The gate receipt is one contract in three places and they move together: every
-  `verify.sh` section marks itself with `mark_check`, `gate-receipt.sh`'s
-  `suite_full` list names the marks CI requires, and `ci.yml` asks only for
-  `--require-suite full`. A section that is renamed or added without the other two
+  step in `cmd/buildtool verify` records its check name from `internal/build/policy`'s
+  gate table, `gate-receipt.sh`'s `suite_full` list names the checks CI requires, and
+  `ci.yml` asks only for `--require-suite full`. `TestVerifyChecksMatchTheReceiptSuite`
+  pins the table against that list, so a step renamed or added without the other side
   makes the receipt unusable and CI runs the whole gate — slower, never weaker.
 - Publishing a receipt is signing it: `gate-receipt.sh publish` uses this
   toolchain's git signing configuration, so run it where `gpg.format` and
