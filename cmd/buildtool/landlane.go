@@ -45,6 +45,9 @@ type landLaneSlot struct {
 	who string
 	// staleMinutes is the idle window after which another session may take the slot.
 	staleMinutes int
+	// deadGraceSeconds is how long a holder that is provably gone must have been idle
+	// before --takeover-dead may take the slot.
+	deadGraceSeconds int
 }
 
 // runLandLane takes, renews, reports and frees the local advisory slot.
@@ -98,12 +101,13 @@ func resolveLandLane(repo string) (*landLaneSlot, error) {
 	primary := filepath.Clean(absoluteGitDir) == filepath.Clean(commonDir)
 
 	return &landLaneSlot{
-		dir:          dir,
-		owner:        filepath.Join(dir, table.Owner),
-		takeover:     filepath.Join(dir, table.Takeover),
-		token:        filepath.Join(gitDir, table.Token),
-		who:          lane.Identity(repoID, lane.WorktreeName(primary, filepath.Base(toplevel)), branch),
-		staleMinutes: staleMinutes(table),
+		dir:              dir,
+		owner:            filepath.Join(dir, table.Owner),
+		takeover:         filepath.Join(dir, table.Takeover),
+		token:            filepath.Join(gitDir, table.Token),
+		who:              lane.Identity(repoID, lane.WorktreeName(primary, filepath.Base(toplevel)), branch),
+		staleMinutes:     staleMinutes(table),
+		deadGraceSeconds: deadGraceSeconds(table),
 	}, nil
 }
 
@@ -149,6 +153,64 @@ func staleMinutes(table policy.LandLaneTable) int {
 	return table.StaleMinutes
 }
 
+// deadGraceSeconds reads how long a provably gone holder must have been idle, letting the
+// environment override the table.
+func deadGraceSeconds(table policy.LandLaneTable) int {
+	if override := os.Getenv(table.DeadGraceEnv); override != "" {
+		if seconds, err := strconv.Atoi(override); err == nil && seconds >= 0 {
+			return seconds
+		}
+	}
+	return table.DeadGraceSeconds
+}
+
+// processStartFunc is the process reader the command judges holders with. It is a variable so a
+// test can describe a host without one — the alternative is a test that depends on which pids
+// happen to exist — and it is one variable so the reader the claim records with and the reader
+// the status judges with cannot drift apart.
+var processStartFunc = processStart
+
+// currentHost names this machine for the slot record, so that a holder written here can be
+// judged here. A host that cannot name itself writes lane.UnknownHost, which never compares
+// equal to a real host: its holder stays Unknown, and an unknown holder is never taken over.
+func currentHost() string {
+	host, err := os.Hostname()
+	if err != nil || strings.TrimSpace(host) == "" {
+		return lane.UnknownHost
+	}
+	return strings.TrimSpace(host)
+}
+
+// processStart reports the start time of a running pid, and whether this toolchain can read one
+// at all. The second result is what keeps a platform without /proc from reading every holder as
+// gone: "this host cannot tell" is Unknown, and only "this host can tell, and there is no such
+// process" is Gone.
+func processStart(pid string) (string, bool) {
+	if _, err := os.Stat("/proc"); err != nil {
+		return "", false
+	}
+	if _, err := strconv.Atoi(pid); err != nil {
+		return "", false
+	}
+	stat, err := os.ReadFile(filepath.Join("/proc", pid, "stat"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", true
+		}
+		return "", false
+	}
+	// Field 22 of /proc/<pid>/stat is the process's start time in clock ticks since boot. The
+	// second field is the command in parentheses and may itself hold spaces and parentheses,
+	// so the fields are counted from after its LAST closing parenthesis.
+	if close := strings.LastIndex(string(stat), ")"); close >= 0 {
+		fields := strings.Fields(string(stat)[close+1:])
+		if len(fields) > 19 {
+			return fields[19], true
+		}
+	}
+	return "", true
+}
+
 // landLane is the command with its slot injected.
 func landLane(args []string, out, errOut io.Writer, slot *landLaneSlot) error {
 	command := "status"
@@ -179,7 +241,7 @@ func landLane(args []string, out, errOut io.Writer, slot *landLaneSlot) error {
 }
 
 // landLaneUsage is the command's own help, which is also its usage error.
-const landLaneUsage = "usage: buildtool land-lane [status | whoami | acquire [--force] <label> | renew | release]"
+const landLaneUsage = "usage: buildtool land-lane [status | whoami | acquire [--force] [--takeover-dead] <label> | renew | release]"
 
 // landLaneStatus reports the slot and returns the status the caller reads: 0 when this
 // worktree holds it, 1 when it is free, 2 when someone else does. The verdict is on
@@ -197,6 +259,12 @@ func landLaneStatus(slot *landLaneSlot, out, errOut io.Writer) error {
 		fmt.Fprintln(out, "land lane: you hold it")
 		return nil
 	}
+	if lane.Evictable(holder, time.Duration(slot.deadGraceSeconds)*time.Second,
+		lane.LivenessOf(*holder, currentHost(), processStartFunc), now()) {
+		fmt.Fprintln(out, "land lane: evictable — the holder's process is gone on this host")
+		fmt.Fprintln(out, "land lane: 'acquire --takeover-dead <label>' takes it now")
+		return exitStatus(3)
+	}
 	if holder.Who == slot.who {
 		fmt.Fprintln(errOut, "land lane: this identity is recorded, but this worktree holds no outstanding acquisition for it")
 	}
@@ -211,9 +279,16 @@ func landLaneStatus(slot *landLaneSlot, out, errOut io.Writer) error {
 // slot is never unowned while its old holder is being removed, so two simultaneous
 // evictors cannot both complete the sequence.
 func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) error {
-	force := false
-	if len(args) > 0 && args[0] == "--force" {
-		force = true
+	force, takeDead := false, false
+	for len(args) > 0 && strings.HasPrefix(args[0], "--") {
+		switch args[0] {
+		case "--force":
+			force = true
+		case "--takeover-dead":
+			takeDead = true
+		default:
+			return usageError{fmt.Sprintf("unknown flag %q for acquire", args[0])}
+		}
 		args = args[1:]
 	}
 	label := ""
@@ -221,13 +296,14 @@ func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) e
 		label = args[0]
 	}
 	if label == "" {
-		return usageError{"usage: buildtool land-lane acquire [--force] <label>"}
+		return usageError{"usage: buildtool land-lane acquire [--force] [--takeover-dead] <label>"}
 	}
 	if len(args) > 1 {
 		return usageError{fmt.Sprintf("unexpected extra argument: %s", args[1])}
 	}
 
 	window := time.Duration(slot.staleMinutes) * time.Minute
+	grace := time.Duration(slot.deadGraceSeconds) * time.Second
 	for attempt := 1; ; attempt++ {
 		token, err := randomID()
 		if err != nil {
@@ -251,7 +327,8 @@ func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) e
 			continue
 		}
 
-		decision := lane.Decide(holder, slot.who, slot.mine(), window, force, now())
+		decision := lane.Decide(holder, slot.who, slot.mine(), window, grace, force, takeDead,
+			lane.LivenessOf(*holder, currentHost(), processStartFunc), now())
 		switch decision.Outcome {
 		case lane.Unreadable:
 			// The winner creates the slot before it writes the record into it, so a
@@ -276,7 +353,8 @@ func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) e
 				holder.Label, holder.Who)
 		case lane.RefusedFresh:
 			return fmt.Errorf(
-				"land lane: held by %s — %s, idle %dm; wait for it, or use --force when you know it is dead",
+				"land lane: held by %s — %s, idle %dm; wait for it, renew it if it is yours, or use "+
+					"--takeover-dead when its process is gone (--force takes it whatever its state)",
 				holder.Label, holder.Who, holder.IdleMinutes(now()))
 		}
 
@@ -288,13 +366,19 @@ func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) e
 		// Record the eviction before the slot changes hands: it is the only trace the
 		// evicted holder can read afterwards.
 		how := lane.Expired
-		if decision.Outcome == lane.TakeoverForced {
+		switch decision.Outcome {
+		case lane.TakeoverForced:
 			how = lane.Forced
+		case lane.TakeoverDead:
+			how = lane.Dead
 		}
 		slot.recordTakeover(*holder, how)
 		reason := "expired"
-		if how == lane.Forced {
+		switch how {
+		case lane.Forced:
 			reason = "--force"
+		case lane.Dead:
+			reason = "holder is gone"
 		}
 		fmt.Fprintf(errOut, "land lane: taking over from %s — %s (idle %dm, %s)\n",
 			holder.Label, holder.Who, holder.IdleMinutes(now()), reason)
@@ -372,8 +456,10 @@ func landLaneRelease(slot *landLaneSlot, out, errOut io.Writer) error {
 func (s *landLaneSlot) claim(label, token string) error {
 	// The record is built before the slot is created, so the window in which the slot
 	// exists and holds nobody is one write wide.
+	start, _ := processStartFunc(strconv.Itoa(os.Getpid()))
 	record := lane.Holder{
 		PID: strconv.Itoa(os.Getpid()), Since: now(), Label: label, Who: s.who, Token: token,
+		Host: currentHost(), Start: start,
 	}.Fields() + "\n"
 	if err := s.publish(record); err != nil {
 		return err
