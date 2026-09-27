@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v9
+version: v10
 ---
 
 # GitHub repository operations
@@ -132,13 +132,13 @@ coverage measured on Windows does not predict the gate.
   same validation after a checked pull request is merged.
 - Scope security scans to Go- and security-relevant changes, platform jobs
   to Go-relevant changes. Keep the platform matrix on Linux runners only: it
-  cross-compiles and vets windows/amd64, darwin/amd64, darwin/arm64 and
-  linux/arm64, so no Windows and no macOS runner is paid for, and those targets
-  are compile-gated rather than executed — a cross-build cannot run what it
-  produces. The primary `verify` job is the only job that executes tests, and it
-  provides Linux amd64 build, race, test and coverage validation; behaviour on
-  any other platform is not verified by CI (testing-strategy §5). Require the
-  always-running `platforms` aggregate check
+  cross-compiles and vets windows/amd64, darwin/amd64, darwin/arm64,
+  linux/amd64 and linux/arm64, so no Windows and no macOS runner is paid for,
+  and those targets are compile-gated rather than executed — a cross-build
+  cannot run what it produces. The primary `verify` job is the only job that
+  executes tests, and it provides Linux amd64 build, race, test and coverage
+  validation; behaviour on any other platform is not verified by CI
+  (testing-strategy §5). Require the always-running `platforms` aggregate check
   so conditional matrix jobs still gate Go changes without blocking docs-only
   changes.
 - Cancel superseded pull-request runs through workflow concurrency.
