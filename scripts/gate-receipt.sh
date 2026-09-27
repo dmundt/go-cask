@@ -385,10 +385,17 @@ cmd_verify() {
     refuse "the receipt hashes the change as $got_diff, but $got_base..$sha is $want_diff"
 
   # Scope is recomputed, never taken from the receipt: a receipt may only excuse
-  # what it actually covered. scripts/docs-only.sh owns the classification, so
-  # this agrees with verify.sh's own scope decision by construction.
-  local want_scope=full
-  if [[ "$("$script_dir/docs-only.sh" "$got_base" "$sha")" == "true" ]]; then
+  # what it actually covered. The docs-only rule is internal/build/changes' with
+  # go-cask's pattern list in internal/build/policy, reached through
+  # `go run ./cmd/buildtool scope` — the same command the gate's own scope decision
+  # and CI's scope job ask, so this cannot drift from either. It is asked IN the
+  # repository being verified, because that repository's change is what it
+  # classifies; GATE_RECEIPT_SCOPE_CMD overrides the command, which is how the
+  # behaviour test drives this in a throwaway repository that is not this module.
+  local want_scope=full repo_root
+  repo_root="$(git rev-parse --show-toplevel)"
+  if [[ "$(cd "$repo_root" && ${GATE_RECEIPT_SCOPE_CMD:-go run ./cmd/buildtool scope} \
+    --base "$got_base" --head "$sha" --rule docs_only)" == "true" ]]; then
     want_scope=docs
   fi
   case "$got_scope" in

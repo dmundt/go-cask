@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v30
+version: v31
 tags: [go-cask]
 status: stable
 ---
@@ -50,7 +50,7 @@ version: v5
 ---
 ```
 
-- `type` is the OKF concept type (`docs/AGENT.md` §1.2): `Specification` for every topic file here, `Agent Instructions` for this meta-guide. `title` matches the H1 exactly (minus `# `). `description` is one line. `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not cosmetic fixes (typos, formatting, wording, line endings). The gate checks that the field of a changed versioned file moved and nothing more: `./scripts/verify.sh` runs `scripts/check-version-fields.sh` and names the file, while whether the change was material stays a reviewer's call. No blank line before `---`.
+- `type` is the OKF concept type (`docs/AGENT.md` §1.2): `Specification` for every topic file here, `Agent Instructions` for this meta-guide. `title` matches the H1 exactly (minus `# `). `description` is one line. `version` starts at `v1`; increment by one on **material** change (requirements, contracts, structure) — not cosmetic fixes (typos, formatting, wording, line endings). The gate checks that the field of a changed versioned file moved and nothing more: `./scripts/verify.sh` runs `internal/build/core/versioning` and names the file, while whether the change was material stays a reviewer's call. No blank line before `---`.
 - Index files are the exception: this folder's `index.md` carries `okf_version: "0.2"` and **no** `type` (`docs/AGENT.md` §1.3), so its four keys are `okf_version`/`title`/`description`/`version`.
 - These keys describe this folder's topic files. The repository's `AGENT.md` guides — this meta-guide included, and every package-local guide outside this folder — carry the same four keys under `docs/AGENT.md` §1.1, with `title` identical to their H1 and `version` moving on a material change to the guide itself. When the two files disagree about an `AGENT.md`, `docs/AGENT.md` §1.1 owns the frontmatter rule and this section owns the topic-file shape.
 - `tags:` and `status:` are the only optional keys, and only where applicable (this meta-guide carries `tags: [go-cask]`, `status: stable`). No other keys.
@@ -120,13 +120,13 @@ Fix the **more specific** document to match the more general one, unless the spe
 - Mermaid for relationships/flow: `classDiagram` for object models, `flowchart` for flows; one diagram per concept next to what it visualizes.
 - **Mermaid blocks MUST be balanced** (every ```mermaid opener has a matching closer; unbalanced fences break rendering and swallow the rest of the file). The only exception is an explicitly stated illustrative fragment, labeled in the surrounding text. Never leave one unbalanced without that statement.
 - ASCII allowed alongside mermaid (raw/terminal) but box-aligned; prefer mermaid when both exist.
-- Code fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced. `html`, `xml` and `svg` fences are forbidden (the Markdown policy bans raw HTML; `scripts/verify.sh` enforces it).
+- Code fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`). Pipe tables with a header separator; `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only when cross-referenced. `html`, `xml` and `svg` fences are forbidden (the Markdown policy bans raw HTML; `internal/build/docs` enforces it, run by `./scripts/verify.sh` in both scopes).
 
 ## 10. Editing and maintenance checklist
 
 Before committing any change to a file in this folder:
 - [x] Frontmatter present; `title` == H1; one-line `description`
-- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic — the gate enforces the bump's presence: `scripts/check-version-fields.sh` from `./scripts/verify.sh` names a changed versioned file whose `version` did not move, and never judges materiality
+- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic — the gate enforces the bump's presence: `internal/build/core/versioning` from `./scripts/verify.sh` names a changed versioned file whose `version` did not move, and never judges materiality
 - [x] Structure per §4 (no body `---` separators); checklist where applicable
 - [x] Terminology matches §6 (no "debug UI", "go-coding-guidelines", "Repository in core")
 - [x] Normative language per §5
@@ -134,7 +134,7 @@ Before committing any change to a file in this folder:
 - [x] New files added to the `AGENTS.md` aggregator "Related specs" list
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
-- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences
+- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/docs`, which walks every tracked `.md` (mermaid balance stays a count in `scripts/verify.sh`)
 
 ## 11. Signed pull-request workflow
 

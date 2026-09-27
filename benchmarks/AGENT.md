@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `benchmarks`
 description: The package-local guide for the benchmarks subtree — suite boundaries, measurement rules, the codec/hash matrix, scale probes and result discipline; benchmarks measure performance and never define correctness or gate CI.
-version: v2
+version: v3
 ---
 
 # Agent instructions — `benchmarks`
@@ -29,7 +29,7 @@ Read [`../docs/specs/performance.md`](../docs/specs/performance.md) and
 - Measure filesystem behavior only in explicit `FSBackend` cases using
   `b.TempDir()`.
 - Keep scale probes disabled unless `CASK_SCALE_OBJECTS` is a positive integer.
-- Never add benchmark execution to CI, never add a scheduled/nightly benchmark job. Subtree keeps one committed, machine-specific reference dump (`data/baseline.txt`) a maintainer refreshes by hand with `../scripts/bench-baseline.sh`; comparison point, never a threshold or a gate (performance §5).
+- Never add benchmark execution to CI, never add a scheduled/nightly benchmark job. Subtree keeps one committed, machine-specific reference dump (`data/baseline.txt`) a maintainer refreshes by hand with `go run ./cmd/buildtool bench-baseline`; comparison point, never a threshold or a gate (performance §5).
 
 ## Measurement rules
 

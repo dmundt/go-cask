@@ -94,6 +94,33 @@ git -C "$repo" config commit.gpgsign false
 git init -q --bare "$work/origin.git"
 git -C "$repo" remote add origin "$work/origin.git"
 
+# The docs-only classifier is the build tool's now (scripts/gate-receipt.sh asks
+# `go run ./cmd/buildtool scope`), and this fixture is a throwaway repository rather
+# than this Go module, so the helper is pointed at a stand-in. The stand-in answers
+# with the same rule the engine's `go_changed` arm states — a tracked Go file or a
+# module file makes a change a code change — because that is the only arm of the
+# classification that matters to a receipt's scope. The rule itself is not under
+# test here; the receipt machinery is.
+cat >"$work/scope" <<'SCOPE'
+#!/bin/sh
+set -eu
+base=""; head=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+  --base) base="$2"; shift 2 ;;
+  --head) head="$2"; shift 2 ;;
+  *) shift ;;
+  esac
+done
+if git diff --name-only "$base" "$head" | grep -Eq '(^|/).*\.go$|^go\.(mod|sum)$'; then
+  echo false
+else
+  echo true
+fi
+SCOPE
+chmod +x "$work/scope"
+export GATE_RECEIPT_SCOPE_CMD="$work/scope"
+
 base_commit() { # base_commit <file> <content> — one commit, returned on stdout
   mkdir -p "$(dirname "$repo/$1")"
   printf '%s\n' "$2" >"$repo/$1"
