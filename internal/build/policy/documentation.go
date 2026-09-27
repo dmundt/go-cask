@@ -28,18 +28,38 @@ func PackageReadme() PackageReadmeTable {
 	}
 }
 
-// InstructionBudgets returns the byte ceiling go-cask sets for each auto-read agent
-// instruction file, checked by the markdown-integrity step.
+// InstructionBudgets returns the byte ceiling go-cask sets for every agent instruction
+// file, checked by the markdown-integrity step.
 //
-// The root `AGENTS.md` is the file the ceiling binds, and it is a router: read at the
-// start of every session whatever the change, it names the owner of each rule instead
-// of restating it, so its size is a recurring cost with nothing to spend it on.
-// 6 KiB is a ceiling, not a target — the router is expected to sit far below it — and
-// the rule behind the number, the style it enforces and the relocation the failure
-// asks for are docs/AGENT.md §2.1. A rule that no longer fits belongs in its owner;
-// raising this number is a policy change, not a fix.
+// An instruction file is read while an agent works in the tree it governs, so its size is
+// a recurring cost and its ceiling is what keeps a guide a guide instead of a second
+// specification. Each number is a ratchet set just above the file's size when the ceiling
+// was added: room for a rule or two, none for the file to grow into an essay. The style
+// the ceilings enforce, and the relocation a failure asks for, are docs/AGENT.md §2.1 — a
+// rule that no longer fits belongs in its owner, and raising a number is a deliberate
+// policy change in the change that needs it, never the fix for a failure.
+//
+// Root `AGENTS.md` is the one file with real headroom: read at the start of every session
+// whatever the change, it is a router and sits far below its ceiling.
+//
+// `TestInstructionBudgetsCoverEveryInstructionFile` walks the tree, so a new guide with no
+// entry here fails, and so does an entry whose file is gone.
 func InstructionBudgets() []docs.InstructionBudget {
 	return []docs.InstructionBudget{
 		{Path: "AGENTS.md", MaxBytes: 6 * 1024},
+		{Path: ".agents/AGENT.md", MaxBytes: 8 * 1024},
+		{Path: ".github/AGENT.md", MaxBytes: 9 * 1024},
+		{Path: "benchmarks/AGENT.md", MaxBytes: 8 * 1024},
+		{Path: "benchmarks/data/AGENT.md", MaxBytes: 2 * 1024},
+		{Path: "cas/AGENT.md", MaxBytes: 5 * 1024},
+		{Path: "cas/codec/AGENT.md", MaxBytes: 3 * 1024},
+		{Path: "cas/verify/AGENT.md", MaxBytes: 3 * 1024},
+		{Path: "docs/AGENT.md", MaxBytes: 10 * 1024},
+		{Path: "docs/design/AGENT.md", MaxBytes: 3 * 1024},
+		{Path: "docs/specs/AGENT.md", MaxBytes: 13 * 1024},
+		{Path: "examples/AGENT.md", MaxBytes: 5 * 1024},
+		{Path: "internal/build/AGENT.md", MaxBytes: 5 * 1024},
+		{Path: "scripts/AGENT.md", MaxBytes: 20 * 1024},
+		{Path: "website/AGENT.md", MaxBytes: 9 * 1024},
 	}
 }

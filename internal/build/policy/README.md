@@ -2,7 +2,7 @@
 type: Guide
 title: policy (build) — go-cask
 description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, instruction-file budgets, worktree table, landing lanes, gate table, package-graph prose.
-version: v7
+version: v8
 ---
 
 # policy
@@ -21,6 +21,7 @@ to what the gate enforces → change one file here; engine stays reusable.
 | Packages that must not reach the codec layer | `CodecGuards` | `deps.CheckCodecDeps` |
 | Which paths a change set consists of; which jobs it can affect | `ScopeRules`, `DocsPaths`, `WebsitePaths` | `changes.Classify`; the `scope` command, which the gate and CI both ask |
 | Frontmatter a package README under `internal/build` carries | `PackageReadme` | the build README check |
+| Byte ceiling per instruction file | `InstructionBudgets` | the `markdown-integrity` step; the tree walk is `documentation_test.go` |
 | Site pages promising an inventory table | `Inventories` | `website.CheckInventory` |
 | Published footer: base line, hook, guards | `SiteFooter` | `website.FooterFindings`, `website.CheckSourceGuards`, `website.CheckAbsentPaths` |
 | Package graph's title, prose, layer assignment | `GraphDoc` | `depgraph.Document` |
