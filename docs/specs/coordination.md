@@ -2,7 +2,7 @@
 type: Specification
 title: Coordination — go-cask
 description: The coordinator role for many landings at once — the board it reads, waves and their serialization points, the advisory slot that serializes gate runs inside one clone, the evidence that proves a landing, and the stale claims a finished lane leaves behind.
-version: v1
+version: v2
 ---
 
 # Coordination — go-cask
@@ -48,10 +48,14 @@ only one of them can land.
 
 ## 3. Evidence, not claims
 
-- **A gate is green for a commit when both hold:** the clone ledger
-  (`.git/verify.ok`, `policy.Worktrees().Ledger`) names that commit, and
-  `.git/gate-receipts/<full-sha>.receipt` exists. A lane reporting that it
-  "gated green" is a claim; only the ledger is evidence.
+- **A gate is green for a commit when both hold:** the clone ledger names that
+  commit, and a receipt for it exists. Both live in the clone's **common** git
+  directory (`git rev-parse --git-common-dir`): `.git/verify.ok` and
+  `.git/gate-receipts/<full-sha>.receipt` in the primary checkout, and the same
+  two paths under the common directory from a linked worktree, where `.git` is a
+  file rather than a directory. The ledger's name in the policy table is
+  `policy.Gate().Ledger`. A lane reporting that it "gated green" is a claim;
+  only the ledger is evidence.
 - `refs/gate/<sha>` on `origin` is the published form of that same fact, and the
   one CI reads.
 - **`git worktree list` is the authority for a removal**, never the removal's own
@@ -70,7 +74,8 @@ only one of them can land.
 - **Serialization points** — at most one lane per wave touches each:
   `CHANGELOG.md`, `docs/index.md`, `docs/design/package-graph.md`,
   `docs/specs/defaults.md`, `docs/specs/cas-core.md`, `docs/specs/landing.md`,
-  and the coverage entries in `scripts/verify.sh`.
+  and go-cask's coverage table (`internal/build/policy/policy.go`, read by the
+  gate's coverage steps).
 - **Disjoint build files are not enough.** Most user-visible changes carry a
   `CHANGELOG.md` bullet and any spec change carries a frontmatter `version:`
   bump, so two lanes editing different packages still meet in those files. Two
