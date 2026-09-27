@@ -2,7 +2,7 @@
 type: Guide
 title: receipt (build engine) — go-cask
 description: The gate receipt's format — parse, render, check-name rule, evidence identity, and the canonical changed-path list both sides hash.
-version: v1
+version: v2
 ---
 
 # receipt
@@ -23,7 +23,11 @@ that guessed at an unknown layout would be comparing nothing. After it, the fiel
 check, then `coverage-tiers` when the run measured, then the run's own `go`, `runner` and
 `run`. `Parse` accepts them in any order and ignores a field it does not know, because the
 format is line-oriented and extensible; a repeated field keeps its first value, which is
-what a verification reads.
+what a verification reads. A value carrying a CR is not carried either: `Parse` reads a
+CRLF as one line ending, so the CR of such a value would fold into the line ending a
+render wrote and the value would come back shorter — or empty — on the next read. The
+line is ignored, as a check name the character set cannot carry already was, and
+`Parse(Render(r))` is `r` for every record `Parse` returns.
 
 `CheckName` is the character-set rule. A check name is one token on one line, so a space or
 a newline in it would not make the receipt wrong — it would make it unreadable, and a
@@ -53,4 +57,5 @@ collected have to hash the same way, or a receipt for an unchanged tree would be
 permissive-but-versioned reader, the two scope tokens, the check-name character set, the
 identity with each evidence field moved in turn, and the canonical path list in both input
 orders. `FuzzParse` keeps the reader total and its inverse honest: anything it accepts
-re-renders to a record with the same identity.
+re-renders to a record with the same identity, and the CR seed
+(`testdata/fuzz/FuzzParse/seed-cr-in-value`) is the input that broke that half.
