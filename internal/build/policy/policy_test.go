@@ -31,11 +31,16 @@ func repoRoot(t *testing.T) string {
 // tidy: `./...` resolves against the working directory, so running it from this
 // package's own directory would list one package and a test built on it would
 // compare an almost-empty graph against the committed document.
+//
+// Every call here passes -buildvcs=false, as cmd/buildtool's goList helper does:
+// `go list` otherwise stamps VCS metadata by shelling out to git, and these tests run in
+// the gate's own test step, where every lane shares one `.git` and those calls contend
+// (#462). The graph and the package list need no VCS metadata.
 func goList(t *testing.T) (string, []depgraph.Package) {
 	t.Helper()
 	root := repoRoot(t)
 
-	moduleOut, err := exec.Command("go", "list", "-m", "-f", "{{.Path}}").Output()
+	moduleOut, err := exec.Command("go", "list", "-buildvcs=false", "-m", "-f", "{{.Path}}").Output()
 	if err != nil {
 		t.Fatalf("go list -m: %v", err)
 	}
@@ -44,7 +49,7 @@ func goList(t *testing.T) (string, []depgraph.Package) {
 		t.Fatal("go list -m reported an empty module path")
 	}
 
-	cmd := exec.Command("go", "list", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
+	cmd := exec.Command("go", "list", "-buildvcs=false", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
 	cmd.Dir = root
 	rowsOut, err := cmd.Output()
 	if err != nil {
@@ -153,7 +158,7 @@ func TestEveryCasPackageIsCovered(t *testing.T) {
 	// The tree's own package list, module-relative, which is the form the policy
 	// uses.
 	pattern := module + "/cas/..."
-	out, err := exec.Command("go", "list", pattern).Output()
+	out, err := exec.Command("go", "list", "-buildvcs=false", pattern).Output()
 	if err != nil {
 		t.Fatalf("go list %s: %v", pattern, err)
 	}
@@ -188,7 +193,7 @@ func TestCoverageHasNoStaleRows(t *testing.T) {
 		named = append(named, exempt.Package)
 	}
 	for _, pkg := range named {
-		if out, err := exec.Command("go", "list", module+"/"+pkg).CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", "list", "-buildvcs=false", module+"/"+pkg).CombinedOutput(); err != nil {
 			t.Errorf("the policy names %s, which go list rejects: %v: %s", pkg, err, strings.TrimSpace(string(out)))
 		}
 	}
@@ -210,7 +215,7 @@ func TestCodecGuardsAreReached(t *testing.T) {
 		}
 		// `go list ./gitlike` resolves against the working directory, so it has to
 		// run from the module root rather than from this package.
-		cmd := exec.Command("go", "list", "-deps", guard.Package)
+		cmd := exec.Command("go", "list", "-buildvcs=false", "-deps", guard.Package)
 		cmd.Dir = repoRoot(t)
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
