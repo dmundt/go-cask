@@ -2,7 +2,7 @@
 type: Guide
 title: policy (build) — go-cask
 description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, worktree table, landing lanes, gate table, package-graph prose.
-version: v5
+version: v6
 ---
 
 # policy
@@ -26,7 +26,7 @@ to what the gate enforces → change one file here; engine stays reusable.
 | Package graph's title, prose, layer assignment | `GraphDoc` | `depgraph.Document` |
 | Where that document lives | `GraphDocPath` | the `dep-graph` command |
 | The gate's entry points and its verified-commit ledger | `Gate` | the `verify` and `pre-push` commands; `gate.Verified`, `gate.Append` |
-| The gate's own layout: nested module, variables, escape hatches, smoke-fuzz set | `Verify` | the `verify` command |
+| The gate's own layout: nested module, variables, escape hatches, cross-platform targets, smoke-fuzz set | `Verify` | the `verify` command |
 | The local advisory slot: directory, records, idle window | `LandLane` | the `land-lane` command; `lane.Decide` |
 | The server-side lane: ref namespace, claim window, record file | `PRLane` | the `pr-lane` command; `claim.DecideLane` |
 | Task worktree location, base, lock text | `Worktrees` | the `worktree` command; `worktree.GitFile` |
@@ -59,7 +59,8 @@ one file:
 - **tables themselves** — matrix covers every top-level tree; coverage policy validates
   and names no dropped package; every `cas/` package carries a tier.
 - **real tree** — inventory tables match the site; committed graph = `GraphDoc` render;
-  every directory under `internal/build` has a README its parent links to.
+  every directory under `internal/build` has a README its parent links to; the workflow's
+  platform matrix gates the same targets `Verify` hands the cross-platform step.
 
 Second kind reads the repository → slower than the engine's tests; only way to catch a
 drifted table.

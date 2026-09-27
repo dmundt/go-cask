@@ -30,6 +30,11 @@ type VerifyTable struct {
 	// Compilers are the C compilers CGO needs. The race and coverage steps cannot run
 	// without one, so the gate refuses up front rather than failing inside a build.
 	Compilers []string
+	// Platforms are the cross-compilation targets the cross-platform step cross-builds
+	// and vets, in the order it runs them. The CI platform-matrix job gates the same set,
+	// and a workflow is YAML that cannot read this table, so a test in this package pins
+	// the two together (TestPlatformTargetsMatchTheWorkflow).
+	Platforms []PlatformTarget
 	// Fuzz is the smoke-fuzz set: one entry per target the gate runs, in the order it
 	// runs them. A target that is added here without existing fails the policy tests, and
 	// so does an engine package whose targets are not represented at all.
@@ -47,6 +52,21 @@ type VerifyTable struct {
 	// skips its own run on the strength of them, so a rename that misses one of the two
 	// places costs a full CI run — the policy test pins the pair.
 	Checks VerifyCheckNames
+}
+
+// PlatformTarget is one cross-compilation target: the GOOS and GOARCH pair the CI
+// platform-matrix job cross-builds and the gate's cross-platform step cross-builds and
+// vets.
+//
+// The pair is the whole identity — the matrix's display name is derived from it, so
+// editing a display name can never desynchronise the two lists — and it is held as the
+// two values `go build` takes rather than as one "os/arch" string, because the step sets
+// them as separate environment variables.
+type PlatformTarget struct {
+	// GOOS is the target operating system, as `go build` spells it.
+	GOOS string
+	// GOARCH is the target architecture, as `go build` spells it.
+	GOARCH string
 }
 
 // VerifyCheckNames are the names a gate run records, one field per check. The receipt is a
@@ -164,5 +184,14 @@ func Verify() VerifyTable {
 		},
 		ReleaseEnv:     "CASK_RELEASE_TAG",
 		ReleaseFromEnv: "CASK_RELEASE_FROM_TAG",
+		// The set the gate and the CI matrix both gate: the two desktop targets no runner
+		// of their own is spent on, and the arm64 Linux target the host cannot build —
+		// linux/amd64 is what `go build ./...` already covers.
+		Platforms: []PlatformTarget{
+			{GOOS: "windows", GOARCH: "amd64"},
+			{GOOS: "darwin", GOARCH: "amd64"},
+			{GOOS: "darwin", GOARCH: "arm64"},
+			{GOOS: "linux", GOARCH: "arm64"},
+		},
 	}
 }
