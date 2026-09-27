@@ -221,8 +221,10 @@ func TestPutIsIdempotentWhenThePublishRenameFails(t *testing.T) {
 //
 //   - syncParentDir's `runtime.GOOS == "windows"` early return: the condition is
 //     a compile-time platform constant and the gate measures this package on
-//     Linux only (testing-strategy.md §5, "Platform-split packages"); the
-//     Windows path is exercised by the platform-matrix `go test ./...` job.
+//     Linux only (testing-strategy.md §5, "Platform-split packages"). No job
+//     executes it anywhere: the platform matrix cross-compiles and vets
+//     windows/amd64 on a Linux runner, so this branch is compile-checked,
+//     not run.
 //
 //   - Put's two cleanup branches for a failing f.Sync() and a failing f.Close()
 //     (the `cleanup()` helper and the `os.Remove(tmp)` before the close error):
