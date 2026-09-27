@@ -12,7 +12,7 @@ It is the fifth extension shape (extensions §2.1) and the counterpart to [the c
 <base>/.meta/<hex>.<n>.tmp    atomic-write scratch, reclaimed by the backend's Clean
 ```
 
-`<base>` is what the backend reports as `BasePath()`: the path passed to `fs.New`, or, for `packfs`, the loose tree at `<base>/loose` — the directory its `List`, `Stats` and `Clean` operate on. `.meta` is the one sanctioned resident under a store's base (AGENTS.md), because its files are neither digest-named (the `.json` suffix keeps them out of `List`/`Stats`) nor free `*.tmp` scratch.
+`<base>` is what the backend reports as `BasePath()`: the path passed to `fs.New`, or, for `packfs`, the loose tree at `<base>/loose` — the directory its `List`, `Stats` and `Clean` operate on. `.meta` is the one sanctioned resident under a store's base (cas-core §4.4), because its files are neither digest-named (the `.json` suffix keeps them out of `List`/`Stats`) nor free `*.tmp` scratch.
 
 ## Typical use
 

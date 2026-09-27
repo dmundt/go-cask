@@ -25,7 +25,7 @@ repository.
 | `gitlike/`  | Shared reference object-model library, copy-source (package `gitlike`) |
 | `cmd/cask`           | The single entry point: CLI store ops + embedded viewer (`cask web`) — spec: `cli.md` |
 | `examples/`          | Runnable example programs (`examples.md`)                   |
-| `docs/specs/` | The specification set (21 files: 19 spec files + AGENT.md + index.md) |
+| `docs/specs/` | The specification set (22 files: 20 spec files + AGENT.md + index.md) |
 
 ### Design decisions and constraints
 
@@ -40,7 +40,7 @@ every change:
   `examples/`. Examples MUST NOT import `internal/`, `cmd/` or another example —
   `cas` and `gitlike` are ordinary imports, not exceptions: `gitlike` is a
   2nd-class library at the application layer (coding-guidelines §9,
-  examples §2 rule 11, AGENTS.md "Layers and citizen classes").
+  examples §2 rule 11, library-design §1.1).
 - **Byte-layer viewer**: `internal/web` shows objects, bytes, and integrity —
   no typed references or graphs (viewer-design §7).
 - **Lean generic core**: only the cas-core §7.1 surface is stable; adding
@@ -94,8 +94,8 @@ Rules from the specs that always apply:
 Spec changes follow the same flow, plus `docs/specs/AGENT.md`'s maintenance
 checklist (§10 "Editing and maintenance checklist"): frontmatter rules,
 terminology (§6), cross-reference updates, version bumps, and registration of
-new files in the file inventory `docs/specs/index.md` + `AGENTS.md`'s related
-specs. Run the folder audit (frontmatter, file refs, diagram balance) before
+new files in `docs/specs/index.md` (and `docs/index.md` when a new path pattern
+appears). Run the folder audit (frontmatter, file refs, diagram balance) before
 opening the PR.
 
 ## Reporting issues

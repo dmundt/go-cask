@@ -1,8 +1,8 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v20
+description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, the instruction-file router budget, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
+version: v21
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -67,7 +67,16 @@ viewer mockup; it MUST NOT be copied into a `.md` file.
 - No cross-document duplication: each fact lives in one place (`defaults.md` or its owning spec), referenced not restated.
 - **Mermaid diagrams are exempt** from trimming (visualize complex relationships, kept even when large).
 - Deferred-feature sketches, historical rationales and single-run benchmark samples → remove, replace with a pointer to the deferral record.
-- Keep the three directories: `docs/specs/` (normative, 21 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
+- Keep the three directories: `docs/specs/` (normative, 22 files), `docs/design/` (non-normative), `benchmarks/README.md` (guide beside the benchmark code, outside `docs/`).
+
+### 2.1 Instruction files are routers, and they have a budget
+
+An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into context at session start, so its bytes are a recurring cost. It routes; it does not specify.
+
+- Root `AGENTS.md` MUST stay **≤ 6 KiB**, and the gate enforces it: `internal/build/core/docs` measures the file against `internal/build/policy`'s table and `go run ./cmd/buildtool markdown-integrity` fails above it. The budget is a ceiling for the router, never a target to fill: `AGENTS.md` may be far smaller, and MUST NOT be grown to it.
+- A rule belongs to exactly one owning file; the router names that file and section. It carries no prose, no rationale, no restated rule, no duplicated diagram, table row or code example — moving a block out means moving its content to the owner, never deleting it.
+- The facts that make a file discoverable stay routed, not restated: the path→spec mapping is [`index.md`](index.md) and the tree list is [`../README.md`](../README.md) "Repository layout". Route through those instead of growing either into a second inventory.
+- The same style applies to every instruction file: fragments over sentences, tables over paragraphs, backticked paths over descriptions. Telegraphic is not terser rules — every rule, fact, path, command, identifier, number, link and code block survives the rewrite.
 
 ## 3. Adding a file
 
@@ -104,6 +113,7 @@ Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] Mermaid blocks balanced; all code fences tagged
 - [ ] No raw HTML, HTML comments, or HTML/XML/SVG fences
 - [ ] LF endings, UTF-8
+- [ ] An instruction file changed: within the §2.1 budget, and every block removed from it relocated to its owner
 
 The same item list applies, shape adapted to the artifact, when adding or
 changing a repository skill under `.agents/skills/`; that directory's own

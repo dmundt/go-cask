@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: The meta-guide for docs/specs/ — file naming, frontmatter, document structure, normative language, shared terminology, cross-referencing, precedence, and the maintenance checklist that keeps every instruction file consistent.
-version: v31
+version: v32
 tags: [go-cask]
 status: stable
 ---
@@ -102,7 +102,7 @@ Forbidden/deprecated: "debug UI"/`debug_ui` → **viewer**; "go-coding-guideline
 ## 7. Cross-referencing
 
 - Sibling files by backticked path (`docs/specs/cas-core.md`) or short backticked name (`cas-core.md`) in a `Related:` line. Reference sections by number (`§4.4`, `P-05`, `§2`), never approximate prose.
-- A contract change updates **all** referencing files in one pass; `grep` for the changed term across `docs/specs/` and `.github/` must be clean. The `AGENTS.md` "Related specs" list MUST list every instruction file (add new ones).
+- A contract change updates **all** referencing files in one pass; `grep` for the changed term across `docs/specs/` and `.github/` must be clean. The file inventory is this folder's `index.md`, and `docs/index.md` adds the path-first lookup; a new instruction file is registered there. Root `AGENTS.md` routes and lists none: it names the owner of a rule, never the rule.
 
 ## 8. Precedence and conflict resolution
 
@@ -114,6 +114,8 @@ On conflict this order decides (highest first):
 5. **This file (AGENT.md)** governs the documents themselves.
 
 Fix the **more specific** document to match the more general one, unless the specific document is higher in this order. Never leave two contradicting statements in the folder.
+
+- **A direct instruction from the user outranks every file here.** These files state the standing contract, and code produced for this repository MUST follow them unless the user explicitly overrides them for the work at hand. The one thing never dropped silently is security: an instruction that would weaken `viewer-security.md` is reported back, not obeyed blind and not ignored.
 
 ## 9. Diagram and formatting rules
 
@@ -131,7 +133,7 @@ Before committing any change to a file in this folder:
 - [x] Terminology matches §6 (no "debug UI", "go-coding-guidelines", "Repository in core")
 - [x] Normative language per §5
 - [x] Cross-references updated in ALL files mentioning the term; `grep` of old terms across `docs/specs/` and `.github/` returns nothing
-- [x] New files added to the `AGENTS.md` aggregator "Related specs" list
+- [x] New files registered in `docs/specs/index.md` (and `docs/index.md` when a new path pattern appears)
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
 - [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/docs`, which walks every tracked `.md` (mermaid balance stays a count in `scripts/verify.sh`)

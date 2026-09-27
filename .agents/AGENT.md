@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (agent skills)
 description: The guide for .agents/ — how a repository skill is discovered, how its SKILL.md is authored and budgeted, what belongs in user scope instead, when vendored material needs a NOTICE, and the validation checklist a new skill must pass.
-version: v3
+version: v4
 tags: [go-cask]
 status: stable
 ---
@@ -146,8 +146,8 @@ place: re-vendor, then update the revision and blob hash.
 
 1. Create `.agents/skills/<name>/SKILL.md` with the two-key frontmatter.
 2. Add or update `.agents/skills/` row in [`docs/index.md`](/docs/index.md)
-   so a path match reaches the skill, name the skill in the repo-layout
-   block of [`AGENTS.md`](/AGENTS.md) when the set of skills changes.
+   so a path match reaches the skill, name the skill in the [`README.md`](/README.md)
+   "Repository layout" list when the set of skills changes.
 3. Add a `NOTICE` when §7 applies.
 4. On removal, delete the bundle and both mentions. Dangling pointer in the
    index is worse than no row.

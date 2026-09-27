@@ -66,3 +66,46 @@ func TestEveryBuildReadmeIsVersioned(t *testing.T) {
 		t.Fatalf("inspected %d README(s) under internal/build, so this test proved nothing", checked)
 	}
 }
+
+// TestInstructionBudgetsAreLive pins the ceiling against the file it binds. A table
+// entry whose path no longer exists is stale, and a stale entry is worse than none: it
+// reads as coverage while the instruction file it named has been renamed, deleted or
+// outgrown. The engine reports that staleness, and the command feeds it what it read, so
+// this test checks the table the same way — the entry resolves, the file is the router
+// docs/AGENT.md §2.1 describes, and the router is inside its own ceiling today.
+func TestInstructionBudgetsAreLive(t *testing.T) {
+	t.Parallel()
+
+	budgets := InstructionBudgets()
+	if len(budgets) == 0 {
+		t.Fatal("no instruction budget is declared, so nothing bounds an auto-read instruction file")
+	}
+
+	root := repoRoot(t)
+	for _, budget := range budgets {
+		if budget.MaxBytes <= 0 {
+			t.Errorf("%s carries ceiling %d, want a positive byte count", budget.Path, budget.MaxBytes)
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(budget.Path)))
+		if err != nil {
+			t.Errorf("instruction budget names %s: %v", budget.Path, err)
+			continue
+		}
+		fields, found := docs.Fields(string(content))
+		if !found {
+			t.Errorf("%s carries no frontmatter; an auto-read router declares type, title, description and version", budget.Path)
+			continue
+		}
+		// The router routes: the description says so, which is the property the
+		// ceiling exists to protect. A file that starts specifying is the drift
+		// the budget is meant to catch first.
+		if !strings.Contains(strings.ToLower(fields["description"]), "router") {
+			t.Errorf("%s describes itself as %q, not as the router docs/AGENT.md §2.1 requires", budget.Path, fields["description"])
+		}
+		if len(content) > budget.MaxBytes {
+			t.Errorf("%s is %d bytes, over its %d-byte ceiling: relocate a rule instead of raising the ceiling",
+				budget.Path, len(content), budget.MaxBytes)
+		}
+	}
+}
