@@ -20,7 +20,7 @@ permissions:
 # and the diff hash recomputed here, the scope, and the list of checks the gate
 # would otherwise repeat — and only then skips the suite. Anything short of that
 # (no receipt, a fork, an unsigned local gate, a branch that fell behind main, a
-# renamed gate section) leaves the receipt unusable and the whole gate runs below.
+# renamed gate step) leaves the receipt unusable and the whole gate runs below.
 # The fast path is entered by evidence; it cannot be entered by its absence, and
 # the required check names stay exactly what branch protection names.
 

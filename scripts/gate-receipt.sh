@@ -10,7 +10,8 @@
 # merge base it was measured from, a hash of the changed path list, the scope), by
 # WHAT (the checks that ran, the toolchain, the time) and signed by WHOM.
 #
-# The transport is a coordination ref, like `refs/lane/<issue>` in pr-lane.sh:
+# The transport is a coordination ref, like `refs/lane/<issue>` in the pr-lane
+# command:
 # `refs/gate/<commit>` points at a receipt COMMIT — a signed commit object whose
 # message is the receipt, whose tree is the gated commit's tree, and whose parent is
 # the gated commit itself. Nothing is ever committed to it in the ordinary sense:
@@ -19,7 +20,8 @@
 #
 # It is a commit and not an annotated tag for a mechanical reason. The remote
 # refuses a tag object under this namespace ("fatal error in commit_refs"), and the
-# REST API route pr-lane.sh uses (`POST /git/tags`) builds its object server-side,
+# REST API route the pr-lane command uses (`POST /git/tags`) builds its object
+# server-side,
 # so it cannot carry the developer's signature at all. A signed commit is
 # pushable, verifiable with `git verify-commit`, and its shape gives CI two checks
 # that do not depend on the receipt's own text: its parent must BE the commit CI is
@@ -28,7 +30,7 @@
 #   gate-receipt.sh create  --scope docs|full [--sha SHA] [--base SHA]
 #                           [--checks "a b c"] [--coverage-tiers N]
 #       Write the receipt for a green run into $common/gate-receipts/<sha>.receipt.
-#       verify.sh calls this; it signs nothing and touches no network.
+#       the gate calls this; it signs nothing and touches no network.
 #   gate-receipt.sh publish [--sha SHA] [--remote NAME] [--quiet]
 #       Sign the receipt as a commit object and push it to refs/gate/<sha>.
 #       .githooks/pre-push runs this as part of a push, best effort; run it by hand
@@ -65,10 +67,12 @@ ref_prefix="refs/gate"
 
 # The checks the required `verify` job in CI would have run itself. Keeping the
 # list here, next to the format it has to match, means ci.yml names only
-# `--require-suite full` and a section renamed in verify.sh cannot silently turn
-# into a skipped check: the receipt stops carrying the name, and CI runs the whole
-# gate instead. A section added to verify.sh must be added here and marked there
-# (`mark_check`); a section that is merely renamed must be renamed in both.
+# `--require-suite full` and a gate step renamed in `cmd/buildtool verify` cannot
+# silently turn into a skipped check: the receipt stops carrying the name, and CI
+# runs the whole gate instead. The names themselves are that command's policy
+# table (`policy.Verify().Checks`), and `TestVerifyChecksMatchTheReceiptSuite`
+# pins this list against it, so a step added or renamed is changed in both places
+# or the gate fails.
 suite_full=(
   gofmt
   go-mod-tidy
@@ -176,7 +180,7 @@ cmd_create() {
   [[ -n "$sha" ]] || sha="$(git rev-parse HEAD)"
   sha="$(git rev-parse --verify "$sha^{commit}")" ||
     die "create: not a commit: $sha"
-  # verify.sh passes the merge base it measured the change from, because that is
+  # the gate passes the merge base it measured the change from, because that is
   # the base the scope decision used; a caller without one gets origin/main.
   if [[ -z "$base" ]]; then
     base="$(git merge-base origin/main "$sha" 2>/dev/null || true)"

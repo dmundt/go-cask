@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v4
+version: v5
 ---
 
 # GitHub repository operations
@@ -106,7 +106,7 @@ the host that already paid for it.
   pull request's base; the diff hash recomputed in CI matches; its scope covers the
   change; it lists every check in `gate-receipt.sh`'s `suite_full`. Anything
   short of that runs the whole gate — a fork, an unsigned local gate, a missing or
-  stale ref, a renamed gate section.
+  stale ref, a renamed gate step.
 - **The signature is the anchor, the ref is not.** Push authority decided who
   could create the ref; the allow-list decides whose receipt may excuse a check.
   Rotating the signing key means adding its line to `.github/gate-signers`; until

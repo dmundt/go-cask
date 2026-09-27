@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v16
+version: v17
 ---
 
 # Agent instructions — `scripts/`
@@ -153,10 +153,11 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   outcome for a fork, an unsigned gate, a branch behind `main`, or a malformed
   receipt, so never turn one into a skipped check.
 - Three places hold that contract and they move together: a step in
-  `cmd/buildtool verify` marks itself with `r.mark(<name>)`, `suite_full` in
-  `gate-receipt.sh` lists the marks CI requires, and `ci.yml` asks only for
-  `--require-suite full`. Adding or renaming a gate section without the other two
-  costs a full CI run, never a missed one. `verify.sh` writes a receipt only for a
+  `cmd/buildtool verify` records its check name from `internal/build/policy`'s
+  gate table, `suite_full` in
+  `gate-receipt.sh` lists the checks CI requires, and `ci.yml` asks only for
+  `--require-suite full`. Adding or renaming a gate step without the other two
+  costs a full CI run, never a missed one. The gate writes a receipt only for a
   clean working tree and never on a runner: a receipt names the tree of a commit,
   and CI checks out a merge commit nobody pushes.
 - Publishing is signing, so it happens in the toolchain that has `gpg.format` and
