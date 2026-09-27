@@ -759,8 +759,8 @@ func (r *gateRun) commandWithEnv(dir string, env []string, name string, args ...
 const verifyFuzzTime = "5s"
 
 // stepReleaseNotes checks that the changelog section for a tag being released yields a
-// note carrying the compare link it must have (AGENTS.md, "Changelog and release-note
-// policy"). The body itself is discarded: the note is the release's, and this step only
+// note carrying the compare link it must have (docs/specs/versioning.md §4). The body
+// itself is discarded: the note is the release's, and this step only
 // asks whether it can be rendered at all.
 func stepReleaseNotes(r *gateRun) error {
 	args := []string{"--tag", r.env(r.table.ReleaseEnv)}

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v18
+version: v19
 ---
 
 # Agent instructions — `scripts/`
@@ -67,8 +67,8 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
 - A rule that is data plus logic belongs in Go, not in this shell layer, and the
   gate calls it. The packages under `internal/build/core` own the gate's decisions:
   `changes` the change-set classification (which paths a change touches, and what
-  that decides), `layers` the dependency-layer matrix (AGENTS.md, "Layers and
-  citizen classes"), `coverage` the coverage tiers and thresholds
+  that decides), `layers` the dependency-layer matrix (library-design.md §1.1),
+  `coverage` the coverage tiers and thresholds
   (testing-strategy.md §5), `docs` the Markdown integrity rules
   (docs/specs/AGENT.md §9), `website` the site's Go fences, shipped-package
   inventory tables and one-line footer (website/AGENT.md), `deps` the codec guards
@@ -221,8 +221,8 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   in the primary checkout it can be behind the remote or hold another session's
   uncommitted work. The rule and its one exception — a `hotfix` based on
   `release/vX.Y` — live in
-  [`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md) §3 and the
-  repo-root [`AGENTS.md`](../AGENTS.md); the link, the admin directory it must
+  [`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md) §3 and
+  [`docs/specs/landing.md`](../docs/specs/landing.md); the link, the admin directory it must
   resolve to and the lock are `internal/build/core/worktree`'s, and
   `cmd/buildtool/worktree_test.go` pins them against a real repository.
 

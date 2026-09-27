@@ -92,3 +92,87 @@ go test ./gitlike/...
 ```
 
 It is a library; there is no standalone program. Apps import it with `github.com/dmundt/go-cask/gitlike` and layer their own types the same way.
+
+## Usage tour
+
+The whole model in one program: build a blob → tree → commit → tag graph on the
+filesystem backend, read it back type-safely through the `Resolver`, read it
+through the per-type caches, and walk it. `gitlike` names neither the algorithm
+nor the wire format, so the client supplies both: the `sha256` hasher and one
+JSON codec per object type.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "github.com/dmundt/go-cask/cas/backend/fs"
+    jsoncodec "github.com/dmundt/go-cask/cas/codec/json"
+    sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
+    "github.com/dmundt/go-cask/gitlike"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // 1. Filesystem backend + git-like example repository on top. gitlike names
+    //    neither the algorithm nor the wire format, so the client supplies both:
+    //    the sha256 hasher and one JSON codec per object type.
+    backend, _ := fs.New("./repo")
+    repo := gitlike.NewRepository(backend, sha256.New(), gitlike.Codecs{
+        Blob:   jsoncodec.New[*gitlike.Blob](),
+        Tree:   jsoncodec.New[*gitlike.Tree](),
+        Commit: jsoncodec.New[*gitlike.Commit](),
+        Tag:    jsoncodec.New[*gitlike.Tag](),
+    })
+    resolver := gitlike.NewResolver(repo)
+
+    // 2. Build a Git-like object graph: blob → tree → commit → tag.
+    //    A reference field is a plain cas.Digest: the zero value is "absent",
+    //    it renders itself as one hex string, and a field tagged omitzero is
+    //    left out of the encoding when absent.
+    blobHash, _ := repo.Blobs.Put(ctx, &gitlike.Blob{Data: []byte("Hello, World!")})
+    treeHash, _ := repo.Trees.Put(ctx, &gitlike.Tree{Entries: []gitlike.TreeEntry{
+        {Name: "hello.txt", Hash: blobHash, Mode: "file"},
+    }})
+    commitHash, _ := repo.Commits.Put(ctx, &gitlike.Commit{
+        Tree: treeHash, Author: "Alice",
+        Message: "Initial commit", Time: time.Now(),
+    })
+    tagHash, _ := repo.Tags.Put(ctx, &gitlike.Tag{Name: "v1.0", Target: commitHash, Tagger: "Bob", Message: "Release"})
+
+    // 3. Type-safe reads — no casts, no any: the fields ARE the addresses
+    //    (IsZero reports an absent one). Each step uses the resolver method
+    //    matching the digest's stored type: resolving a TAG digest through
+    //    ResolveCommit fails (stored type "tag@1" != "commit@1"), so walk the
+    //    chain — tag -> Target -> Tree -> entry Hash.
+    tag, _ := resolver.ResolveTag(ctx, tagHash)
+    commit, _ := resolver.ResolveCommit(ctx, tag.Target)
+    tree, _ := resolver.ResolveTree(ctx, commit.Tree)
+    blob, _ := resolver.ResolveBlob(ctx, tree.Entries[0].Hash)
+    fmt.Println(string(blob.Data)) // "Hello, World!"
+
+    // 4. Cached access (gitlike per-type LRU caches over the repository).
+    cachedRepo, _ := gitlike.NewCachedRepository(repo, 1000)
+    cachedCommit, _ := cachedRepo.GetCommit(ctx, commitHash)
+    fmt.Println("message:", cachedCommit.Message)
+
+    // 5. Traverse the whole graph.
+    _ = gitlike.WalkGraph(ctx, resolver, tagHash, func(o *gitlike.ResolvedObject) error {
+        fmt.Println("visited:", o.Type)
+        return nil
+    })
+}
+```
+
+For tests and ephemeral use, swap the backend — everything above works
+unchanged:
+
+```go
+import backmem "github.com/dmundt/go-cask/cas/backend/mem" // package memory, aliased per cas/AGENT.md
+
+backend := backmem.New() // in-memory: fast, deterministic, not persistent
+```

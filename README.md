@@ -43,16 +43,20 @@ A **single-host content-addressable store**. Each named spec is the normative co
 
 ## Repository layout
 
-- [cas/](cas/) — the public core library (package `cas`): generic, app-agnostic, stable surface.
-- [internal/](internal/) — implementation details: viewer, index, the gate's build decisions (`internal/build/`), and local helpers not meant to be imported outside the module; the viewer package starts at [internal/web/README.md](internal/web/README.md).
-- [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs.
-- [examples/](examples/) — runnable example programs showing how to use the core and the reference model.
+- [cas/](cas/) — the public core library (package `cas`): generic, app-agnostic, stable surface. Its subpackages are routed row by row in [docs/index.md](docs/index.md), not listed here: `backend/*` (`fs`, `mem`, `packfs`), `bloom`, `cache`, `codec`, `hash`, `pack`, `refs`, `repo`, `verify`.
+- [internal/](internal/) — implementation details: viewer, index, store, test, the repo-wide design-rule checks (`internal/design/`), the gate's build decisions (`internal/build/`), and local helpers not meant to be imported outside the module; the viewer package starts at [internal/web/README.md](internal/web/README.md).
+- [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`, `WalkGraph`).
+- [examples/](examples/) — runnable example programs showing how to use the core and the reference model (per [docs/specs/examples.md](docs/specs/examples.md)).
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
 - [cmd/](cmd/) — command-line entry points: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md), plus `buildtool`, the gate's developer tool for the build decisions above.
-- [docs/specs/](docs/specs/) — the normative specification set; start at [docs/specs/AGENT.md](docs/specs/AGENT.md) and [docs/index.md](docs/index.md).
-- [docs/design/](docs/design/) — non-normative design/background material.
-- [AGENTS.md](AGENTS.md) — repo-root agent instructions and rule index entry point.
-- [.github/](.github/) — CI configuration and automation only.
+- [docs/index.md](docs/index.md) — the rule file index: read it first, then the spec it maps your path to.
+- [docs/specs/](docs/specs/) — the normative specification set (22 files: 20 specs + `AGENT.md` + `index.md`); start at [docs/specs/AGENT.md](docs/specs/AGENT.md).
+- [docs/design/](docs/design/) — non-normative design/background material: briefs, audits, mockups and implementation plans ([docs/design/index.md](docs/design/index.md)).
+- [website/](website/) — public site sources, built with MkDocs Material ([website/AGENT.md](website/AGENT.md)).
+- [scripts/](scripts/) — gate, landing and release tooling ([scripts/README.md](scripts/README.md), [scripts/AGENT.md](scripts/AGENT.md)).
+- [AGENTS.md](AGENTS.md) — repo-root agent router: the rules a session must obey, and the pointer to the spec that owns the path you are editing.
+- [.agents/skills/](.agents/skills/) — agent skills discovered at the project root, one directory bundle per skill (`cask-change`, the change playbook).
+- [.github/](.github/) — CI configuration and automation only; no product code.
 
 ## Core interfaces at a glance
 
@@ -182,7 +186,7 @@ go test -race ./...
 gofmt -l .
 ```
 
-Requires Go 1.24 or newer: the module declares `go 1.24` with a self-managing `toolchain go1.27.1`, and the 1.24 floor is what the `omitzero` JSON tags used by `cas.Digest` reference fields need (AGENTS.md "Constraints and conventions", coding-guidelines §1). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and [benchmarks/README.md](benchmarks/README.md) for running/reading the benchmarks.
+Requires Go 1.24 or newer: the module declares `go 1.24` with a self-managing `toolchain go1.27.1`, and the 1.24 floor is what the `omitzero` JSON tags used by `cas.Digest` reference fields need ([library-design.md](docs/specs/library-design.md) §5, [coding-guidelines.md](docs/specs/coding-guidelines.md) §1). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and [benchmarks/README.md](benchmarks/README.md) for running/reading the benchmarks.
 
 ## License
 

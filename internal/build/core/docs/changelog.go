@@ -5,8 +5,8 @@ import (
 )
 
 // CHANGELOG.md is published on the website and read by the release-notes command,
-// so its structure is checked here rather than left to review (AGENTS.md,
-// "Changelog and release-note policy"). Three rules, each for a failure that
+// so its structure is checked here rather than left to review (versioning.md
+// §4). Three rules, each for a failure that
 // already happened:
 //
 //   - A release heading without a link definition renders as literal bracket text
