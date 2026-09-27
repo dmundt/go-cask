@@ -624,6 +624,11 @@ gofmt -l .
 
 - Go **1.24+** required (generics, enhanced routing, `omitzero` JSON tags); repo toolchain is 1.27. The approved `golang.org/x/sys` dependency supports portable mmap flushing in `cas/bloom/persistent`; every other dependency requires the coding-guidelines §3 exception process. Module: the repo
   root; core library lives in `cas/` as `package cas`.
+- **Go is the build language** (`scripts/AGENT.md`, "the build language is
+  Go"): build logic is Go — `internal/build/core` for the engine,
+  `cmd/buildtool` for the entry point — no new `.sh` is created, and Python is
+  not used for build logic. `website/macros.py` is the one recorded exception,
+  an MkDocs plugin hook rather than repo build tooling.
 - The git-like model (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`,
   `ResolvedObject`, `WalkGraph`, `CachedRepository`, `Preloader`) lives in the
   reference library `gitlike/` — it is NOT part of the generic `cas` core; the
