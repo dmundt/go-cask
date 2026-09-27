@@ -234,15 +234,20 @@ func (a *app) cat(ctx context.Context, d cas.Digest, out io.Writer) error {
 // verify recomputes every stored object's digest from its bytes and reports
 // any mismatch — the core's portable whole-store pass. There is no app-level
 // checksum to keep in sync: an object is its own integrity record.
-func (a *app) verify(ctx context.Context) error {
+//
+// The per-object CORRUPT lines go to stderr and the summary to stdout, through
+// the writers run was handed: like log/cat/audit, verify writes only to its
+// arguments, never to the process streams directly, so a caller passing buffers
+// captures its whole output (run's injectability contract).
+func (a *app) verify(ctx context.Context, stdout, stderr io.Writer) error {
 	report, err := cas.VerifyAll(ctx, a.backend, a.hasher)
 	if err != nil {
 		return err
 	}
 	for _, d := range report.Bad {
-		fmt.Fprintf(os.Stderr, "CORRUPT %s: %v\n", d, cas.ErrDigestMismatch)
+		fmt.Fprintf(stderr, "CORRUPT %s: %v\n", d, cas.ErrDigestMismatch)
 	}
-	fmt.Printf("verified %d objects, %d corrupt\n", report.Checked, len(report.Bad))
+	fmt.Fprintf(stdout, "verified %d objects, %d corrupt\n", report.Checked, len(report.Bad))
 	if len(report.Bad) > 0 {
 		return fmt.Errorf("%d corrupt objects", len(report.Bad))
 	}
@@ -360,7 +365,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		rep.print(stdout)
 	case "verify":
-		if err := a.verify(ctx); err != nil {
+		if err := a.verify(ctx, stdout, stderr); err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1
 		}

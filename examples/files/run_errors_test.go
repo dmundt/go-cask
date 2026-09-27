@@ -19,11 +19,11 @@ import (
 //
 //   - add's blob-put, tree-put and refs-set returns (main.go:156, 162, 169),
 //     commit's commit-put return (main.go:195), app.verify's VerifyAll return
-//     (main.go:240) and run's graph and stats error returns (main.go:347, 370):
+//     (main.go:245) and run's graph and stats error returns (main.go:352, 375):
 //     all need the fs backend or the refs store to fail mid-operation. The
 //     example holds a concrete *fs.Backend and refs.Store with no injectable
 //     seam, and a valid t.TempDir produces none of those states.
-//   - main (main.go:382): the process entry point, which only calls run with
+//   - main (main.go:387): the process entry point, which only calls run with
 //     os.Args and os.Exit.
 
 // newApp fails, with a message naming the offending subtree, when either
@@ -185,7 +185,8 @@ func TestRunWithCorruptHeadRef(t *testing.T) {
 }
 
 // verify reports a corrupted object as a runtime error (exit 1) and names the
-// digest it found corrupt.
+// digest it found corrupt: the per-object CORRUPT line and the summary reach
+// run's injected writers, not the process streams (issue #360).
 func TestRunVerifyDetectsCorruption(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -222,10 +223,14 @@ func TestRunVerifyDetectsCorruption(t *testing.T) {
 	if code := run(ctx, []string{"-store", root, "verify"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("verify over a corrupt store: code=%d, want 1", code)
 	}
-	// verify's per-object report and summary go to the process's own stdout,
-	// not to run's injectable writer (main.go:243/245), so only the exit code
-	// and the stderr error are asserted through the CLI here; the digest
-	// naming is pinned by the app-level TestVerify.
+	// Both halves of verify's report are captured through the injected
+	// writers: the named digest on stderr and the summary on stdout.
+	if !strings.Contains(stderr.String(), "CORRUPT "+digests[0].String()) {
+		t.Fatalf("verify stderr = %q, want it to name the corrupt digest %s", stderr.String(), digests[0])
+	}
+	if !strings.Contains(stdout.String(), "1 corrupt") {
+		t.Fatalf("verify stdout = %q, want the corrupt count", stdout.String())
+	}
 	if !strings.Contains(stderr.String(), "corrupt") {
 		t.Fatalf("verify stderr = %q, want the runtime error", stderr.String())
 	}
