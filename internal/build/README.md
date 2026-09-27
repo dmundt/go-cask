@@ -2,7 +2,7 @@
 type: Guide
 title: build — go-cask
 description: The gate's build decisions — engine module, go-cask policy for it, archived shells — plus layout, commands, and where a new check goes.
-version: v5
+version: v6
 ---
 
 # build
@@ -34,12 +34,13 @@ Root module reaches it via `require` + local-path `replace`. Engine becomes own 
 
 | Path | What it is |
 |---|---|
-| [`core/`](./core/README.md) | engine module — seventeen packages, stdlib only |
+| [`core/`](./core/README.md) | engine module — eighteen packages, stdlib only |
 | [`core/changes/`](./core/changes/README.md) | change-set classification: docs-only, Go, security-relevant, website |
 | [`core/gate/`](./core/gate/README.md) | gate stamp: verified-commit ledger the pre-push hook reads |
 | [`core/lane/`](./core/lane/README.md) | landing-lane records: advisory slot, identity, staleness |
 | [`core/claim/`](./core/claim/README.md) | server-side lane: coordination ref, issue/branch matching, the shared verdict |
 | [`core/verify/`](./core/verify/README.md) | what a gate run covers, how many packages it builds at once, whether an escape hatch dropped a step |
+| [`core/receipt/`](./core/receipt/README.md) | the gate receipt's format: parse, render, check-name rule, the evidence identity, the canonical changed-path list |
 | [`core/worktree/`](./core/worktree/README.md) | relative `.git` link a linked worktree needs; lock protecting it |
 | [`core/toolchain/`](./core/toolchain/README.md) | where an installed tool lands; whether it is the pinned release |
 | [`core/layers/`](./core/layers/README.md) | dependency-layer check: arm table + allowed imports |

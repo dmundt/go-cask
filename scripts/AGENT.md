@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v20
+version: v21
 ---
 
 # Agent instructions — `scripts/`
@@ -153,8 +153,8 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   that exact commit: the one hard local rule, because it is what makes re-pushing
   an unchanged commit free. Never make the hook re-run work the stamp already
   covers.
-- `gate-receipt.sh` is the stamp made portable, and it is the one helper whose
-  failure mode is deliberate: `create` writes the receipt for a green run (commit,
+- `go run ./cmd/buildtool gate-receipt` is the stamp made portable, and its failure
+  mode is deliberate: `create` writes the receipt for a green run (commit,
   tree, merge base, hash of the changed path list, scope, the checks that ran),
   `publish` signs it with this toolchain's git key as a receipt commit (parent: the
   gated commit, tree: the gated tree, message: the receipt) and pushes it to
@@ -166,11 +166,11 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
 - Every refusal means CI runs the whole gate: that is the intended
   outcome for a fork, an unsigned gate, a branch behind `main`, or a malformed
   receipt, so never turn one into a skipped check.
-- Three places hold that contract and they move together: a step in
+- Two places hold that contract and they move together: a step in
   `cmd/buildtool verify` records its check name from `internal/build/policy`'s
-  gate table, `suite_full` in
-  `gate-receipt.sh` lists the checks CI requires, and `ci.yml` asks only for
-  `--require-suite full`. Adding or renaming a gate step without the other two
+  gate table, which is also the list `VerifySuite` hands the receipt's `suite`
+  verb, and `ci.yml` asks only for
+  `--require-suite full`. Adding or renaming a gate step without the other
   costs a full CI run, never a missed one. The gate writes a receipt only for a
   clean working tree and never on a runner: a receipt names the tree of a commit,
   and CI checks out a merge commit nobody pushes.
@@ -179,10 +179,10 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   pushes, and the reason `.githooks/pre-push` publishes best-effort after its stamp
   check rather than the WSL gate doing it. A toolchain that cannot sign cannot
   publish, and CI falls back; the hook says so and names the command.
-- The receipt is the one rule in this directory that has not moved to Go: the gate
-  calls `create` and the hook calls `publish`, so nothing is unrouted, but the format
-  and the three verbs are still shell. Porting them retires `test-gate-receipt.sh`
-  into Go tests beside them.
+- The receipt is Go, and this directory holds no rule any more: the gate calls the
+  command's `create` and the hook calls its `publish`, the format and the five verbs are
+  `internal/build/core/receipt`'s, and the cases the shell test asserted live in
+  `cmd/buildtool/gatereceipt_test.go`. `scripts/` keeps only the launchers.
 - Four invariants of those helpers are load-bearing. First, the lane is claimed
   with an atomic create on the REMOTE (`POST /git/refs` answers 422 when the ref
   exists), never with a check followed by a write: two sessions that retry on the

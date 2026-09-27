@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, and how to validate a settings change with the gh API.
-version: v8
+version: v9
 ---
 
 # GitHub repository operations
@@ -154,7 +154,7 @@ coverage measured on Windows does not predict the gate.
 
 `scripts/verify.sh` runs the whole gate on the developer's host before a push,
 `.githooks/pre-push` publishes that green run as a signed receipt commit under the
-coordination ref `refs/gate/<head-sha>` (`scripts/gate-receipt.sh publish`). The
+coordination ref `refs/gate/<head-sha>` (`go run ./cmd/buildtool gate-receipt publish`). The
 `verify` job verifies the receipt and skips only what the receipt covers, so the
 merge gate is unchanged in *what* it accepts while the duplicated compute moves to
 the host that already paid for it.
@@ -166,7 +166,7 @@ the host that already paid for it.
   gate instead of
   passing on a tree nobody gated); its base is an ancestor of both the head and the
   pull request's base; the diff hash recomputed in CI matches; its scope covers the
-  change; it lists every check in `gate-receipt.sh`'s `suite_full`. Anything
+  change; it lists every check the receipt's `suite` verb requires. Anything
   short of that runs the whole gate — a fork, an unsigned local gate, a missing or
   stale ref, a renamed gate step.
 - **The signature is the anchor, the ref is not.** Push authority decided who

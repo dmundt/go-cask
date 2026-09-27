@@ -2,7 +2,7 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v1
+version: v2
 ---
 
 # Landing — go-cask
@@ -39,7 +39,7 @@ Coordination therefore hangs off the one record every session, every clone and t
 ## 4. The gate
 
 - **Gate once per commit, at the right scope.** `./scripts/verify.sh` detects a documentation-only change and runs the documentation gate — the scope CI applies (`VERIFY_SCOPE=full` forces the whole gate, `VERIFY_SCOPE=docs` asserts the documentation scope).
-- A green run stamps the commit in the shared git dir and writes the gate receipt, which `./scripts/gate-receipt.sh publish` (called best-effort by `.githooks/pre-push`) signs and pushes as `refs/gate/<sha>`; CI verifies that receipt instead of repeating the suite it covers, and runs the whole gate whenever it cannot (`.github/AGENT.md`, "Local gate receipts").
+- A green run stamps the commit in the shared git dir and writes the gate receipt, which `go run ./cmd/buildtool gate-receipt publish` (called best-effort by `.githooks/pre-push`) signs and pushes as `refs/gate/<sha>`; CI verifies that receipt instead of repeating the suite it covers, and runs the whole gate whenever it cannot (`.github/AGENT.md`, "Local gate receipts").
 - The gate also cross-builds and vets `windows/amd64`, `darwin/amd64`, `darwin/arm64` and `linux/arm64` locally, so the failures the platform matrix would find are found before the push. Those targets are compile-gated, never executed: a cross-build cannot run what it produces, and the `verify` job is the only job that runs tests (testing-strategy §5).
 - **A run is green only when it ends with `verification passed`**; a run that stops earlier failed even if nothing was echoed about it.
 - **Install the hook once per clone:** `git config core.hooksPath .githooks`. `.githooks/pre-push` refuses a push whose HEAD holds no green stamp for that exact commit — the one hard local rule, and re-pushing an unchanged commit costs no compute. The advisory slot is reported, never required.

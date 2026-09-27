@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ARCHIVED — superseded by `cmd/buildtool/gatereceipt_test.go`.
+#
+# Every case it asserted — the receipt's fields, publish's signing and its idempotent second run,
+# the accept path and each refusal — is a Go test beside the port now, in throwaway repositories
+# with throwaway signing keys. Nothing runs this copy; see ../shell/README.md.
+
 set -euo pipefail
 
 # test-gate-receipt.sh — behaviour test for gate-receipt.sh.

@@ -272,7 +272,6 @@ func gateSteps(table policy.VerifyTable) []verifyStep {
 		{Name: "govulncheck", Run: stepSecurity},
 		{Name: "test -race + coverage gate", Run: stepRaceAndCoverage},
 		{Name: "fuzz smoke", Run: stepFuzz},
-		{Name: "helper script behaviour", Run: stepHelperScripts},
 		{Name: "doc integrity", DocsScope: true, Run: attested(table.Checks.DocIntegrity, func(r *gateRun) error { return runMarkdownIntegrity(nil, r.out, r.errOut) })},
 		{Name: "package graph", DocsScope: true, Run: attested(table.Checks.PackageGraph, func(r *gateRun) error { return runDepGraph(nil, r.out, r.errOut) })},
 		{Name: "website footer", DocsScope: true, Run: attested(table.Checks.WebsiteFooter, func(r *gateRun) error { return runWebsiteFooter(nil, r.out, r.errOut) })},
@@ -561,19 +560,12 @@ func stepCrossPlatform(r *gateRun) error {
 	return nil
 }
 
-// stepHelperScripts runs the behaviour tests that are still shell.
-//
-// Five of the six that were here are ordinary Go tests now, beside the port that replaced
-// them, and they run under the race suite; the gate receipt's is the one left, because the
-// receipt itself is still shell. The step's mark is the `helper-scripts` name the receipt's
-// suite lists, so renaming it renames that too (internal/build/policy pins the pair).
-func stepHelperScripts(r *gateRun) error {
-	if err := r.command(r.root, "./scripts/test-gate-receipt.sh"); err != nil {
-		return err
-	}
-	r.mark(r.table.Checks.HelperScripts)
-	return nil
-}
+// stepHelperScripts and its step are gone, and deliberately not left in place empty: the
+// behaviour tests that were shell are Go tests now, beside the port that replaced each one
+// — the benchmark pair, the committed graph, the version-field rule, the advisory slot's
+// atomic claim, the pull-request lane and the gate receipt — and they run under the race
+// suite above. A shell helper added here would have a Go home by the repository's own rule,
+// so a step that ran `./scripts/test-*.sh` would have nothing to run.
 
 // stepRaceAndCoverage is the gate's one composite step: the coverage drift check, the
 // per-package measurements and the race suite, with the threshold decision applied after
@@ -841,10 +833,10 @@ func (r *gateRun) receipt() error {
 	if r.coverageTiers > 0 {
 		args = append(args, "--coverage-tiers", strconv.Itoa(r.coverageTiers))
 	}
-	if err := r.command(r.root, "./"+filepath.FromSlash(r.table.ReceiptScript), args...); err != nil {
+	if err := gateReceiptCommand(r.root, args, r.out, r.out, productionGateReceiptDeps()); err != nil {
 		return err
 	}
-	fmt.Fprintln(r.out, "publish it for CI with ./scripts/gate-receipt.sh publish (the pre-push hook does this)")
+	fmt.Fprintln(r.out, "publish it for CI with `go run ./cmd/buildtool gate-receipt publish` (the pre-push hook does this)")
 	return nil
 }
 

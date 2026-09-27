@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# ARCHIVED — superseded by `go run ./cmd/buildtool gate-receipt`.
+#
+# The receipt's format, the identity lines that decide "same evidence", the check-name rule and
+# the five verbs (`create`, `publish`, `verify`, `show`, `suite`) are internal/build/core/receipt's;
+# the git calls are cmd/buildtool/gatereceipt.go's, which the gate and `.githooks/pre-push` call in
+# process instead of spawning bash. Its behaviour cases — the accept path and every refusal, in
+# throwaway repositories with throwaway signing keys — are cmd/buildtool/gatereceipt_test.go now,
+# which is also why the gate has no `helper script behaviour` step any more. Signing is unchanged:
+# `publish` still runs `git` in the toolchain that holds the key. Nothing runs this copy; see
+# ../shell/README.md.
+
 # The gate receipt: the evidence a green local gate produced, in the one place CI
 # can read it.
 #

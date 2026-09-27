@@ -43,14 +43,11 @@ type VerifyTable struct {
 	// against. The gate syncs the release note for that tag when the first is set.
 	ReleaseEnv     string
 	ReleaseFromEnv string
-	// ReceiptScript writes, signs and verifies the gate receipt: the same evidence as the
-	// stamp, made portable so CI can reuse a green local run. The gate calls `create` with
-	// it and the pre-push hook calls `publish`.
-	ReceiptScript string
-	// Checks names the checks a run records in that receipt. They live here rather than at
-	// the call sites because gate-receipt.sh's `suite_full` lists the same names and CI
-	// skips its own run on the strength of them, so a rename that misses one of the two
-	// places costs a full CI run — the policy test pins the pair.
+	// Checks names the checks a run records in its gate receipt. They live here rather than
+	// at the call sites because the receipt's suite — and CI, which skips its own run on the
+	// strength of that suite — reads the same names, so a step renamed in one place and not
+	// the other costs a full CI run. `VerifySuite` is the one owner now that the helper that
+	// also listed them is Go.
 	Checks VerifyCheckNames
 }
 
@@ -85,7 +82,6 @@ type VerifyCheckNames struct {
 	TestRace        string
 	CoverageTiers   string
 	FuzzSmoke       string
-	HelperScripts   string
 	VersionFields   string
 	DocIntegrity    string
 	PackageGraph    string
@@ -94,8 +90,8 @@ type VerifyCheckNames struct {
 }
 
 // VerifySuite returns the check names a full-scope receipt must list, in the order the
-// receipt states them. CI asks gate-receipt.sh for `--require-suite full`, which is this
-// set: a run that did not record one of them leaves CI to run the whole gate.
+// receipt states them. CI asks the gate-receipt command for `--require-suite full`, which is
+// this set: a run that did not record one of them leaves CI to run the whole gate.
 //
 // `govulncheck` is deliberately absent, and so is the engine module's own suite: CI runs
 // the vulnerability scan in its own required job, so a receipt must not be able to excuse
@@ -105,7 +101,7 @@ func VerifySuite() []string {
 	names := []string{
 		checks.Gofmt, checks.ModTidy, checks.Build, checks.ModuleGraph, checks.Vet,
 		checks.CrossPlatform, checks.LayerMatrix, checks.TestRace, checks.CoverageTiers,
-		checks.FuzzSmoke, checks.HelperScripts, checks.VersionFields, checks.DocIntegrity,
+		checks.FuzzSmoke, checks.VersionFields, checks.DocIntegrity,
 		checks.PackageGraph, checks.WebsiteFooter, checks.WebsiteExamples,
 	}
 	// The codec guard records two names from one step; both are required.
@@ -138,7 +134,6 @@ func Verify() VerifyTable {
 		SkipFuzzEnv:     "VERIFY_SKIP_FUZZ",
 		SkipSecurityEnv: "VERIFY_SKIP_SECURITY",
 		Compilers:       []string{"gcc", "clang", "cc"},
-		ReceiptScript:   "scripts/gate-receipt.sh",
 		Checks: VerifyCheckNames{
 			Gofmt:           "gofmt",
 			ModTidy:         "go-mod-tidy",
@@ -152,7 +147,6 @@ func Verify() VerifyTable {
 			TestRace:        "go-test-race",
 			CoverageTiers:   "coverage-tiers",
 			FuzzSmoke:       "fuzz-smoke",
-			HelperScripts:   "helper-scripts",
 			VersionFields:   "version-fields",
 			DocIntegrity:    "doc-integrity",
 			PackageGraph:    "package-graph",
@@ -168,9 +162,9 @@ func Verify() VerifyTable {
 			{Package: "./cas/codec/json/", Target: "FuzzCodecRoundTrip"},
 			// One target per engine package that parses what the repository and its tools
 			// hand it: measurement lines, frontmatter, YAML scalars, slot records, ledger
-			// lines, a scanner's version report, a changed path, a coordination ref and the
-			// gate's own concurrency setting. `docs` carries two because its frontmatter
-			// reader decides which files the version rule judges at all.
+			// lines, a scanner's version report, a changed path, a coordination ref, a
+			// receipt and the gate's own concurrency setting. `docs` carries two because its
+			// frontmatter reader decides which files the version rule judges at all.
 			{Package: "./coverage/", Target: "FuzzParseResult", Engine: true},
 			{Package: "./versioning/", Target: "FuzzField", Engine: true},
 			{Package: "./docs/", Target: "FuzzFields", Engine: true},
@@ -181,6 +175,7 @@ func Verify() VerifyTable {
 			{Package: "./changes/", Target: "FuzzPatternMatches", Engine: true},
 			{Package: "./claim/", Target: "FuzzIssueOf", Engine: true},
 			{Package: "./verify/", Target: "FuzzJobs", Engine: true},
+			{Package: "./receipt/", Target: "FuzzParse", Engine: true},
 		},
 		ReleaseEnv:     "CASK_RELEASE_TAG",
 		ReleaseFromEnv: "CASK_RELEASE_FROM_TAG",

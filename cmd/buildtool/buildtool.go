@@ -101,6 +101,9 @@ commands:
                        release; it serializes gate runs inside one clone
   pr-lane              the server-side lane: claim, check, status, release, whoami;
                        one open pull request is one lane
+  gate-receipt         the evidence a green local gate produced, made portable: create
+                       the record, publish it as a signed ref, verify it in CI, show a
+                       commit's receipt, or list the checks a full receipt must carry
   pre-push             the mechanical landing rule a push must satisfy: a green
                        gate stamp for this exact commit, plus the advisory slot note
   worktree             task worktrees both toolchains resolve: add, remove, lock,
@@ -186,6 +189,8 @@ func run(args []string, out, errOut io.Writer) error {
 		return runLandLane(args[1:], out, errOut)
 	case "pr-lane":
 		return runPRLane(args[1:], out, errOut)
+	case "gate-receipt":
+		return runGateReceipt(args[1:], out, errOut)
 	case "pre-push":
 		return runPrePush(args[1:], out, errOut)
 	case "worktree":
