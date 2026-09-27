@@ -179,13 +179,16 @@ func Verify() VerifyTable {
 		},
 		ReleaseEnv:     "CASK_RELEASE_TAG",
 		ReleaseFromEnv: "CASK_RELEASE_FROM_TAG",
-		// The set the gate and the CI matrix both gate: the two desktop targets no runner
-		// of their own is spent on, and the arm64 Linux target the host cannot build —
-		// linux/amd64 is what `go build ./...` already covers.
+		// The set the gate and the CI matrix both gate: every target the project ships
+		// for — the two desktop targets no runner of their own is spent on, the arm64
+		// Linux target the host cannot build, and linux/amd64, the host's own platform,
+		// which the plain `go build ./...` builds with the host's CGO setting and this
+		// set builds with CGO off.
 		Platforms: []PlatformTarget{
 			{GOOS: "windows", GOARCH: "amd64"},
 			{GOOS: "darwin", GOARCH: "amd64"},
 			{GOOS: "darwin", GOARCH: "arm64"},
+			{GOOS: "linux", GOARCH: "amd64"},
 			{GOOS: "linux", GOARCH: "arm64"},
 		},
 	}
