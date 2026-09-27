@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v29
+version: v30
 ---
 
 # Testing Strategy — go-cask
@@ -36,6 +36,12 @@ consistency, defaults, examples.
 - When fuzzing surfaces a real constraint/skipped branch, pin it with an explicit test in the same change.
 - Example packages also contribute fuzz guards for helper invariants (`examples/api/demo/fuzz_test.go`, `examples/artifacts/fuzz_test.go`, `examples/files/fuzz_test.go`), keeping the documentation examples validated even when their logic is intentionally minimal and copyable.
 - The CAS layer keeps package-local fuzz coverage where the logic is small but operationally meaningful: `cas/bloom/fuzz_test.go`, `cas/cache/fuzz_test.go`, `cas/pack/fuzz_test.go`, `cas/hash/fuzz_test.go` cover direct contracts too small for a separate integration harness yet too important to leave unguarded. Mock-backed contract tests (`cas/backend/mock_backend_test.go`) are also required when a package needs a deterministic in-memory backend shim independent of the filesystem or a concrete deployment backend.
+- **A red test is fixed in the code, not in the assertion.** An author MUST NOT
+  weaken, delete, skip or re-scope a test to reach green; when the requirement
+  itself changed, the requirement change is what gets recorded (the owning spec,
+  in the same change), never a quieter assertion — a failing test is a review
+  conversation, not a silent edit. Moving a failing package into §5's exemption
+  register, or lowering its tier, is the same defect by another route.
 ## 2. Requirement traceability
 
 Every ID'd requirement and every named contract MUST have ≥ one test. Traceability checked by test name or mapping table; a new requirement without a test fails review. Convention: tests carry the requirement ID in the name (`TestStore_P01_LockFreeReads`), so it is grep-able.
