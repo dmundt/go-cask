@@ -21,8 +21,8 @@ import (
 type Scope int
 
 const (
-	// Full is the whole gate: the whole module, the race suite, the coverage loop and
-	// the smoke fuzz.
+	// Full is the whole gate: the whole module, the race suite, the coverage
+	// measurement and the smoke fuzz.
 	Full Scope = iota
 	// Docs is the documentation gate: only the rules a documentation-only change can
 	// break, which is the scope continuous integration applies to such a change.

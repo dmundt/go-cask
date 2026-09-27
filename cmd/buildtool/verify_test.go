@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dmundt/go-cask/internal/build/core/gate"
@@ -257,4 +258,118 @@ func TestVerifyRejectsBadInvocations(t *testing.T) {
 			t.Errorf("run(%q) wrote %q to stdout despite failing", args, out.String())
 		}
 	}
+}
+
+// TestFanOutDividesTheCallersConcurrency pins the arithmetic every concurrent step
+// divides the machine with: a step may use the concurrency it was given and no more,
+// and each item running at once takes an equal share of it — never zero, which would
+// hand a command "-p 0".
+func TestFanOutDividesTheCallersConcurrency(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		jobs, count int
+		wantWidth   int
+		wantShare   int
+	}{
+		{name: "one item takes the whole allowance", jobs: 20, count: 1, wantWidth: 1, wantShare: 20},
+		{name: "the allowance caps the width", jobs: 3, count: 15, wantWidth: 3, wantShare: 1},
+		{name: "a wider allowance is divided evenly", jobs: 32, count: 8, wantWidth: 8, wantShare: 4},
+		{name: "a serial caller stays serial", jobs: 1, count: 5, wantWidth: 1, wantShare: 1},
+		{name: "an allowance below the item count never reaches zero", jobs: 2, count: 5, wantWidth: 2, wantShare: 1},
+		{name: "no items still runs one worker", jobs: 20, count: 0, wantWidth: 1, wantShare: 20},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			width := fanWidth(test.jobs, test.count)
+			if width != test.wantWidth {
+				t.Errorf("fanWidth(%d, %d) = %d, want %d", test.jobs, test.count, width, test.wantWidth)
+			}
+			if share := fanShare(test.jobs, width); share != test.wantShare {
+				t.Errorf("fanShare(%d, %d) = %d, want %d", test.jobs, width, share, test.wantShare)
+			}
+		})
+	}
+
+	if share := fanShare(20, 0); share != 1 {
+		t.Errorf("fanShare with no width = %d, want 1 so a command never gets \"-p 0\"", share)
+	}
+}
+
+// TestFanOutRunsEveryIndexOnce pins that the fan-out is a work-sharing loop rather than
+// a batch split: every index runs exactly once, whatever the width, so a step cannot
+// skip a target because another one was still running.
+func TestFanOutRunsEveryIndexOnce(t *testing.T) {
+	t.Parallel()
+
+	const count = 17
+	var (
+		mutex sync.Mutex
+		seen  []int
+	)
+	fanOut(3, count, func(index int) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		seen = append(seen, index)
+	})
+
+	if len(seen) != count {
+		t.Fatalf("fanOut ran %d of %d items", len(seen), count)
+	}
+	runs := map[int]int{}
+	for _, index := range seen {
+		runs[index]++
+	}
+	for index := 0; index < count; index++ {
+		if runs[index] != 1 {
+			t.Errorf("index %d ran %d times, want once", index, runs[index])
+		}
+	}
+}
+
+// TestMeasureCoverageReadsTheRunsOwnRecord pins where a measurement comes from now that
+// the race suite and the measurement are one pass: the profile the run wrote, matched
+// against the policy's own targets. A package the profile never mentions is reported as
+// unmeasured — the failure the gate must not confuse with zero coverage — and a profile
+// that cannot be read is the gate's error rather than a verdict.
+func TestMeasureCoverageReadsTheRunsOwnRecord(t *testing.T) {
+	t.Parallel()
+
+	module, err := modulePath()
+	if err != nil {
+		t.Fatalf("modulePath: %v", err)
+	}
+	profile := filepath.Join(t.TempDir(), "coverage.out")
+	// One block for one gated package, never executed: 0% against the 90 tier.
+	contents := "mode: atomic\n" + module + "/cas/digest.go:10.2,12.4 4 0\n"
+	if err := os.WriteFile(profile, []byte(contents), 0o644); err != nil {
+		t.Fatalf("writing the profile: %v", err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := measureCoverage(&gateRun{out: &out, errOut: &errOut}, profile); err == nil {
+		t.Fatal("a profile measuring nothing met every tier, want a failure")
+	}
+	for _, want := range []string{
+		"coverage 0% below 90% for cas",
+		"coverage output missing for",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("the measurement report %q does not carry %q", errOut.String(), want)
+		}
+	}
+
+	t.Run("a profile that cannot be read is the gate's error", func(t *testing.T) {
+		t.Parallel()
+		var out, errOut bytes.Buffer
+		err := measureCoverage(&gateRun{out: &out, errOut: &errOut}, filepath.Join(t.TempDir(), "absent.out"))
+		if err == nil {
+			t.Fatal("a missing profile was read as a clean run, want an error")
+		}
+		if !strings.Contains(err.Error(), "reading the coverage profile") {
+			t.Errorf("the error %q does not name the read that failed", err)
+		}
+	})
 }
