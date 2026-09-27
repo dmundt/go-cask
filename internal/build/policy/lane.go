@@ -35,6 +35,12 @@ type LandLaneTable struct {
 	DeadGraceSeconds int
 	// DeadGraceEnv overrides DeadGraceSeconds for one invocation.
 	DeadGraceEnv string
+	// WaitSeconds is how long `wait` waits by default. It is minutes, not seconds, because the
+	// holder it is waiting for is running a gate: the wait is a queue, and the queue's length is
+	// the length of a gate run.
+	WaitSeconds int
+	// WaitEnv overrides WaitSeconds for one invocation.
+	WaitEnv string
 }
 
 // LandLane returns go-cask's advisory-slot layout. It is a function rather than a
@@ -50,5 +56,7 @@ func LandLane() LandLaneTable {
 		StaleEnv:         "LAND_LANE_STALE_MINUTES",
 		DeadGraceSeconds: 60,
 		DeadGraceEnv:     "LAND_LANE_DEAD_GRACE_SECONDS",
+		WaitSeconds:      600,
+		WaitEnv:          "LAND_LANE_WAIT_SECONDS",
 	}
 }

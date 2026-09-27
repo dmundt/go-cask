@@ -44,6 +44,28 @@ func TestObjectRawIsLimitedTo256Bytes(t *testing.T) {
 	}
 }
 
+// TestBytesTabFragmentIsUnchanged pins the Bytes tab byte for byte. The dump
+// route serves HTML, so the helper behind it may change how the three columns
+// are produced, never what the browser receives (viewer-design §3): an
+// eight-digit offset, the space-separated hex column padded to the template's
+// field width, and the printable-ASCII column.
+func TestBytesTabFragmentIsUnchanged(t *testing.T) {
+	ts, srv := newTestServer(t)
+	payload := append([]byte("CASK viewer bytes tab: 16-byte rows."), 0x00, 0x1f, 0x20, 0x7e, 0x7f)
+	h := mustParse(t, "sha256:"+strings.Repeat("ef", 32))
+	if err := srv.store.Put(context.Background(), h, bytes.NewReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	viewer := login(t, ts, "viewer-tok")
+	const want = "\n<pre class=\"viewer-hexdump\" id=\"hexdump\">00000000  43 41 53 4b 20 76 69 65 77 65 72 20 62 79 74 65  CASK viewer byte\n" +
+		"00000010  73 20 74 61 62 3a 20 31 36 2d 62 79 74 65 20 72  s tab: 16-byte r\n" +
+		"00000020  6f 77 73 2e 00 1f 20 7e 7f                       ows... ~.\n" +
+		"</pre>\n"
+	if got := getBody(t, viewer, ts.URL+"/viewer/objects/"+h.String()+"/dump"); got != want {
+		t.Fatalf("bytes tab fragment = %q, want %q", got, want)
+	}
+}
+
 func TestObjectInspectorRendersInboundReferenceCount(t *testing.T) {
 	ctx := context.Background()
 	backend, err := fs.New(t.TempDir())
