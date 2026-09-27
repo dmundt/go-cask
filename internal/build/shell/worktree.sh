@@ -18,7 +18,7 @@
 # a worktree created from WSL), and verify.sh refuses to run when it detects the
 # mismatch.
 #
-# Worktrees always land in the *primary* checkout's `.gocache/`, derived from the
+# Worktrees always land in the *primary* checkout's `.worktrees/`, derived from the
 # common git dir, so the command behaves the same run from any worktree.
 #
 # Each worktree is created "locked" (a `locked` file in its admin dir). The
@@ -44,7 +44,7 @@ shift || true
 # `<primary>/.git` — shared by every linked worktree.
 common="$(git rev-parse --path-format=absolute --git-common-dir)"
 primary="$(dirname "$common")"
-wt_parent="$primary/.gocache"
+wt_parent="$primary/.worktrees"
 
 case "$cmd" in
 add)
@@ -66,7 +66,7 @@ add)
   else
     git -C "$primary" worktree add "$dir" --detach origin/main
   fi
-  # Relative to <primary>/.gocache/wt-<name>, and identical for both toolchains.
+  # Relative to <primary>/.worktrees/wt-<name>, and identical for both toolchains.
   printf 'gitdir: ../../.git/worktrees/wt-%s\n' "$name" >"$dir/.git"
   # Lock it: a stray `git worktree prune` from the other toolchain must not be
   # able to remove this registration (and with it the worktree's index).

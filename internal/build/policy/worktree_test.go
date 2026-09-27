@@ -42,6 +42,11 @@ func TestWorktreeTableIsWellFormed(t *testing.T) {
 	if strings.HasPrefix(table.Parent, "..") || strings.Contains(table.Parent, "..") {
 		t.Errorf("Parent = %q, which climbs out of the checkout", table.Parent)
 	}
+	// One directory name, not a path: the gate's formatting walk and the instruction-file
+	// walk both skip the worktrees by comparing each directory's own name against this one.
+	if filepath.Base(table.Parent) != table.Parent {
+		t.Errorf("Parent = %q, want a single directory name", table.Parent)
+	}
 
 	// The base is the remote-tracking ref, and that is the whole point: a local `main` in
 	// the primary checkout can be behind the remote or carry another session's work.

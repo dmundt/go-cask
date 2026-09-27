@@ -7,6 +7,9 @@
 .gocache/
 .gopath/
 
+# Task worktrees (`go run ./cmd/buildtool worktree add`)
+.worktrees/
+
 # Local store / test artifacts
 /objects/
 *.tmp
