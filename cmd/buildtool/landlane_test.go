@@ -47,12 +47,19 @@ func runSlot(t *testing.T, slot *landLaneSlot, args ...string) (stdout, stderr s
 		status = 0
 	default:
 		var statusErr statusError
-		if errors.As(err, &statusErr) {
+		var usage usageError
+		switch {
+		case errors.As(err, &statusErr):
 			status = statusErr.code
 			if statusErr.message != "" {
 				errOut.WriteString(statusErr.message + "\n")
 			}
-		} else {
+		case errors.As(err, &usage):
+			// The invocation was wrong, which the process reports as 2 — the harness has to
+			// agree, or a test cannot tell a usage error from a refusal.
+			status = 2
+			errOut.WriteString(usage.message + "\n")
+		default:
 			status = 1
 			errOut.WriteString(err.Error() + "\n")
 		}
@@ -521,5 +528,113 @@ func TestLandLaneAcquireTakeoverDeadTakesAGoneHoldersSlot(t *testing.T) {
 	record := readFileOrEmpty(mine.takeover)
 	if !strings.Contains(record, lane.Dead) {
 		t.Errorf("the eviction record is %q, want it to say the holder was gone (%q)", record, lane.Dead)
+	}
+}
+
+// TestLandLaneWaitClaimsAFreeSlotAndWatchesWithoutClaiming pins the two halves of the verb whose
+// whole purpose is to make losing a race unnecessary: a waiter with a label takes a free slot, and
+// a waiter that is only watching answers the question and takes nothing — a pre-push check that
+// claimed the slot it was asking about would be a bug, not a convenience.
+func TestLandLaneWaitClaimsAFreeSlotAndWatchesWithoutClaiming(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+
+	out, errOut, status := runSlot(t, mine, "wait", "387", "1")
+	if status != 0 {
+		t.Fatalf("wait on a free slot = %d (%q %q), want it to claim", status, out, errOut)
+	}
+	if holder := mine.read(); holder == nil || holder.Who != mine.who {
+		t.Fatalf("the slot is held by %+v, want this worktree", holder)
+	}
+	if _, _, status := runSlot(t, mine, "release"); status != 0 {
+		t.Fatalf("release = %d, want 0", status)
+	}
+
+	out, _, status = runSlot(t, mine, "wait", "--watch", "387", "0")
+	if status != 1 {
+		t.Fatalf("watch on a free slot = %d, want 1 (free)", status)
+	}
+	if !strings.Contains(out, "free") {
+		t.Errorf("watch printed %q, want it to say the slot is free", out)
+	}
+	if mine.read() != nil {
+		t.Error("watch claimed the slot it was only asked about")
+	}
+}
+
+// TestLandLaneWaitEndsOnItsDeadline pins that waiting is bounded and that running out of it is an
+// answer rather than a failure: a holder inside its window is left alone, and the waiter reports
+// that nothing was taken with exit 3 — the status a caller reads as "not mine, act deliberately".
+func TestLandLaneWaitEndsOnItsDeadline(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
+		t.Fatalf("creating the slot directory: %v", err)
+	}
+	// A record with no host is never judged dead, so this holder is simply live and fresh.
+	held := lane.Holder{
+		PID: "2", Since: now(), Label: "386", Who: "other#primary:wt-other#main", Token: "tok-other",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(held), 0o644); err != nil {
+		t.Fatalf("writing the held slot: %v", err)
+	}
+
+	_, errOut, status := runSlot(t, mine, "wait", "387", "1")
+	if status != 3 {
+		t.Fatalf("wait past its deadline = %d (%q), want 3", status, errOut)
+	}
+	if !strings.Contains(errOut, "still holds it after waiting") {
+		t.Errorf("the deadline report is %q, want it to say the holder still holds the slot", errOut)
+	}
+	if holder := mine.read(); holder == nil || holder.Who != "other#primary:wt-other#main" {
+		t.Errorf("the waiter took a live holder's slot: %+v", holder)
+	}
+
+	// Watching a slot that stays held ends the same way, and claims nothing either.
+	_, errOut, status = runSlot(t, mine, "wait", "--watch", "387", "0")
+	if status != 3 || !strings.Contains(errOut, "still held") {
+		t.Errorf("watch on a held slot = %d (%q), want 3", status, errOut)
+	}
+}
+
+// TestLandLaneWaitTakesOverAnIdleHolder pins that waiting is not just patience: a holder that has
+// gone idle past the window is taken over, which is how the queue moves at all.
+func TestLandLaneWaitTakesOverAnIdleHolder(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
+		t.Fatalf("creating the slot directory: %v", err)
+	}
+	idle := lane.Holder{
+		PID: "2", Since: now() - 6000, Label: "386", Who: "other#primary:wt-other#main", Token: "tok-other",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(idle), 0o644); err != nil {
+		t.Fatalf("writing the idle holder: %v", err)
+	}
+
+	if _, errOut, status := runSlot(t, mine, "wait", "387", "1"); status != 0 {
+		t.Fatalf("wait on an idle holder = %d (%q), want it to take the slot over", status, errOut)
+	}
+	if holder := mine.read(); holder == nil || holder.Who != mine.who {
+		t.Fatalf("the slot is held by %+v, want this worktree", holder)
+	}
+}
+
+// TestLandLaneWaitUsageIsRefused pins the invocation contract: a wait that could never end is a
+// usage error rather than a hang, and a duration that is not a number is refused rather than read
+// as zero.
+func TestLandLaneWaitUsageIsRefused(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+
+	for _, args := range [][]string{
+		{"wait"},
+		{"wait", "387", "not-a-number"},
+		{"wait", "--unknown", "387"},
+		{"wait", "387", "1", "extra"},
+	} {
+		if _, errOut, status := runSlot(t, mine, args...); status != 2 {
+			t.Errorf("land-lane %q = %d (%q), want the usage status", args, status, errOut)
+		}
 	}
 }

@@ -24,6 +24,7 @@ func TestLandLaneTableIsWellFormed(t *testing.T) {
 		{"Token", table.Token},
 		{"StaleEnv", table.StaleEnv},
 		{"DeadGraceEnv", table.DeadGraceEnv},
+		{"WaitEnv", table.WaitEnv},
 	} {
 		if field.value == "" {
 			t.Errorf("%s is empty", field.name)
@@ -63,6 +64,20 @@ func TestLandLaneTableIsWellFormed(t *testing.T) {
 	}
 	if table.DeadGraceSeconds != 60 {
 		t.Errorf("the dead-holder grace is %ds, want the documented 60", table.DeadGraceSeconds)
+	}
+	if table.WaitSeconds <= 0 {
+		t.Errorf("the default wait is %ds, want a positive number", table.WaitSeconds)
+	}
+	if table.WaitEnv != strings.ToUpper(table.WaitEnv) {
+		t.Errorf("the override %q is not spelled as an environment variable", table.WaitEnv)
+	}
+	// The wait is a queue for a gate run, so its default has to be long enough to outlast one:
+	// a default shorter than the run it is waiting for would expire while the holder is working.
+	if table.WaitSeconds < 300 {
+		t.Errorf("the default wait is %ds, too short to outlast a gate run", table.WaitSeconds)
+	}
+	if table.WaitSeconds != 600 {
+		t.Errorf("the default wait is %ds, want the documented 600", table.WaitSeconds)
 	}
 }
 
