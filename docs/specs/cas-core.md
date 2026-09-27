@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v77
+version: v78
 ---
 
 # CAS Core — go-cask
@@ -664,7 +664,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | `cas/backend/snapshot` | `Export`, `Import` (§4.3) |
 | `cas/codec/*` | `json.New[T]`; `gob.New[T]`, `gob.NewRaw[T]`; `binary.New[T](next, transform, restore)`, `binary.NewRaw[T](encode, decode)`; `cbor.New[T]`, `cbor.NewRaw[T]`, `cbor.NewValue`, `cbor.NewMap`; `flate.New[T]`, `gzip.New[T]`, `zlib.New[T]` with `MaxDecodedBytes` and `ErrDecodedTooLarge` (one value shared by the three, defined in the internal `cas/codec/internal/bounded`); each package exposes its `Codec[T]`, and there is no `JSONCodec`/`GobCodec`/`BinaryCodec` type (§4.6) |
 | Client hashers (not core) | `cas/hash/sha256`, `cas/hash/sha512`, `cas/hash/sha512_256`, and the maintenance hashers `cas/verify/adler32`/`crc32`/`crc64`: `Hasher`, `New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size`, over the shared `cas/hash` helpers `FormatDigest`/`ParseDigest`/`ValidateDigestSize`; any short/display form is `cas.Digest.Prefix` (§4.2) |
-| Sidecar checksums (not core) | `cas/verify/sidecar`: `Backend` (a `cas.Backend` decorator that records a per-object checksum), `New`, `WithBase`, `WithChecksum`, `WithDirSync`, `WithMaxRecordBytes`, `Record`, `RecordVersion`, `DefaultMaxRecordBytes`, `Verifier` (via `Backend.Verifier`), `VerifyReport`, `ReconcileReport`, `ErrChecksumAlgorithm`, `ErrUnrecorded` (operations §6) |
+| Sidecar checksums (not core) | `cas/verify/sidecar`: `Backend` (a `cas.Backend` decorator that records a per-object checksum), `New`, `WithBase`, `WithChecksum`, `WithDirSync`, `WithMaxRecordBytes`, `Record`, `RecordVersion`, `DefaultMaxRecordBytes`, `Verifier` (via `Backend.Verifier`), `VerifyReport`, `ReconcileReport`, `ErrChecksumAlgorithm`, `ErrUnrecorded`, `ErrRecordTooLarge` (operations §6). The write path is bounded by the same read cap the reader applies, so `Put` never publishes a record its own reader would refuse |
 | Caching | `cas/cache`: `ValidateMaxSize`; `cas/cache/mem` (`package memory`, imported as `cachemem`): `CachedObject[T]`, `CachedStore[T]`, `CacheMetrics`, `CacheStats`, `New`; `cas/cache/lru`: `Cache[T]`, `New`; `cas/cache/prefetch`: `SmartCache[T]`, `NewSmartCache` (§4.10) |
 | Named refs | `cas/refs`: `Store` (`Get`/`Set`/`Delete`/`List`/`Resolve`/`Roots`/`Previous`/`Log`), `Ref`, `Entry`, `Option`, `Open`, `WithClock`, `ValidateName`, `ErrNotFound`/`ErrAmbiguous`/`ErrInvalidName` (library-design §1) |
 | Typed registry | `cas/repo`: `Object`, `Decoder`, `Resolver`, `Registry` (`Register`/`Resolve`), `NewRegistry`, `RegisterStore[T]`, `LookupStore[T]`, `Walk`, `Reachable`, `UnknownObject`, `UnknownTypeError` (library-design §1) |

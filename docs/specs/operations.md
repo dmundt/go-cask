@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v17
+version: v18
 ---
 
 # Operations — go-cask
@@ -173,6 +173,7 @@ The core puts no payload checksum inside the TLV envelope. The object digest alr
 - `checksum` covers the **stored bytes** — exactly what `Backend.Get` returns, in one streaming pass. Not a payload checksum: a logical-payload layer is a larger feature, and v1 does not claim it.
 - `checksum_algo` names the algorithm the writer used (for example `crc32.Name`) and is compared on read, because crc32 and adler32 are both four bytes wide: width alone cannot tell a wrong-algorithm read from corruption.
 - `type` and `codec` are derived best-effort from a bounded prefix of the stored bytes; both are empty when those bytes are not a go-cask envelope (a `snapshot` archive, for instance) or the envelope does not fit the captured prefix. A write never fails because an optional field could not be derived, and the object is never buffered.
+- The write path is bounded by the read cap. A record that would exceed `WithMaxRecordBytes` is written without the optional `type`/`codec` fields — both are never required (above) — and a record that still does not fit is refused with `sidecar.ErrRecordTooLarge`, publishing nothing. The writer therefore never produces a record its own reader would refuse as `cas.ErrCorrupt` (go-cask#362).
 - `size` is the stored byte count. A disagreement with the object's actual size is reported, never repaired.
 - `created_at` is the first-record time (UTC). A repeat `Put` of the same digest under the same algorithm leaves an existing valid record untouched: the record stays deterministic and its creation time is not refreshed.
 - No `references` field in v1: only the typed layer knows `References()`, a byte-layer producer cannot derive it, and the object type stays the authoritative traversal source.
@@ -187,11 +188,13 @@ A reader checks a record, never the address: `cas.Verify` with the addressing ha
 | `checksum_algo` differs from the reader's configured name | `sidecar.ErrChecksumAlgorithm`; a reader change must not read as damage, the same reasoning as `cas.ErrCodecMismatch` |
 | recomputed checksum or stored size differs | `cas.ErrCorrupt`, wrapped |
 | record's `digest` disagrees with the object, or the record is unparseable, the wrong version, or larger than the read cap | `cas.ErrCorrupt` on read, never a silent skip |
+| the same unusable record during a full pass (`VerifyAll`) | reported in `VerifyReport.Unreadable`, and the pass keeps checking the rest of the store — one damaged record must not report the whole store as unchecked (go-cask#362) |
+| a `.json` name in `.meta` that is not a digest | not a record: `Keys`/`Reconcile` skip it, `Reconcile` reports it in `ReconcileReport.Foreign`, and neither aborts (go-cask#362) |
 | the inner backend returns before the reader reaches EOF | a loud error and **no** record: a checksum over partial bytes is worse than none |
 
-Ordering and crash rule: **object first, record second**. A crash between the two leaves an object with no record — unchecked, never corrupt — and `Reconcile` closes the gap. A record write is temp file → `f.Sync()` → rename inside `.meta`; the directory sync is opt-in (`WithDirSync`), matching the backend's configurable directory fsync (§1).
+Ordering and crash rule: **object first, record second**. A crash between the two leaves an object with no record — unchecked, never corrupt — and a record the cap refuses (§6.2) leaves the same state, because the object is already published when the record is encoded. `Reconcile` closes the gap. A record write is temp file → `f.Sync()` → rename inside `.meta`; the directory sync is opt-in (`WithDirSync`), matching the backend's configurable directory fsync (§1).
 
-`Reconcile` removes the record of every object that is gone and reports stored objects with no record. It never deletes an object and never invents a record: only a writer that read the bytes can record a checksum. `cask gc` and a non-dry `cask prune` run it after their sweep, so a store with records accumulates no orphans; the backend's `Clean` reclaims `.meta` scratch like any other temp file.
+`Reconcile` removes the record of every object that is gone and reports stored objects with no record. It never deletes an object and never invents a record: only a writer that read the bytes can record a checksum. A `.json` name it cannot read as a digest is skipped and reported as foreign, never removed: a file this layer cannot interpret is not its own to delete. `cask gc` and a non-dry `cask prune` run it after their sweep, so a store with records accumulates no orphans; the backend's `Clean` reclaims `.meta` scratch like any other temp file.
 
 ### 6.4 Why not in the TLV?
 

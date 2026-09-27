@@ -166,6 +166,32 @@ func TestVerifyChecksumsReportsMismatch(t *testing.T) {
 	}
 }
 
+// TestVerifyChecksumsAllReportsUnreadableRecord: one unusable record is a
+// finding about that record, so the pass still checks every other recorded
+// object instead of failing with nothing checked (go-cask#362).
+func TestVerifyChecksumsAllReportsUnreadableRecord(t *testing.T) {
+	mf := localMF(t)
+	storedWithChecksum(t, mf.store, []byte("intact payload"))
+	damaged := storedWithChecksum(t, mf.store, []byte("damaged record payload"))
+	if err := os.WriteFile(recordFile(mf.store, damaged), []byte("{ not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runBoth(t, mf, "verify", "--checksums", "--all")
+	if code != 1 {
+		t.Fatalf("verify --checksums --all with an unreadable record exit %d, want 1 (%s)", code, out)
+	}
+	if !strings.Contains(errOut, "RECORD UNREADABLE") {
+		t.Errorf("stderr = %q, want a RECORD UNREADABLE line", errOut)
+	}
+	if strings.Contains(errOut, "CHECKSUM MISMATCH") {
+		t.Errorf("stderr = %q, must not report an unreadable record as a checksum mismatch", errOut)
+	}
+	if !strings.Contains(out, "checked 1 recorded objects, 0 corrupt, 0 unrecorded, 1 unreadable") {
+		t.Errorf("summary = %q, want one object checked and one record unreadable", out)
+	}
+}
+
 func TestVerifyChecksumsWrongAlgorithmIsAnError(t *testing.T) {
 	mf := localMF(t)
 	d := storedWithChecksum(t, mf.store, []byte("crc32 record, adler32 read"))
@@ -255,5 +281,31 @@ func TestPruneReconcilesOnlyWhenItDeletes(t *testing.T) {
 	}
 	if _, err := os.Stat(recordFile(mf.store, doomed)); !os.IsNotExist(err) {
 		t.Errorf("the swept object's record survived prune: %v", err)
+	}
+}
+
+// TestGcSkipsForeignFilesInTheRecordDirectory: a `.json` file in .meta that is
+// not a record no longer aborts reconciliation — it is skipped, named, and left
+// in place — so a sweep still completes (go-cask#362).
+func TestGcSkipsForeignFilesInTheRecordDirectory(t *testing.T) {
+	mf := localMF(t)
+	kept := storedWithChecksum(t, mf.store, []byte("kept object"))
+	foreign := filepath.Join(mf.store, ".meta", "notes.json")
+	if err := os.WriteFile(foreign, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runBoth(t, mf, "gc", "--min-age", "0", sha256.Format(kept))
+	if code != 0 {
+		t.Fatalf("gc with a foreign .json file exit %d, want 0 (%s)", code, out)
+	}
+	if !strings.Contains(out, "checksum records: 1 examined, 0 orphaned removed, 0 objects unrecorded") {
+		t.Errorf("gc output = %q, want the reconciliation summary", out)
+	}
+	if !strings.Contains(errOut, "notes.json") {
+		t.Errorf("stderr = %q, want it to name the foreign file", errOut)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Errorf("gc removed a foreign file: %v", err)
 	}
 }

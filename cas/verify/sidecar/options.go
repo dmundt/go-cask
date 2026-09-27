@@ -67,6 +67,12 @@ func WithDirSync() Option {
 // WithMaxRecordBytes caps how many bytes a record read accepts. A record larger
 // than the cap is cas.ErrCorrupt, never a silently skipped file. Zero or a
 // negative value restores DefaultMaxRecordBytes.
+//
+// The cap bounds the writer too, so the two sides cannot disagree silently: a
+// record that does not fit is published without its optional type and codec
+// fields, and one that still does not fit is refused with ErrRecordTooLarge,
+// writing nothing. A decorator that only reads (no WithChecksum) is unaffected:
+// it never publishes a record, so a small cap there only bounds what it accepts.
 func WithMaxRecordBytes(n int64) Option {
 	return func(c *config) {
 		if n > 0 {

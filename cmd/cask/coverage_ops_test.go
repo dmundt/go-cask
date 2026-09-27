@@ -878,9 +878,10 @@ func TestVerifyChecksumsRejectsAnInvalidHash(t *testing.T) {
 }
 
 // TestVerifyChecksumsAllReportsADamagedRecord pins the recorded-checksum
-// sweep's error contract (operations §6): a record that cannot be read says the
-// pass could not be trusted, so it aborts with the error instead of printing a
-// summary — the summary is reserved for a pass whose every record was read.
+// sweep's error contract (operations §6): a record that cannot be read is a
+// finding of the pass, not a reason to abandon it — the sweep counts it as
+// unreadable, still reports the objects it could read, and exits 1, so one
+// damaged record no longer hides every other object's verdict.
 //
 // The other two error exits of the mode are deliberately left uncovered and
 // recorded here, because no CLI invocation can reach them: verifyChecksums'
@@ -903,10 +904,10 @@ func TestVerifyChecksumsAllReportsADamagedRecord(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("verify --checksums --all with a damaged record exit = %d, want 1 (stderr %q)", code, stderr)
 	}
-	if strings.Contains(out, "checked ") {
-		t.Fatalf("stdout = %q, want no summary for a pass that could not read a record", out)
+	if !strings.Contains(out, "1 unreadable") {
+		t.Fatalf("stdout = %q, want the pass to count the record it could not read", out)
 	}
-	if !strings.Contains(stderr, "record") {
+	if !strings.Contains(stderr, "RECORD UNREADABLE") {
 		t.Fatalf("stderr = %q, want it to name the damaged record", stderr)
 	}
 	if _, _, code := runBoth(t, mf, "verify", "--checksums", sha256.Format(d)); code != 1 {

@@ -18,6 +18,14 @@ type VerifyReport struct {
 	// checked for another reason aborts the pass instead of appearing here,
 	// and an object without a record is Unrecorded, never Bad.
 	Bad []cas.Digest
+	// Unreadable lists objects whose record exists but cannot be read at all —
+	// unparseable, of a record version this build does not know, larger than the
+	// read cap, or naming another digest. It is damage to the record, not to the
+	// object, so the pass reports it and keeps checking the rest of the store:
+	// one unusable record must not be able to report the whole store as
+	// unchecked (go-cask#362). A single-object read reports the same condition
+	// as cas.ErrCorrupt.
+	Unreadable []cas.Digest
 	// Unrecorded lists objects that have no record. They are listed, never
 	// examined: only a writer that read the bytes can record a checksum.
 	Unrecorded []cas.Digest
@@ -81,9 +89,13 @@ func (v *Verifier) Verify(ctx context.Context, d cas.Digest) error {
 // VerifyAll checks every stored object that has a record, using only the
 // minimal Backend interface (List, Get), so it works against any backend. An
 // object without a record is reported in Unrecorded rather than counted as bad;
-// a checksum failure is reported in Bad; anything else — a damaged record, a
-// wrong algorithm, a read failure — stops the pass with the error, because it
-// says the pass could not be trusted rather than that one object is damaged.
+// a checksum failure is reported in Bad; a record that cannot be read at all is
+// reported in Unreadable and the pass continues, because one damaged record must
+// not be able to report the whole store as unchecked. A record read reports every
+// failure as cas.ErrCorrupt, so the remaining arm is defensive: anything else —
+// a checksum algorithm the caller cannot satisfy, or a failure that is not
+// corruption — stops the pass with the error, because it says the pass could not
+// be trusted rather than that one object is damaged.
 func (v *Verifier) VerifyAll(ctx context.Context) (*VerifyReport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -108,6 +120,12 @@ func (v *Verifier) VerifyAll(ctx context.Context) (*VerifyReport, error) {
 		}
 		rec, found, err := v.backend.readRecord(d)
 		if err != nil {
+			if errors.Is(err, cas.ErrCorrupt) {
+				// Damage to the record, not to the object: report which record
+				// and keep checking the rest of the store (go-cask#362).
+				report.Unreadable = append(report.Unreadable, d)
+				continue
+			}
 			return report, err
 		}
 		if !found {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -437,18 +438,159 @@ func TestVerifyAllSeparatesBadFromUnrecorded(t *testing.T) {
 	}
 }
 
-func TestVerifyAllStopsOnUnreadableRecord(t *testing.T) {
+func TestVerifyAllContinuesPastAnUnreadableRecord(t *testing.T) {
 	ctx := context.Background()
 	backend, base := mustFS(t)
 	rec := crc32Recorder(t, backend)
-	d := put(t, rec, []byte("damaged record"))
-	writeRecord(t, base, d, "{ not json")
+	intact := put(t, rec, []byte("intact object"))
+	unparsable := put(t, rec, []byte("unparsable record"))
+	oversized := put(t, rec, []byte("oversized record"))
+	writeRecord(t, base, unparsable, "{ not json")
+	writeRecord(t, base, oversized, strings.Repeat("x", sidecar.DefaultMaxRecordBytes+1))
+
+	// One unusable record is damage to that record, not a reason to abandon the
+	// integrity sweep: the pass reports it and still checks the rest of the store
+	// (go-cask#362).
 	report, err := rec.Verifier(crc32.Name, crc32.New()).VerifyAll(ctx)
-	if !errors.Is(err, cas.ErrCorrupt) {
-		t.Fatalf("VerifyAll with a damaged record = %v, want cas.ErrCorrupt", err)
+	if err != nil {
+		t.Fatalf("VerifyAll with an unreadable record = %v, want the pass to continue", err)
 	}
-	if report == nil {
-		t.Fatal("VerifyAll returned no report with the error")
+	if report.Checked != 1 {
+		t.Errorf("Checked = %d, want 1: only the intact record is readable", report.Checked)
+	}
+	if len(report.Bad) != 0 {
+		t.Errorf("Bad = %v, want none: an unreadable record is not a checksum mismatch", report.Bad)
+	}
+	for _, d := range []cas.Digest{unparsable, oversized} {
+		if !containsDigest(report.Unreadable, d) {
+			t.Errorf("Unreadable = %v, want it to name %s", report.Unreadable, d)
+		}
+	}
+	if containsDigest(report.Unreadable, intact) || containsDigest(report.Bad, intact) {
+		t.Errorf("the intact object %s was reported as damaged", intact)
+	}
+	// The single-object read stays loud about the same damage.
+	if err := rec.Verifier(crc32.Name, crc32.New()).Verify(ctx, unparsable); !errors.Is(err, cas.ErrCorrupt) {
+		t.Errorf("Verify on an unreadable record = %v, want cas.ErrCorrupt", err)
+	}
+}
+
+func TestWriterNeverPublishesARecordItsReaderRefuses(t *testing.T) {
+	// The write path owes the read path this property: whatever Put publishes,
+	// readRecord accepts back with the same configuration (go-cask#362). A legal
+	// envelope type name may run to maxPeekNameLen, which on its own pushes the
+	// record past DefaultMaxRecordBytes, so the writer has to bound the record it
+	// writes.
+	ctx := context.Background()
+	for _, nameLen := range []int{0, 32, 2048, 4000, 4096} {
+		t.Run(fmt.Sprintf("type-name-%d", nameLen), func(t *testing.T) {
+			backend, base := mustFS(t)
+			rec := crc32Recorder(t, backend)
+			typ := strings.Repeat("t", nameLen) + "@1"
+			data, err := cas.EncodeEnvelope("json", typ, []byte("payload"))
+			if err != nil {
+				t.Fatalf("EncodeEnvelope: %v", err)
+			}
+			d := sha256.Of(data)
+
+			// A record the reader refuses must not survive a Put either: the
+			// write rewrites what it cannot read.
+			writeRecord(t, base, d, strings.Repeat("x", sidecar.DefaultMaxRecordBytes+1))
+
+			if err := rec.Put(ctx, d, bytes.NewReader(data)); err != nil {
+				t.Fatalf("Put with a %d-byte type name = %v, want a readable record", nameLen, err)
+			}
+			info, err := os.Stat(recordPath(base, d))
+			if err != nil {
+				t.Fatalf("record file: %v", err)
+			}
+			if info.Size() > sidecar.DefaultMaxRecordBytes {
+				t.Fatalf("record is %d bytes, over the %d-byte read cap", info.Size(), sidecar.DefaultMaxRecordBytes)
+			}
+			if _, err := rec.Load(ctx, d); err != nil {
+				t.Fatalf("Load of the record Put wrote = %v", err)
+			}
+			if err := rec.Verifier(crc32.Name, crc32.New()).Verify(ctx, d); err != nil {
+				t.Fatalf("Verify of the record Put wrote = %v", err)
+			}
+			keys, err := rec.Keys(ctx)
+			if err != nil {
+				t.Fatalf("Keys: %v", err)
+			}
+			if !containsDigest(keys, d) {
+				t.Errorf("Keys = %v, want the record Put wrote for %s", keys, d)
+			}
+		})
+	}
+}
+
+func TestRecordWriteRefusesACapTooSmallForTheRecord(t *testing.T) {
+	// A cap that cannot hold even the record's required fields is the one case
+	// the writer cannot satisfy: the write fails with a named error and publishes
+	// nothing, rather than writing a file its own reader would refuse
+	// (go-cask#362).
+	ctx := context.Background()
+	backend, base := mustFS(t)
+	rec := mustSidecar(t, backend,
+		sidecar.WithChecksum(crc32.Name, crc32.New()),
+		sidecar.WithMaxRecordBytes(16))
+	data := []byte("a cap no record fits in")
+	d := sha256.Of(data)
+
+	err := rec.Put(ctx, d, bytes.NewReader(data))
+	if !errors.Is(err, sidecar.ErrRecordTooLarge) {
+		t.Fatalf("Put under a 16-byte cap = %v, want sidecar.ErrRecordTooLarge", err)
+	}
+	if _, err := os.Stat(recordPath(base, d)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a refused record write left a record behind: %v", err)
+	}
+	// The object is what Put stores first; only the derived record is refused.
+	exists, err := rec.Exists(ctx, d)
+	if err != nil || !exists {
+		t.Errorf("Exists after a refused record write = %v, %v; want true, nil", exists, err)
+	}
+	if _, err := rec.Load(ctx, d); !errors.Is(err, sidecar.ErrUnrecorded) {
+		t.Errorf("Load after a refused record write = %v, want sidecar.ErrUnrecorded", err)
+	}
+	// Nothing was created in the record directory, not even write scratch.
+	if _, err := os.ReadDir(filepath.Join(base, metaDir)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the record directory exists after a refused write: %v", err)
+	}
+}
+
+func TestForeignRecordNamesAreSkippedAndReported(t *testing.T) {
+	// A `.json` name in the record directory that is not a digest is not a
+	// record: it must not abort the enumeration, and reconciliation reports it
+	// instead of deleting a file this layer cannot interpret (go-cask#362).
+	ctx := context.Background()
+	backend, base := mustFS(t)
+	rec := crc32Recorder(t, backend)
+	recorded := put(t, rec, []byte("recorded object"))
+	foreign := filepath.Join(base, metaDir, "notes.json")
+	if err := os.WriteFile(foreign, []byte("not a record"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	keys, err := rec.Keys(ctx)
+	if err != nil {
+		t.Fatalf("Keys with a foreign .json name = %v, want the enumeration to skip it", err)
+	}
+	if len(keys) != 1 || !keys[0].Equal(recorded) {
+		t.Errorf("Keys = %v, want only %s", keys, recorded)
+	}
+
+	report, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("Reconcile with a foreign .json name = %v, want the pass to continue", err)
+	}
+	if report.Records != 1 {
+		t.Errorf("Records = %d, want 1", report.Records)
+	}
+	if len(report.Foreign) != 1 || report.Foreign[0] != "notes.json" {
+		t.Errorf("Foreign = %v, want [notes.json]", report.Foreign)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Errorf("Reconcile removed a foreign file: %v", err)
 	}
 }
 
@@ -543,8 +685,15 @@ func TestKeysListsSortedRecordedDigests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(base, metaDir, "notahex.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rec.Keys(ctx); !errors.Is(err, cas.ErrCorrupt) {
-		t.Fatalf("Keys with a foreign .json file = %v, want cas.ErrCorrupt", err)
+	// A `.json` name that is not a digest is not a record, so Keys skips it
+	// rather than refusing the whole enumeration (go-cask#362; Reconcile reports
+	// it).
+	keys, err = rec.Keys(ctx)
+	if err != nil {
+		t.Fatalf("Keys with a foreign .json file = %v, want it skipped", err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("Keys = %v, want the two recorded digests", keys)
 	}
 }
 

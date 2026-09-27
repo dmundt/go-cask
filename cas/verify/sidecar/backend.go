@@ -236,21 +236,37 @@ func (b *Backend) Load(ctx context.Context, d cas.Digest) (*Record, error) {
 
 // Keys returns the digests that have a record, sorted by their hex form. Keys
 // reads names, not contents: use Load for a validated record.
+//
+// A `.json` entry whose name is not a digest is not a record — a foreign file in
+// the record directory — so it is skipped rather than refused: one such name must
+// not abort the enumeration (go-cask#362). Reconcile, which has to say what it
+// left alone, reads the same directory and reports those names.
 func (b *Backend) Keys(ctx context.Context) ([]cas.Digest, error) {
+	keys, _, err := b.listRecords(ctx)
+	return keys, err
+}
+
+// listRecords reads the record directory once and classifies every entry: the
+// digests that are records, in hex order, and the `.json` names that are not —
+// names no reader can turn into a digest, which are reported rather than refused.
+// A directory or a name without the record suffix is not an entry of this layer
+// at all, so both callers ignore it.
+func (b *Backend) listRecords(ctx context.Context) ([]cas.Digest, []string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	entries, err := os.ReadDir(b.metaDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf("sidecar: list records: %w", err)
+		return nil, nil, fmt.Errorf("sidecar: list records: %w", err)
 	}
 	keys := make([]cas.Digest, 0, len(entries))
+	var foreign []string
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, recordSuffix) {
@@ -258,12 +274,14 @@ func (b *Backend) Keys(ctx context.Context) ([]cas.Digest, error) {
 		}
 		d, err := cas.ParseDigest(strings.TrimSuffix(name, recordSuffix))
 		if err != nil {
-			return nil, fmt.Errorf("%w: sidecar: record file %s: %v", cas.ErrCorrupt, name, err)
+			foreign = append(foreign, name)
+			continue
 		}
 		keys = append(keys, d)
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
-	return keys, nil
+	sort.Strings(foreign)
+	return keys, foreign, nil
 }
 
 // ReconcileReport summarizes a Reconcile pass: how many records it examined,
@@ -279,11 +297,21 @@ type ReconcileReport struct {
 	// never treated as damaged, and never given a record: only a writer that
 	// read the bytes can compute one.
 	Unrecorded []cas.Digest
+	// Foreign lists `.json` file names in the record directory that are not
+	// digest-named records, in sorted order. They are skipped, never counted in
+	// Records and never removed — a file this layer cannot interpret is not its
+	// own to delete — but one such name must not abort the reconciliation, so it
+	// is reported here instead (go-cask#362).
+	Foreign []string
 }
 
 // Reconcile closes the gap a crash or an out-of-band change can leave behind:
 // it removes records whose object is gone and reports objects without a record.
 // It never deletes an object and never writes a record.
+//
+// A `.json` entry that is not a digest-named record is foreign to this layer: it
+// is skipped and reported in ReconcileReport.Foreign, never removed, and never
+// an error — one such name must not stop a sweep (go-cask#362).
 //
 // A sweep deletes objects, so this is what keeps the record directory from
 // accumulating orphans after `cask gc` or `cask prune`; it is idempotent and
@@ -292,11 +320,11 @@ func (b *Backend) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	keys, err := b.Keys(ctx)
+	keys, foreign, err := b.listRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
-	report := &ReconcileReport{Records: len(keys)}
+	report := &ReconcileReport{Records: len(keys), Foreign: foreign}
 	recorded := make(map[string]struct{}, len(keys))
 	for _, d := range keys {
 		if err := ctx.Err(); err != nil {
@@ -372,12 +400,13 @@ func (b *Backend) readRecord(d cas.Digest) (rec *Record, found bool, err error) 
 // writeRecord publishes a record atomically: a temp file in the record
 // directory, fsynced, then renamed into place. The temp name ends in `.tmp`, so
 // a crash between create and rename leaves something the backend's Clean
-// reclaims.
+// reclaims. The record is encoded — and so bounded by the read cap — before
+// anything is created on disk.
 func (b *Backend) writeRecord(ctx context.Context, rec *Record) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	data, err := rec.encode()
+	data, err := b.encodeRecord(rec)
 	if err != nil {
 		return err
 	}
@@ -416,6 +445,34 @@ func (b *Backend) writeRecord(ctx context.Context, rec *Record) error {
 		return nil
 	}
 	return syncDir(b.metaDir)
+}
+
+// encodeRecord renders the record in a shape readRecord accepts back. The read
+// cap is the one bound both sides share, so the writer enforces it here: a record
+// that does not fit is re-encoded without its optional type and codec fields —
+// both derived best-effort and documented as never required (operations §6.2) —
+// and a record that still does not fit is refused with ErrRecordTooLarge before
+// anything is created on disk. A writer therefore never publishes a file its own
+// reader would report as cas.ErrCorrupt (go-cask#362).
+func (b *Backend) encodeRecord(rec *Record) ([]byte, error) {
+	data, err := rec.encode()
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) <= b.maxRecordBytes {
+		return data, nil
+	}
+	trimmed := *rec
+	trimmed.Type, trimmed.Codec = "", ""
+	data, err = trimmed.encode()
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > b.maxRecordBytes {
+		return nil, fmt.Errorf("%w: sidecar: record for %s needs %d bytes, over the %d-byte cap even without its optional type and codec fields",
+			ErrRecordTooLarge, rec.Digest, len(data), b.maxRecordBytes)
+	}
+	return data, nil
 }
 
 // syncDir fsyncs the record directory after a rename, so the rename itself
