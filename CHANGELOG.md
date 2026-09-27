@@ -144,6 +144,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   age threshold and a removed count — for a caller that owns a second tree
   following the same convention. `fs.CleanupTemp` is that sweep with the age
   fixed at 0, so the exported helpers and `Backend.Clean` cannot drift apart.
+- Go is now the recorded build language. Build logic is Go — `internal/build/core`
+  for the engine and a `cmd/buildtool` subcommand for the entry point — no new
+  `.sh` is created, and Python is not used for build logic; the shell launchers
+  stay only because a launcher must exist before Go can run. `website/macros.py`
+  is the one recorded exception: an MkDocs plugin hook, which is the website
+  toolchain rather than repo build tooling. The rule is `scripts/AGENT.md`, "the
+  build language is Go", and the reason is the testability the rule above it
+  gives: a rule written in a script is covered by no test and drags whichever
+  interpreter the operator happens to have into the build.
 
 ### Changed
 

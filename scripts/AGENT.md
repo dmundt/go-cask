@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v17
+version: v18
 ---
 
 # Agent instructions — `scripts/`
@@ -89,6 +89,20 @@ Subtree contains repo's operational command wrappers. Treat scripts here as cano
   this script. The line is whether the step decides something: a rule belongs in
   a package, and a one-line instantiation of one (`/bin/true`, `git rev-parse`)
   belongs here.
+- **The build language is Go.** Build logic is Go — `internal/build/core` for the
+  engine and `cmd/buildtool` for the entry point — and no new `.sh` is created,
+  and Python is not used for build logic. This is the same reason as the rule
+  above and it is the whole reason: a shell or Python rule is covered by no test
+  and must be re-run to be trusted, and it drags whatever interpreter the
+  operator happens to have into the build. The three launchers above stay
+  because a launcher has to exist before Go can run and because `verify.sh` is
+  the gate's published name; they are the exception rather than a licence for a
+  fourth. So a build change is a `cmd/buildtool` subcommand, and if a rule seems
+  not to fit there, that is a design problem to fix rather than a reason to
+  reach for a script. `website/macros.py` is the one recorded exception, and it
+  is recorded rather than implied: it is an MkDocs plugin hook, which is the
+  website toolchain rather than repo build tooling, and `cmd/buildtool
+  website-footer` is what drives it (website/AGENT.md).
 - Treat `./scripts/verify.sh` as repo preflight gate: design changes, release prep, CI parity checks.
 - The gate's expensive steps can be skipped for a fast inner loop, and a skipped
   run is never a verified one. `VERIFY_SKIP_TESTS`, `VERIFY_SKIP_COVERAGE`,
