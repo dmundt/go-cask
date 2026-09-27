@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the buildtool launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/buildtool.
-version: v13
+version: v14
 ---
 
 # Scripts — go-cask
@@ -48,10 +48,11 @@ receipt, is `go run ./cmd/buildtool gate-receipt` now.
 | `buildtool.sh` | `.githooks/pre-push`, docs | n/a — exemption | Nothing: it exists to resolve the toolchain and pass through. 20 lines. |
 | `verify.sh` | CI, the pre-push message, the specification set | 100% | Nothing: it resolves the toolchain and starts `buildtool.sh verify`. The step list it held is `go run ./cmd/buildtool verify`; the decisions behind it are `internal/build/core/verify`'s, and go-cask's answer to each is `internal/build/policy`'s gate table. |
 
-Archived scripts (`internal/build/shell/`, 13 files): checked — every copy carries an
-`ARCHIVED —` header naming its replacement, every replacement exists, and each has a row in
-[`shell/README.md`](../internal/build/shell/README.md). No copy is orphaned, so nothing was
-deleted; an unreferenced script with no replacement would be the only deletion candidate.
+Scripts the Go ports replaced are deleted, not archived. Each one's rule is a package under
+[`internal/build/core`](../internal/build/core/README.md), its cases are tests beside that package,
+and its header named the command that took over — so a copy on disk would record what the tree
+already carries. Git history keeps every one of them; the parity audit that retired them is the
+table above.
 
 Task worktrees are `go run ./cmd/buildtool worktree {add,remove,lock,list}`: the command
 writes the worktree's `.git` in the relative form both toolchains resolve, locks the
