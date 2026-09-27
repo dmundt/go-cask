@@ -20,6 +20,7 @@ import (
 	"github.com/dmundt/go-cask/internal/build/core/changes"
 	"github.com/dmundt/go-cask/internal/build/core/gate"
 	"github.com/dmundt/go-cask/internal/build/core/verify"
+	"github.com/dmundt/go-cask/internal/build/core/worktree"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -239,7 +240,7 @@ func stepsFor(table policy.VerifyTable, scope verify.Scope) []verifyStep {
 // verify a tree nobody asked about. That link is what distinguishes the case from a caller
 // who simply started the tool in a subdirectory, which is its own, plainer refusal.
 func checkTree(started, root string, errOut io.Writer) error {
-	if samePath(started, root) {
+	if worktree.SamePath(started, root) {
 		return nil
 	}
 	if _, err := os.Lstat(filepath.Join(started, ".git")); err == nil {
@@ -742,31 +743,8 @@ func (r *gateRun) commandWithEnv(dir string, env []string, name string, args ...
 	return nil
 }
 
-// envWithAll returns the caller's environment with every named variable replaced, all at
-// once. envWith sets one variable; chaining it would not work, because each call starts
-// from the caller's environment and would drop the replacement before it. Appending the
-// new values instead is not equivalent either: a duplicate entry leaves the reader with the
-// value the parent had.
-func envWithAll(values [][2]string) []string {
-	env := os.Environ()
-	kept := make([]string, 0, len(env)+len(values))
-	for _, entry := range env {
-		replaced := false
-		for _, pair := range values {
-			if strings.HasPrefix(entry, pair[0]+"=") {
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			kept = append(kept, entry)
-		}
-	}
-	for _, pair := range values {
-		kept = append(kept, pair[0]+"="+pair[1])
-	}
-	return kept
-}
+// envWithAll lives beside envWith in buildtool.go: one environment filter, two shapes, so
+// the cross-platform step's three variables and the scanner install's one cannot drift.
 
 // verifyFuzzTime is how long each smoke-fuzz target runs. It is a smoke, not a campaign:
 // a corpus regression reproduces in the first second, and the campaign is what a caller
