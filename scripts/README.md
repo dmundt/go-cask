@@ -88,7 +88,7 @@ through `go run ./cmd/buildtool`, one subcommand per decision:
 | `bench-baseline` | one deliberate run owns the committed benchmark reference dump, archiving the previous one first |
 | `bench-compare` | a benchmark comparison chooses its baseline before capturing and never writes the reference |
 | `run-examples` | which example programs a runner executes, with which arguments and store; which one it must never run |
-| `land-lane` | the local advisory slot: `status`/`whoami`/`acquire`/`renew`/`release`, its idle-time staleness rule, the takeover record an eviction leaves |
+| `land-lane` | the local advisory slot: `status`/`whoami`/`acquire`/`renew`/`release`, its idle-time staleness rule, the takeover record an eviction leaves. `verify` takes this slot for its whole run itself, so no caller has to |
 | `pr-lane` | the server-side lane: `claim`/`check`/`status`/`release`/`whoami`, the ref that is the compare-and-swap, the pull request that is the lease, the claim window |
 | `pre-push` | the mechanical landing rule a push must satisfy; the advisory-slot note |
 | `codec-guards` | `gitlike` and `cas/pack` do not reach the codec layer transitively |

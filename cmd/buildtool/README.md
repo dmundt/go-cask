@@ -10,7 +10,7 @@ an exit status a gate step can act on.
 
 | Command | Decides |
 |---|---|
-| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/verify` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. `scripts/verify.sh` is this command's name for the gate |
+| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/verify` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. The whole run holds the clone's local advisory slot (exit 3 when a live holder is still there after the bounded wait; `--slot=takeover` takes any holder's). `scripts/verify.sh` is this command's name for the gate |
 | `layer-matrix` | every package's imports against the layer table |
 | `coverage-tier` | that every `cas/` package carries a tier or a written exemption; `--list` prints the gate's measurement table |
 | `coverage-check` | the thresholds, reading one `threshold\|package\|measured` line per package from stdin — the gate collects the measurements, this decides |
@@ -54,7 +54,8 @@ go run ./cmd/buildtool release --tag v1.3.0 --dry-run
   registered nowhere, a worktree with uncommitted changes, or one it could not remove. The
   invocation was well formed and no rule failed, so the command says so with its own status
   instead of a success line, and a caller that scripts it can tell "nothing to remove" from
-  "removed".
+  "removed". `verify` carries it too when the clone's advisory slot is still another run's
+  after the bounded wait: no step ran, so it is not a verdict on the tree.
 
 A command that prints a list prints only the list on stdout, so a gate can capture it in a
 command substitution — `version-fields`, `coverage-tier --list` and `scope --rule` are the

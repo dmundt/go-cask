@@ -70,7 +70,9 @@ commands:
                        then the documentation steps. VERIFY_SCOPE selects the scope,
                        VERIFY_JOBS the concurrency, and the VERIFY_SKIP_* hatches drop
                        one expensive step each — a run that skipped anything writes no
-                       gate stamp
+                       gate stamp. The run holds the clone's local advisory slot for its
+                       whole length; --slot=takeover takes it from a holder whose run is
+                       known to be gone instead of waiting
   layer-matrix         check every package's imports against the dependency-layer
                        matrix (library-design.md §1.1)
   coverage-tier        check that every cas/ package carries a coverage tier or a

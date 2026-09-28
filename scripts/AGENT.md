@@ -82,6 +82,12 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
 - **Local ADVISORY slot** = `go run ./cmd/buildtool land-lane`: one slot in the shared git dir
   keeping two gate runs in one clone from overlapping; records and decisions
   `internal/build/lane`; not a condition for pushing.
+- **`verify` holds that slot for its whole run**, so the record's pid lives as long as the
+  run and no caller has to remember it: a second run waits (bounded by
+  `LAND_LANE_WAIT_SECONDS`), says what it is waiting for, and refuses with exit 3 — never a
+  red gate — when the holder is still there. A holder whose process is provably gone is
+  taken over, and `--slot=takeover` takes any holder's slot. A step killed by a signal
+  prints the signal, the concurrent `verify` count and the advice to hold the slot.
 - **Stamp** = `internal/build/gate`. `.githooks/pre-push` (shim over
   `go run ./cmd/buildtool pre-push`) refuses a push whose HEAD holds no stamp for that exact
   commit — the one hard local rule; re-pushing an unchanged commit is free, and the hook never
