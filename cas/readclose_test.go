@@ -90,7 +90,7 @@ func TestReadThenCloseNilRendererReturnsCause(t *testing.T) {
 	want := errors.New("peek failed")
 	rc := closing(nil)
 	_, err := readThenClose(rc, func(io.Reader) (string, error) { return "", want }, readWins, nil, wrap("cas: close object"))
-	if err != want {
+	if !errors.Is(err, want) {
 		t.Fatalf("readThenClose = %v, want the cause unchanged", err)
 	}
 	if rc.closed != 1 {
