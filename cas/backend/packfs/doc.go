@@ -13,4 +13,8 @@
 // which is the difference between a load that costs N opens and one that costs
 // one. A digest without a usable pack record still comes from the loose
 // backend, exactly as Get serves it.
+//
+// The index is one JSON map rewritten in full after every packed Put, so a store
+// with N packed objects pays O(N) per put (go-cask#369). The on-disk format is
+// deliberate and unchanged; BenchmarkPackIndexRewrite measures the cost.
 package packfs

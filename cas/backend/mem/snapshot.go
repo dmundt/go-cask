@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	"github.com/dmundt/go-cask/cas/backend"
@@ -45,7 +45,7 @@ func (m *Backend) Snapshot(ctx context.Context, w io.Writer) error {
 		keys = append(keys, key)
 		total += uint64(len(data))
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	var header [snapshotHeaderSize]byte
 	copy(header[:8], snapshotMagic[:])

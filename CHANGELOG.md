@@ -591,6 +591,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejected write. The ceiling now stores the bytes it was given, and every
   smaller cap behaves exactly as before.
 - `cask list` rejects a surplus operand with a usage error (exit 2) instead of ignoring it and printing the whole store (go-cask#366).
+- `cas/codec/cbor` returns an owned byte string: a decoded `[]byte` field is a copy of its own bytes instead of a sub-slice of the object buffer it was decoded from, so a retained value no longer pins a whole object and no longer changes when that buffer is reused (go-cask#382). Decoded values themselves are unchanged.
+- `cas/backend/packfs` retries a transiently refused index publication — the Windows "access is denied"/"being used by another process" window `fs.Put` already tolerates — so the index rewrite a packed `Put` performs can no longer fail on a momentary collision (go-cask#369). The on-disk index format is unchanged; `BenchmarkPackIndexRewrite` records the per-`Put` cost at 10, 1 000 and 10 000 index entries.
 
 ### Security
 
@@ -699,6 +701,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   limit decodes exactly as before.
 - `cask stats` and `cask meta` no longer print a stored envelope type name or codec identity tag verbatim: every header-derived string is rendered through one helper that replaces C0/C1 control characters, so an object authored by someone else can no longer rewrite the operator's terminal or forge a census line (go-cask#354).
 - A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune` and `cask web` report the directory they actually act on, so a link planted at the store path can no longer redirect a destructive sweep silently (go-cask#353).
+- `cas/codec/gob` documents the bound on decode recursion: it follows the destination type, so a payload cannot invent nesting, and the one payload-only path is capped by the standard library at 10 000 levels. A **recursive** destination type must not be decoded from untrusted bytes — a crafted, type-compatible chain of non-nil pointers exhausts the stack — and gob cannot impose a ceiling on a depth the caller's type defines (go-cask#453).
 
 ## [v1.6.5] - 2026-09-22
 
