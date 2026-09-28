@@ -702,6 +702,15 @@ func (b *Backend) servePackGroup(ctx context.Context, group packGroup, fn func(c
 // whether fn returned an error or panicked. fn's error wins; a failing Close is
 // reported only when fn itself succeeded, so a close failure never masks the
 // real cause.
+//
+// This is deliberately a copy of the unexported cas.closeAfterFn — the same
+// sequence, the same "fn wins" precedence, the same close message (go-cask#340).
+// The core keeps its helper unexported because exporting it would add a
+// cas-level function the one other caller (this backend, on the other side of
+// the module's internal boundary) does not justify (library-design §1); the
+// shared implementation is cas.readThenClose (cas/readclose.go), which
+// cas.closeAfterFn routes through, so a change to the precedence rule belongs
+// there and this copy must follow it.
 func callBatchFn(fn func(cas.Digest, io.ReadCloser) error, d cas.Digest, reader io.ReadCloser) (err error) {
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil && err == nil {
