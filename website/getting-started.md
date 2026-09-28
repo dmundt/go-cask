@@ -100,12 +100,16 @@ outside itself.
 
 ## CI and verification
 
-Before committing meaningful changes, run the project verification gate. It is
-a Bash script (Git Bash or WSL on Windows):
+Before committing meaningful changes, run the project verification gate (Git
+Bash or WSL on Windows):
 
 ```bash
 bash ./scripts/verify.sh
 ```
 
-This runs `gofmt`, `go vet`, the import-boundary checks, `govulncheck`, and
-the test suite with race detection and coverage — the same gate CI runs.
+`scripts/verify.sh` is the gate's name, not its implementation: it resolves the
+toolchain and runs `cmd/gate verify`, which performs the formatting and
+`go mod tidy` drift checks, the build and cross-builds, `go vet`, the
+import-boundary and codec-guard checks, the pinned linter and `govulncheck`, the
+race suite with per-package coverage, the fuzz smoke, and the documentation,
+package-graph and website steps — the same gate CI runs.
