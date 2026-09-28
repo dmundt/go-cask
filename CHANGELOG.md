@@ -175,6 +175,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deliberately instead of silently. `clean`, `gc` and `prune` print the resolved base they acted on
   (`clean: store <dir>`) and `cask web` logs it; the maintenance lock is taken in the resolved store.
   An intentional symlinked store keeps working (go-cask#353).
+- `cask web` mints its startup admin token at 128 bits (16 bytes as four dash-separated groups of
+  eight hex characters) instead of 48, and validates a supplied one (`-token-file`,
+  `CASK_VIEWER_TOKEN`): a regular file read under a 4 KiB bound, at least 16 characters from
+  `A-Z a-z 0-9 - . _ ~`, with a rejection naming the flag, file or variable and never the value.
+  A session also retains at most 50 000 verification results; past the bound a dropped object reads
+  `Unverified` again instead of a stale verdict.
 - The viewer names a frame's version **Envelope** rather than "Envelope version" or
   "Version" — in the object table's column header, in the inspector's Identity block, and
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
@@ -594,6 +600,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trust the filter's negatives. **On-disk layout change:** a file written by an
   earlier build has zero reserved bytes and is rebuilt on first open — a lost hint
   set, never a wrong answer — then rewritten in the new format.
+- The viewer's login token is read from the `POST /viewer/login` form body only: `?token=<token>` in
+  the request's query string no longer authenticates. The documented `GET /viewer/?token=` deep link
+  is unchanged. URLs reach access logs, browser history, proxies and `Referer` chains, so a
+  credential in one is a credential leaked.
 - An authenticated viewer session can no longer monopolize the server by
   refreshing: the two routes whose work is proportional to the *store* rather
   than to the request are bounded. `POST /viewer/objects/verify` runs one sweep

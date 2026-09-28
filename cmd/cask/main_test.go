@@ -749,8 +749,24 @@ func TestVersionAndWebHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("randomToken() error = %v", err)
 		}
-		if len(tok) != 14 || strings.Count(tok, "-") != 2 || tok != strings.ToUpper(tok) {
-			t.Fatalf("randomToken() = %q, want 3 uppercase hex groups separated by dashes", tok)
+		// 16 bytes of entropy, rendered as 4 dash-separated groups of 8
+		// uppercase hex characters (defaults §4).
+		if len(tok) != 35 || tok != strings.ToUpper(tok) {
+			t.Fatalf("randomToken() = %q, want 128 bits as 4 uppercase hex groups", tok)
+		}
+		groups := strings.Split(tok, "-")
+		if len(groups) != 4 {
+			t.Fatalf("randomToken() = %q, want 4 dash-separated groups", tok)
+		}
+		for _, g := range groups {
+			if len(g) != 8 {
+				t.Fatalf("randomToken() group %q, want 8 hex characters", g)
+			}
+			for _, r := range g {
+				if (r < '0' || r > '9') && (r < 'A' || r > 'F') {
+					t.Fatalf("randomToken() = %q carries %q, want uppercase hex", tok, r)
+				}
+			}
 		}
 	})
 
