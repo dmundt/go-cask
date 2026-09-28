@@ -18,6 +18,13 @@ pack file only changes the on-disk layout.
 - Nothing is filtered and nothing is compacted: `List`/`Stats` still walk the loose tree, inode
   count is unchanged, and `Delete` drops the pack index record without reclaiming the pack bytes
   — a packed store grows with every `Put` and never shrinks on its own.
+- The pack index is rewritten in full after **every** packed `Put`: re-marshalled from the
+  in-memory map and republished atomically, so a store with N packed objects pays O(N) allocation
+  and I/O per put (O(N²) ingest overall). `WithPackMaxEntries` bounds the pack file, not the index.
+  Measured with `BenchmarkPackIndexRewrite` (4 KiB per put, go1.27.1 windows/amd64): ≈ 78 allocs/op
+  and 15 KB/op at 10 index entries, ≈ 2 070 allocs/op and 1.0 MB/op at 1 000, ≈ 20 100 allocs/op and
+  8 MB/op at 10 000. The on-disk format is unchanged, and the publication is a short retry against
+  the transient Windows rename failure `fs.Put` already tolerates.
 - The base directory belongs to exactly one store: it holds the loose tree (`<base>/loose`), the
   pack directory (`<base>/packs`) and the pack index. `packfs.New` validates it with
   `fs.ValidateBase` before creating anything — an empty path, `.`, a filesystem or volume root,

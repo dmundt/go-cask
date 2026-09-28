@@ -1,13 +1,14 @@
 package design
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -100,7 +101,7 @@ func memoryImportsInSource(t *testing.T, src string) []memoryImport {
 		t.Fatalf("parse snippet: %v", err)
 	}
 	out := memoryImportsInFile(fset, file, "snippet.go")
-	sort.Slice(out, func(i, j int) bool { return out[i].line < out[j].line })
+	slices.SortFunc(out, func(a, b memoryImport) int { return cmp.Compare(a.line, b.line) })
 	return out
 }
 
@@ -144,7 +145,7 @@ func scanMemoryImports(t *testing.T) []memoryImport {
 	if err != nil {
 		t.Fatalf("scan repository: %v", err)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	slices.SortFunc(out, func(a, b memoryImport) int { return cmp.Compare(a.String(), b.String()) })
 	return out
 }
 

@@ -1,6 +1,7 @@
 package sidecar
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -279,8 +280,8 @@ func (b *Backend) listRecords(ctx context.Context) ([]cas.Digest, []string, erro
 		}
 		keys = append(keys, d)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
-	sort.Strings(foreign)
+	slices.SortFunc(keys, func(a, b cas.Digest) int { return cmp.Compare(a.String(), b.String()) })
+	slices.Sort(foreign)
 	return keys, foreign, nil
 }
 

@@ -8,8 +8,10 @@
 // in a table test, so a check that silently stops finding anything fails too.
 //
 // The checks are library-design §5, "no `any`/`interface{}` in the exported
-// API"; the canonical `memory` import aliases (cas/AGENT.md "Core rules"); and
-// the single owner of the codec census label (cli.md §3, go-cask#324).
+// API"; the canonical `memory` import aliases (cas/AGENT.md "Core rules"); the
+// single owner of the codec census label (cli.md §3, go-cask#324); and the
+// `sort` import allow-list — every other source sorts through `slices`/`cmp`
+// (coding-guidelines §3, go-cask#341).
 //
 // As library-design §5 defines it, the rule bans `any` as an exported value,
 // parameter or result type; an unconstrained type parameter (`Codec[T any]`,
