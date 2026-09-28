@@ -105,16 +105,55 @@ type gateRun struct {
 // streaming their output, and reporting — which is the one thing that cannot live in the
 // engine, because the engine is pure functions over caller data and this reads the world.
 func runVerify(args []string, out, errOut io.Writer) error {
+	mode := gateSlotQueue
 	flags := flag.NewFlagSet("verify", flag.ContinueOnError)
 	flags.SetOutput(errOut)
+	flags.Func("slot", "how to take the local advisory slot: queue (default) waits out a live "+
+		"holder and takes over a provably dead one; takeover takes any holder's slot now",
+		func(value string) error {
+			switch value {
+			case "queue":
+				mode = gateSlotQueue
+			case "takeover":
+				mode = gateSlotTakeover
+			default:
+				return fmt.Errorf("unknown slot mode %q: use queue or takeover", value)
+			}
+			return nil
+		})
 	if err := parse(flags, args); err != nil {
-		return err
+		return usageError{err.Error()}
 	}
-	return verifyGate(out, errOut)
+	return verifyGate(mode, out, errOut)
 }
 
 // verifyGate is the run itself.
-func verifyGate(out, errOut io.Writer) error {
+//
+// The whole run holds the clone's local advisory slot (go-cask#486). The slot's record
+// names the acquiring process's pid, so a holder that lives for exactly one run is what
+// makes the record usable for judging liveness — which is what the slot failed at when
+// every lane acquired it by hand around a run. No caller can forget it here.
+func verifyGate(mode gateSlotMode, out, errOut io.Writer) error {
+	release, err := gateHoldSlot(mode, out, errOut)
+	if err != nil {
+		return err
+	}
+	if release != nil {
+		// Every exit path releases the slot: the ordinary return below, a step's failure,
+		// and a panic unwinding through it. A release that fails is reported and never
+		// changes the run's verdict — the slot is advisory, and losing it must not turn a
+		// green tree red.
+		defer func() {
+			if err := release(); err != nil {
+				fmt.Fprintf(errOut, "verify: %v\n", err)
+			}
+		}()
+	}
+	return verifySteps(out, errOut)
+}
+
+// verifySteps is the gate's step list and its run, with the slot already held.
+func verifySteps(out, errOut io.Writer) error {
 	table := policy.Verify()
 	run := &gateRun{out: out, errOut: errOut, table: table}
 
@@ -353,16 +392,22 @@ func (r *gateRun) output(dir, name string, args ...string) (string, string, erro
 // gate locks rather than fails: there is nothing to decide and nothing to remember. The
 // quiet form reports only the worktrees it had to lock, so a run that changed nothing says
 // nothing.
+//
+// A worktree git registers that cannot be locked — a registration whose admin directory is
+// gone — is reported in the run's own output rather than made fatal: nothing is wrong with
+// the tree the gate was asked to verify, and a lane cannot act on a name it never sees
+// (go-cask#508).
 func (r *gateRun) lockWorktrees() error {
-	var locked bytes.Buffer
-	if err := runWorktree([]string{"lock", "--quiet"}, &locked, r.errOut); err != nil {
+	var locked, refused bytes.Buffer
+	if err := runWorktree([]string{"lock", "--quiet"}, &locked, &refused); err != nil {
 		return err
 	}
-	if strings.TrimSpace(locked.String()) == "" {
+	report := strings.TrimSpace(locked.String() + refused.String())
+	if report == "" {
 		return nil
 	}
 	r.section("worktree locks")
-	fmt.Fprint(r.out, locked.String())
+	fmt.Fprintln(r.out, report)
 	return nil
 }
 
@@ -589,6 +634,21 @@ func (r *gateRun) crossPlatform(target policy.PlatformTarget, share int) (string
 // suite above. A shell helper added here would have a Go home by the repository's own rule,
 // so a step that ran `./scripts/test-*.sh` would have nothing to run.
 
+// killedStepError returns the failure the step carries when its command was killed by a
+// signal, and nil when it failed on its own merits. The gate renders the diagnosis as soon
+// as the command returns rather than leaving it to the step's error path, because the
+// coverage measurement below the suite is what a lane reads first: a run killed here would
+// otherwise end at the step's heading with nothing under it (go-cask#486).
+func killedStepError(err error, step string) error {
+	signal, killed := killedStep(err)
+	if !killed {
+		return nil
+	}
+	var report strings.Builder
+	gateStepKilledReport(&report, step, signal)
+	return errors.New(strings.TrimRight(report.String(), "\n"))
+}
+
 // stepRaceAndCoverage is the gate's one composite step: the coverage drift check, the
 // race suite and the per-package measurements, with the threshold decision applied
 // after the suite.
@@ -641,6 +701,9 @@ func stepRaceAndCoverage(r *gateRun) error {
 	}
 	args = append(args, "./...")
 	suiteErr := r.command(r.root, "go", args...)
+	if err := killedStepError(suiteErr, "test -race + coverage gate"); err != nil {
+		fmt.Fprintf(r.errOut, "%v\n", err)
+	}
 
 	var coverageErr error
 	if measure {

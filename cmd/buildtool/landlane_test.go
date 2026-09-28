@@ -638,3 +638,137 @@ func TestLandLaneWaitUsageIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestClaimForGateIsTheGatesOwnAcquisition pins the one attempt the gate's wait loop is
+// built on: a free or expired slot is taken, a live holder is reported rather than evicted,
+// and the acquisition is recorded under the label the gate gave it, so a session that reads
+// the holder sees which run holds the clone's gate (go-cask#486).
+func TestClaimForGateIsTheGatesOwnAcquisition(t *testing.T) {
+	root := t.TempDir()
+	mine := slotFor(t, root, "wt-mine", 90)
+	other := slotFor(t, root, "wt-other", 90)
+
+	// A free slot is taken, and held by this worktree afterwards.
+	claim, err := mine.claimForGate("verify /repo abc1234", false, true)
+	if err != nil {
+		t.Fatalf("claimForGate on a free slot: %v", err)
+	}
+	if !claim.held || claim.holder != nil {
+		t.Fatalf("claimForGate = %+v, want the slot held and no holder reported", claim)
+	}
+	holder := mine.read()
+	if holder == nil || !mine.holds(*holder) {
+		t.Fatalf("the slot is held by %+v, want this worktree", holder)
+	}
+	if holder.Label != "verify /repo abc1234" {
+		t.Errorf("the claim recorded label %q, want the gate run's own", holder.Label)
+	}
+
+	// Another worktree's attempt reports the holder and takes nothing.
+	claim, err = other.claimForGate("verify /elsewhere", false, true)
+	if err != nil {
+		t.Fatalf("claimForGate on a held slot: %v", err)
+	}
+	if claim.held || claim.holder == nil {
+		t.Fatalf("claimForGate = %+v, want the standing holder reported", claim)
+	}
+	if held := other.read(); held == nil || held.Label != "verify /repo abc1234" {
+		t.Errorf("the second attempt disturbed the standing holder's slot: %+v", held)
+	}
+
+	// The holder's own next attempt says the slot is already its acquisition rather than
+	// handing out a second gate run in one worktree.
+	claim, err = mine.claimForGate("verify /repo abc1234", false, true)
+	if err != nil {
+		t.Fatalf("the holder's second attempt: %v", err)
+	}
+	if claim.held || claim.holder == nil || claim.holder.Label != "verify /repo abc1234" {
+		t.Fatalf("the holder's second attempt = %+v, want its own standing acquisition", claim)
+	}
+
+	// A holder idle past its window is taken over, and the eviction leaves its record:
+	// waiting out a run that nobody will ever end would hold the whole clone's queue. The
+	// same worktree acts, because an expired holder is nobody's live acquisition.
+	idle := lane.Holder{
+		PID: "2", Since: now() - 6000, Label: "verify /old",
+		Who: other.who, Token: "tok-old",
+	}.Fields() + "\n"
+	if err := os.WriteFile(mine.owner, []byte(idle), 0o644); err != nil {
+		t.Fatalf("writing the idle holder: %v", err)
+	}
+	expired := slotFor(t, root, "wt-mine", 0)
+	claim, err = expired.claimForGate("verify /repo abc1234", false, true)
+	if err != nil {
+		t.Fatalf("claimForGate past the idle window: %v", err)
+	}
+	if !claim.held {
+		t.Fatalf("an expired holder's slot was not taken: %+v", claim)
+	}
+	takeover := lane.ParseTakeover(readFileOrEmpty(expired.takeover))
+	if takeover.How != lane.Expired || takeover.Label != "verify /old" {
+		t.Errorf("the eviction record is %+v, want the holder it evicted and why", takeover)
+	}
+}
+
+// TestGateSlotForAcquiresAndReleasesTheRealSlot pins the production gateSlot against a real
+// repository, which is the half a fake cannot prove: `resolveLandLane` reads the shared git
+// dir, the claim writes the record and this worktree's token, the holder is readable while the
+// run holds it, and the release frees it again — so the next run in the clone finds a free
+// slot rather than a stale holder's (go-cask#486).
+func TestGateSlotForAcquiresAndReleasesTheRealSlot(t *testing.T) {
+	root, _ := hookRepo(t)
+	t.Chdir(root)
+
+	slot := gateSlotFor()
+	t.Cleanup(func() { _ = slot.release() })
+	if err := slot.resolve("verify /test-slot abc1234"); err != nil {
+		t.Fatalf("resolving the real slot: %v", err)
+	}
+	if slot.held() {
+		t.Fatal("a fresh slot reported as already held")
+	}
+	claim, err := slot.claim(false, true)
+	if err != nil {
+		t.Fatalf("claiming a free slot: %v", err)
+	}
+	if !claim.held {
+		t.Fatalf("claiming a free slot = %+v, want it taken", claim)
+	}
+	holder := slot.holder()
+	if holder == nil || holder.Label != "verify /test-slot abc1234" {
+		t.Fatalf("the slot holds %+v, want this run's own record", holder)
+	}
+	if !slot.held() {
+		t.Error("the slot does not report itself held after the claim")
+	}
+
+	if err := slot.release(); err != nil {
+		t.Fatalf("releasing the slot: %v", err)
+	}
+	if holder := slot.holder(); holder != nil {
+		t.Errorf("the slot still holds %+v after the release", holder)
+	}
+	// The whole point: the next run takes it rather than waiting out a dead holder's window.
+	second, err := slot.claim(false, true)
+	if err != nil {
+		t.Fatalf("claiming after the release: %v", err)
+	}
+	if !second.held {
+		t.Errorf("the released slot was not free for the next run: %+v", second)
+	}
+}
+
+// TestGateSlotBudgetsAreOrdered pins the two budgets that bound the gate's wait: a retry is
+// short because it is for a slot mid-write, and the poll is slower because a wait may last
+// minutes, and polling a core for the whole wait is not a queue.
+func TestGateSlotBudgetsAreOrdered(t *testing.T) {
+	t.Parallel()
+
+	if gateSlotRetry >= gateSlotPoll {
+		t.Errorf("the gate retries every %s and polls every %s; a wait would spin a core",
+			gateSlotRetry, gateSlotPoll)
+	}
+	if gateSlotAttempts <= 0 {
+		t.Errorf("the gate's retry budget is %d", gateSlotAttempts)
+	}
+}
