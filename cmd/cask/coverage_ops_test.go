@@ -1426,3 +1426,108 @@ func TestMaintenanceFlagErrorsAreUsageErrors(t *testing.T) {
 		})
 	}
 }
+
+// symlinkOrSkip creates a symbolic link, skipping the test where the platform
+// cannot (Windows without the symlink privilege).
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+}
+
+// resolvedPath is the platform's spelling of path with every link followed, so
+// an expectation matches the base the command prints.
+func resolvedPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", path, err)
+	}
+	return resolved
+}
+
+// TestCleanSweepsTheResolvedBaseOfASymlinkedStore pins issue #353 at its
+// sharpest command, `clean --min-age 0`: -store is resolved once where the store
+// is opened, the resolved base is printed, and the sweep stays inside it. A
+// decoy `*.tmp` outside the real base — beside it, and beside the link itself —
+// is untouched, so a link standing where the operator pointed cannot turn the
+// sweep into an operation on a tree they did not name (cli.md §2, §3).
+func TestCleanSweepsTheResolvedBaseOfASymlinkedStore(t *testing.T) {
+	// The real store and one decoy share a temporary root; the link lives in a
+	// different root and points outside it.
+	outer := t.TempDir()
+	realBase := filepath.Join(outer, "real-store")
+	if err := os.MkdirAll(filepath.Join(realBase, "aa"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orphan := filepath.Join(realBase, "aa", "leftover.tmp")
+	if err := os.WriteFile(orphan, []byte("orphan scratch"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	besideBase := filepath.Join(outer, "beside-base.tmp")
+	if err := os.WriteFile(besideBase, []byte("not the store's"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkRoot := t.TempDir()
+	link := filepath.Join(linkRoot, "store")
+	symlinkOrSkip(t, realBase, link)
+	besideLink := filepath.Join(linkRoot, "beside-link.tmp")
+	if err := os.WriteFile(besideLink, []byte("not the store's either"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runBoth(t, modeFlags{store: link}, "clean", "--min-age", "0")
+	if code != 0 {
+		t.Fatalf("clean over a symlinked -store exit = %d (stderr %q)", code, stderr)
+	}
+	want := "clean: store " + resolvedPath(t, realBase)
+	if !strings.Contains(stdout, want) {
+		t.Fatalf("clean stdout = %q, want the resolved base named (%q)", stdout, want)
+	}
+	if _, err := os.Lstat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("clean left the orphan under the resolved base: %v", err)
+	}
+	for _, outside := range []string{besideBase, besideLink} {
+		if _, err := os.Stat(outside); err != nil {
+			t.Fatalf("clean touched %s, which is outside the resolved base: %v", outside, err)
+		}
+	}
+}
+
+// TestGcAndPruneNameTheResolvedBaseOfASymlinkedStore pins the other two
+// destructive commands on the same seam: each prints the resolved directory it is
+// about to sweep, so an operator who named a link reads the tree that will be
+// modified instead of the spelling they typed (cli.md §2).
+func TestGcAndPruneNameTheResolvedBaseOfASymlinkedStore(t *testing.T) {
+	realBase := filepath.Join(t.TempDir(), "real-store")
+	if err := os.MkdirAll(realBase, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "store")
+	symlinkOrSkip(t, realBase, link)
+	mf := modeFlags{store: link}
+
+	putOut, code := run(t, mf, "put", writeTemp(t, "the only object"))
+	if code != 0 {
+		t.Fatalf("put over a symlinked -store exit = %d (%q)", code, putOut)
+	}
+	root := strings.TrimSpace(putOut)
+	if !strings.HasPrefix(root, "sha256:") {
+		t.Fatalf("put printed %q, want a hash", root)
+	}
+	want := "store " + resolvedPath(t, realBase)
+
+	for _, args := range [][]string{
+		{"gc", "--min-age", "0", root},
+		{"prune", "--min-age", "0", root},
+	} {
+		stdout, stderr, code := runBoth(t, mf, args[0], args[1:]...)
+		if code != 0 {
+			t.Fatalf("%v exit = %d (stderr %q)", args, code, stderr)
+		}
+		if named := args[0] + ": " + want; !strings.Contains(stdout, named) {
+			t.Fatalf("%v stdout = %q, want the resolved base named (%q)", args, stdout, named)
+		}
+	}
+}

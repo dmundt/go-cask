@@ -66,7 +66,7 @@ Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut` (steady-state + col
 | Bit-index derivation | independent of the CAS digest algorithm: the object hash stays the caller-owned `cas.Hasher` contract; the filter picks bit positions in its own bitmap |
 | Bits outliving the process | MUST derive bit positions deterministically. A filter reopened under a different rule answers `false` for digests it recorded, and a `bloom.Guard` turns that into an authoritative "absent" |
 | Per-process seeds | `bloom.DefaultIndexHash` is seeded per process and may only back an in-memory filter |
-| Persistent seeds | `cas/bloom/persistent` persists a 32-byte index key in the file header (format `CASKBLM1`) and derives its default index hash from it, so its bits stay readable by the next process; the header records which kind wrote the file, so a file written under the other kind is rebuilt rather than trusted (`cas/bloom/persistent`, go-cask#254) |
+| Persistent seeds | `cas/bloom/persistent` persists a 32-byte index key in the file header (format `CASKBLM1`) and derives its default index hash from it, so its bits stay readable by the next process; the header records which kind wrote the file, so a file written under the other kind is rebuilt rather than trusted, and it carries a checksum over `kind || key`, so a corrupted key is rebuilt rather than reindexing every recorded digest into an authoritative absence (`Filter.Rebuilt()` reports the discard) (`cas/bloom/persistent`, go-cask#254, go-cask#361) |
 | Caller-supplied | a caller-supplied `bloom.IndexHash` carries the same obligation |
 
 - Every timed benchmark calls `b.ReportAllocs()`; non-timed layout/economics probes MAY omit it.

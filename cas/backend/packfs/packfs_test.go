@@ -582,24 +582,33 @@ func TestPackBackendFaultInjectionAndCloseBranches(t *testing.T) {
 		t.Fatal("New should fail when mkdirAll fails")
 	}
 
-	b := &Backend{manifestPath: filepath.Join(t.TempDir(), "manifest.json"), index: map[string]packRecord{"abc": {Pack: "pack.bin", Offset: 1, Size: 2}}}
+	// A hand-built backend needs the base and pack directory a real one has:
+	// persistIndex checks the pack directory's chain against the base before it
+	// creates its scratch file, exactly as the constructor's callers do.
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "packs")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b := &Backend{base: dir, packDir: packDir, manifestPath: filepath.Join(packDir, "index.json"), index: map[string]packRecord{"abc": {Pack: "pack.bin", Offset: 1, Size: 2}}}
 	b.op.readFile = func(string) ([]byte, error) { return nil, errors.New("read fail") }
 	if err := b.loadIndex(); err == nil {
 		t.Fatal("loadIndex should fail on read error")
 	}
 
-	b.op.writeFile = func(string, []byte, os.FileMode) error { return errors.New("write fail") }
+	b.op.createTemp = func(string, string) (*os.File, error) { return nil, errors.New("create temp fail") }
 	if err := b.persistIndex(); err == nil {
-		t.Fatal("persistIndex should fail on write error")
+		t.Fatal("persistIndex should fail when the scratch file cannot be created")
 	}
-	b.op.writeFile = nil
+	b.op.createTemp = nil
 	b.op.rename = func(string, string) error { return errors.New("rename fail") }
 	if err := b.persistIndex(); err == nil {
 		t.Fatal("persistIndex should fail on rename error")
 	}
 	b.op.rename = nil
 
-	b = &Backend{packDir: t.TempDir()}
+	dir = t.TempDir()
+	b = &Backend{base: dir, packDir: filepath.Join(dir, "packs")}
 	b.op.openFile = func(string, int, os.FileMode) (*os.File, error) { return nil, errors.New("open fail") }
 	if err := b.ensurePackFile(); err == nil {
 		t.Fatal("ensurePackFile should fail on open error")

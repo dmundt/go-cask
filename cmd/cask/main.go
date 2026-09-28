@@ -271,7 +271,10 @@ func runStoreOp(ctx context.Context, mf modeFlags, spec commandSpec, args []stri
 		return reportError(err)
 	}
 	if maintenanceOp(spec.name) {
-		lock, err := acquireStoreLock(mf.store)
+		// The lock lives in the store the process really operates on: t.Path is
+		// the resolved -store path, so a symlinked store is locked at its
+		// target rather than at the link's spelling (cli.md §2).
+		lock, err := acquireStoreLock(t.Path())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			_ = t.Close()

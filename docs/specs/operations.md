@@ -2,7 +2,7 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v20
+version: v21
 ---
 
 # Operations — go-cask
@@ -19,6 +19,7 @@ Durable, observable, migratable CASK deployment. Related: `cas-core.md` (`Stats`
 - Atomic rename is the contract — no partial writes exposed.
 - `packfs` durable object = the loose one: `packfs.Put` uses the fs temp-file→`Sync`→rename path, then appends to the active pack.
 - Append = extra, non-fsynced copy: losing pack or index loses the packed view, not the object (cas-core §4.14).
+- **Trust assumption: the store directory must not be writable by an actor the process does not trust** — a group- or world-writable store root, a shared volume, a store restored from an attacker-influenced backup, tarball or image, or a process running with more privilege than the directory's owner. The library does not re-verify digests on read (cas-core §4.3), so a store whose bytes a hostile actor can write cannot be trusted to hold honest bytes. The backends narrow the assumption instead of implying it: a symbolic link planted **inside** a base — a fan-out directory, an object's own name, `<base>/packs`, `<base>/loose` or `<base>/packs/current.pack` — is refused with `fs.ErrUnsafeTarget` before anything is created or appended (cas-core §4.4, §4.14). The **base itself** may be a symlink: it is resolved once where the store is opened (`internal/store.ResolveBase`), and the resolved directory is printed by `clean`/`gc`/`prune` and logged by `web`, so following it is deliberate and visible (cli.md §2).
 
 ## 2. Crash recovery
 
