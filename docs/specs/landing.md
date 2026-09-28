@@ -2,7 +2,7 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v8
+version: v9
 ---
 
 # Landing — go-cask
@@ -77,16 +77,17 @@ version: v8
 - `.githooks/pre-push` refuses a push whose HEAD holds no green stamp for that exact commit — the one hard local rule; re-pushing an unchanged commit costs no compute. The advisory slot is reported, never required.
 - **Signed commits, local rebuild only** (§5): `git cherry-pick -S`, `git verify-commit` every head commit, `git push --force-with-lease`.
 - **Before every PR creation or update**, run `./scripts/verify.sh` and confirm every configured coverage threshold passes. The gate re-runs after each change to the tree, not once per commit. A required operational step for all follow-up work, not optional cleanup.
+- **At push time the workspace is clean and the branch is current** — the base rule `branch-naming.md` §1 states for the day a branch is cut, held for every later push: commit or stash in-flight work, then bring the branch up to date with a freshly fetched `origin/main` merged **locally**, and re-gate the merged tree. A branch behind `main` is rebuilt locally, re-verified and re-stamped (§5). Never GitHub's server-side "Update branch"/rebase: it rewrites the branch outside the local signature and gate chain.
 - **On Windows, run the gate under WSL with a Linux Go toolchain**: the race and coverage gate needs cgo and a C compiler, which the Windows toolchain cannot take from WSL's `gcc`, and coverage measured on Windows does not predict the gate.
 - Never duplicate the gate's steps in PowerShell; never look for a faster path. `./scripts/verify.sh` on `/mnt/d` is the one supported route.
 - Rootless WSL setup and the exact command: `scripts/AGENT.md`, "Running the scripts on Windows".
 
 ## 5. Landing
 
-- **The server serializes the landing; land with `gh pr merge --auto --squash`.** `main` requires its checks with `strict=false`, so a green, non-conflicting PR merges without a rebuild.
-- Enable auto-merge or merge only after signature verification, the required checks and the coverage checks pass. Linear history is required: GitHub signs the landed squash commit, and the branch head's key is verified locally with `git verify-commit` (§4).
+- **The merge queue serializes the landing; land with `gh pr merge`.** Once the owner enables GitHub's merge queue on `main`, it rebases and re-tests each queued PR once, at merge time, after its required checks — `gh pr merge` enters the queue, and `gh pr merge --auto --squash` is the interim mechanism until it is on.
+- Merge only after signature verification, the required checks and the coverage checks pass. Linear history is required: GitHub signs the landed squash commit, and the branch head's key is verified locally with `git verify-commit` (§4).
 - GitHub's "Update branch" and server-side rebase operations stay forbidden: a branch that fell behind is rebuilt locally with `git cherry-pick -S`, re-verified and re-stamped.
-- GitHub's own merge queue replaces auto-merge once enabled on `main` — the REST API does not accept the `merge_queue` rule for this repository today, so the owner enables it in the UI, and CI must then also run on `merge_group`.
+- CI runs on `merge_group` too (`.github/workflows/ci.yml`, `.github/workflows/codeql.yml`): the queue's temporary branch carries no required check otherwise, and a queued PR without one waits forever.
 - **Website changes take the lane too.** A branch that touches `website/**` is a landing like any other: claim the lane for the whole landing, and finish one website decision before starting the next.
 - The site footer was redesigned five times in three hours (`#203` → `#220` → `#224` → `#236` → `#239`, six PRs) by sessions that could not see each other's merge, and every step cost an issue, a branch, a PR and a review.
 - Nothing about the gate changes: a `website/**`-only change is still documentation scope, so this orders the work.
@@ -97,5 +98,6 @@ version: v8
 - [x] Lane claimed with `pr-lane claim <issue>`; no `git add -A`, no `git commit -a`
 - [x] Draft PR opened early; the PR is the lease; `pr-lane release <issue>` after the merge
 - [x] Gate run at the right scope, green only at `verification passed`, under WSL on Windows
+- [x] At push time: clean workspace, branch merged locally with the freshly fetched `origin/main`, gate re-run on the merged tree — never a server-side update-branch
 - [x] `.githooks` installed; every head commit signed and verified with `git verify-commit`
-- [x] Landing through `gh pr merge --auto --squash`; no server-side update-branch
+- [x] Landing through `gh pr merge` (the merge queue) or `gh pr merge --auto --squash` while the queue is off; no server-side update-branch

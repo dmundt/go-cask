@@ -2,7 +2,7 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v9
+version: v10
 ---
 
 # Branch Naming — go-cask
@@ -15,6 +15,7 @@ version: v9
 - `main` is the ONLY permanent branch; always releasable; all version tags land on it (versioning §3). Never force-pushed, never deleted.
 - Everything else is short-lived: branched from `main`, merged via PR, deleted after merge.
 - Every branch is created from the freshly fetched `origin/main` (`go run ./cmd/buildtool worktree add` fetches, then `-b <branch> origin/main`); a local `main` is not a substitute — it can be behind the remote or carry another session's uncommitted work. §3 owns the one exception.
+- The same base is re-established locally before every push: the workspace carries no uncommitted work and the branch is merged up to date with the freshly fetched `origin/main` in the worktree — never through GitHub's server-side "Update branch"/rebase — so a branch that fell behind `main` since it was cut is rebuilt locally, re-verified and re-stamped (`landing.md` §4, §5).
 - Forbidden concepts: `develop`, `trunk`, per-developer branches, long-running integration branches. A branch living longer than a few days is too big — split it.
 - A branch name's type prefix is the contract, stating the branch's purpose.
 

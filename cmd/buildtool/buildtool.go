@@ -275,12 +275,21 @@ func productionBenchDeps() benchDeps {
 
 // captureBenchmarks is the production capture: the suite the policy names, run in the
 // repository root.
-func captureBenchmarks(root, dest string, out io.Writer) error {
+func captureBenchmarks(root, dest string, out io.Writer) (err error) {
 	file, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", dest, err)
 	}
-	defer file.Close()
+	// The capture's last write may still be in the handle when the command is
+	// done, so Close is where a lost capture — a full disk, say — surfaces. The
+	// named return carries it, and keeps the command's own failure when both
+	// happen: the report of why the suite failed is the useful one. An early
+	// return has nothing to merge, and closes through this same defer.
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("closing %s: %w", dest, cerr)
+		}
+	}()
 
 	both := io.MultiWriter(out, file)
 	cmd := exec.Command("go", policy.Benchmarks().Capture...)

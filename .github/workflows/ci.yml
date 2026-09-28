@@ -48,8 +48,8 @@ jobs:
         id: scope
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
@@ -120,8 +120,8 @@ jobs:
       - name: Verify documentation-only change
         if: needs.scope.outputs.docs_only == 'true'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
       - name: Set up Python
@@ -244,6 +244,10 @@ jobs:
 
 on:
   pull_request:
+  # The merge queue's own branch: the queue creates `gh-readonly-queue/<base>/pr-<N>-<sha>`
+  # and expects the required checks to report on it, so `verify` (the required context)
+  # must run here too. Without the event, enabling the queue hangs every merge.
+  merge_group:
   workflow_dispatch:
 
 concurrency:
