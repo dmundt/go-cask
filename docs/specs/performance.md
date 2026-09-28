@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v28
+version: v29
 ---
 
 # Performance — go-cask
@@ -135,6 +135,7 @@ index, selected by `cask -backend packfs` (cas-core §4.14).
 - **Shape**: `<base>/loose/` is a full `fs.Backend` (fan-out default). `<base>/packs/current.pack` is the active pack, appended under `O_APPEND`, rotated at `PackMaxBytes` (default 64 MiB) or `PackMaxEntries` (default 10 000) into `<base>/packs/pack-<unixnano>.pack`. `<base>/packs/index.json` maps each packed digest (hex) to `{pack, offset, size}`.
 - **Record**: `[uint32 BE digest length][digest][uint64 BE payload length]` then the payload — no magic, no format version, no checksum.
 - **Write**: every object is both loose and packed; no size threshold. `Put` spools to a scratch file, writes through the fs backend's atomic `Sync`+rename path, appends to the active pack, rewrites the index atomically; a re-`Put` appends a second copy. Durability comes from the loose copy — the pack append is not separately fsynced.
+- **Per-`Put` index cost is O(index).** The index is one JSON map re-marshalled and republished in full on every packed `Put`, so a store with N packed objects pays O(N) allocation and I/O per put — quadratic ingest overall — while `PackMaxEntries` bounds the pack file, not the index. `packfs.BenchmarkPackIndexRewrite` records it (4 KiB payload, go1.27.1 windows/amd64): ≈78 allocs/op and 15 KB/op at 10 index entries, ≈2 070 allocs/op and 1.0 MB/op at 1 000, ≈20 100 allocs/op and 8 MB/op at 10 000. Bounding it (per-pack index files, an append-only journal) would change the on-disk layout and needs the migration decision operations §5 governs; it is not done here (go-cask#369).
 - **Read**: an index lookup plus an `io.SectionReader` over the pack — streaming, one open per object, never a full-pack read; the in-memory index is taken under the same mutex as `Put`/`Delete`, so reads are not lock-free the way `fs` reads are.
 - **Batch win**: `GetMany` (cas-core §4.13) serves a digest group from one open per pack — ≈ 6.0 ms and one open versus ≈ 13.7 ms and 4000 opens for the sequential loop over 4000 objects in one pack.
 - **List/Stats**: `List` merges loose digests with index keys; `Stats` adds the indexed payload sizes of objects not present loose. Both walk the loose tree, so neither is O(packs), and `Stats` reports logical bytes, not physical pack size.
