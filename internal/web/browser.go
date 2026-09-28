@@ -216,7 +216,7 @@ var objectSortColumns = []struct {
 }{
 	{Key: "hash", Label: "Hash", Name: "hash"},
 	{Key: "type", Label: "Type", Name: "type"},
-	{Key: "version", Label: "Version", Name: "frame version"},
+	{Key: "version", Label: "Envelope", Name: "envelope version"},
 	{Key: "codec", Label: "Codec", Name: "codec"},
 	{Key: "size", Label: "Size", Name: "size"},
 	{Key: "inbound", Label: "Inbound", Name: "inbound references", Class: "viewer-references"},
@@ -418,10 +418,13 @@ func matchesObjectRow(row *objectRow, state objectBrowserState) bool {
 	if state.Type != "" && row.Type != state.Type {
 		return false
 	}
-	// The header axes filter on the labels the table renders, so what the
-	// operator filters by is what the cell shows: a frame with no codec tag
-	// reads "unspecified" and is selected as `codec=unspecified`, while bytes
-	// with no walkable header (version 0) match no version and no codec.
+	// The header axes filter on the values the rows carry, so what the operator
+	// filters by is what the cell means: a frame with no codec tag reads
+	// "unspecified" and is selected as `codec=unspecified`, while bytes with no
+	// walkable header (version 0) match no version and no codec. The version axis
+	// is the one where the two strings differ: the cell renders the version
+	// marked (`v2`) while the filter carries the frame's leading byte in decimal
+	// form (viewer-design §3), so `?version=2` still names the version 2 frame.
 	if state.Version != "" && strconv.Itoa(int(row.Version)) != state.Version {
 		return false
 	}
