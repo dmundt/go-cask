@@ -2,6 +2,7 @@ package fs
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1089,7 +1090,7 @@ func TestListReturnsAllDigests(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("List() omitted digests: %v", want)
 	}
-	if !sort.SliceIsSorted(all, func(i, j int) bool { return all[i].String() < all[j].String() }) {
+	if !slices.IsSortedFunc(all, func(a, b cas.Digest) int { return cmp.Compare(a.String(), b.String()) }) {
 		t.Fatalf("List() = %v; want sorted digests", all)
 	}
 }

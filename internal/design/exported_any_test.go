@@ -1,6 +1,7 @@
 package design
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -8,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -214,7 +215,7 @@ func symbolSet(findings []finding) []string {
 	for symbol := range seen {
 		out = append(out, symbol)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -224,7 +225,7 @@ func findingStrings(findings []finding) []string {
 	for _, f := range findings {
 		out = append(out, f.String())
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -266,7 +267,7 @@ func scanRepo(t *testing.T) []finding {
 	if err != nil {
 		t.Fatalf("scan repository: %v", err)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	slices.SortFunc(out, func(a, b finding) int { return cmp.Compare(a.String(), b.String()) })
 	return out
 }
 

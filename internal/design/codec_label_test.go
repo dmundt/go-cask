@@ -1,13 +1,14 @@
 package design
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -152,11 +153,11 @@ func scanCodecLabelLiterals(t *testing.T) []codecLabelFinding {
 	if err != nil {
 		t.Fatalf("scan repository: %v", err)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].file != out[j].file {
-			return out[i].file < out[j].file
+	slices.SortFunc(out, func(a, b codecLabelFinding) int {
+		if a.file != b.file {
+			return cmp.Compare(a.file, b.file)
 		}
-		return out[i].line < out[j].line
+		return cmp.Compare(a.line, b.line)
 	})
 	return out
 }

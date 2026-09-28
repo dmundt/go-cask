@@ -172,6 +172,57 @@ func TestNextCodecFallback(t *testing.T) {
 	}
 }
 
+// TestDecodedByteStringsDoNotAliasInput pins the ownership contract of #382: a
+// decoded []byte field is a copy of its own bytes, not a sub-slice of the buffer
+// Decode was handed. The aliasing would be two defects at once — a retained value
+// would keep the whole object buffer alive, and reusing that buffer (a store's
+// read scratch) would mutate a value already decoded.
+func TestDecodedByteStringsDoNotAliasInput(t *testing.T) {
+	codec := cbor.NewMap()
+	data, err := codec.Encode(map[string]any{"body": []byte("payload")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ok := decoded["body"].([]byte)
+	if !ok {
+		t.Fatalf("decoded body = %T, want []byte", decoded["body"])
+	}
+
+	// Overwrite the whole input buffer with a sentinel: a decode that aliased it
+	// would now report the sentinel, not the encoded field.
+	for i := range data {
+		data[i] = 0x00
+	}
+	if want := []byte("payload"); !bytes.Equal(body, want) {
+		t.Fatalf("decoded byte string changed with its input buffer: got %q, want %q", body, want)
+	}
+
+	// The value model codec decodes a byte string through the same arm, so it
+	// owns the same contract for a bare []byte value.
+	raw, err := cbor.NewValue().Encode([]byte("bare"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := cbor.NewValue().Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare, ok := value.([]byte)
+	if !ok {
+		t.Fatalf("decoded value = %T, want []byte", value)
+	}
+	for i := range raw {
+		raw[i] = 0x00
+	}
+	if want := []byte("bare"); !bytes.Equal(bare, want) {
+		t.Fatalf("decoded NewValue byte string changed with its input buffer: got %q, want %q", bare, want)
+	}
+}
+
 // TestCodecName pins the identity tag: "cbor" when this codec owns the value's
 // conversion, and the inner codec's own tag when it only delegates to one
 // (the bytes are the inner codec's, so claiming cbor would read as a mismatch

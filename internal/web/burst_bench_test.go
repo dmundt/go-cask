@@ -41,7 +41,7 @@ func BenchmarkVerifyAllBurst(b *testing.B) {
 		b.Fatal(err)
 	}
 	for i := range benchmarkStoreSize {
-		frame := test.TLVEnvelope("blob@1", []byte(fmt.Sprintf("object %d", i)))
+		frame := test.TLVEnvelope("blob@1", fmt.Appendf(nil, "object %d", i))
 		digest := sha256.Of(frame)
 		if err := backend.Put(ctx, digest, bytes.NewReader(frame)); err != nil {
 			b.Fatal(err)
