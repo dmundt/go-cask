@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v56
+version: v57
 ---
 
 # Library Design — go-cask
@@ -21,7 +21,7 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 | Group | Identifiers |
 | --- | --- |
 | Address | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
-| Byte layer | `Backend`, `Stats` |
+| Byte layer | `Backend`, `Stats`, `PutStream` |
 | Codec seam | `Codec[T]`, `CodecNamer` (codec identity the store resolves once and writes into the envelope), `Object`, `Validator` (optional object invariant the store enforces) |
 | Store | `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `WalkDigests`, `Node`, `NodeResolver` (the one graph traversal `Walker[T]` and `cas/repo.Walk` are adapters over — go-cask#319), `Reachable`, `RefLister`, `RefListerFunc` (the reachable-set expansion `Backend.GC`/`Backend.Prune` require), `BatchGetter` (byte-layer opt-in: a backend serves a batch its own way), `GetMany` (package-level batch read, sequential `Get` fallback, so every `Backend` already satisfies it — go-cask#173) |
 | Maintenance | `Verify`, `Verifier`/`NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter` (generic, backend-agnostic maintenance layer — go-cask#137) |

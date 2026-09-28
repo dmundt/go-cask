@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v56
+version: v57
 ---
 
 # go-cask Rules Index
@@ -18,7 +18,7 @@ version: v56
 | `cas/verifier.go`, `cas/verifier_test.go`, `cas/sweep.go`, `cas/sweep_test.go`, `cas/reachability.go`, `cas/capabilities.go`, `cas/capabilities_test.go` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.9, §4.11, §4.13 |
 | `cas/verify/sidecar/*` | [`operations.md`](specs/operations.md) §6 + [`cas-core.md`](specs/cas-core.md) §4.11 + [`library-design.md`](specs/library-design.md) §1 |
 | `cas/verify/*`, `cas/verify/crc32/*` | [`cas-core.md`](specs/cas-core.md) §4.3, §4.11 + [`cas/verify/AGENT.md`](../cas/verify/AGENT.md) |
-| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go`, `cas/envelope.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
+| `cas/store.go`, `cas/codec.go`, `cas/object.go`, `cas/walker.go`, `cas/batch.go`, `cas/envelope.go`, `cas/stream.go` | [`cas-core.md`](specs/cas-core.md) §4.6–4.13 + §8 d1 |
 | `cas/codec/json/`, `cas/codec/gob/`, `cas/codec/cbor/`, `cas/codec/binary/`, `cas/codec/gzip/`, `cas/codec/zlib/`, `cas/codec/flate/` | [`cas-core.md`](specs/cas-core.md) §4.2, §4.6, §7.1 + [`defaults.md`](specs/defaults.md) §2 |
 | `cas/cache/validate.go`, `cas/cache/mem/cached.go`, `cas/cache/lru/lru.go`, `cas/cache/prefetch/` | [`cas-core.md`](specs/cas-core.md) §4.10 |
 | `cas/pack/` | [`cas-core.md`](specs/cas-core.md) §7 + [`cas/pack/README.md`](../cas/pack/README.md) |
