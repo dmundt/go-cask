@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,7 +77,7 @@ func worktreeCommand(args []string, out, errOut io.Writer, context *worktreeCont
 	case "remove":
 		return worktreeRemove(args[1:], out, errOut, context)
 	case "lock":
-		return worktreeLock(args[1:], out, context)
+		return worktreeLock(args[1:], out, errOut, context)
 	case "list":
 		return worktreeList(args[1:], out, errOut, context)
 	case "prune":
@@ -303,25 +302,52 @@ func worktreeDirExists(path string) bool {
 // in `prune`, and that is the whole protection: a registration created by plain
 // `git worktree add` has no lock, and the other toolchain cannot resolve its reverse link.
 //
+// A registration is locked where git says it lives, never at a path computed from policy: a
+// worktree may live anywhere — an experiment tree, another session's tooling, an older base
+// directory — and the admin directory is the one that carries its `gitdir` record, whatever
+// its name. Deriving `<prefix><name>` under the shared git dir turned a worktree at
+// `D:/wt366-check-c2b` into `wt-wt366-check-c2b`, whose `os.Stat` failed, and the whole gate
+// aborted before its first step over a tree with nothing wrong in it (go-cask#508; the same
+// defect class go-cask#461 fixed for `worktree remove`).
+//
+// The gate's job is to lock what exists, so a registration whose admin directory is
+// genuinely gone is reported and skipped rather than made fatal: it protects nothing, and a
+// lane cannot act on a name it cannot see the reason for.
+//
 // With --quiet it reports only the worktrees it had to lock, which is the shape a gate step
 // wants: a run that changed nothing says nothing.
-func worktreeLock(args []string, out io.Writer, context *worktreeContext) error {
+func worktreeLock(args []string, out, errOut io.Writer, context *worktreeContext) error {
 	table := policy.Worktrees()
 	quiet := false
-	var names []string
+	var args2 []string
 	for _, arg := range args {
 		if arg == "--quiet" {
 			quiet = true
 			continue
 		}
-		names = append(names, arg)
+		args2 = append(args2, arg)
 	}
+
+	// The caller names a worktree the way `add` does — the bare name, with the policy prefix
+	// optional and cancelled rather than doubled, because a directory git registers as
+	// `wt366-check-c2b` must not become `wt-wt366-check-c2b` (go-cask#508).
+	names := make([]string, 0, len(args2))
+	for _, name := range args2 {
+		names = append(names, table.Prefix+strings.TrimPrefix(name, table.Prefix))
+	}
+
+	// Every registration git reports, so a named worktree resolves the same way an unnamed
+	// sweep of them does. The listing is read once and is the authority on where a name is.
+	listing, err := gitOutputIn(context.primary, "worktree", "list", "--porcelain")
+	if err != nil {
+		return err
+	}
+	entries := parseWorktrees(listing)
+
+	// A sweep takes the names git gives the directories verbatim: they are what the
+	// registrations are called, and prefixing them again is exactly the defect above.
 	if len(names) == 0 {
-		registered, err := registeredWorktrees(context.common)
-		if err != nil {
-			return err
-		}
-		names = registered
+		names = worktreeNames(entries, context.primary)
 	}
 	if len(names) == 0 {
 		if !quiet {
@@ -330,15 +356,24 @@ func worktreeLock(args []string, out io.Writer, context *worktreeContext) error 
 		return nil
 	}
 
-	var failed []string
-	for _, name := range names {
-		gitName := name
-		if !strings.HasPrefix(gitName, table.Prefix) {
-			gitName = table.Prefix + gitName
+	for _, gitName := range names {
+		entry, found := findWorktree(entries, context.primary, gitName)
+		if !found {
+			// A name git registers nowhere names no worktree, and no path computed for it
+			// is this verb's to lock: creating `wt-…` under the shared git dir for a tree
+			// that lives elsewhere is how a gate run invented a worktree it could not lock
+			// and called it a failure (go-cask#508).
+			fmt.Fprintf(errOut, "worktree: no such worktree: %s (git registers no worktree by that name)\n", gitName)
+			continue
 		}
-		admin := worktree.Admin(context.common, gitName)
-		if info, err := os.Stat(admin); err != nil || !info.IsDir() {
-			failed = append(failed, "worktree: no such worktree: "+gitName)
+		admin, ok := resolveWorktreeAdmin(context.common, entry)
+		if !ok {
+			// The registration is real and its admin directory is not: there is no lock
+			// file to write, and the registration protects nothing. A gate run reports it
+			// and locks the rest, because nothing is wrong with the tree it was asked to
+			// verify.
+			fmt.Fprintf(errOut, "worktree: %s is registered at %s but its admin directory is gone; nothing to lock\n",
+				gitName, entry.Path)
 			continue
 		}
 		if _, err := os.Stat(filepath.Join(admin, table.LockFile)); err == nil {
@@ -347,17 +382,77 @@ func worktreeLock(args []string, out io.Writer, context *worktreeContext) error 
 			}
 			continue
 		}
-		if err := lockWorktree(context.common, gitName, table); err != nil {
-			return err
+		if err := os.WriteFile(filepath.Join(admin, table.LockFile), []byte(table.LockMessage), 0o644); err != nil {
+			return fmt.Errorf("locking %s: %w", gitName, err)
 		}
 		// A lock this run added is always reported, quiet or not: it is the reason the
 		// caller ran the command.
 		fmt.Fprintf(out, "locked: %s — a stray 'git worktree prune' would have deleted it\n", gitName)
 	}
-	if len(failed) != 0 {
-		return errors.New(strings.Join(failed, "\n"))
-	}
 	return nil
+}
+
+// resolveWorktreeAdmin returns the admin directory of a registration: the one its own
+// `gitdir` record names, or the one git's naming gives it — `<common>/worktrees/<basename>`
+// — when that record cannot be read.
+//
+// git's naming is a fallback rather than the rule because the two can disagree: a directory
+// renamed away from its registration keeps the record and loses the base name, while an
+// experiment worktree that policy naming never described has the base name and no
+// `<prefix>` at all. Reading the record first is what makes a worktree at `D:/wt366-check-c2b`
+// lockable, and it is the same resolution `registeredWorktreePath` makes for a removal.
+func resolveWorktreeAdmin(commonDir string, entry worktreeEntry) (string, bool) {
+	if raw, err := os.ReadFile(filepath.Join(entry.Path, ".git")); err == nil {
+		if target, ok := worktree.GitDir(string(raw)); ok {
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(entry.Path, filepath.FromSlash(target))
+			}
+			if worktreeDirExists(target) {
+				return target, true
+			}
+		}
+	}
+	if name := filepath.Base(filepath.Clean(entry.Path)); name != "" && name != "." {
+		if admin := worktree.Admin(commonDir, name); worktreeDirExists(admin) {
+			return admin, true
+		}
+	}
+	return "", false
+}
+
+// worktreeNames lists the registered worktrees by the name the repository's convention gives
+// them: the directory's base name, which is what git itself uses for the admin directory and
+// what the `lock` and `remove` verbs take. The primary checkout is never one of them.
+func worktreeNames(entries []worktreeEntry, primary string) []string {
+	var names []string
+	for _, entry := range entries {
+		if worktree.SamePath(entry.Path, primary) {
+			continue
+		}
+		if base := filepath.Base(filepath.Clean(entry.Path)); base != "" && base != "." {
+			names = append(names, base)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// findWorktree returns the registration a name names, and whether git reports one at all.
+//
+// A name is the worktree directory's base name — the same name git itself uses for the admin
+// directory, and the one the `lock` and `remove` verbs take. The primary checkout is never a
+// candidate: it is listed first, it is not a linked worktree, and a name that merely matches
+// its directory must not resolve to the repository itself.
+func findWorktree(entries []worktreeEntry, primary, name string) (worktreeEntry, bool) {
+	for _, entry := range entries {
+		if worktree.SamePath(entry.Path, primary) {
+			continue
+		}
+		if filepath.Base(filepath.Clean(entry.Path)) == name {
+			return entry, true
+		}
+	}
+	return worktreeEntry{}, false
 }
 
 // worktreeList reports what git has registered.
@@ -376,6 +471,12 @@ func worktreeList(args []string, out, errOut io.Writer, context *worktreeContext
 // lockWorktree writes the lock file into a worktree's admin directory, unless it is there
 // already. It is written directly rather than through `git worktree lock`, which itself has to
 // read the admin `gitdir` back and so only works from the creating toolchain.
+//
+// The admin directory is created when it is missing, which is the `add` path's: the
+// registration exists but nothing has written its admin directory yet. The `lock` verb never
+// takes this path for a registration whose admin directory is gone — it reports that and
+// leaves the registry alone rather than inventing a directory for a tree it cannot lock
+// (go-cask#508).
 func lockWorktree(commonDir, gitName string, table policy.WorktreeTable) error {
 	admin := worktree.Admin(commonDir, gitName)
 	if err := os.MkdirAll(admin, 0o755); err != nil {
@@ -385,24 +486,4 @@ func lockWorktree(commonDir, gitName string, table policy.WorktreeTable) error {
 		return fmt.Errorf("locking %s: %w", gitName, err)
 	}
 	return nil
-}
-
-// registeredWorktrees returns the names of the linked worktrees git has an admin directory
-// for, in a stable order so a report reads the same twice.
-func registeredWorktrees(commonDir string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(commonDir, "worktrees"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading the worktree registrations: %w", err)
-	}
-	var names []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			names = append(names, entry.Name())
-		}
-	}
-	sort.Strings(names)
-	return names, nil
 }
