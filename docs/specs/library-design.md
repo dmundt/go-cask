@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v57
+version: v58
 ---
 
 # Library Design — go-cask
@@ -11,7 +11,7 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 
 ## 1. Lean-core budget
 
-- **Ceiling**: `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 **code lines** and ≤ ~52 exported identifiers — 21 functions, 23 types, 1 exported constant, 7 sentinels.
+- **Ceiling**: `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 **code lines** and ≤ ~53 exported identifiers — 22 functions, 23 types, 1 exported constant, 7 sentinels.
 - **Metric**: *code lines* = lines neither blank nor comment-only, across `cas/*.go` without `_test.go` (go-cask#271).
 - **Measure**: `find cas -maxdepth 1 -name '*.go' ! -name '*_test.go' | xargs grep -hvE '^[[:space:]]*(//|$)' | wc -l` → **906** today; 1669 non-blank; 1765 raw.
 - **Enforced against** the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322.
@@ -21,7 +21,7 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 | Group | Identifiers |
 | --- | --- |
 | Address | `Digest`, `NewDigest`, `ParseDigest`, `CheckDigest`, `Hasher` |
-| Byte layer | `Backend`, `Stats` |
+| Byte layer | `Backend`, `Stats`, `PutStream` |
 | Codec seam | `Codec[T]`, `CodecNamer` (codec identity the store resolves once and writes into the envelope), `Object`, `Validator` (optional object invariant the store enforces) |
 | Store | `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `WalkDigests`, `Node`, `NodeResolver` (the one graph traversal `Walker[T]` and `cas/repo.Walk` are adapters over — go-cask#319), `Reachable`, `RefLister`, `RefListerFunc` (the reachable-set expansion `Backend.GC`/`Backend.Prune` require), `BatchGetter` (byte-layer opt-in: a backend serves a batch its own way), `GetMany` (package-level batch read, sequential `Get` fallback, so every `Backend` already satisfies it — go-cask#173) |
 | Maintenance | `Verify`, `Verifier`/`NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter`, `PhysicalStatter` (generic, backend-agnostic maintenance layer — go-cask#137) |
@@ -147,7 +147,7 @@ The third exception is the last: any further breaking change follows the ordinar
 
 ## 6. Lean checklist
 
-- [x] `cas/` ≤ ~1600 code lines (906 today; blank and comment-only lines do not count) and ≤ ~52 exported identifiers — 52 today (`EncodeEnvelope` by go-cask#187, `PeekHeader` by go-cask#322, then `Header`, `HeaderType`, `WalkDigests`, `Node` and `NodeResolver` by go-cask#319), re-checked against the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322 (§1 budget, metric stated in go-cask#271)
+- [x] `cas/` ≤ ~1600 code lines (906 today; blank and comment-only lines do not count) and ≤ ~53 exported identifiers — 53 today (`EncodeEnvelope` by go-cask#187, `PeekHeader` by go-cask#322, then `Header`, `HeaderType`, `WalkDigests`, `Node` and `NodeResolver` by go-cask#319, `PutStream` by go-cask#342 and `PhysicalStatter` by go-cask#373), re-checked against the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322 (§1 budget, metric stated in go-cask#271)
 - [x] sentinel errors + `errors.Is` everywhere; no string-compared errors
 - [x] no mutable globals (no algorithm registry and no algorithm table; the client injects a `Hasher`)
 - [x] functional options; zero values usable; `context.Context` first

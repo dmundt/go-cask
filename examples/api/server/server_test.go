@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -131,6 +132,34 @@ func (c *testClient) gc(ctx context.Context, reachable []cas.Digest) (int, map[s
 }
 
 func num(m map[string]any, key string) float64 { return m[key].(float64) }
+
+// TestSpoolAndPutStoresAndDeduplicates pins the handler's upload path now that
+// it delegates to cas.PutStream (go-cask#342): the body is stored under its own
+// digest, a second upload of the same bytes is reported as deduplicated, and an
+// empty body is the upload's own minimum-size rule — errEmptyUpload — rather
+// than something the library's byte layer decides.
+func TestSpoolAndPutStoresAndDeduplicates(t *testing.T) {
+	ctx := context.Background()
+	backend, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h, dedup, err := spoolAndPut(ctx, backend, strings.NewReader("uploaded bytes"))
+	if err != nil || dedup {
+		t.Fatalf("spoolAndPut = (%s, %v, %v), want the digest and no deduplication", h, dedup, err)
+	}
+	if !h.Equal(sha256.Of([]byte("uploaded bytes"))) {
+		t.Fatalf("spoolAndPut digest = %s, want the digest of the uploaded bytes", h)
+	}
+	if _, dedup, err = spoolAndPut(ctx, backend, strings.NewReader("uploaded bytes")); err != nil || !dedup {
+		t.Fatalf("second spoolAndPut = (dedup %v, %v), want a deduplicated write", dedup, err)
+	}
+
+	if _, _, err := spoolAndPut(ctx, backend, strings.NewReader("")); !errors.Is(err, errEmptyUpload) {
+		t.Fatalf("spoolAndPut(empty) = %v, want errEmptyUpload", err)
+	}
+}
 
 func TestRoundTripAndDedup(t *testing.T) {
 	ctx := context.Background()
