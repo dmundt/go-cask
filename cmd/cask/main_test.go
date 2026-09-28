@@ -259,8 +259,8 @@ func TestSeedPreviewWritesCurrentEnvelopeVersion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seeded %s: %v", d, err)
 		}
-		if env.Codec != previewCodecTag {
-			t.Fatalf("seeded %s codec tag = %q, want %q", d, env.Codec, previewCodecTag)
+		if want := previewCodec().CodecName(); env.Codec != want {
+			t.Fatalf("seeded %s codec tag = %q, want %q", d, env.Codec, want)
 		}
 		if !strings.Contains(env.Type, "@") {
 			t.Fatalf("seeded %s type = %q, want a versioned name", d, env.Type)

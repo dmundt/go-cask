@@ -43,7 +43,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   digest from the frame it is about to write — and it hand-rolled a **version 1**
   layout, so a seeded store mixed formats with everything `cask put` writes and
   carried no codec identity. Seeded objects are now format-version 2 frames
-  tagged `preview` (`cask seed-preview -hash-algo sha512` too). Migration: their
+  tagged `json` (`cask seed-preview -hash-algo sha512` too). Migration: their
   addresses change, so an already-seeded store keeps its old v1 objects beside
   the new ones and the preview reference graph only sees the new set — re-run
   `cask seed-preview`, then `cask gc` the old objects if they are unwanted.
@@ -166,6 +166,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `cask seed-preview` tags the objects it seeds with the codec that actually
+  produced their payload. Seeded frames carried a `preview` codec tag over a
+  synthetic byte pattern no codec produced, so every surface that trusts the tag
+  — the store's codec-mismatch check, `cask list -codec`, `cask meta`, the
+  `cask stats` codec census, and the viewer's Codec column, `codec` filter and
+  inspector — named a format nothing in the tree implemented and no reader could
+  decode. Seeded payloads are now deterministic JSON documents encoded by
+  `cas/codec/json` and framed with that codec's own `json` tag, so the same
+  codec reads them back (`cask get` on a seeded object now round-trips) and the
+  demo store shows the format it reports. Every seeded address changes — the
+  payload and the tag live inside the frame — so re-run `cask seed-preview` on a
+  demo store seeded before this change: the viewer re-derives the graph's
+  digests and finds no graph in the old one.
 - The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
   36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
   height, bar height, control heights and every gutter drawn from one spacing and type scale;
@@ -578,6 +591,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejected write. The ceiling now stores the bytes it was given, and every
   smaller cap behaves exactly as before.
 - `cask list` rejects a surplus operand with a usage error (exit 2) instead of ignoring it and printing the whole store (go-cask#366).
+- `cas/codec/cbor` returns an owned byte string: a decoded `[]byte` field is a copy of its own bytes instead of a sub-slice of the object buffer it was decoded from, so a retained value no longer pins a whole object and no longer changes when that buffer is reused (go-cask#382). Decoded values themselves are unchanged.
+- `cas/backend/packfs` retries a transiently refused index publication — the Windows "access is denied"/"being used by another process" window `fs.Put` already tolerates — so the index rewrite a packed `Put` performs can no longer fail on a momentary collision (go-cask#369). The on-disk index format is unchanged; `BenchmarkPackIndexRewrite` records the per-`Put` cost at 10, 1 000 and 10 000 index entries.
 
 ### Security
 
@@ -686,6 +701,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   limit decodes exactly as before.
 - `cask stats` and `cask meta` no longer print a stored envelope type name or codec identity tag verbatim: every header-derived string is rendered through one helper that replaces C0/C1 control characters, so an object authored by someone else can no longer rewrite the operator's terminal or forge a census line (go-cask#354).
 - A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune` and `cask web` report the directory they actually act on, so a link planted at the store path can no longer redirect a destructive sweep silently (go-cask#353).
+- `cas/codec/gob` documents the bound on decode recursion: it follows the destination type, so a payload cannot invent nesting, and the one payload-only path is capped by the standard library at 10 000 levels. A **recursive** destination type must not be decoded from untrusted bytes — a crafted, type-compatible chain of non-nil pointers exhausts the stack — and gob cannot impose a ceiling on a depth the caller's type defines (go-cask#453).
 
 ## [v1.6.5] - 2026-09-22
 

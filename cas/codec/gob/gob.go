@@ -9,6 +9,25 @@
 // NewRaw[T]() returns a codec for any storable value T, so a store can be built
 // directly: cas.New(raw, gob.NewRaw[T](), algo). It satisfies the codec
 // round-trip contract, Decode(Encode(v)) == v.
+//
+// Decode recursion follows the DESTINATION type, not the payload. The decoder
+// recurses as deep as the value of T it is handed, so a payload cannot invent
+// nesting the caller's type does not already have; the one payload-only
+// recursion path — skipping a field the destination does not know — is capped
+// by the standard library's own nesting limit (10 000). A RECURSIVE destination
+// type is the exception, and it is the caller's: a crafted, type-compatible
+// chain of non-nil pointers drives the decoder one stack frame per level until
+// the goroutine stack is exhausted — a fatal error no recover can catch — so a
+// recursive T (a linked list or tree of pointers, `type Node struct{ Next
+// *Node }`) MUST NOT be decoded from untrusted bytes (go-cask#453).
+//
+// No depth bound is imposed here, deliberately: bounding a decode whose depth
+// the destination type defines would mean reimplementing encoding/gob's decoder
+// (and reflection is not this package's to add). A caller that must decode
+// attacker-influenced bytes into a recursive type bounds the payload itself —
+// a size ceiling before decode, or a wire format with a depth bound of its own,
+// such as cas/codec/cbor's MaxDepth — and a non-recursive T, which is every
+// object model this repository stores, needs no such bound.
 package gob
 
 import (
@@ -64,6 +83,10 @@ func (c Codec[T]) Encode(v T) ([]byte, error) {
 
 // Decode gob-decodes data into a fresh T, or into the wrapped payload bytes
 // when the codec is composed with an inner layer.
+//
+// Recursion during the decode follows T, so the caller's type — not data —
+// bounds how deep the decoder descends; see the package doc for the one
+// exception (a recursive T) and what the caller must do about it (go-cask#453).
 func (c Codec[T]) Decode(data []byte) (T, error) {
 	var zero T
 	if c.next != nil {

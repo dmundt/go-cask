@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v41
+version: v42
 ---
 
 # CLI — go-cask
@@ -90,9 +90,12 @@ Only entry point; no separate server binary. Every operation calls the library i
   §1, viewer-design §1).
 - `seed-preview`: valid, deterministically addressed TLV envelopes — representative type names,
   payload sizes, graph edges, alternating root-reachable segments; current format
-  (`cas.EnvelopeVersion`), codec tag `preview`, synthetic payload no shipped codec produced; built
-  by `cas.EncodeEnvelope`, the writer `Store.Put` frames through, so a seeded digest = the digest
-  the store would compute for the same bytes (addresses change with the frame; go-cask#187).
+  (`cas.EnvelopeVersion`), the codec tag of the JSON codec (`cas/codec/json`) that encoded the
+  deterministic payload, so the tag names the format the bytes are and that codec decodes them —
+  never a producer marker (go-cask#333); built by `cas.EncodeEnvelope`, the writer `Store.Put`
+  frames through, so a seeded digest = the digest the store would compute for the same bytes
+  (addresses change with the frame — every seeded digest changed with go-cask#333, so re-run
+  `seed-preview`; go-cask#187).
 - Block layout (8 objects): a Root (reachable, no inbound edges), orphans with inbound edges, a
   Detached orphan entry (unreachable, no inbound edges) — all four reference states; outgoing
   references cycle zero, one, two, three.

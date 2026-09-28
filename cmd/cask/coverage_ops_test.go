@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -599,12 +600,18 @@ func TestStatsAndFilteredListWalkTheStoreOnce(t *testing.T) {
 		if !strings.Contains(out, "9 objects,") {
 			t.Fatalf("stats = %q, want the 9-object summary from the snapshot walk", out)
 		}
-		if strings.Contains(out, "0 bytes") {
+		// The byte total is read as a number rather than searched for as a
+		// substring: the seeded payload sizes decide it, and a five-figure total
+		// ending in a zero ("…1675810 bytes") contains "0 bytes".
+		summary, _, _ := strings.Cut(out, "\n")
+		if _, total, ok := strings.Cut(summary, ", "); !ok {
+			t.Fatalf("stats = %q, want a %q summary line from the snapshot walk", out, "9 objects, <n> bytes")
+		} else if n, err := strconv.Atoi(strings.TrimSuffix(total, " bytes")); err != nil || n == 0 {
 			t.Fatalf("stats = %q, want a non-zero byte total from the snapshot walk", out)
 		}
 	})
 
-	for _, filter := range [][]string{{"-type", "blob@1"}, {"-codec", "preview"}} {
+	for _, filter := range [][]string{{"-type", "blob@1"}, {"-codec", previewCodec().CodecName()}} {
 		t.Run("filtered list "+strings.Join(filter, " "), func(t *testing.T) {
 			// opList's filtered branch is filteredItems and nothing else, so the
 			// count is taken where the walk is: this is the same call opList
@@ -877,13 +884,14 @@ func TestFilteredListReportsASnapshotFailure(t *testing.T) {
 // line per populated axis with the keys sorted, so two runs over the same store
 // print byte-identical text, plus the separate headerless and unreadable
 // counters. The authenticated fixture is the census fixture — the preview graph
-// carrying the `preview` codec tag plus one raw object written by `put`.
+// carrying the `json` codec tag its payload's codec produced plus one raw object
+// written by `put`.
 func TestStatsCensusPrintsEveryAxis(t *testing.T) {
 	mf := censusFixture(t)
 
 	out := mustRun(t, mf, "stats")
 	for _, want := range []string{
-		"\ncodecs: preview=8\n",
+		"\ncodecs: json=8\n",
 		"\nheaderless: 1\n",
 		"types: blob@1=2, json@1=2, manifest@1=1, note@1=1, text@1=2\n",
 		"versions: 2=8\n",
