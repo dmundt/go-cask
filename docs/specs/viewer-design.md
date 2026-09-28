@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v45
+version: v47
 ---
 
 # Viewer Design — go-cask
@@ -123,6 +123,9 @@ and operators.
   audited as one event with counts.
 - **Sweep bounded:** one at a time; a session may start `expensiveBurst`, then one per cooldown
   (numbers: defaults.md).
+- **Sweep retention bounded:** a session retains at most 50 000 recorded results (numbers:
+  defaults.md); past the bound the whole map is dropped, so a dropped object MUST read `not verified`
+  again — never a stale verdict.
 - Over bound: MUST answer `429` with `Retry-After` plus a fragment stating the wait (the control's
   label carries it); MUST NOT queue behind the running sweep; MUST NOT emit the status event.
 - The metadata snapshot shares the session budget: a refused rebuild MUST serve the last published

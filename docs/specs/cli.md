@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v39
+version: v40
 ---
 
 # CLI — go-cask
@@ -182,7 +182,9 @@ Only entry point; no separate server binary. Every operation calls the library i
 - The browser launch carries the token deep link under the same rule: the deep link percent-encodes
   the token and the launcher takes the URL as a plain argument, so the token never reaches another
   process's argument vector. Errors name the flag or the file, never the token (viewer-security
-  §5.1, §9, §11).
+  §5.1, §9, §11). `-token-file` MUST name a regular file holding at least 16 characters from
+  `A-Z a-z 0-9 - . _ ~`, read under a 4 KiB bound; anything else fails startup (exit 1) naming the
+  flag or the file.
 - The viewer's token URL signs in only from the viewer's own origin (the URL the browser opens, or a
   same-origin form or link); a cross-site request bearing it → 403, empty body (viewer-security
   §5.1). Prints only for a loopback bind: the session cookie is always `Secure` (viewer-security
