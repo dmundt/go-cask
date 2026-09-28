@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v27
+version: v28
 ---
 
 # Agent instructions — `scripts/`
@@ -142,6 +142,11 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
 - **A failed fetch refuses `worktree add`** (exit 3): a warning let a session start from a stale
   `origin/main`, and nothing downstream catches that base. `--allow-stale` is the deliberate
   opt-in; the `worktree ready:` line names the base's full commit id.
+- **Before every push the same base is re-established in the workspace**: no uncommitted work,
+  and the branch merged up to date with the freshly fetched `origin/main` **locally** — never
+  GitHub's server-side "Update branch"/rebase — then re-gated; a branch that fell behind is
+  rebuilt, re-verified and re-stamped. The helper layer holds no verb that does this
+  ([`docs/specs/landing.md`](../docs/specs/landing.md) §4, §5, go-cask#384).
 - **A destructive verb reports success only on evidence.**
   `go run ./cmd/buildtool worktree remove <task>` exits 3 when it removed nothing (unregistered
   name, or half a worktree left behind) and says which; `os.RemoveAll` returns nil for a missing
