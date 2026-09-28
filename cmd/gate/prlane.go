@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/claim"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -351,7 +351,7 @@ func prLaneRead(deps prLaneDeps, repo, issue string) prLaneRecord {
 
 // prLaneOpenPR finds the open pull request that names an issue. A pull request names its
 // issue through its head branch, whose name carries the issue number.
-func prLaneOpenPR(deps prLaneDeps, repo, issue string) *claim.PullRequest {
+func prLaneOpenPR(deps prLaneDeps, repo, issue string) *landing.PullRequest {
 	table := policy.PRLane()
 	out, err := deps.gh("pr", "list", "--repo", repo, "--state", "open",
 		"--limit", fmt.Sprint(table.PullRequestLimit), "--json", "number,headRefName",
@@ -368,8 +368,8 @@ func prLaneOpenPR(deps prLaneDeps, repo, issue string) *claim.PullRequest {
 		if _, err := fmt.Sscanf(fields[0], "%d", &number); err != nil {
 			continue
 		}
-		if claim.BranchNamesIssue(fields[1], issue) {
-			return &claim.PullRequest{Number: number, Branch: fields[1]}
+		if landing.BranchNamesIssue(fields[1], issue) {
+			return &landing.PullRequest{Number: number, Branch: fields[1]}
 		}
 	}
 	return nil
@@ -377,9 +377,9 @@ func prLaneOpenPR(deps prLaneDeps, repo, issue string) *claim.PullRequest {
 
 // prLaneVerdict decides a lane: what is on the remote, whether a pull request holds it, and
 // how long ago it was claimed. `check` and `claim` share it, so they cannot disagree.
-func prLaneVerdict(deps prLaneDeps, repo, issue string) (claim.Verdict, prLaneRecord) {
+func prLaneVerdict(deps prLaneDeps, repo, issue string) (landing.Verdict, prLaneRecord) {
 	record := prLaneRead(deps, repo, issue)
-	in := claim.LaneInput{
+	in := landing.LaneInput{
 		Present:     record.Present,
 		Readable:    record.Readable,
 		Claimer:     record.Message,
@@ -387,7 +387,7 @@ func prLaneVerdict(deps prLaneDeps, repo, issue string) (claim.Verdict, prLaneRe
 		AgeKnown:    record.ClaimedKnown,
 		PullRequest: prLaneOpenPR(deps, repo, issue),
 	}
-	return claim.DecideLane(in, prLaneWindow(policy.PRLane()), deps.now()), record
+	return landing.DecideLane(in, prLaneWindow(policy.PRLane()), deps.now()), record
 }
 
 // prLaneOpenIssue refuses a lane for an issue that is not open: a lane lands an open issue's
@@ -411,7 +411,7 @@ func prLaneOpenIssue(deps prLaneDeps, repo, issue string) error {
 // yet.
 func prLaneClaimObject(deps prLaneDeps, repo, issue, base string) (string, error) {
 	table := policy.PRLane()
-	message := claim.ClaimMessage(prLaneBranch(deps), prLaneWorktree(deps))
+	message := landing.ClaimMessage(prLaneBranch(deps), prLaneWorktree(deps))
 	out, err := deps.gh("api", "-X", "POST", fmt.Sprintf("repos/%s/git/tags", repo),
 		"-f", "tag="+table.Namespace+"-"+issue, "-f", "message="+message, "-f", "object="+base, "-f", "type=commit",
 		"--jq", ".sha")
@@ -498,13 +498,13 @@ func prLaneClaim(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 
 		verdict, _ := prLaneVerdict(deps, repo, issue)
 		switch verdict.State {
-		case claim.Held:
+		case landing.LaneHeld:
 			return fmt.Errorf("lane #%s is held by pull request #%d (%s) — wait for it to merge, or close it if the work is abandoned; a closed PR releases the lane",
 				issue, verdict.PullRequest.Number, verdict.PullRequest.Branch)
-		case claim.Claiming:
+		case landing.LaneClaiming:
 			return fmt.Errorf("lane #%s was claimed %s minutes ago by %s and has no pull request yet — it is inside the %d-minute claim window; wait, or release it if that session is gone",
 				issue, ageText(verdict, "some"), claimerText(verdict), window)
-		case claim.Unreadable:
+		case landing.LaneUnreadable:
 			return fmt.Errorf("lane #%s exists but its claim record cannot be read — release it deliberately with 'go run ./cmd/gate pr-lane release %s' if it is abandoned", issue, issue)
 		}
 		if attempt == 1 {
@@ -534,15 +534,15 @@ func prLaneCheck(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 	verdict, _ := prLaneVerdict(deps, repo, issue)
 	window := int(prLaneWindow(policy.PRLane()).Minutes())
 	switch verdict.State {
-	case claim.Free:
+	case landing.LaneFree:
 		fmt.Fprintf(out, "pr-lane: lane #%s is free\n", issue)
 		return nil
-	case claim.Held:
+	case landing.LaneHeld:
 		return fmt.Errorf("lane #%s is held by pull request #%d (%s)", issue, verdict.PullRequest.Number, verdict.PullRequest.Branch)
-	case claim.Claiming:
+	case landing.LaneClaiming:
 		return fmt.Errorf("lane #%s was claimed %s minutes ago by %s; no pull request yet, so it is inside the %d-minute claim window",
 			issue, ageText(verdict, "some"), claimerText(verdict), window)
-	case claim.Stale:
+	case landing.LaneStale:
 		fmt.Fprintf(out, "pr-lane: lane #%s is stale (%s, %s minutes old, no pull request) — a claim would take it over\n",
 			issue, claimerText(verdict), ageText(verdict, "?"))
 		return nil
@@ -570,18 +570,18 @@ func prLaneStatus(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 		return err
 	}
 
-	var statuses []claim.Status
+	var statuses []landing.Status
 	for _, ref := range prLaneRefs(deps, repo) {
 		fields := strings.Fields(ref)
 		if len(fields) != 2 {
 			continue
 		}
-		issue, ok := claim.IssueOf(fields[0], policy.PRLane().RefPrefix)
+		issue, ok := landing.IssueOf(fields[0], policy.PRLane().RefPrefix)
 		if !ok || (want != "" && want != issue) {
 			continue
 		}
 		verdict, record := prLaneVerdict(deps, repo, issue)
-		status := claim.Status{
+		status := landing.Status{
 			Issue:  issue,
 			Ref:    fields[0],
 			Object: fields[1],
@@ -593,7 +593,7 @@ func prLaneStatus(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 			status.PullRequest = &number
 			status.Branch = verdict.PullRequest.Branch
 		}
-		if verdict.State == claim.Unreadable {
+		if verdict.State == landing.LaneUnreadable {
 			status.Claimant = "unreadable claim record"
 		} else if record.Present {
 			status.Claimant = verdict.Claimer
@@ -606,7 +606,7 @@ func prLaneStatus(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 	}
 
 	if asJSON {
-		rendered, err := claim.StatusJSON(statuses)
+		rendered, err := landing.StatusJSON(statuses)
 		if err != nil {
 			return err
 		}
@@ -619,9 +619,9 @@ func prLaneStatus(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 			mine = " — this worktree"
 		}
 		switch status.State {
-		case claim.Held.String():
+		case landing.LaneHeld.String():
 			fmt.Fprintf(out, "#%s  %s  pull request #%d (%s)%s\n", status.Issue, status.Ref, *status.PullRequest, status.Branch, mine)
-		case claim.Claiming.String():
+		case landing.LaneClaiming.String():
 			fmt.Fprintf(out, "#%s  %s  claimed %s minutes ago by %s, no pull request yet%s\n",
 				status.Issue, status.Ref, ageOf(status), status.Claimant, mine)
 		default:
@@ -688,7 +688,7 @@ func prLaneWhoami(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 
 // ageText renders a verdict's age in whole minutes, or the caller's word for an age the
 // record did not carry.
-func ageText(verdict claim.Verdict, unknown string) string {
+func ageText(verdict landing.Verdict, unknown string) string {
 	if !verdict.AgeKnown {
 		return unknown
 	}
@@ -696,7 +696,7 @@ func ageText(verdict claim.Verdict, unknown string) string {
 }
 
 // ageOf renders a status row's age, which is "?" when the record carried none.
-func ageOf(status claim.Status) string {
+func ageOf(status landing.Status) string {
 	if status.AgeMinutes == nil {
 		return "?"
 	}
@@ -704,7 +704,7 @@ func ageOf(status claim.Status) string {
 }
 
 // claimerText renders who the record says claimed the lane.
-func claimerText(verdict claim.Verdict) string {
+func claimerText(verdict landing.Verdict) string {
 	if verdict.Claimer == "" {
 		return "another session"
 	}

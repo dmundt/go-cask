@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -41,7 +41,7 @@ type gateSlot interface {
 	// holder it would not evict.
 	claim(force, staleDead bool) (gateClaim, error)
 	// holder returns the current holder, or nil when the slot is free.
-	holder() *lane.Holder
+	holder() *landing.Holder
 	// release frees the slot this process holds, and does nothing when it holds none.
 	release() error
 }
@@ -109,7 +109,7 @@ func (s *gateLaneSlot) held() bool {
 // caller does next depends on WHO holds the slot, and a message is not an answer.
 type gateClaim struct {
 	held   bool
-	holder *lane.Holder
+	holder *landing.Holder
 }
 
 // claim takes the slot through the same decision every other acquisition uses.
@@ -123,7 +123,7 @@ func (s *gateLaneSlot) claim(force, staleDead bool) (gateClaim, error) {
 }
 
 // holder reports the current holder.
-func (s *gateLaneSlot) holder() *lane.Holder {
+func (s *gateLaneSlot) holder() *landing.Holder {
 	gateMutex.Lock()
 	defer gateMutex.Unlock()
 	if s.lane == nil {
@@ -162,7 +162,7 @@ func (s *gateLaneSlot) release() error {
 
 // readSafe returns the slot's holder with no side effect, nil when it is free or when
 // there is no slot to read.
-func (s *landLaneSlot) readSafe() *lane.Holder {
+func (s *landLaneSlot) readSafe() *landing.Holder {
 	if s == nil {
 		return nil
 	}
@@ -243,7 +243,7 @@ func gateHoldSlot(mode gateSlotMode, out, errOut io.Writer) (gateRelease, error)
 type gateRelease func() error
 
 // gateHolderText names the holder a report is waiting for.
-func gateHolderText(holder *lane.Holder) string {
+func gateHolderText(holder *landing.Holder) string {
 	if holder == nil {
 		return "another gate run"
 	}
@@ -255,7 +255,7 @@ func gateHolderText(holder *lane.Holder) string {
 // the tree failed), the holder, and what a session can do about it. It is explicitly not a
 // verdict on the tree: the gate refused to run rather than contending, so a run that reads
 // this has spent no step and misattributes nothing (coordination.md §5, go-cask#486).
-func gateSlotRefusal(holder *lane.Holder) error {
+func gateSlotRefusal(holder *landing.Holder) error {
 	return statusError{code: 3, message: fmt.Sprintf(
 		"verify: the %s slot is held by %s (pid %s, idle %dm) and the bounded wait ended.\n"+
 			"  No step ran, so this is NOT a verdict on the tree.\n"+

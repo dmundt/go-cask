@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/gate"
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
-	"github.com/dmundt/go-cask/internal/build/verify"
+	"github.com/dmundt/go-cask/internal/build/scope"
 )
 
 // TestGateStepsAreWellFormed pins the step list's own shape: every step names itself once
@@ -89,8 +88,8 @@ func TestGateStepsAreWellFormed(t *testing.T) {
 func TestStepsForTheDocumentationScope(t *testing.T) {
 	t.Parallel()
 
-	full := stepsFor(policy.Verify(), verify.Full)
-	docs := stepsFor(policy.Verify(), verify.Docs)
+	full := stepsFor(policy.Verify(), scope.Full)
+	docs := stepsFor(policy.Verify(), scope.Docs)
 	if len(full) != len(gateSteps(policy.Verify())) {
 		t.Errorf("the full scope runs %d of %d steps", len(full), len(gateSteps(policy.Verify())))
 	}
@@ -124,17 +123,17 @@ func TestGateRecordsOnlyACompleteRun(t *testing.T) {
 	t.Run("a complete run is recorded", func(t *testing.T) {
 		toplevel, head := hookRepo(t)
 		var out, errOut bytes.Buffer
-		run := &gateRun{out: &out, errOut: &errOut, table: table, root: toplevel, scope: verify.Full}
+		run := &gateRun{out: &out, errOut: &errOut, table: table, root: toplevel, scope: scope.Full}
 		if err := run.finish(); err != nil {
 			t.Fatalf("finish: %v", err)
 		}
 
 		ledger := readFileOrEmpty(ledgerPath(t, toplevel))
-		if !gate.Verified(ledger, head) {
+		if !landing.Verified(ledger, head) {
 			t.Errorf("the ledger %q does not carry %s", ledger, head)
 		}
-		entry, ok := gate.Parse(strings.TrimSpace(ledger))
-		if !ok || entry.Scope != verify.Full.String() {
+		entry, ok := landing.ParseEntry(strings.TrimSpace(ledger))
+		if !ok || entry.Scope != scope.Full.String() {
 			t.Errorf("the ledger entry is %+v, want the run's scope", entry)
 		}
 		if !strings.Contains(out.String(), "verification passed") {
@@ -150,7 +149,7 @@ func TestGateRecordsOnlyACompleteRun(t *testing.T) {
 		t.Setenv(table.SkipSecurityEnv, "true")
 
 		var out, errOut bytes.Buffer
-		run := &gateRun{out: &out, errOut: &errOut, table: table, root: toplevel, scope: verify.Full}
+		run := &gateRun{out: &out, errOut: &errOut, table: table, root: toplevel, scope: scope.Full}
 		if !run.escape("govulncheck", table.SkipSecurityEnv) {
 			t.Fatal("the escape hatch did not drop the step")
 		}
@@ -164,7 +163,7 @@ func TestGateRecordsOnlyACompleteRun(t *testing.T) {
 		if ledger := readFileOrEmpty(ledgerPath(t, toplevel)); ledger != "" {
 			t.Errorf("an incomplete run wrote the ledger: %q", ledger)
 		}
-		if gate.Verified(readFileOrEmpty(ledgerPath(t, toplevel)), head) {
+		if landing.Verified(readFileOrEmpty(ledgerPath(t, toplevel)), head) {
 			t.Error("an incomplete run recorded the commit as verified")
 		}
 		if !strings.Contains(errOut.String(), "not verified") {
@@ -180,7 +179,7 @@ func TestGateRecordsOnlyACompleteRun(t *testing.T) {
 		var out, errOut bytes.Buffer
 		run := &gateRun{
 			out: &out, errOut: &errOut, table: table, root: toplevel,
-			scope: verify.Full, fast: true,
+			scope: scope.Full, fast: true,
 		}
 		if !run.escape("go test -race ./...", table.SkipTestsEnv) {
 			t.Error("the drop-everything switch did not drop the step, though its own variable is unset")
@@ -335,15 +334,15 @@ func TestFanOutRunsEveryIndexOnce(t *testing.T) {
 // decides a scripted holder with the engine's own rule, and records whether it was released.
 //
 // The decision is the engine's rather than a scripted answer, so a test drives the gate's
-// acquisition — the wait, the takeover and the refusal — while `internal/build/lane` stays
+// acquisition — the wait, the takeover and the refusal — while `internal/build/landing` stays
 // the one owner of what may be done with a holder.
 type fakeGateSlot struct {
 	heldValue bool
 	// pending is the holder the slot holds, nil when it is free.
-	pending *lane.Holder
+	pending *landing.Holder
 	// holderNow is what the slot reports after the claim, so a test can describe a
 	// takeover race the claim lost.
-	holderNow *lane.Holder
+	holderNow *landing.Holder
 	// staleMinutes and deadGrace are the idle window and the grace the decision reads.
 	staleMinutes int
 	deadGrace    int
@@ -364,7 +363,7 @@ func (s *fakeGateSlot) resolve(label string) error {
 
 func (s *fakeGateSlot) held() bool { return s.heldValue }
 
-func (s *fakeGateSlot) holder() *lane.Holder { return s.holderNow }
+func (s *fakeGateSlot) holder() *landing.Holder { return s.holderNow }
 
 func (s *fakeGateSlot) release() error {
 	s.releases++
@@ -372,13 +371,13 @@ func (s *fakeGateSlot) release() error {
 }
 
 func (s *fakeGateSlot) claim(force, staleDead bool) (gateClaim, error) {
-	decision := lane.Decide(s.pending, s.who, s.mine,
+	decision := landing.Decide(s.pending, s.who, s.mine,
 		time.Duration(s.staleMinutes)*time.Minute, time.Duration(s.deadGrace)*time.Second,
-		force, staleDead, lane.LivenessOf(derefHolder(s.pending), currentHost(), processStartFunc), now())
+		force, staleDead, landing.LivenessOf(derefHolder(s.pending), currentHost(), processStartFunc), now())
 	switch decision.Outcome {
-	case lane.AlreadyMine, lane.RefusedSameIdentity, lane.RefusedFresh:
+	case landing.SlotAlreadyMine, landing.SlotRefusedSameIdentity, landing.SlotRefusedFresh:
 		return gateClaim{holder: &decision.Found}, nil
-	case lane.Unreadable:
+	case landing.SlotUnreadable:
 		return gateClaim{}, nil
 	}
 	if decision.Outcome.TakesOver() {
@@ -474,13 +473,13 @@ func TestVerifyGateRefusesWhileAnotherRunHoldsTheSlot(t *testing.T) {
 	// The wait window is the slot's own; a test cannot spend ten minutes in it.
 	t.Setenv(policy.LandLane().WaitEnv, "0")
 
-	holder := &lane.Holder{
+	holder := &landing.Holder{
 		PID: "4242", Since: now(), Label: "verify /somewhere/else abc1234",
 		Who: "clone#primary:wt-other#main", Token: "tok", Host: "africa",
 	}
 	slot := &fakeGateSlot{
 		pending: holder, staleMinutes: 90, deadGrace: 60,
-		who: "clone#primary:wt-mine#main", mine: lane.NoneToken,
+		who: "clone#primary:wt-mine#main", mine: landing.NoneToken,
 	}
 	out, errOut, err := gateRunWithSlot(t, gateSlotQueue, slot)
 
@@ -522,13 +521,13 @@ func TestVerifyGateTakesOverADeadHoldersSlot(t *testing.T) {
 	if _, ok := processStartFunc("99999999"); !ok {
 		t.Skip("this host cannot report process start times, so no holder is provably gone")
 	}
-	dead := &lane.Holder{
+	dead := &landing.Holder{
 		PID: "99999999", Since: now(), Label: "verify /gone", Who: "clone#primary:wt-gone#main",
 		Token: "tok", Host: currentHost(), Start: "1",
 	}
 	slot := &fakeGateSlot{
 		pending: dead, staleMinutes: 90, deadGrace: 0,
-		who: "clone#primary:wt-mine#main", mine: lane.NoneToken,
+		who: "clone#primary:wt-mine#main", mine: landing.NoneToken,
 	}
 	out, errOut, err := gateRunWithSlot(t, gateSlotQueue, slot)
 	if err == nil {

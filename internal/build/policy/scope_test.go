@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/changes"
+	"github.com/dmundt/go-cask/internal/build/scope"
 )
 
 // ciWorkflowPath is the workflow whose scope job consumes ScopeRules.
@@ -31,7 +31,7 @@ func TestScopeRulesAreWellFormed(t *testing.T) {
 
 	// Classify validates the names, the modes and the implication order; a probe
 	// path it accepts proves the table is one the command can read.
-	if _, err := changes.Classify([]string{"cas/store.go"}, rules); err != nil {
+	if _, err := scope.Classify([]string{"cas/store.go"}, rules); err != nil {
 		t.Fatalf("the scope table is not a table the engine accepts: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestDocsPathsCoverTheDocumentationTrees(t *testing.T) {
 			t.Errorf("git ls-files %s listed nothing, so this test would prove nothing", strings.Join(group, " "))
 			continue
 		}
-		covered, uncovered := changes.Select(tracked, DocsPaths())
+		covered, uncovered := scope.Select(tracked, DocsPaths())
 		if len(uncovered) != 0 {
 			t.Errorf("docs-only patterns miss %d tracked path(s) under %s: %s",
 				len(uncovered), strings.Join(group, " "), strings.Join(uncovered, ", "))

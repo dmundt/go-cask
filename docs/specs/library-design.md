@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v59
+version: v60
 ---
 
 # Library Design — go-cask
@@ -63,7 +63,7 @@ A record already in a store that cannot be read is a finding (`VerifyReport.Unre
 
 ### 1.1 Classes and layers
 
-**Class** = who may rely on a change and where it is recorded; **layer** = what may import what. `internal/build/layers` carries the matrix below as data, `scripts/verify.sh` runs it as the layer-matrix check, `internal/build/depgraph` draws `gitlike` in its own `REFERENCE` layer.
+**Class** = who may rely on a change and where it is recorded; **layer** = what may import what. `internal/build/deps` carries the matrix below as data, `scripts/verify.sh` runs it as the layer-matrix check, `internal/build/deps` draws `gitlike` in its own `REFERENCE` layer.
 
 | Class | Trees | Promise | Change record |
 | --- | --- | --- | --- |

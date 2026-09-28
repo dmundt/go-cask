@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
-	"github.com/dmundt/go-cask/internal/build/receipt"
 )
 
 // gateReceiptRefPrefix is the namespace the receipt travels under. It is a ref and not a
@@ -85,7 +85,7 @@ const gateReceiptUsage = `usage: gate gate-receipt <command>
 // whose parent is the gated commit, whose tree is the gated tree and whose message is the
 // record — so a receipt carries its own signature and CI can check two structural claims
 // without reading the text at all. The record's own format belongs to
-// internal/build/receipt; what is here is git: signing the object, pushing it, and
+// internal/build/landing; what is here is git: signing the object, pushing it, and
 // deciding what a receipt is allowed to excuse.
 func runGateReceipt(args []string, out, errOut io.Writer) error {
 	// The repository is resolved once, from the process's own directory, because that is
@@ -181,7 +181,7 @@ func runGateReceiptCreate(root string, args []string, out, errOut io.Writer) err
 // GateReceiptOptions is a receipt to write: what a green run covered, and by what.
 type GateReceiptOptions struct {
 	// Scope is what the run covered, as the receipt's own tokens spell it.
-	Scope receipt.Scope
+	Scope landing.Scope
 	// SHA is the commit the run verified. Empty means HEAD.
 	SHA string
 	// Base is the merge base the change was measured from. Empty means the merge base
@@ -202,7 +202,7 @@ type GateReceiptOptions struct {
 func gateReceiptCreateOptions(root string, scope, sha, base, checks, tiers string) (GateReceiptOptions, error) {
 	options := GateReceiptOptions{CoverageTiers: tiers}
 
-	parsed, err := receipt.ParseScope(scope)
+	parsed, err := landing.ParseScope(scope)
 	if err != nil {
 		return options, fmt.Errorf("create: --scope must be docs or full (got '%s')", scope)
 	}
@@ -215,7 +215,7 @@ func gateReceiptCreateOptions(root string, scope, sha, base, checks, tiers strin
 	// wrong. An empty name cannot occur — the split drops empty fields — so a name this
 	// rejects is one that really does carry a space, a newline or punctuation.
 	for _, check := range strings.Fields(checks) {
-		if err := receipt.CheckName(check); err != nil {
+		if err := landing.CheckName(check); err != nil {
 			return options, fmt.Errorf("create: %w", err)
 		}
 	}
@@ -256,7 +256,7 @@ func gateReceiptCreateOptions(root string, scope, sha, base, checks, tiers strin
 // interrupted run must never be the file a publish picks up — the same atomicity the gate
 // stamp has, and for the same reason.
 func CreateGateReceipt(root string, options GateReceiptOptions) (string, error) {
-	if _, err := receipt.ParseScope(string(options.Scope)); err != nil {
+	if _, err := landing.ParseScope(string(options.Scope)); err != nil {
 		return "", err
 	}
 	sha, err := gitPathIn(root, "rev-parse", "--verify", options.SHA+"^{commit}")
@@ -276,7 +276,7 @@ func CreateGateReceipt(root string, options GateReceiptOptions) (string, error) 
 		return "", err
 	}
 
-	record := receipt.Record{
+	record := landing.Record{
 		Commit:        sha,
 		Tree:          tree,
 		Base:          base,
@@ -319,7 +319,7 @@ func gateReceiptRunner() string {
 // runs its own gate, and the receipts all belong to the clone, so a publish from any of them
 // finds the run that produced the evidence. The commit names the file, so the write is
 // idempotent and two runs of one commit replace each other rather than accumulating.
-func writeGateReceipt(root string, record receipt.Record) (string, error) {
+func writeGateReceipt(root string, record landing.Record) (string, error) {
 	common, err := gitPathIn(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return "", err
@@ -339,7 +339,7 @@ func writeGateReceipt(root string, record receipt.Record) (string, error) {
 	}
 	temp := filepath.Join(dir, "."+record.Commit+"."+hex.EncodeToString(suffix))
 
-	if err := os.WriteFile(temp, []byte(receipt.Render(record)), 0o644); err != nil {
+	if err := os.WriteFile(temp, []byte(landing.Render(record)), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", temp, err)
 	}
 	if err := os.Rename(temp, path); err != nil {
@@ -364,7 +364,7 @@ func gateReceiptPathHash(root, base, sha string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return gitInput(root, receipt.CanonicalPaths(splitLines(listed)), "hash-object", "--stdin")
+	return gitInput(root, landing.CanonicalPaths(splitLines(listed)), "hash-object", "--stdin")
 }
 
 // runGateReceiptPublish signs the local receipt as a commit object and pushes it to the
@@ -411,7 +411,7 @@ func publishGateReceipt(repo, remote, sha string, quiet bool, out, errOut io.Wri
 	if err != nil {
 		return refuse(errOut, "no local gate receipt for %s — run ./scripts/verify.sh, then publish", sha)
 	}
-	if _, err := receipt.Parse(payload); err != nil {
+	if _, err := landing.Parse(payload); err != nil {
 		return refuse(errOut, "the receipt for %s is malformed; run ./scripts/verify.sh again", sha)
 	}
 
@@ -562,11 +562,11 @@ func gateReceiptSameEvidence(repo, remote, ref, published, payload string) bool 
 	if err != nil {
 		return false
 	}
-	publishedRecord, err := receipt.Parse(gateReceiptBody(body))
+	publishedRecord, err := landing.Parse(gateReceiptBody(body))
 	if err != nil {
 		return false
 	}
-	local, err := receipt.Parse(payload)
+	local, err := landing.Parse(payload)
 	if err != nil {
 		return false
 	}
@@ -663,9 +663,9 @@ func runGateReceiptVerify(root string, args []string, out, errOut io.Writer, dep
 		return err
 	}
 	payload := gateReceiptBody(body)
-	record, err := receipt.Parse(payload)
+	record, err := landing.Parse(payload)
 	if err != nil {
-		return refuse(errOut, "the receipt at %s is not a %s", *ref, receipt.Version)
+		return refuse(errOut, "the receipt at %s is not a %s", *ref, landing.Version)
 	}
 
 	if record.Commit != *sha {
@@ -703,15 +703,15 @@ func runGateReceiptVerify(root string, args []string, out, errOut io.Writer, dep
 	// what it actually covered, or a documentation-scope gate would excuse a Go diff.
 	// The rule is asked IN the repository being verified, because that repository's change
 	// is what it classifies.
-	wantScope := receipt.Full
+	wantScope := landing.Full
 	docsOnly, err := deps.scopeDocs(root, record.Base, *sha)
 	if err != nil {
 		return err
 	}
 	if docsOnly {
-		wantScope = receipt.Docs
+		wantScope = landing.Docs
 	}
-	if _, err := receipt.ParseScope(string(record.Scope)); err != nil {
+	if _, err := landing.ParseScope(string(record.Scope)); err != nil {
 		return refuse(errOut, "the receipt scope '%s' is neither docs nor full", record.Scope)
 	}
 	if record.Scope != wantScope {

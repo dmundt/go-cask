@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -115,7 +115,7 @@ func resolveLandLane(repo string) (*landLaneSlot, error) {
 		owner:            filepath.Join(dir, table.Owner),
 		takeover:         filepath.Join(dir, table.Takeover),
 		token:            filepath.Join(gitDir, table.Token),
-		who:              lane.Identity(repoID, lane.WorktreeName(primary, filepath.Base(toplevel)), branch),
+		who:              landing.Identity(repoID, landing.WorktreeName(primary, filepath.Base(toplevel)), branch),
 		label:            "land-lane",
 		staleMinutes:     staleMinutes(table),
 		deadGraceSeconds: deadGraceSeconds(table),
@@ -193,12 +193,12 @@ func waitSeconds(table policy.LandLaneTable) int {
 }
 
 // currentHost names this machine for the slot record, so that a holder written here can be
-// judged here. A host that cannot name itself writes lane.UnknownHost, which never compares
+// judged here. A host that cannot name itself writes landing.UnknownHost, which never compares
 // equal to a real host: its holder stays Unknown, and an unknown holder is never taken over.
 func currentHost() string {
 	host, err := os.Hostname()
 	if err != nil || strings.TrimSpace(host) == "" {
-		return lane.UnknownHost
+		return landing.UnknownHost
 	}
 	return strings.TrimSpace(host)
 }
@@ -272,19 +272,19 @@ const landLaneUsage = "usage: gate land-lane [status | whoami | acquire [--force
 // stdout and the exit status carries it, so a caller can read either.
 func landLaneStatus(slot *landLaneSlot, out, errOut io.Writer) error {
 	holder := slot.read()
-	status := lane.SlotStatus(holder, slot.who, slot.mine())
-	if status == lane.Free {
+	status := landing.SlotStatus(holder, slot.who, slot.mine())
+	if status == landing.SlotFree {
 		fmt.Fprintln(out, "land lane: free")
 		return exitStatus(status.ExitCode())
 	}
 	fmt.Fprintf(out, "land lane: %s (pid %s, idle %dm)\n",
 		holder.Label+" — "+holder.Who, holder.PID, holder.IdleMinutes(now()))
-	if status == lane.Mine {
+	if status == landing.SlotMine {
 		fmt.Fprintln(out, "land lane: you hold it")
 		return nil
 	}
-	if lane.Evictable(holder, time.Duration(slot.deadGraceSeconds)*time.Second,
-		lane.LivenessOf(*holder, currentHost(), processStartFunc), now()) {
+	if landing.Evictable(holder, time.Duration(slot.deadGraceSeconds)*time.Second,
+		landing.LivenessOf(*holder, currentHost(), processStartFunc), now()) {
 		fmt.Fprintln(out, "land lane: evictable — the holder's process is gone on this host")
 		fmt.Fprintln(out, "land lane: 'acquire --takeover-dead <label>' takes it now")
 		return exitStatus(3)
@@ -305,14 +305,14 @@ func landLaneStatus(slot *landLaneSlot, out, errOut io.Writer) error {
 // same answer `acquire` gives the shell: who holds the slot.
 func (s *landLaneSlot) claimForGate(label string, force, staleDead bool) (gateClaim, error) {
 	holder := s.read()
-	decision := lane.Decide(holder, s.who, s.mine(),
+	decision := landing.Decide(holder, s.who, s.mine(),
 		time.Duration(s.staleMinutes)*time.Minute, time.Duration(s.deadGraceSeconds)*time.Second,
-		force, staleDead, lane.LivenessOf(derefHolder(holder), currentHost(), processStartFunc), now())
+		force, staleDead, landing.LivenessOf(derefHolder(holder), currentHost(), processStartFunc), now())
 
 	switch decision.Outcome {
-	case lane.AlreadyMine, lane.RefusedSameIdentity, lane.RefusedFresh:
+	case landing.SlotAlreadyMine, landing.SlotRefusedSameIdentity, landing.SlotRefusedFresh:
 		return gateClaim{holder: &decision.Found}, nil
-	case lane.Unreadable:
+	case landing.SlotUnreadable:
 		// The winner creates the slot before it writes the record into it. Waiting for
 		// the record — rather than taking the half-written slot over — is what keeps two
 		// acquirers from holding one slot; a claim that named no holder is the caller's
@@ -325,12 +325,12 @@ func (s *landLaneSlot) claimForGate(label string, force, staleDead bool) (gateCl
 		return gateClaim{}, err
 	}
 	if decision.Outcome.TakesOver() {
-		how := lane.Expired
+		how := landing.Expired
 		switch decision.Outcome {
-		case lane.TakeoverForced:
-			how = lane.Forced
-		case lane.TakeoverDead:
-			how = lane.Dead
+		case landing.SlotTakeoverForced:
+			how = landing.Forced
+		case landing.SlotTakeoverDead:
+			how = landing.Dead
 		}
 		s.recordTakeover(decision.Found, how)
 		// The evicted holder's record has to leave the slot before the exclusive create
@@ -355,9 +355,9 @@ func (s *landLaneSlot) claimForGate(label string, force, staleDead bool) (gateCl
 // derefHolder is the holder a decision reads: the slot's own, or a zero holder for the
 // free slot the acquisition is about to claim. A free slot is never judged live, so the
 // zero value is the one input Decide ignores.
-func derefHolder(holder *lane.Holder) lane.Holder {
+func derefHolder(holder *landing.Holder) landing.Holder {
 	if holder == nil {
-		return lane.Holder{}
+		return landing.Holder{}
 	}
 	return *holder
 }
@@ -406,10 +406,10 @@ func landLaneClaim(slot *landLaneSlot, label string, force, takeDead bool, deadl
 			continue
 		}
 
-		decision := lane.Decide(holder, slot.who, slot.mine(), window, grace, force, takeDead,
-			lane.LivenessOf(*holder, currentHost(), processStartFunc), now())
+		decision := landing.Decide(holder, slot.who, slot.mine(), window, grace, force, takeDead,
+			landing.LivenessOf(*holder, currentHost(), processStartFunc), now())
 		switch decision.Outcome {
-		case lane.Unreadable:
+		case landing.SlotUnreadable:
 			// The winner creates the slot before it writes the record into it, so a
 			// slot that holds nobody yet is a claim in progress: wait for the record
 			// rather than taking the slot over, or two acquirers end up holding it.
@@ -419,19 +419,19 @@ func landLaneClaim(slot *landLaneSlot, label string, force, takeDead bool, deadl
 			}
 			time.Sleep(laneRetry)
 			continue
-		case lane.AlreadyMine:
+		case landing.SlotAlreadyMine:
 			// This worktree already holds the slot through this very acquisition. A
 			// second session in it cannot be told apart from the first by any file it
 			// shares, so it is told the slot is held rather than handed a second
 			// landing; refreshing the deadline is `renew`, the holder's own call.
 			fmt.Fprintf(out, "land lane: already held by %s (%s)\n", holder.Label, slot.who)
 			return nil
-		case lane.RefusedSameIdentity:
+		case landing.SlotRefusedSameIdentity:
 			return fmt.Errorf(
 				"land lane: held by %s — %s, and this worktree holds no outstanding acquisition for that identity "+
 					"(an earlier acquisition in it owns the slot); wait for it, or use --force when you know it is dead",
 				holder.Label, holder.Who)
-		case lane.RefusedFresh:
+		case landing.SlotRefusedFresh:
 			if deadline.IsZero() {
 				return fmt.Errorf(
 					"land lane: held by %s — %s, idle %dm; wait for it, renew it if it is yours, or use "+
@@ -457,19 +457,19 @@ func landLaneClaim(slot *landLaneSlot, label string, force, takeDead bool, deadl
 
 		// Record the eviction before the slot changes hands: it is the only trace the
 		// evicted holder can read afterwards.
-		how := lane.Expired
+		how := landing.Expired
 		switch decision.Outcome {
-		case lane.TakeoverForced:
-			how = lane.Forced
-		case lane.TakeoverDead:
-			how = lane.Dead
+		case landing.SlotTakeoverForced:
+			how = landing.Forced
+		case landing.SlotTakeoverDead:
+			how = landing.Dead
 		}
 		slot.recordTakeover(*holder, how)
 		reason := "expired"
 		switch how {
-		case lane.Forced:
+		case landing.Forced:
 			reason = "--force"
-		case lane.Dead:
+		case landing.Dead:
 			reason = "holder is gone"
 		}
 		fmt.Fprintf(errOut, "land lane: taking over from %s — %s (idle %dm, %s)\n",
@@ -582,12 +582,12 @@ func landLaneRenew(slot *landLaneSlot, out, errOut io.Writer) error {
 	}
 	defer slot.restore(aside)
 
-	holder := lane.ParseHolder(readFileOrEmpty(aside))
+	holder := landing.ParseHolder(readFileOrEmpty(aside))
 	if !slot.holds(holder) {
 		return errors.New(slot.notHeldReport("land lane: this worktree does not hold the slot — " +
 			holder.Label + " — " + holder.Who + " does"))
 	}
-	renewed := lane.Holder{PID: holder.PID, Since: now(), Label: holder.Label, Who: holder.Who, Token: holder.Token}
+	renewed := landing.Holder{PID: holder.PID, Since: now(), Label: holder.Label, Who: holder.Who, Token: holder.Token}
 	// While the slot was held aside it was absent, so an acquirer may have seen it free and
 	// claimed it. The exclusive create decides between them: the claim wins, and this renewal
 	// reports that instead of overwriting it. The copy this renewal moved aside is dropped by
@@ -614,7 +614,7 @@ func landLaneRelease(slot *landLaneSlot, out, errOut io.Writer) error {
 	if !taken {
 		return errors.New("land lane: the slot changed hands while releasing; re-check with 'status'")
 	}
-	holder := lane.ParseHolder(readFileOrEmpty(aside))
+	holder := landing.ParseHolder(readFileOrEmpty(aside))
 	if !slot.holds(holder) {
 		slot.restore(aside)
 		return errors.New(slot.notHeldReport("land lane: held by " + holder.Label + " — " + holder.Who +
@@ -634,7 +634,7 @@ func (s *landLaneSlot) claim(label, token string) error {
 	// The record is built before the slot is created, so the window in which the slot
 	// exists and holds nobody is one write wide.
 	start, _ := processStartFunc(strconv.Itoa(os.Getpid()))
-	record := lane.Holder{
+	record := landing.Holder{
 		PID: strconv.Itoa(os.Getpid()), Since: now(), Label: label, Who: s.who, Token: token,
 		Host: currentHost(), Start: start,
 	}.Fields() + "\n"
@@ -698,12 +698,12 @@ func (s *landLaneSlot) restore(aside string) {
 }
 
 // read returns the slot's holder, or nil when the slot is free.
-func (s *landLaneSlot) read() *lane.Holder {
+func (s *landLaneSlot) read() *landing.Holder {
 	data, err := os.ReadFile(s.owner)
 	if err != nil {
 		return nil
 	}
-	holder := lane.ParseHolder(string(data))
+	holder := landing.ParseHolder(string(data))
 	return &holder
 }
 
@@ -712,7 +712,7 @@ func (s *landLaneSlot) read() *lane.Holder {
 func (s *landLaneSlot) mine() string {
 	token := strings.TrimSpace(readFileOrEmpty(s.token))
 	if token == "" {
-		return lane.NoneToken
+		return landing.NoneToken
 	}
 	return token
 }
@@ -720,8 +720,8 @@ func (s *landLaneSlot) mine() string {
 // holds reports whether this worktree holds the slot through the given record's
 // acquisition. A record that names no readable holder is not this worktree's, so a
 // half-written slot is never renewed or released out from under the claim writing it.
-func (s *landLaneSlot) holds(holder lane.Holder) bool {
-	return holder.Known() && holder.Who == s.who && holder.Token != lane.NoneToken && holder.Token == s.mine()
+func (s *landLaneSlot) holds(holder landing.Holder) bool {
+	return holder.Known() && holder.Who == s.who && holder.Token != landing.NoneToken && holder.Token == s.mine()
 }
 
 // writeToken records the acquisition this worktree owns, so a later renew or release can
@@ -738,8 +738,8 @@ func (s *landLaneSlot) writeToken(token string) error {
 
 // recordTakeover writes the eviction record — the only way the holder that lost the slot
 // learns that it did — stamped with the moment the slot was evicted.
-func (s *landLaneSlot) recordTakeover(holder lane.Holder, how string) {
-	record := lane.Takeover{Holder: holder, How: how}
+func (s *landLaneSlot) recordTakeover(holder landing.Holder, how string) {
+	record := landing.Takeover{Holder: holder, How: how}
 	record.Since = now()
 	temp := fmt.Sprintf("%s.tmp.%d", s.takeover, os.Getpid())
 	if err := os.WriteFile(temp, []byte(record.Fields()+"\n"), 0o644); err != nil {
@@ -757,7 +757,7 @@ func (s *landLaneSlot) notHeldReport(message string) string {
 	if err != nil {
 		return message
 	}
-	takeover := lane.ParseTakeover(string(data))
+	takeover := landing.ParseTakeover(string(data))
 	return message + "\n" + fmt.Sprintf("land lane: taken over from %s — %s (%s) at %s",
 		takeover.Label, takeover.Who, takeover.How,
 		time.Unix(takeover.Since, 0).UTC().Format(time.RFC3339))

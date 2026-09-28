@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v36
+version: v37
 ---
 
 # Testing Strategy — go-cask
@@ -88,7 +88,7 @@ Every ID'd requirement and named contract MUST have ≥ one test (test name or m
 | 80 | codec wrappers, hash clients, verification helpers, advisory index layer, cache validation layer + three caches, `cas/backend/packfs`, viewer + index, `gitlike`, `cmd/cask` |
 | Policy owner | `internal/build/coverage`: format, shape check, pass/fail. Table (threshold, package, tier name per gated package; tier documents, threshold enforces): `internal/build/policy`. Ungated packages: parallel exemption register + reason, empty today. List omitted. `go run ./cmd/gate coverage-tier` reports it |
 | Totality | `internal/build/coverage` compares `go list ./cas/...` against table + register; a `cas/` package in neither → non-zero + offenders. Every gated package: **one** `go test -race -cover` pass, per-package numbers from the profile it writes, not a log line — one run reports a failing suite and every sub-tier package |
-| Gate entry | `./scripts/verify.sh`: permanent gate name, one entry point for local runs and CI. `exec gate.sh verify` shim resolves the toolchain. Step list `go run ./cmd/gate verify`; no step is a rule of its own — scope, concurrency and escape hatches in `internal/build/verify`, engine checks `internal/build/*`, tables in `internal/build/policy`. Gate-local tables, pattern lists and `case` matrices are tested nowhere; `go test` in `internal/build/*` answers in seconds (scripts/AGENT.md, "`verify.sh` stays forever") |
+| Gate entry | `./scripts/verify.sh`: permanent gate name, one entry point for local runs and CI. `exec gate.sh verify` shim resolves the toolchain. Step list `go run ./cmd/gate verify`; no step is a rule of its own — scope, concurrency and escape hatches in `internal/build/scope`, engine checks `internal/build/*`, tables in `internal/build/policy`. Gate-local tables, pattern lists and `case` matrices are tested nowhere; `go test` in `internal/build/*` answers in seconds (scripts/AGENT.md, "`verify.sh` stays forever") |
 | Exemptions | decision, not measurement: ungated packages never measured, only registered with a reason; the adding PR classifies the package in the same PR; revisited at first consumer or 80-tier coverage |
 | Baseline | tier from coverage measured under the real gate; thresholds never lowered; a sub-tier package is raised with real tests in the same change or recorded in the lower tier with a reason; coverage never bought with line-executing, non-asserting tests — unreachable defensive branches stay in the lower tier and are documented as unreachable |
 | Identifiers | every exported identifier exercised; untested branches need a comment why — error branches no filesystem state or injected seam can produce are listed with their reason in the package's own tests; viewer: every named template rendered in ≥ one test |

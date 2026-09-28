@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/claim"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -35,7 +35,7 @@ type fakeLane struct {
 	// issues maps an issue to its state, defaulting to OPEN.
 	issues map[string]string
 	// pulls are the open pull requests, by number and head branch.
-	pulls []claim.PullRequest
+	pulls []landing.PullRequest
 	// repo is what `repo view` answers.
 	repo string
 	// tagSeq numbers created tag objects so each has a distinct sha.
@@ -296,7 +296,7 @@ func TestPRLaneRefusesAClosedIssue(t *testing.T) {
 // the issue holds the lane, whatever the claim's age.
 func TestPRLaneClaimRefusesWhileAPullRequestIsOpen(t *testing.T) {
 	fake := newFakeLane()
-	fake.pulls = []claim.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
+	fake.pulls = []landing.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
 	fake.seedClaim("389", "branch=x worktree=y", time.Now().UTC().Add(-500*time.Minute))
 	deps := laneDeps(fake, t.TempDir())
 
@@ -390,7 +390,7 @@ func TestPRLaneCheck(t *testing.T) {
 			// free, whatever pull requests name the issue.
 			name: "held",
 			prepare: func(f *fakeLane) {
-				f.pulls = []claim.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
+				f.pulls = []landing.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
 				f.seedClaim("389", "branch=x", time.Now().UTC().Add(-5*time.Minute))
 			},
 			wantStatus: 1,
@@ -442,7 +442,7 @@ func TestPRLaneCheck(t *testing.T) {
 // reads — including the nulls for a missing pull request and an unknown age.
 func TestPRLaneStatus(t *testing.T) {
 	fake := newFakeLane()
-	fake.pulls = []claim.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
+	fake.pulls = []landing.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
 	fake.seedClaim("389", "branch=chore/lane/389 worktree=wt-389", time.Now().UTC().Add(-5*time.Minute))
 	fake.seedClaim("390", "branch=chore/lane/390 worktree=wt-390", time.Now().UTC().Add(-200*time.Minute))
 	fake.seedUnreadableRef("391")
@@ -469,14 +469,14 @@ func TestPRLaneStatus(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status --json = %d\n%s", status, errOut)
 	}
-	var statuses []claim.Status
+	var statuses []landing.Status
 	if err := json.Unmarshal([]byte(jsonOut), &statuses); err != nil {
 		t.Fatalf("status --json printed unparseable JSON: %v\n%s", err, jsonOut)
 	}
 	if len(statuses) != 3 {
 		t.Fatalf("status --json listed %d lanes, want 3", len(statuses))
 	}
-	byIssue := map[string]claim.Status{}
+	byIssue := map[string]landing.Status{}
 	for _, s := range statuses {
 		byIssue[s.Issue] = s
 	}
@@ -507,7 +507,7 @@ func TestPRLaneStatus(t *testing.T) {
 // caller says otherwise, and releasing clears the local record too.
 func TestPRLaneRelease(t *testing.T) {
 	fake := newFakeLane()
-	fake.pulls = []claim.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
+	fake.pulls = []landing.PullRequest{{Number: 42, Branch: "chore/lane/389-x"}}
 	fake.seedClaim("389", "branch=x", time.Now().UTC())
 	deps := laneDeps(fake, t.TempDir())
 	if err := prLaneRecordAdd(deps, "389"); err != nil {

@@ -2,7 +2,7 @@
 #
 # `layer-matrix` remains the owner of the import matrix: this depguard block is a second,
 # faster signal that mirrors it, so a violation surfaces in an editor rather than after a
-# whole gate run. The rule of record, and its tests, are internal/build/layers with
+# whole gate run. The rule of record, and its tests, are internal/build/deps with
 # go-cask's arm table in internal/build/policy. Layered settings are Go function values
 # (OwnsTree, OwnsExact, OwnsAnyTree) and cannot be read from YAML, which is why this is a
 # mirror and not the owner.

@@ -707,7 +707,7 @@ func TestCoordinatorVerbHelp(t *testing.T) {
 }
 
 // TestIssueOfBranchAndCandidates pins the branch-to-issue reading: go-cask's branch namespace
-// carries the issue number, and `claim.BranchNamesIssue` is the rule that decides which digit
+// carries the issue number, and `landing.BranchNamesIssue` is the rule that decides which digit
 // run in a branch name it is.
 func TestIssueOfBranchAndCandidates(t *testing.T) {
 	cases := []struct {

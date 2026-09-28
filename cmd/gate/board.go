@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/internal/build/board"
-	"github.com/dmundt/go-cask/internal/build/claim"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -172,7 +172,7 @@ func ghLaneRefs(deps prLaneDeps, repo string) (map[int]string, error) {
 		if len(fields) != 2 {
 			continue
 		}
-		issue, ok := claim.IssueOf(fields[0], table.RefPrefix)
+		issue, ok := landing.IssueOf(fields[0], table.RefPrefix)
 		if !ok {
 			continue
 		}
@@ -205,14 +205,14 @@ func byIssue(pulls []board.PullRequest) map[int]*board.PullRequest {
 }
 
 // issueOfBranch reads the issue number a branch names. go-cask's branch namespace carries it
-// (docs/specs/branch-naming.md §2), and `claim.BranchNamesIssue` is the one reader of it, so
+// (docs/specs/branch-naming.md §2), and `landing.BranchNamesIssue` is the one reader of it, so
 // the board and `pr-lane` can never disagree about which pull request holds a lane.
 func issueOfBranch(branch string) int {
 	if branch == "" {
 		return 0
 	}
 	for _, issue := range issueCandidates(branch) {
-		if claim.BranchNamesIssue(branch, issue) {
+		if landing.BranchNamesIssue(branch, issue) {
 			number, err := strconv.Atoi(issue)
 			if err == nil {
 				return number
@@ -1000,7 +1000,7 @@ func worktreeNamed(deps prLaneDeps, issue int) bool {
 	}
 	marker := strconv.Itoa(issue)
 	for _, entry := range board.ParseWorktrees(listed) {
-		if claim.BranchNamesIssue(entry.Branch, marker) || strings.Contains(entry.Path, "wt-"+marker) {
+		if landing.BranchNamesIssue(entry.Branch, marker) || strings.Contains(entry.Path, "wt-"+marker) {
 			return true
 		}
 	}

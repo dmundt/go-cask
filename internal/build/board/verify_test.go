@@ -233,12 +233,12 @@ func TestOutside(t *testing.T) {
 	files := []string{
 		"internal/build/board/board.go",
 		"internal/build/board/parse.go",
-		"internal/build/lane/lane.go",
+		"internal/build/landing/lane.go",
 		"CHANGELOG.md",
 		"CHANGELOG.md.bak",
 	}
 	outside := Outside(files, scope)
-	if strings.Join(outside, ",") != "CHANGELOG.md.bak,internal/build/lane/lane.go" {
+	if strings.Join(outside, ",") != "CHANGELOG.md.bak,internal/build/landing/lane.go" {
 		t.Errorf("Outside = %v, want the two uncovered files", outside)
 	}
 	if got := Outside(nil, scope); len(got) != 0 {

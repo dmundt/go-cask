@@ -10,7 +10,6 @@ package policy
 import (
 	"github.com/dmundt/go-cask/internal/build/coverage"
 	"github.com/dmundt/go-cask/internal/build/deps"
-	"github.com/dmundt/go-cask/internal/build/layers"
 )
 
 // ModulePath is this repository's module path, which every go-cask-relative prefix
@@ -23,20 +22,20 @@ const ModulePath = "github.com/dmundt/go-cask"
 //
 // Keep it in step with that section: an arm here the prose does not state, or a
 // prose row missing here, is the drift this table exists to prevent.
-func Matrix() []layers.Layer {
+func Matrix() []deps.Layer {
 	local := func(suffix string) string { return ModulePath + suffix }
-	return []layers.Layer{
+	return []deps.Layer{
 		{
 			// The generic core. It may import only itself.
 			Name:    "cas/",
-			Owns:    layers.OwnsTree(local("/cas")),
+			Owns:    deps.OwnsTree(local("/cas")),
 			Allowed: []string{local("/cas")},
 		},
 		{
 			// The reference object model at the application layer: it may use the
 			// core and nothing else in this module.
 			Name:    "gitlike/",
-			Owns:    layers.OwnsExact(local("/gitlike")),
+			Owns:    deps.OwnsExact(local("/gitlike")),
 			Allowed: []string{local("/cas")},
 		},
 		{
@@ -44,14 +43,14 @@ func Matrix() []layers.Layer {
 			// never gitlike (the reference library is not a dependency of the
 			// product) and never examples.
 			Name:    "internal/, cmd/",
-			Owns:    layers.OwnsAnyTree(local("/internal"), local("/cmd")),
+			Owns:    deps.OwnsAnyTree(local("/internal"), local("/cmd")),
 			Allowed: []string{local("/cas"), local("/internal")},
 		},
 		{
 			// Teaching code: it may copy the reference model, so it may import
 			// gitlike as well as the core, and never internal/ or cmd/.
 			Name:    "examples/, benchmarks/",
-			Owns:    layers.OwnsAnyTree(local("/examples"), local("/benchmarks")),
+			Owns:    deps.OwnsAnyTree(local("/examples"), local("/benchmarks")),
 			Allowed: []string{local("/cas"), local("/gitlike")},
 		},
 	}
