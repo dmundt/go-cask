@@ -49,24 +49,25 @@ func TestTopBarShowsBuildVersion(t *testing.T) {
 func TestRowLinkInsetMatchesCellPadding(t *testing.T) {
 	// The row link fills its cell through a negative margin. When its inset is
 	// wider than the cell padding it overhangs the outer columns, and the table
-	// grows a horizontal scrollbar for a few phantom pixels. The values are a
-	// taste choice, so read them from the cell rules and require only that the
-	// link mirrors whatever they say.
+	// grows a horizontal scrollbar for a few phantom pixels. The scale step is a
+	// taste choice, so read the steps from the cell rules and require only that
+	// the link mirrors whatever they say.
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
-	read := func(pattern string) string {
+	read := func(pattern string) []string {
 		m := regexp.MustCompile(pattern).FindStringSubmatch(css)
 		if m == nil {
-			t.Fatalf("cell padding rule not found: %s", pattern)
+			t.Fatalf("inset rule not found: %s", pattern)
 		}
-		return m[1]
+		return m[1:]
 	}
-	inline := read(`\.viewer-table th,\n\.viewer-table td \{\n  height: 26px;\n  padding: 2px (\d+px);`)
-	left := read(`tr > :first-child \{\n  padding-left: (\d+px);`)
-	right := read(`tr > :last-child \{\n  padding-right: (\d+px);`)
+	cell := read(`\.viewer-table th,\n\.viewer-table td \{\n  height: var\(--viewer-row\);\n  padding: (var\(--viewer-space-\d\)) (var\(--viewer-space-\d\));`)
+	left := read(`tr > :first-child \{\n  padding-left: (var\(--viewer-space-\d\));`)
+	right := read(`tr > :last-child \{\n  padding-right: (var\(--viewer-space-\d\));`)
+	block, inline := cell[0], cell[1]
 	mirrors := []string{
-		"  margin: -2px -" + inline + ";\n  padding: 2px " + inline + ";",
-		"  margin-left: -" + left + ";\n  padding-left: " + left + ";",
-		"  margin-right: -" + right + ";\n  padding-right: " + right + ";",
+		"  margin: calc(-1 * " + block + ") calc(-1 * " + inline + ");\n  padding: " + block + " " + inline + ";",
+		"  margin-left: calc(-1 * " + left[0] + ");\n  padding-left: " + left[0] + ";",
+		"  margin-right: calc(-1 * " + right[0] + ");\n  padding-right: " + right[0] + ";",
 	}
 	for _, mirror := range mirrors {
 		if !strings.Contains(css, mirror) {
@@ -134,7 +135,7 @@ func TestControlFontResetCannotBeatComponentRules(t *testing.T) {
 func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 	// Every control is sized from one of the three scale steps. A control that
 	// declares no font inherits the shell body size, which is set for prose and
-	// dwarfs a 28px control — that is the bug this guards.
+	// dwarfs a 32px control — that is the bug this guards.
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
 	for _, token := range []string{"--viewer-control:", "--viewer-control-sm:", "--viewer-control-xs:"} {
 		if !strings.Contains(css, token) {
@@ -168,10 +169,13 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 	}
 
 	// One height across the viewer: a control that stands taller than the row
-	// it sits in reads as a different kind of control than it is.
+	// it sits in reads as a different kind of control than it is. The generous
+	// layout has room for the verify button to share it instead of standing
+	// shorter than its neighbours.
 	heights := []string{
 		".viewer-filter-bar input,\n.viewer-filter-bar select,\n.viewer-filter-bar button,\n.viewer-action,\n.viewer-pager a",
 		".viewer-reset",
+		".viewer-verify-all",
 		".viewer-pager a,\n.viewer-pager select,\n.viewer-page-button",
 	}
 	for _, selector := range heights {
@@ -181,17 +185,18 @@ func TestInteractiveControlsUseTheTypeScale(t *testing.T) {
 			continue
 		}
 		end := strings.Index(css[start:], "}")
-		if end < 0 || !strings.Contains(css[start:start+end], "height: 28px;") {
-			t.Errorf("control %q does not use the shared 28px height", selector)
+		if end < 0 || !strings.Contains(css[start:start+end], "height: var(--viewer-control-height);") {
+			t.Errorf("control %q does not use the shared control height", selector)
 		}
 	}
-	start := strings.Index(css, ".viewer-verify-all {")
+	// The history arrows are the one icon-sized control, a step below the rest.
+	start := strings.Index(css, ".viewer-history-step {")
 	if start < 0 {
-		t.Fatal("verify control rule not found")
+		t.Fatal("history control rule not found")
 	}
 	end := strings.Index(css[start:], "}")
-	if end < 0 || !strings.Contains(css[start:start+end], "height: 26px;") {
-		t.Error("verify control does not use the compact 26px button height")
+	if end < 0 || !strings.Contains(css[start:start+end], "height: var(--viewer-icon-control);") {
+		t.Error("history control does not use the icon-sized height")
 	}
 }
 
@@ -204,41 +209,107 @@ func TestWorkbenchVisualTokens(t *testing.T) {
 		"--viewer-border: #e5e5e5;",
 		"--viewer-fg: #202020;",
 		"--viewer-muted: #666666;",
+		"--viewer-accent: #007acc;",
 	} {
 		if !strings.Contains(css, token) {
-			t.Errorf("workbench token missing: %s", token)
+			t.Errorf("viewer token missing: %s", token)
 		}
 	}
-	if !strings.Contains(css, "font: var(--viewer-ui)/1.4 var(--viewer-font);") {
-		t.Error("viewer shell does not use compact workbench typography")
+	// One spacing scale, one type scale, one radius. The heights are the scale's
+	// own sums, so a taller row is a scale decision rather than a new literal.
+	for _, token := range []string{
+		"--viewer-space-1: 4px;",
+		"--viewer-space-2: 8px;",
+		"--viewer-space-3: 12px;",
+		"--viewer-space-4: 16px;",
+		"--viewer-space-6: 24px;",
+		"--viewer-ui: 14px;",
+		"--viewer-label: 12px;",
+		"--viewer-mono-size: 13px;",
+		"--viewer-row: 36px;",
+		"--viewer-control-height: 32px;",
+		"--viewer-icon-control: 28px;",
+		"--viewer-bar: 48px;",
+		"--viewer-radius: 6px;",
+	} {
+		if !strings.Contains(css, token) {
+			t.Errorf("viewer scale token missing: %s", token)
+		}
+	}
+	if !strings.Contains(css, "font: var(--viewer-ui)/1.5 var(--viewer-font);") {
+		t.Error("viewer shell does not use the generous body type")
 	}
 	for _, legacy := range []string{"9.9px", "12.1px", "12.65px", "13.2px", "19.8px"} {
 		if strings.Contains(css, legacy) {
 			t.Errorf("viewer stylesheet retains fragmented font size %s", legacy)
 		}
 	}
-	if !strings.Contains(css, "height: 26px;\n  padding: 2px 8px;") {
-		t.Error("object rows are not using the 26px workbench density")
+	// One metadata grey: the old second muted value collapsed onto the floor
+	// value, so no text reads lighter than #666666 (go-cask#334).
+	for _, collapsed := range []string{"#777777", "--viewer-section-muted"} {
+		if strings.Contains(css, collapsed) {
+			t.Errorf("viewer stylesheet still carries the collapsed grey %s", collapsed)
+		}
 	}
-	if !strings.Contains(css, "--viewer-accent: #007acc;") {
-		t.Error("workbench accent must be VS Code blue")
+	if !strings.Contains(css, "height: var(--viewer-row);\n  padding: var(--viewer-space-2) var(--viewer-space-3);") {
+		t.Error("object rows are not sized from the row and spacing scale")
+	}
+	if !strings.Contains(css, "height: var(--viewer-bar);") {
+		t.Error("the viewer bars are not sized from the bar token")
 	}
 }
 
 func TestWorkbenchControlsAvoidPillGeometry(t *testing.T) {
 	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
-	for _, radius := range []string{"border-radius: 3px;", "border-radius: 4px;", "border-radius: 5px;"} {
-		if strings.Contains(css, radius) {
-			t.Errorf("workbench stylesheet still contains oversized radius %q", radius)
+	if !strings.Contains(css, "--viewer-radius: 6px;") {
+		t.Error("the control radius is not one token")
+	}
+	// Every radius in the file is either the control token, the status pill's
+	// own 2px, or a square surface. A one-off literal is the drift this catches.
+	radii := regexp.MustCompile(`border-radius: ([^;]+);`).FindAllStringSubmatch(css, -1)
+	if len(radii) == 0 {
+		t.Fatal("no border-radius declarations found")
+	}
+	for _, match := range radii {
+		switch value := match[1]; value {
+		case "var(--viewer-radius)", "2px", "0":
+		default:
+			t.Errorf("border-radius %q is neither the radius token, the pill's 2px, nor a square surface", value)
 		}
 	}
-
-	if !strings.Contains(css, "border-radius: 0;") || !strings.Contains(css, "border-radius: 2px;") {
-		t.Error("workbench stylesheet must use square panels and compact control radii")
+	// The pill keeps its own box, which no control may borrow.
+	for _, want := range []string{
+		"padding: 1px 6px;",
+		"border-radius: 2px;\n  min-height: 19px;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("status pill geometry changed: missing %q", want)
+		}
 	}
 	for _, forbidden := range []string{"box-shadow:", "linear-gradient(", "drop-shadow("} {
 		if strings.Contains(css, forbidden) {
-			t.Errorf("flat workbench stylesheet contains forbidden depth effect %q", forbidden)
+			t.Errorf("flat stylesheet contains forbidden depth effect %q", forbidden)
+		}
+	}
+}
+
+// TestStatusPillPaletteIsUnchanged pins the one contract go-cask#334 keeps
+// byte for byte: the generous layout moves everything around the pills, and no
+// pill fill, pill text colour or the translucent ring moved with it.
+func TestStatusPillPaletteIsUnchanged(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	for _, want := range []string{
+		"border: 1px solid rgba(255, 255, 255, 0.65);",
+		"background: #ececec;\n  color: #404040;",
+		"background: #dfeedd;\n  color: #1e4d20;",
+		"background: #e7f2e5;\n  color: #1e4d20;",
+		"background: #f2ebdd;\n  color: #6b4900;",
+		"background: #e9e5f6;\n  color: #442f70;",
+		"background: #dce6f7;\n  color: #1d4f8a;",
+		"background: #f3e0e0;\n  color: #6b2424;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("status pill colour changed: missing %q", want)
 		}
 	}
 }
@@ -248,8 +319,11 @@ func TestWorkbenchInteractionStates(t *testing.T) {
 	for _, want := range []string{
 		"transition:\n    background-color 120ms ease-out,\n    border-color 120ms ease-out,\n    color 120ms ease-out,\n    filter 120ms ease-out;",
 		".viewer-verify-all:active:not(:disabled)",
+		"filter: brightness(0.88);",
+		".viewer-table tbody tr:hover td",
+		"background: var(--viewer-accent-faint);",
 		".viewer-table tbody tr:focus-within td",
-		"background: #cfe1ff;",
+		"background: var(--viewer-accent-strong);",
 		".viewer-status:hover",
 		".viewer-status-detached",
 		"background: #e9e5f6;",
@@ -260,7 +334,6 @@ func TestWorkbenchInteractionStates(t *testing.T) {
 		"filter: brightness(0.97);",
 		"pointer-events: none;",
 		"scrollbar-color: var(--viewer-control-border) transparent;",
-		"background: var(--viewer-muted);",
 		"scrollbar-width: none;",
 		"border: 1px solid rgba(255, 255, 255, 0.65);",
 	} {
@@ -279,7 +352,7 @@ func TestTableCellsInheritTheBodyForeground(t *testing.T) {
 	if strings.Contains(css, "viewer-type") {
 		t.Error("the stylesheet paints a single table column by type again, which mutes it against every other body cell")
 	}
-	if !strings.Contains(css, ".viewer-unreadable {\n  color: #8a3030;\n  font-style: italic;\n}") {
+	if !strings.Contains(css, ".viewer-unreadable {\n  color: #6b2424;\n  font-style: italic;\n}") {
 		t.Error("the unreadable cell lost its own colour and voice")
 	}
 	// The row link and the cell padding are what the dropped class did not carry.

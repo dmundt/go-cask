@@ -163,6 +163,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
+  36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
+  height, bar height, control heights and every gutter drawn from one spacing and type scale;
+  hover, selection and focus are translucencies of the single accent rather than five more blues,
+  and the second metadata grey (`#777777`) collapses onto `#666666`. Distinct colour literals drop
+  from 33 to 21, and the status pills — six fills, six text colours and the translucent ring — are
+  unchanged. A listed object whose bytes cannot be read now says `unreadable` in the type cell
+  instead of rendering as untyped (go-cask#334, go-cask#357).
 - The viewer names a frame's version **Envelope** rather than "Envelope version" or
   "Version" — in the object table's column header, in the inspector's Identity block, and
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
