@@ -3,10 +3,12 @@
 // app author without an SDK would follow): streaming upload, download,
 // dedup, and metadata.
 //
+// -token is required: the demo invents no credential.
+//
 // Usage:
 //
 //	go run ./examples/api/demo -api http://127.0.0.1:8080 \
-//	    -token operator -file ./data.txt
+//	    -token o_tok -file ./data.txt
 package main
 
 import (
@@ -23,10 +25,15 @@ import (
 func main() {
 	var (
 		api   = flag.String("api", "http://127.0.0.1:8080", "server URL (the examples/api pattern)")
-		token = flag.String("token", "operator", "bearer token")
+		token = flag.String("token", "", "bearer token issued by the server's -tokens (required)")
 		file  = flag.String("file", "", "file to store and fetch")
 	)
 	flag.Parse()
+	if *token == "" {
+		fmt.Fprintln(os.Stderr, "usage: api-demo -api <url> -token <tok> -file <path>")
+		fmt.Fprintln(os.Stderr, "api-demo: -token is required (the server's -tokens value for the role to use)")
+		os.Exit(2)
+	}
 	if *file == "" {
 		fmt.Fprintln(os.Stderr, "usage: api-demo -api <url> -token <tok> -file <path>")
 		os.Exit(2)
@@ -66,8 +73,11 @@ func main() {
 		fatal(err)
 	}
 	resp.Header.Set("Authorization", "Bearer "+*token)
-	got := doRaw(resp)
-	fmt.Printf("fetched %d bytes\n", len(got))
+	fetched, err := doRaw(resp)
+	if err != nil {
+		fatal(err)
+	}
+	fmt.Printf("fetched %d bytes\n", fetched)
 
 	// GET meta + stats.
 	meta, err := doJSON(mustReq(ctx, http.MethodGet, *api+"/api/cas/v1/objects/"+h+"/meta", *token), "meta")
@@ -134,20 +144,19 @@ func mustBool(m map[string]any, key string) (bool, error) {
 	return b, nil
 }
 
-func doRaw(req *http.Request) []byte {
+// doRaw performs the request and streams the response body away, returning
+// only its length: the demo prints a byte count, so a download must not cost an
+// allocation proportional to the object (performance P-05).
+func doRaw(req *http.Request) (int64, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fatal(err)
+		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		fatal(fmt.Errorf("get: status %d", resp.StatusCode))
+		return 0, fmt.Errorf("get: status %d", resp.StatusCode)
 	}
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fatal(err)
-	}
-	return b
+	return io.Copy(io.Discard, resp.Body)
 }
 
 func num(m map[string]any, key string) float64 {
