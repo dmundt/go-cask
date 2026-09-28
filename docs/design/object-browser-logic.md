@@ -2,7 +2,7 @@
 type: Design Document
 title: Object Browser Logic — go-cask
 description: Formal server-side state, transition, rendering, and invariants contract for the viewer object browser.
-version: v12
+version: v13
 ---
 
 # Object Browser Logic — go-cask
@@ -47,8 +47,8 @@ One canonical state representation:
 
 ```text
 /viewer/objects?q={text}&type={type}&size={bucket}&status={integrity}
-  &sort={hash|type|size|status|written}&dir={asc|desc}&limit={25|50|100|250}
-  &offset={non-negative}&selected={digest}&tab={metadata|references|bytes|actions}
+  &sort={hash|type|version|codec|size|inbound|status|reach|written}&dir={asc|desc}
+  &limit={1..250}&offset={non-negative}&selected={digest}&tab={metadata|references|bytes}
 ```
 
 | Key | Default | Valid values | Effect |
@@ -58,13 +58,13 @@ One canonical state representation:
 | `size` | empty | `small`, `medium`, `large` | `<1 KiB`, `1 KiB–1 MiB`, `>1 MiB` |
 | `status` | empty | `not-verified`, `verified`, `corrupt` | Integrity axis; exclusive states, empty means every state |
 | `reach` | empty | `reachable`, `orphaned` | Reachability axis; ANDs with `status` and requires configured reachability |
-| `sort` | `hash` | `hash`, `type`, `size`, `status`, `written` | Primary order |
+| `sort` | `hash` | `hash`, `type`, `version`, `codec`, `size`, `inbound`, `status`, `reach`, `written` | Primary order; the keys are the table's own columns |
 | `dir` | `asc` | `asc`, `desc` | Sort direction |
-| `limit` | `25` | `25`, `50`, `100`, `250` | Maximum rows per response |
+| `limit` | `25` | clamped into `1`–`250` | Maximum rows per response; a non-numeric value is malformed |
 | `offset` | `0` | non-negative integer | First result position |
 | `selected` | first matched row | valid listed digest, or empty to deselect | Inspector target |
-| `tab` | `metadata` | `metadata`, `references`, `bytes`, `actions` | Inspector panel |
-| `nav` | absent | `ref`, `trail` | How the selection was reached; decides whether the trail is extended, stepped, or restarted |
+| `tab` | `metadata` | `metadata`, `references`, `bytes` | Inspector panel; `actions` is honoured as a legacy alias for `metadata` |
+| `nav` | absent | `ref`, `trail`, `stay` | How the selection was reached; decides whether the trail is extended, stepped, restarted, or left untouched (a tab switch) |
 
 - Malformed values → HTTP 400; MUST NOT silently substitute a different enum,
   limit, offset, or digest (viewer-design.md §5).
@@ -90,8 +90,9 @@ Each `GET /viewer/objects` response applies these deterministic steps:
 9. Render object-list (table, result summary, pager) and inspector independently
    from the selected normalized record.
 
-- Visit trail: session-scoped, backs the inspector's `‹`/`›`; `trail=1` moves the
-  cursor without extending it; any other selection truncates forward entries.
+- Visit trail: session-scoped, backs the inspector's `‹`/`›`; the selection carries
+  `nav=trail`, which moves the cursor without extending it; any other selection
+  truncates forward entries.
 - Trail capped, never storage (viewer-design.md §5).
 - Bytes inspector, truncation note, result summary: viewer-design.md §3.
 
@@ -105,7 +106,7 @@ Each `GET /viewer/objects` response applies these deterministic steps:
 | First/previous/next/last pager link | Set bounded offset from matched count | Object-list fragment |
 | Object-row link | Set `selected`, or clear it when the row is already selected; retain legal list state | Inspector fragment or full detail |
 | Reference link | Set `selected` to the referenced digest; page the list to its row | Inspector and object-list fragments |
-| Inspector `‹`/`›` | Move the session trail cursor; set `selected` and `trail=1`; inert when the trail is exhausted | Inspector and object-list fragments |
+| Inspector `‹`/`›` | Move the session trail cursor; set `selected` and `nav=trail`; inert when the trail is exhausted | Inspector and object-list fragments |
 | Inspector panel link | Set `tab`; retain selection/list state and selected-row highlight | Inspector fragment |
 | Verify form | Recompute selected object with injected hasher; store result only in server session | Integrity fragment |
 | Delete form | Perform existing authorized mutation; audit log | Existing result fragment |
@@ -184,7 +185,7 @@ viewer-page
 | Draggable/keyboard splitter | CSS `resize` bounded by `min-width`/`max-width`; no keyboard resize |
 | Clipboard copy | Readonly full-digest field as a single selection target |
 | Reference history and graph | Session-scoped `‹`/`›` visit trail; no graph view |
-| Verify all | Excluded pending an authorized bounded server operation |
+| Verify all | Top-bar sweep: one bounded server operation over the store, bounded per session and cooldown (viewer-design.md §3) |
 | Digest-derived hexdump | Actual bounded object bytes |
 
 ## 7. Invariants
