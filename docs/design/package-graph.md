@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v35
+version: v36
 generated: internal/build/depgraph
 ---
 
@@ -38,6 +38,7 @@ flowchart TD
   end
   subgraph INTERNAL["internal - not importable outside the module"]
     internal_build_bench["internal/build/bench"]
+    internal_build_board["internal/build/board"]
     internal_build_changes["internal/build/changes"]
     internal_build_claim["internal/build/claim"]
     internal_build_coverage["internal/build/coverage"]
@@ -192,6 +193,7 @@ flowchart TD
   cas_verify_crc64 --> cas_hash
   cas_verify_sidecar --> cas
   cmd_buildtool --> internal_build_bench
+  cmd_buildtool --> internal_build_board
   cmd_buildtool --> internal_build_changes
   cmd_buildtool --> internal_build_claim
   cmd_buildtool --> internal_build_coverage
@@ -279,7 +281,7 @@ flowchart TD
   internal_web --> internal_index
 
   classDef leaf fill:#eef7ee,stroke:#4a7c59,color:#12321c
-  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_build_bench,internal_build_changes,internal_build_claim,internal_build_coverage,internal_build_deps,internal_build_docs,internal_build_examples,internal_build_gate,internal_build_lane,internal_build_layers,internal_build_receipt,internal_build_release,internal_build_taskstate,internal_build_toolchain,internal_build_verify,internal_build_website,internal_build_worktree,internal_design leaf
+  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_build_bench,internal_build_board,internal_build_changes,internal_build_claim,internal_build_coverage,internal_build_deps,internal_build_docs,internal_build_examples,internal_build_gate,internal_build_lane,internal_build_layers,internal_build_receipt,internal_build_release,internal_build_taskstate,internal_build_toolchain,internal_build_verify,internal_build_website,internal_build_worktree,internal_design leaf
 ```
 
 ## Layers

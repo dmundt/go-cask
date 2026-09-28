@@ -28,6 +28,9 @@ an exit status a gate step can act on.
 | `pre-push` | the mechanical landing rule a push must satisfy, and the advisory-slot note; the rules are `internal/build/gate`'s |
 | `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses. `add` refuses (exit 3) when the fetch fails, so no worktree is based on a stale `origin/main`; `--allow-stale` accepts it deliberately, and the `worktree ready:` line names the full base commit |
 | `task-status` | which branches carry work no pull request tracks: one line per branch against the base ref, then the branches worth acting on. It reads git, one `gh pr list` and the worktree list; it reports and always exits 0 |
+| `board` | the coordinator's one view of many landings: every open issue with its lane claim, holder, worktree, the pull request behind it, whether its head is gated evidence, and the one next action. The claim is `pr-lane`'s protocol read once per lane; the evidence is the clone ledger and a receipt, both required (`internal/build/board`) |
+| `collisions` | the file-overlap matrix over the lanes in flight, from each worktree's `git merge-base` and `git diff --unified=0`, with the serialization points two lanes cannot share flagged apart from ordinary overlap. A shared file with no intersecting line span is reported as that, because it may still merge cleanly |
+| `verify-landing` | the six checks that prove a landing, each read from its own authority: `gh pr view` for the merge and the citation, `gh issue view` for the closed issue, the merge commit's file list for the scope and the scope's own issue body, `git verify-commit` and `refs/gate/<sha>` for the evidence, `git worktree list` for the removal. Takes an issue or a pull request; exit 1 when a line does not hold |
 | `codec-guards` | that `gitlike` and `cas/pack` do not reach the codec layer transitively |
 | `module-graph` | that `go list -m` names this module as the main one |
 | `dep-graph` | that the committed package graph is current; `--write` is the only mode that touches the file |
@@ -39,6 +42,9 @@ an exit status a gate step can act on.
 go run ./cmd/buildtool layer-matrix
 go run ./cmd/buildtool dep-graph --write
 go run ./cmd/buildtool release --tag v1.3.0 --dry-run
+go run ./cmd/buildtool board
+go run ./cmd/buildtool collisions
+go run ./cmd/buildtool verify-landing 438
 ```
 
 ## Exit status

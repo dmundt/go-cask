@@ -117,6 +117,17 @@ commands:
   task-status          report which branches carry work no pull request tracks: one
                        line per branch against the base ref, then the branches worth
                        acting on
+  board                the coordinator's one view of many landings: every open issue
+                       with its lane claim, holder, worktree, the pull request behind
+                       it, whether its head is gated evidence, and the one next action
+  collisions           the file-overlap matrix over the lanes in flight, from each
+                       worktree's diff against its merge base, with the serialization
+                       points two lanes cannot share flagged apart from ordinary
+                       overlap (coordination.md §4)
+  verify-landing       the six checks that prove a landing, each read from its own
+                       authority: the merge, the closed issue, the scope, the docs, the
+                       signature and the published receipt, the released lane
+                       (coordination.md §6)
   module-graph         check that go list -m reports this module as the main one
   version-fields       report versioned files whose frontmatter version: did not
                        move with the change (docs/AGENT.md); --base <rev> required,
@@ -208,6 +219,12 @@ func run(args []string, out, errOut io.Writer) error {
 		return runWorktree(args[1:], out, errOut)
 	case "task-status":
 		return runTaskStatus(args[1:], out, errOut)
+	case "board":
+		return runBoard(args[1:], out, errOut)
+	case "collisions":
+		return runCollisions(args[1:], out, errOut)
+	case "verify-landing":
+		return runVerifyLanding(args[1:], out, errOut)
 	case "module-graph":
 		return runModuleGraph(args[1:], out, errOut)
 	case "version-fields":

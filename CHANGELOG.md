@@ -10,6 +10,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The coordinator's mechanical work is three commands. `go run ./cmd/buildtool board`
+  prints every open issue with its lane claim, holder, worktree, the pull request behind
+  it, whether its head is gated evidence — the clone ledger *and* a receipt, both — and
+  the one next action. `collisions` computes the file overlap between the lanes in flight
+  from each worktree's diff against its merge base, and reports the serialization points
+  a wave may only touch once apart from ordinary overlap. `verify-landing <issue|pr>` runs
+  the six landing checks, each read from its own authority (`gh`, the merged file list,
+  `git verify-commit`, `refs/gate/<sha>`, `git worktree list`), so a landing is proven
+  rather than reported.
 - The gate runs a pinned static analyzer. `go run ./cmd/buildtool lint` installs
   `golangci-lint` at the release `internal/build/policy` pins when the binary on `PATH` is
   not that release, and runs it over the module against a committed `.golangci.yml`:

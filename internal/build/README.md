@@ -2,7 +2,7 @@
 type: Guide
 title: build — go-cask
 description: The gate's build decisions — engine checks, go-cask policy for them — plus layout, commands, and where a new check goes.
-version: v10
+version: v11
 ---
 
 # build
@@ -40,6 +40,7 @@ The gate's build decisions. One module, two parts:
 | [`versioning/`](./versioning/README.md) | frontmatter `version:` rule for changed files |
 | [`release/`](./release/README.md) | changelog sections → GitHub release notes; publish guards |
 | [`taskstate/`](./taskstate/README.md) | which branches carry work no pull request tracks |
+| [`board/`](./board/README.md) | the coordinator's readings: the board, the file-overlap matrix, the six landing checks |
 | [`bench/`](./bench/README.md) | benchmark capture naming; which capture a fresh run compares against |
 | [`examples/`](./examples/README.md) | which example programs a runner executes; which it never runs |
 | `policy/` | [go-cask tables + prose](./policy/README.md) for the engine |
