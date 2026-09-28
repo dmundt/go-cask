@@ -55,7 +55,7 @@ version: v54
 | `Prune` dry-run default | `true` (delete needs explicit flag) | consistency §5 |
 | `clean` default min-age | 24 h | cli §2 |
 | Object age source | file mtime ≈ first-`Put` time | consistency §5 |
-| Bloom filter ceiling | `bloom.MaxBits = 1<<32` bits per filter — a standard/persistent bitmap 512 MiB, a counting filter 2 GiB (32-bit counter per slot); shard the key space rather than raise it | `cas/bloom/common.go` (no spec states this ceiling yet) |
+| Bloom filter ceiling | `bloom.MaxBits = 1<<32` bits per filter — a standard/persistent bitmap 512 MiB; a counting filter packs its counters to `CounterBits` (`m*CounterBits/8` bytes) and is capped at `counting.MaxCounterBytes = bloom.MaxBits/2` = 2 GiB, past which `counting.New` reports `ErrFilterTooLarge`; shard the key space rather than raise it | `cas/bloom/common.go` (no spec states this ceiling yet) |
 | Recorded sidecar checksums | off by default — no record unless a caller wraps a backend with `sidecar.New(..., WithChecksum(algo, hasher))`; the checksum covers the stored bytes, written after the object is published | operations §6 |
 | Sidecar record directory | `<base>/.meta`; `<base>` is the backend's `BasePath()` (`fs`: the path passed to `fs.New`; `packfs`: loose tree `<base>/loose`) | operations §6 |
 | Sidecar record version | `1` (`sidecar.RecordVersion`); any other version reads as `cas.ErrCorrupt` | operations §6 |
