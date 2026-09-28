@@ -31,15 +31,19 @@ reader to open `AGENTS.md` to understand how to use the library.
 
 ## Before you submit a change
 
-Run the project verification gate (Bash — Git Bash or WSL on Windows):
+Run the project verification gate (Git Bash or WSL on Windows):
 
 ```bash
 bash ./scripts/verify.sh
 ```
 
-This runs `gofmt`, `go mod tidy` drift checks, `go vet`, import-boundary
-checks, `govulncheck`, and the test suite with race detection and per-package
-coverage — the same gate CI runs on every push and pull request.
+`scripts/verify.sh` is the gate's name, not its implementation: it resolves the
+toolchain and runs `cmd/gate verify`, which performs the formatting and
+`go mod tidy` drift checks, the build and cross-builds, `go vet`, the
+import-boundary and codec-guard checks, the pinned linter and `govulncheck`, the
+race suite with per-package coverage, the fuzz smoke, and the documentation,
+package-graph and website steps — the same gate CI runs on every push and pull
+request.
 
 ## Good contributions
 
