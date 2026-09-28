@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v58
+version: v59
 ---
 
 # Library Design — go-cask
@@ -116,7 +116,7 @@ var (
 
 - No hash registry, no algorithm table: the core names no algorithm and implements none. A `Digest` is raw bytes; the client injects a `cas.Hasher` (`cas/hash/sha256` ships the default).
 - Preferred: `Store[T]` takes its hasher explicitly — `New[T](raw, codec, hasher)` stores the client's choice; nothing is resolved at construction.
-- No other package-level mutable state in `cas`.
+- No other package-level mutable state in `cas` — one recorded exception (go-cask#378, go-cask#470): `cas/codec/internal/bounded`'s `WriterPool`/`ReaderPool`, parked by `cas/codec/{gzip,zlib,flate}`, because `performance.md` §4 requires pooled scratch and a flate-family writer costs ~1.1 MB to build (`WriterPool`, `cas/codec/internal/bounded/pool.go`). The exception is the pool, not state it may carry: scratch only, never a cached object's bytes or any configuration a call can observe, and a writer or reader whose call failed is dropped, never parked.
 
 ## 4. API shape rules
 
