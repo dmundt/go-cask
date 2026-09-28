@@ -710,6 +710,54 @@ func TestClaimForGateIsTheGatesOwnAcquisition(t *testing.T) {
 	}
 }
 
+// TestGateSlotForAcquiresAndReleasesTheRealSlot pins the production gateSlot against a real
+// repository, which is the half a fake cannot prove: `resolveLandLane` reads the shared git
+// dir, the claim writes the record and this worktree's token, the holder is readable while the
+// run holds it, and the release frees it again — so the next run in the clone finds a free
+// slot rather than a stale holder's (go-cask#486).
+func TestGateSlotForAcquiresAndReleasesTheRealSlot(t *testing.T) {
+	root, _ := hookRepo(t)
+	t.Chdir(root)
+
+	slot := gateSlotFor()
+	t.Cleanup(func() { _ = slot.release() })
+	if err := slot.resolve("verify /test-slot abc1234"); err != nil {
+		t.Fatalf("resolving the real slot: %v", err)
+	}
+	if slot.held() {
+		t.Fatal("a fresh slot reported as already held")
+	}
+	claim, err := slot.claim(false, true)
+	if err != nil {
+		t.Fatalf("claiming a free slot: %v", err)
+	}
+	if !claim.held {
+		t.Fatalf("claiming a free slot = %+v, want it taken", claim)
+	}
+	holder := slot.holder()
+	if holder == nil || holder.Label != "verify /test-slot abc1234" {
+		t.Fatalf("the slot holds %+v, want this run's own record", holder)
+	}
+	if !slot.held() {
+		t.Error("the slot does not report itself held after the claim")
+	}
+
+	if err := slot.release(); err != nil {
+		t.Fatalf("releasing the slot: %v", err)
+	}
+	if holder := slot.holder(); holder != nil {
+		t.Errorf("the slot still holds %+v after the release", holder)
+	}
+	// The whole point: the next run takes it rather than waiting out a dead holder's window.
+	second, err := slot.claim(false, true)
+	if err != nil {
+		t.Fatalf("claiming after the release: %v", err)
+	}
+	if !second.held {
+		t.Errorf("the released slot was not free for the next run: %+v", second)
+	}
+}
+
 // TestGateSlotBudgetsAreOrdered pins the two budgets that bound the gate's wait: a retry is
 // short because it is for a slot mid-write, and the poll is slower because a wait may last
 // minutes, and polling a core for the whole wait is not a queue.

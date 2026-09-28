@@ -99,7 +99,8 @@ func (s *gateLaneSlot) held() bool {
 	if s.lane == nil {
 		return false
 	}
-	return s.lane.holds(*s.lane.readSafe())
+	holder := s.lane.readSafe()
+	return holder != nil && s.lane.holds(*holder)
 }
 
 // gateClaim is what one non-blocking attempt at the slot produced: whether this process
