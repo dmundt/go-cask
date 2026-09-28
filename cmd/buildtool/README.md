@@ -10,7 +10,7 @@ an exit status a gate step can act on.
 
 | Command | Decides |
 |---|---|
-| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/verify` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. `scripts/verify.sh` is this command's name for the gate |
+| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/verify` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. The whole run holds the clone's local advisory slot (exit 3 when a live holder is still there after the bounded wait; `--slot=takeover` takes any holder's). `scripts/verify.sh` is this command's name for the gate |
 | `layer-matrix` | every package's imports against the layer table |
 | `coverage-tier` | that every `cas/` package carries a tier or a written exemption; `--list` prints the gate's measurement table |
 | `coverage-check` | the thresholds, reading one `threshold\|package\|measured` line per package from stdin — the gate collects the measurements, this decides |
@@ -26,7 +26,7 @@ an exit status a gate step can act on.
 | `land-lane` | the local advisory slot: its `status`/`whoami`/`acquire`/`renew`/`release` verbs, its idle-time staleness rule and the takeover record an eviction leaves |
 | `pr-lane` | the server-side lane: its `claim`/`check`/`status`/`release`/`whoami` verbs, the ref that is the compare-and-swap, the open pull request that is the lease, and the claim window past which a claim with no pull request is taken over; the verdict is `internal/build/claim`'s |
 | `pre-push` | the mechanical landing rule a push must satisfy, and the advisory-slot note; the rules are `internal/build/gate`'s |
-| `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses |
+| `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses. `add` refuses (exit 3) when the fetch fails, so no worktree is based on a stale `origin/main`; `--allow-stale` accepts it deliberately, and the `worktree ready:` line names the full base commit |
 | `task-status` | which branches carry work no pull request tracks: one line per branch against the base ref, then the branches worth acting on. It reads git, one `gh pr list` and the worktree list; it reports and always exits 0 |
 | `codec-guards` | that `gitlike` and `cas/pack` do not reach the codec layer transitively |
 | `module-graph` | that `go list -m` names this module as the main one |
@@ -54,7 +54,8 @@ go run ./cmd/buildtool release --tag v1.3.0 --dry-run
   registered nowhere, a worktree with uncommitted changes, or one it could not remove. The
   invocation was well formed and no rule failed, so the command says so with its own status
   instead of a success line, and a caller that scripts it can tell "nothing to remove" from
-  "removed".
+  "removed". `verify` carries it too when the clone's advisory slot is still another run's
+  after the bounded wait: no step ran, so it is not a verdict on the tree.
 
 A command that prints a list prints only the list on stdout, so a gate can capture it in a
 command substitution — `version-fields`, `coverage-tier --list` and `scope --rule` are the

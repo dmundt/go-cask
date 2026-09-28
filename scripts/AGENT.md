@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v26
+version: v27
 ---
 
 # Agent instructions — `scripts/`
@@ -82,6 +82,12 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
 - **Local ADVISORY slot** = `go run ./cmd/buildtool land-lane`: one slot in the shared git dir
   keeping two gate runs in one clone from overlapping; records and decisions
   `internal/build/lane`; not a condition for pushing.
+- **`verify` holds that slot for its whole run**, so the record's pid lives as long as the
+  run and no caller has to remember it: a second run waits (bounded by
+  `LAND_LANE_WAIT_SECONDS`), says what it is waiting for, and refuses with exit 3 — never a
+  red gate — when the holder is still there. A holder whose process is provably gone is
+  taken over, and `--slot=takeover` takes any holder's slot. A step killed by a signal
+  prints the signal, the concurrent `verify` count and the advice to hold the slot.
 - **Stamp** = `internal/build/gate`. `.githooks/pre-push` (shim over
   `go run ./cmd/buildtool pre-push`) refuses a push whose HEAD holds no stamp for that exact
   commit — the one hard local rule; re-pushing an unchanged commit is free, and the hook never
@@ -133,6 +139,9 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   `hotfix` from `release/vX.Y` ([`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md)
   §3, [`docs/specs/landing.md`](../docs/specs/landing.md) §2). Link, admin directory, lock:
   `internal/build/worktree`, pinned by `cmd/buildtool/worktree_test.go`.
+- **A failed fetch refuses `worktree add`** (exit 3): a warning let a session start from a stale
+  `origin/main`, and nothing downstream catches that base. `--allow-stale` is the deliberate
+  opt-in; the `worktree ready:` line names the base's full commit id.
 - **A destructive verb reports success only on evidence.**
   `go run ./cmd/buildtool worktree remove <task>` exits 3 when it removed nothing (unregistered
   name, or half a worktree left behind) and says which; `os.RemoveAll` returns nil for a missing
