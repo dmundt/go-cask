@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/worktree"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/worktree"
 )
 
 // worktreeFixture builds a repository with a bare `origin` holding one commit, so

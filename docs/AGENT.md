@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, the per-file instruction budget, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v22
+version: v23
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -73,7 +73,7 @@ viewer mockup; it MUST NOT be copied into a `.md` file.
 
 An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into context while an agent works in the tree it governs, so its bytes are a recurring cost. It routes; it does not specify.
 
-- **Every instruction file has a byte ceiling**, in `internal/build/policy`'s `InstructionBudgets` table: `internal/build/core/docs` measures each file against it and `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just above the file's size when the ceiling was added — room for a rule or two, none to grow into a specification. Raising one is a deliberate policy change in the change that needs it, never the fix for a failure.
+- **Every instruction file has a byte ceiling**, in `internal/build/policy`'s `InstructionBudgets` table: `internal/build/docs` measures each file against it and `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just above the file's size when the ceiling was added — room for a rule or two, none to grow into a specification. Raising one is a deliberate policy change in the change that needs it, never the fix for a failure.
 - Root `AGENTS.md` MUST stay **≤ 6 KiB**: read at the start of every session whatever the change, it is a router and MUST sit far below its ceiling — a ceiling, never a target to fill.
 - A rule belongs to exactly one owning file; the router names that file and section. An instruction file carries no prose, no rationale, no restated rule, no duplicated diagram, table row or code example — moving a block out means moving its content to the owner, never deleting it. Narration that states no rule (a past port, a dated incident, a status aside) is removed, and a rule its owner already states becomes a pointer.
 - The facts that make a file discoverable stay routed, not restated: the path→spec mapping is [`index.md`](index.md) and the tree list is [`../README.md`](../README.md) "Repository layout". Route through those instead of growing either into a second inventory.
@@ -106,7 +106,7 @@ Go examples in these docs MUST name constructors per `coding-guidelines.md` §1:
 
 Before committing any change to a file in `docs/` (outside `docs/specs/`):
 - [ ] OKF frontmatter present (`type`, `title`, `description`, `version`; `okf_version: "0.2"` for indexes) — on every `AGENT.md` too, not only files under `docs/` (§1.1)
-- [x] `version` bumped on material change — enforced by `internal/build/core/versioning` from `verify.sh` (it detects a missing bump, not a cosmetic one)
+- [x] `version` bumped on material change — enforced by `internal/build/versioning` from `verify.sh` (it detects a missing bump, not a cosmetic one)
 - [ ] No duplication — check `defaults.md` and owning specs first
 - [ ] Cross-references updated in ALL files mentioning the changed term
 - [ ] Ampersand used only where required by code, literal symbol text, or diagram syntax

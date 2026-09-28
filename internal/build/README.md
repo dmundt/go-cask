@@ -1,58 +1,60 @@
 ---
 type: Guide
 title: build — go-cask
-description: The gate's build decisions — engine module, go-cask policy for it — plus layout, commands, and where a new check goes.
-version: v8
+description: The gate's build decisions — engine checks, go-cask policy for them — plus layout, commands, and where a new check goes.
+version: v9
 ---
 
 # build
 
-The gate's build decisions. Two parts, separate:
+The gate's build decisions. Two parts, one module:
 
-- **[core](./core/README.md)** — build engine; *separate Go module*; own `go.mod`; no
-  dependency beyond stdlib; versioned on its own. Reusable half: checks only, every table
-  a parameter.
+- **engine** — the checks, one package each; every table a parameter. Names no repository:
+  no `cas/`, no `gitlike/`, no coverage tier.
 - **policy** ([`./policy/README.md`](./policy/README.md)) — go-cask's answers: layer
   matrix, coverage tiers, codec guards, inventory tables, footer contract, change-set
-  classification, package-graph prose. Not reusable; another repository writes its own.
+  classification, package-graph prose.
 
 `cmd/buildtool` wires engine + go-cask tables → gate step = one
 `go run ./cmd/buildtool <command>` call. Command list, exit-status contract:
 [`cmd/buildtool/README.md`](../../cmd/buildtool/README.md).
 
-## Why a separate module
-
-Serves a second repository. Boundary makes it fact, not intention: engine cannot reach
-`cas/`, `gitlike/`, `cmd/`; no inherited dependency; tagged and consumed alone.
-
-Root module reaches it via `require` + local-path `replace`. Engine becomes own repository
-→ only that line changes.
-
 ## Layout
 
 | Path | What it is |
 |---|---|
-| [`core/`](./core/README.md) | engine module — eighteen packages, stdlib only |
-| [`core/changes/`](./core/changes/README.md) | change-set classification: docs-only, Go, security-relevant, website |
-| [`core/gate/`](./core/gate/README.md) | gate stamp: verified-commit ledger the pre-push hook reads |
-| [`core/lane/`](./core/lane/README.md) | landing-lane records: advisory slot, identity, staleness |
-| [`core/claim/`](./core/claim/README.md) | server-side lane: coordination ref, issue/branch matching, the shared verdict |
-| [`core/verify/`](./core/verify/README.md) | what a gate run covers, how many packages it builds at once, whether an escape hatch dropped a step |
-| [`core/receipt/`](./core/receipt/README.md) | the gate receipt's format: parse, render, check-name rule, the evidence identity, the canonical changed-path list |
-| [`core/worktree/`](./core/worktree/README.md) | relative `.git` link a linked worktree needs; lock protecting it |
-| [`core/toolchain/`](./core/toolchain/README.md) | where an installed tool lands; whether it is the pinned release |
-| [`core/layers/`](./core/layers/README.md) | dependency-layer check: arm table + allowed imports |
-| [`core/coverage/`](./core/coverage/README.md) | coverage policy: tiers, thresholds, exemptions, measurement decision |
-| [`core/docs/`](./core/docs/README.md) | Markdown integrity: raw HTML, forbidden fences, dead links, mermaid balance, frontmatter, changelog structure |
-| [`core/website/`](./core/website/README.md) | published site: Go fences materialized + built, inventory tables vs tree, one-line footer |
-| [`core/deps/`](./core/deps/README.md) | forbidden transitive dependencies; well-formed module graph |
-| [`core/depgraph/`](./core/depgraph/README.md) | local package graph as committed Mermaid document |
-| [`core/versioning/`](./core/versioning/README.md) | frontmatter `version:` rule for changed files |
-| [`core/release/`](./core/release/README.md) | changelog sections → GitHub release notes; publish guards |
-| [`core/taskstate/`](./core/taskstate/README.md) | which branches carry work no pull request tracks |
-| [`core/bench/`](./core/bench/README.md) | benchmark capture naming; which capture a fresh run compares against |
-| [`core/examples/`](./core/examples/README.md) | which example programs a runner executes; which it never runs |
+| [`changes/`](./changes/README.md) | change-set classification: docs-only, Go, security-relevant, website |
+| [`gate/`](./gate/README.md) | gate stamp: verified-commit ledger the pre-push hook reads |
+| [`lane/`](./lane/README.md) | landing-lane records: advisory slot, identity, staleness |
+| [`claim/`](./claim/README.md) | server-side lane: coordination ref, issue/branch matching, the shared verdict |
+| [`verify/`](./verify/README.md) | what a gate run covers, how many packages it builds at once, whether an escape hatch dropped a step |
+| [`receipt/`](./receipt/README.md) | the gate receipt's format: parse, render, check-name rule, the evidence identity, the canonical changed-path list |
+| [`worktree/`](./worktree/README.md) | relative `.git` link a linked worktree needs; lock protecting it |
+| [`toolchain/`](./toolchain/README.md) | where an installed tool lands; whether it is the pinned release |
+| [`layers/`](./layers/README.md) | dependency-layer check: arm table + allowed imports |
+| [`coverage/`](./coverage/README.md) | coverage policy: tiers, thresholds, exemptions, measurement decision |
+| [`docs/`](./docs/README.md) | Markdown integrity: raw HTML, forbidden fences, dead links, mermaid balance, frontmatter, changelog structure |
+| [`website/`](./website/README.md) | published site: Go fences materialized + built, inventory tables vs tree, one-line footer |
+| [`deps/`](./deps/README.md) | forbidden transitive dependencies; well-formed module graph |
+| [`depgraph/`](./depgraph/README.md) | local package graph as committed Mermaid document |
+| [`versioning/`](./versioning/README.md) | frontmatter `version:` rule for changed files |
+| [`release/`](./release/README.md) | changelog sections → GitHub release notes; publish guards |
+| [`taskstate/`](./taskstate/README.md) | which branches carry work no pull request tracks |
+| [`bench/`](./bench/README.md) | benchmark capture naming; which capture a fresh run compares against |
+| [`examples/`](./examples/README.md) | which example programs a runner executes; which it never runs |
 | `policy/` | [go-cask tables + prose](./policy/README.md) for the engine |
+
+## Shape
+
+Same split per package:
+
+- **rule = pure function over caller data** — package list, file list, changelog text,
+  policy table;
+- **caller reads the world** — `go list`, `git`, filesystem, `gh`;
+- **the engine ships no table, path, prose** — those are one repository's answers.
+
+→ A check is testable without a repository, and the engine cannot acquire go-cask's opinions
+by accident.
 
 ## Commands
 
@@ -77,25 +79,25 @@ go run ./cmd/buildtool release --tag <tag> [--from <prev>] [--publish]
 
 ## Adding a check
 
-1. Rule → `core/`: pure function over caller data; stdlib only; ships no table, path, prose.
+1. Rule → its own package here: pure function over caller data; ships no table, path, prose.
 2. go-cask's answer → `policy/`.
-3. `buildtool` subcommand: reads repository (`go list`, file list, git call), calls engine.
+3. `buildtool` subcommand: reads repository (`go list`, file list, git call), calls the rule.
 4. Call from the gate's step list in `cmd/buildtool verify` (one command per step, no rule
    of its own). Nothing calls the step list by name: `scripts/verify.sh` is the gate's
    entry point and starts it.
-5. Table test in `core/`; reads real repository state → also one in `policy/` vs real tree.
+5. Table test beside the rule; reads real repository state → also one in `policy/` vs tree.
 6. New package? `go run ./cmd/buildtool dep-graph --write`. The committed graph lists every
    package in the module and the gate pins it byte-for-byte, so a package added without this
    step fails `TestGraphDocRendersTheCommittedDocument` — and only after a whole gate run.
 
 ## Testing
 
-Separate modules → separate commands:
+One module → one command:
 
 ```bash
-(cd internal/build/core && go test ./...)   # the engine
-go test ./internal/build/policy/            # this repository's policy
+go test ./internal/build/...   # the engine and this repository's policy
 ```
 
-Root `./...` skips the engine (nested module) → gate names it in its
-`build engine module` step. Engine check without that step → runs nowhere.
+Root `./...` reaches every package here, so the gate's race suite covers the engine with no
+step of its own. Smoke-fuzz targets are `policy.Verify().Fuzz`; a fuzzer failure kept in
+`<package>/testdata/fuzz/` re-runs as an ordinary test.

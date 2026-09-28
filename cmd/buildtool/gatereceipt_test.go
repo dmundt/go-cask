@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/receipt"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/receipt"
 )
 
 // gateReceiptShared is one throwaway signing identity for this whole test binary.
@@ -259,12 +259,6 @@ func (f *gateReceiptFixture) verify(sha, tree string, extra ...string) (string, 
 	args := append([]string{"verify", "--sha", sha, "--tree", tree, "--base", f.base,
 		"--signers", filepath.Join(f.work, "allow-trusted")}, extra...)
 	return f.run(args...)
-}
-
-// readRef is the text of an object in the fixture repository.
-func (f *gateReceiptFixture) readRef(ref string) string {
-	f.t.Helper()
-	return f.git("cat-file", "commit", ref)
 }
 
 // receipt is the local receipt file for a commit, as this clone wrote it.

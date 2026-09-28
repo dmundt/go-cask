@@ -1,49 +1,9 @@
 package coverage
 
 import (
-	"os/exec"
 	"strings"
 	"testing"
 )
-
-// modulePath reads the module path, so a package can be named by its import path
-// rather than a "./"-relative one: go list resolves an import path from any
-// working directory, while a relative path is resolved against the test's own
-// directory and would point at nothing.
-func modulePath(t *testing.T) string {
-	t.Helper()
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Path}}").Output()
-	if err != nil {
-		t.Fatalf("go list -m: %v", err)
-	}
-	path := strings.TrimSpace(string(out))
-	if path == "" {
-		t.Fatal("go list -m reported an empty module path")
-	}
-	return path
-}
-
-// casPackages asks Go for the packages under cas/, which is the tree the policy
-// is total over. The test needs the real list: the whole point of the drift check
-// is to compare the policy against what the module actually contains.
-func casPackages(t *testing.T) []string {
-	t.Helper()
-	pattern := modulePath(t) + "/cas/..."
-	out, err := exec.Command("go", "list", pattern).Output()
-	if err != nil {
-		t.Fatalf("go list %s: %v", pattern, err)
-	}
-	var packages []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			packages = append(packages, line)
-		}
-	}
-	if len(packages) == 0 {
-		t.Fatalf("go list %s reported no packages, so this test would prove nothing", pattern)
-	}
-	return packages
-}
 
 // TestStripModule pins the boundary between Go's import paths and the policy's
 // module-relative ones: getting it wrong reports every package as uncovered, and

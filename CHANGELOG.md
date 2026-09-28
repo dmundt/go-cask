@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The gate runs a pinned static analyzer. `go run ./cmd/buildtool lint` installs
+  `golangci-lint` at the release `internal/build/policy` pins when the binary on `PATH` is
+  not that release, and runs it over the module against a committed `.golangci.yml`:
+  `depguard` (mirroring the layer matrix and the codec guards, which keep their own checks),
+  `errorlint`, `ineffassign`, `staticcheck`'s correctness checks and `unused`.
+  `GOLANGCI_LINT_VERSION` overrides the pin for one run; `VERIFY_SKIP_LINT` drops the gate's
+  `lint` step.
 - Every `AGENT.md` in the repository now carries the same frontmatter —
   `type`, `title` (identical to its H1), one-line `description` and a `version`
   that moves on a material change — so a reader of a package-local guide can
@@ -156,10 +163,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The build engine is no longer a separate Go module. `internal/build/core` is flattened
+  into `internal/build`, so `go build ./...`, `go vet ./...`, `go test -race ./...`,
+  `gofmt -l .` and `go mod tidy` reach every engine package with no step of the gate's own:
+  `policy.Verify()` loses `EngineDir`, the gate loses its `build engine module` step, and a
+  smoke-fuzz target no longer has to say which module it lives in. Nothing the library, the
+  CLI, the viewer or the on-disk format does changes.
 - The repository's verification gate is Go. `./scripts/verify.sh` keeps its name and its
   verdict — it resolves the toolchain and runs `go run ./cmd/buildtool verify` — and every
   step it used to hold in bash runs from there: formatting, module drift, build, vet, the
-  engine module's own suite, the layer matrix, the codec guards, the security scan, the
+  static analyzer, the layer matrix, the codec guards, the security scan, the
   coverage tiers, the race suite and the fuzz smoke, followed by the documentation steps.
   `VERIFY_SCOPE`, `VERIFY_JOBS` and the `VERIFY_SKIP_*` options are unchanged, and so is
   the rule that a run which skipped a step writes no gate stamp. Two fixes came with the

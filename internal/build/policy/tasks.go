@@ -4,7 +4,7 @@ package policy
 //
 // It is go-cask's answer, not the engine's: another repository measures against another ref and
 // lists a different number of pull requests. The rules that turn those readings into findings
-// are internal/build/core/taskstate's.
+// are internal/build/taskstate's.
 type TaskTable struct {
 	// Base is the ref a branch is measured against, and the one that decides whether its
 	// commits are landed. It is the same remote-tracking ref the task worktrees are created

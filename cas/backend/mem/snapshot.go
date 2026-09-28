@@ -169,7 +169,7 @@ func (m *Backend) Restore(ctx context.Context, r io.Reader) error {
 	if n != 0 {
 		return errors.New("mem: snapshot trailing data")
 	}
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		if err == nil {
 			return errors.New("mem: snapshot trailing data")
 		}

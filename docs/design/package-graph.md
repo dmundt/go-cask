@@ -1,9 +1,9 @@
 ---
 type: Design Document
 title: Package Dependency Graph — go-cask
-description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/core/depgraph.
-version: v26
-generated: internal/build/core/depgraph
+description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
+version: v29
+generated: internal/build/depgraph
 ---
 
 # Package Dependency Graph — go-cask
@@ -13,7 +13,7 @@ edge points from the importing package to the package it imports, so the
 applications sit at the top and `cas` — which imports no local package at all —
 sits at the bottom.
 
-The diagram is generated from `go list` by `internal/build/core/depgraph`; edit that
+The diagram is generated from `go list` by `internal/build/depgraph`; edit that
 package, not this file. Only production imports are drawn: imports that appear
 solely in `_test.go` files are excluded and the standard library is not drawn, so
 this is the consumer-visible build graph. The local package and edge sets do not
@@ -37,26 +37,26 @@ flowchart TD
     gitlike["gitlike"]
   end
   subgraph INTERNAL["internal - not importable outside the module"]
-    internal_build_core_bench["internal/build/core/bench"]
-    internal_build_core_changes["internal/build/core/changes"]
-    internal_build_core_claim["internal/build/core/claim"]
-    internal_build_core_coverage["internal/build/core/coverage"]
-    internal_build_core_depgraph["internal/build/core/depgraph"]
-    internal_build_core_deps["internal/build/core/deps"]
-    internal_build_core_docs["internal/build/core/docs"]
-    internal_build_core_examples["internal/build/core/examples"]
-    internal_build_core_gate["internal/build/core/gate"]
-    internal_build_core_lane["internal/build/core/lane"]
-    internal_build_core_layers["internal/build/core/layers"]
-    internal_build_core_receipt["internal/build/core/receipt"]
-    internal_build_core_release["internal/build/core/release"]
-    internal_build_core_taskstate["internal/build/core/taskstate"]
-    internal_build_core_toolchain["internal/build/core/toolchain"]
-    internal_build_core_verify["internal/build/core/verify"]
-    internal_build_core_versioning["internal/build/core/versioning"]
-    internal_build_core_website["internal/build/core/website"]
-    internal_build_core_worktree["internal/build/core/worktree"]
+    internal_build_bench["internal/build/bench"]
+    internal_build_changes["internal/build/changes"]
+    internal_build_claim["internal/build/claim"]
+    internal_build_coverage["internal/build/coverage"]
+    internal_build_depgraph["internal/build/depgraph"]
+    internal_build_deps["internal/build/deps"]
+    internal_build_docs["internal/build/docs"]
+    internal_build_examples["internal/build/examples"]
+    internal_build_gate["internal/build/gate"]
+    internal_build_lane["internal/build/lane"]
+    internal_build_layers["internal/build/layers"]
     internal_build_policy["internal/build/policy"]
+    internal_build_receipt["internal/build/receipt"]
+    internal_build_release["internal/build/release"]
+    internal_build_taskstate["internal/build/taskstate"]
+    internal_build_toolchain["internal/build/toolchain"]
+    internal_build_verify["internal/build/verify"]
+    internal_build_versioning["internal/build/versioning"]
+    internal_build_website["internal/build/website"]
+    internal_build_worktree["internal/build/worktree"]
     internal_design["internal/design"]
     internal_index["internal/index"]
     internal_store["internal/store"]
@@ -186,26 +186,26 @@ flowchart TD
   cas_verify_crc64 --> cas
   cas_verify_crc64 --> cas_hash
   cas_verify_sidecar --> cas
-  cmd_buildtool --> internal_build_core_bench
-  cmd_buildtool --> internal_build_core_changes
-  cmd_buildtool --> internal_build_core_claim
-  cmd_buildtool --> internal_build_core_coverage
-  cmd_buildtool --> internal_build_core_depgraph
-  cmd_buildtool --> internal_build_core_deps
-  cmd_buildtool --> internal_build_core_docs
-  cmd_buildtool --> internal_build_core_examples
-  cmd_buildtool --> internal_build_core_gate
-  cmd_buildtool --> internal_build_core_lane
-  cmd_buildtool --> internal_build_core_layers
-  cmd_buildtool --> internal_build_core_receipt
-  cmd_buildtool --> internal_build_core_release
-  cmd_buildtool --> internal_build_core_taskstate
-  cmd_buildtool --> internal_build_core_toolchain
-  cmd_buildtool --> internal_build_core_verify
-  cmd_buildtool --> internal_build_core_versioning
-  cmd_buildtool --> internal_build_core_website
-  cmd_buildtool --> internal_build_core_worktree
+  cmd_buildtool --> internal_build_bench
+  cmd_buildtool --> internal_build_changes
+  cmd_buildtool --> internal_build_claim
+  cmd_buildtool --> internal_build_coverage
+  cmd_buildtool --> internal_build_depgraph
+  cmd_buildtool --> internal_build_deps
+  cmd_buildtool --> internal_build_docs
+  cmd_buildtool --> internal_build_examples
+  cmd_buildtool --> internal_build_gate
+  cmd_buildtool --> internal_build_lane
+  cmd_buildtool --> internal_build_layers
   cmd_buildtool --> internal_build_policy
+  cmd_buildtool --> internal_build_receipt
+  cmd_buildtool --> internal_build_release
+  cmd_buildtool --> internal_build_taskstate
+  cmd_buildtool --> internal_build_toolchain
+  cmd_buildtool --> internal_build_verify
+  cmd_buildtool --> internal_build_versioning
+  cmd_buildtool --> internal_build_website
+  cmd_buildtool --> internal_build_worktree
   cmd_cask --> cas
   cmd_cask --> cas_hash
   cmd_cask --> cas_hash_sha256
@@ -251,14 +251,16 @@ flowchart TD
   gitlike --> cas
   gitlike --> cas_cache_lru
   gitlike --> cas_repo
-  internal_build_policy --> internal_build_core_changes
-  internal_build_policy --> internal_build_core_coverage
-  internal_build_policy --> internal_build_core_depgraph
-  internal_build_policy --> internal_build_core_deps
-  internal_build_policy --> internal_build_core_docs
-  internal_build_policy --> internal_build_core_examples
-  internal_build_policy --> internal_build_core_layers
-  internal_build_policy --> internal_build_core_website
+  internal_build_depgraph --> internal_build_docs
+  internal_build_policy --> internal_build_changes
+  internal_build_policy --> internal_build_coverage
+  internal_build_policy --> internal_build_depgraph
+  internal_build_policy --> internal_build_deps
+  internal_build_policy --> internal_build_docs
+  internal_build_policy --> internal_build_examples
+  internal_build_policy --> internal_build_layers
+  internal_build_policy --> internal_build_website
+  internal_build_versioning --> internal_build_docs
   internal_index --> cas
   internal_store --> cas
   internal_store --> cas_backend_fs
@@ -271,7 +273,7 @@ flowchart TD
   internal_web --> internal_index
 
   classDef leaf fill:#eef7ee,stroke:#4a7c59,color:#12321c
-  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_design leaf
+  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_build_bench,internal_build_changes,internal_build_claim,internal_build_coverage,internal_build_deps,internal_build_docs,internal_build_examples,internal_build_gate,internal_build_lane,internal_build_layers,internal_build_receipt,internal_build_release,internal_build_taskstate,internal_build_toolchain,internal_build_verify,internal_build_website,internal_build_worktree,internal_design leaf
 ```
 
 ## Layers

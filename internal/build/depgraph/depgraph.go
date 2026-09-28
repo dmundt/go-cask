@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dmundt/go-cask/internal/build/core/docs"
+	"github.com/dmundt/go-cask/internal/build/docs"
 )
 
 // Package is one package's local import data.

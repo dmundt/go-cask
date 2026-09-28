@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/gate"
-	"github.com/dmundt/go-cask/internal/build/core/lane"
+	"github.com/dmundt/go-cask/internal/build/gate"
+	"github.com/dmundt/go-cask/internal/build/lane"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 

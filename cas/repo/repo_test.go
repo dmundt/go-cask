@@ -437,7 +437,7 @@ func TestLookupStoreUnknownTypeReturnsErrUnknownType(t *testing.T) {
 	if !errors.As(err, &ute) {
 		t.Fatalf("LookupStore error = %v, want an *UnknownTypeError", err)
 	}
-	if ute.Unwrap() != cas.ErrUnknownType {
+	if !errors.Is(ute.Unwrap(), cas.ErrUnknownType) {
 		t.Fatalf("UnknownTypeError.Unwrap() = %v, want cas.ErrUnknownType", ute.Unwrap())
 	}
 	if ute.TypeName != "mystery@1" {

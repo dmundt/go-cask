@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/coverage"
-	"github.com/dmundt/go-cask/internal/build/core/depgraph"
-	"github.com/dmundt/go-cask/internal/build/core/deps"
-	"github.com/dmundt/go-cask/internal/build/core/layers"
-	"github.com/dmundt/go-cask/internal/build/core/website"
+	"github.com/dmundt/go-cask/internal/build/coverage"
+	"github.com/dmundt/go-cask/internal/build/depgraph"
+	"github.com/dmundt/go-cask/internal/build/deps"
+	"github.com/dmundt/go-cask/internal/build/layers"
+	"github.com/dmundt/go-cask/internal/build/website"
 )
 
 // repoRoot resolves the repository root from this source file's package

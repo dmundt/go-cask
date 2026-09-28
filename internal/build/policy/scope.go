@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/dmundt/go-cask/internal/build/core/changes"
+import "github.com/dmundt/go-cask/internal/build/changes"
 
 // WebsitePaths are the paths that require the published site to be built: the
 // website tree itself, and the configuration, dependency and workflow files that

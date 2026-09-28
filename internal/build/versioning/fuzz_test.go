@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/docs"
+	"github.com/dmundt/go-cask/internal/build/docs"
 )
 
 // FuzzField checks the frontmatter reader every changed file is judged by: it never

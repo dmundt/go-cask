@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v55
+version: v56
 ---
 
 # go-cask Rules Index
@@ -38,8 +38,8 @@ version: v55
 | `internal/index/` | [`cas-core.md`](specs/cas-core.md) §4 + [`examples.md`](specs/examples.md) §3.4 |
 | `internal/store/` (backend-selection seam: `Kind`/`ParseKind`/`Open`/`OpenViewer`) | [`backend-architecture.md`](specs/backend-architecture.md) + [`cli.md`](specs/cli.md) |
 | `internal/design/` | [`library-design.md`](specs/library-design.md) §1, §4.5 + [`cas/AGENT.md`](../cas/AGENT.md) + [`cli.md`](specs/cli.md) §3 |
-| `internal/build/core/` | [`internal/build/core/README.md`](../internal/build/core/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) ("the build engine is its own module") |
 | `internal/build/` | [`internal/build/README.md`](../internal/build/README.md) + [`internal/build/AGENT.md`](../internal/build/AGENT.md) + [`library-design.md`](specs/library-design.md) §1.1 + [`testing-strategy.md`](specs/testing-strategy.md) §5 + [`docs/specs/AGENT.md`](specs/AGENT.md) §9 + [`website/AGENT.md`](../website/AGENT.md) + [`cas-core.md`](specs/cas-core.md) §4.12, §7 |
+| `.golangci.yml` | [`coding-guidelines.md`](specs/coding-guidelines.md) §3 (the dependency policy) + [`library-design.md`](specs/library-design.md) §1.1 (the layer matrix its `depguard` block mirrors) + [`internal/build/README.md`](../internal/build/README.md) |
 | `gitlike/` | [`cas-core.md`](specs/cas-core.md) §4.12 + [`library-design.md`](specs/library-design.md) §1, §1.1 |
 | `examples/*` | [`examples.md`](specs/examples.md) §2 + [`library-design.md`](specs/library-design.md) §1.1 |
 | `examples/files/`, `examples/artifacts/`, `examples/notes/`, `examples/api/`, `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3.1–3.4 + [`api-design.md`](specs/api-design.md) (`api`) + [`performance.md`](specs/performance.md) §5.1 (`bloom`) |

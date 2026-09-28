@@ -19,7 +19,7 @@ package versioning
 import (
 	"sort"
 
-	"github.com/dmundt/go-cask/internal/build/core/docs"
+	"github.com/dmundt/go-cask/internal/build/docs"
 )
 
 // Field returns the version a document carries in its frontmatter, or "" when it has

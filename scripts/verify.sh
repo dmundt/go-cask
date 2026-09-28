@@ -3,7 +3,7 @@
 #
 # The step list is not here: it is `go run ./cmd/buildtool verify`, where it has tests and
 # where the decisions behind it — what a run covers, how many packages it builds at once,
-# and whether an escape hatch dropped a step — live in `internal/build/core/verify` with
+# and whether an escape hatch dropped a step — live in `internal/build/verify` with
 # go-cask's answers in `internal/build/policy`. What is left is the reason this file
 # exists at all: `./scripts/verify.sh` is the name CI, `.githooks/pre-push` and the
 # specification set call the gate by, and a name that moved would have to be chased through

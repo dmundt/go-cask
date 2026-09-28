@@ -421,7 +421,6 @@ func TestExportHandlesPartialWritesAndCancellation(t *testing.T) {
 
 func TestExportReportsRecordWriteFailures(t *testing.T) {
 	digest := sha256.Of([]byte("payload"))
-	source := &fakeBackend{digests: []cas.Digest{digest}, get: io.NopCloser(strings.NewReader("payload"))}
 	for _, call := range []int{2, 3, 4} {
 		t.Run(fmt.Sprintf("write-%d", call), func(t *testing.T) {
 			source := &fakeBackend{digests: []cas.Digest{digest}, get: io.NopCloser(strings.NewReader("payload"))}
@@ -431,7 +430,7 @@ func TestExportReportsRecordWriteFailures(t *testing.T) {
 			}
 		})
 	}
-	source = &fakeBackend{digests: []cas.Digest{digest}, get: io.NopCloser(strings.NewReader("payload"))}
+	source := &fakeBackend{digests: []cas.Digest{digest}, get: io.NopCloser(strings.NewReader("payload"))}
 	if err := Export(context.Background(), source, zeroWriter{}); !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("Export short write error = %v, want io.ErrShortWrite", err)
 	}

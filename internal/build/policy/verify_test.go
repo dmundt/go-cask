@@ -12,17 +12,15 @@ import (
 )
 
 // TestVerifyTableIsWellFormed pins the gate table's own shape: every variable is spelled
-// as one, the nested module really is a module, and the fuzz set is one the gate can run.
+// as one, and the fuzz set is one the gate can run.
 func TestVerifyTableIsWellFormed(t *testing.T) {
 	t.Parallel()
 
-	root := repoRoot(t)
 	table := Verify()
 	for _, field := range []struct {
 		name  string
 		value string
 	}{
-		{"EngineDir", table.EngineDir},
 		{"JobsEnv", table.JobsEnv},
 		{"ScopeEnv", table.ScopeEnv},
 		{"ScopeRule", table.ScopeRule},
@@ -31,6 +29,7 @@ func TestVerifyTableIsWellFormed(t *testing.T) {
 		{"SkipCoverageEnv", table.SkipCoverageEnv},
 		{"SkipFuzzEnv", table.SkipFuzzEnv},
 		{"SkipSecurityEnv", table.SkipSecurityEnv},
+		{"SkipLintEnv", table.SkipLintEnv},
 		{"ReleaseEnv", table.ReleaseEnv},
 		{"ReleaseFromEnv", table.ReleaseFromEnv},
 	} {
@@ -40,19 +39,12 @@ func TestVerifyTableIsWellFormed(t *testing.T) {
 	}
 	for _, name := range []string{
 		table.JobsEnv, table.ScopeEnv, table.FastEnv, table.SkipTestsEnv,
-		table.SkipCoverageEnv, table.SkipFuzzEnv, table.SkipSecurityEnv,
+		table.SkipCoverageEnv, table.SkipFuzzEnv, table.SkipSecurityEnv, table.SkipLintEnv,
 		table.ReleaseEnv, table.ReleaseFromEnv,
 	} {
 		if name != strings.ToUpper(name) {
 			t.Errorf("%q is not spelled as an environment variable", name)
 		}
-	}
-
-	// The nested module is the whole reason the gate names a directory explicitly, so it
-	// has to be one: without its own go.mod the engine steps would build the root module
-	// twice and the engine would run nowhere.
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(table.EngineDir), "go.mod")); err != nil {
-		t.Errorf("%s carries no go.mod: %v", table.EngineDir, err)
 	}
 
 	// The automatic scope reads one rule's verdict, so that rule must exist: a name
@@ -104,12 +96,8 @@ func fuzzTargetsIn(t *testing.T, root, dir string) []string {
 }
 
 // fuzzTargetDir returns the repository-relative directory a smoke-fuzz target lives in.
-func fuzzTargetDir(table VerifyTable, target FuzzTarget) string {
-	dir := strings.Trim(strings.TrimPrefix(target.Package, "./"), "/")
-	if target.Engine {
-		return path.Join(table.EngineDir, dir)
-	}
-	return dir
+func fuzzTargetDir(target FuzzTarget) string {
+	return strings.Trim(strings.TrimPrefix(target.Package, "./"), "/")
 }
 
 // TestVerifyFuzzTargetsExist pins that every target the gate smoke-fuzzes is really there.
@@ -122,7 +110,7 @@ func TestVerifyFuzzTargetsExist(t *testing.T) {
 	root := repoRoot(t)
 	table := Verify()
 	for _, target := range table.Fuzz {
-		dir := fuzzTargetDir(table, target)
+		dir := fuzzTargetDir(target)
 		if !slices.Contains(fuzzTargetsIn(t, root, dir), target.Target) {
 			t.Errorf("the gate smoke-fuzzes %s in %s, which declares no such fuzz function", target.Target, dir)
 		}
@@ -140,17 +128,20 @@ func TestEveryEngineFuzzPackageIsSmokeFuzzed(t *testing.T) {
 	table := Verify()
 	registered := map[string]bool{}
 	for _, target := range table.Fuzz {
-		if target.Engine {
-			registered[fuzzTargetDir(table, target)] = true
-		}
+		registered[fuzzTargetDir(target)] = true
 	}
 
 	var fuzzed []string
-	for _, file := range gitList(t, root, "ls-files", table.EngineDir+"/*") {
+	for _, file := range gitList(t, root, "ls-files", "internal/build/*") {
 		if !strings.HasSuffix(file, "_test.go") {
 			continue
 		}
 		dir := path.Dir(file)
+		// policy holds go-cask's answers rather than a rule the engine ships, so it is not
+		// one of the packages this rule is about.
+		if dir == "internal/build/policy" {
+			continue
+		}
 		if !slices.Contains(fuzzed, dir) && len(fuzzTargetsIn(t, root, dir)) != 0 {
 			fuzzed = append(fuzzed, dir)
 		}
@@ -195,7 +186,8 @@ func TestVerifySuiteHasNoDuplicateOrEmptyName(t *testing.T) {
 	recordable := map[string]bool{}
 	for _, name := range strings.Fields(strings.Join([]string{
 		Verify().Checks.Gofmt, Verify().Checks.ModTidy, Verify().Checks.Build,
-		Verify().Checks.ModuleGraph, Verify().Checks.Vet, Verify().Checks.CrossPlatform,
+		Verify().Checks.ModuleGraph, Verify().Checks.Vet, Verify().Checks.Lint,
+		Verify().Checks.CrossPlatform,
 		Verify().Checks.LayerMatrix, Verify().Checks.CodecGuards, Verify().Checks.Security,
 		Verify().Checks.TestRace, Verify().Checks.CoverageTiers, Verify().Checks.FuzzSmoke,
 		Verify().Checks.VersionFields, Verify().Checks.DocIntegrity,

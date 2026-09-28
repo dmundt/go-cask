@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dmundt/go-cask/internal/build/core/taskstate"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/taskstate"
 )
 
 // runTaskStatus reports which branches carry work that no pull request tracks.

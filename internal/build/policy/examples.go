@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/dmundt/go-cask/internal/build/core/examples"
+import "github.com/dmundt/go-cask/internal/build/examples"
 
 // ExamplesDir is the tree the example programs live in, relative to the repository
 // root.
