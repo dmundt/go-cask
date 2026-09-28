@@ -385,6 +385,30 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 	return true, nil
 }
 
+// renameWithRetry publishes tmp at path, retrying briefly while the rename
+// fails. On Windows replacing a file another process holds open — or racing
+// another writer's rename over the same destination — fails with "Access is
+// denied" or "being used by another process", and persistIndex runs this rename
+// once per packed Put, so it needs the tolerance fs.Put's atomic publish already
+// has (cas-core §4.4 rename caveat). The scratch file stays in place for the
+// retry, and a rename that keeps failing reports the last error. rename is a
+// parameter so the transient path is testable on every platform.
+func renameWithRetry(rename func(string, string) error, tmp, path string) error {
+	const attempts = 20
+	var err error
+	for range attempts {
+		err = rename(tmp, path)
+		if err == nil {
+			return nil
+		}
+		if _, statErr := os.Stat(tmp); statErr != nil {
+			return err // the scratch file is gone: not transient contention
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return err
+}
+
 // persistIndex writes the pack index atomically: the manifest carries every
 // indexed digest in hex form (see manifest), so it survives the JSON round trip
 // into the next process.
@@ -398,6 +422,10 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 // atomic. The bytes are written through the handle CreateTemp returned, never
 // reopened by name, so nothing between the create and the write can redirect
 // them.
+//
+// The publication is a renameWithRetry: this is the one write a packed store
+// performs on every Put, so the transient Windows replace failure fs.Put
+// tolerates is tolerated here too.
 func (b *Backend) persistIndex() error {
 	m := manifest{Entries: make(map[string]packRecord, len(b.index))}
 	for key, rec := range b.index {
@@ -427,7 +455,7 @@ func (b *Backend) persistIndex() error {
 		_ = os.Remove(tmp) // the scratch file is unusable
 		return fmt.Errorf("cas: write pack manifest: %w", err)
 	}
-	if err := b.op.renameDo(tmp, b.manifestPath); err != nil {
+	if err := renameWithRetry(b.op.renameDo, tmp, b.manifestPath); err != nil {
 		_ = os.Remove(tmp) // best effort: the publish error is primary
 		return fmt.Errorf("cas: rename pack manifest: %w", err)
 	}

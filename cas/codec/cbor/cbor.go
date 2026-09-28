@@ -14,6 +14,12 @@
 // is reported as ErrTooDeep rather than recursed into until the goroutine stack
 // is exhausted.
 //
+// A decoded byte string does not alias the input: Decode returns a copy of the
+// field's own bytes, so a caller may retain a decoded value after data is reused
+// or released, and mutating data afterwards cannot change a value already
+// decoded (go-cask#382). Strings are immutable in Go, so only []byte fields carry
+// this contract.
+//
 // The integer model is signed int64. A CBOR unsigned integer (major type 0) and
 // a CBOR negative integer (major type 1, whose value is -1 minus its argument)
 // both decode to an int64, so an unsigned argument of 2^63 or more — which Encode
@@ -468,7 +474,13 @@ func decodeOne(data []byte, depth int) (any, []byte, error) {
 			return nil, nil, fmt.Errorf("cbor: truncated value")
 		}
 		payloadEnd := payloadStart + int(length)
-		return data[payloadStart:payloadEnd], data[payloadEnd:], nil
+		// The byte string is cloned, not aliased: decoded values are returned
+		// to callers who keep them (metadata and manifest payloads, the use
+		// this codec advertises), and a sub-slice of data would both keep the
+		// whole object buffer alive for the field's lifetime and change under
+		// the caller if the input buffer is reused (go-cask#382). The copy is
+		// the field's own length, never the object's.
+		return slices.Clone(data[payloadStart:payloadEnd]), data[payloadEnd:], nil
 	case 3:
 		if length > uint64(len(data)-payloadStart) {
 			return nil, nil, fmt.Errorf("cbor: truncated value")

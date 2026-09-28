@@ -21,6 +21,9 @@ RFC 8949 transport layer.
 - `Decode` bounds how deeply a payload may nest arrays and maps at `MaxDepth` (128 levels); a
   payload nested deeper is `ErrTooDeep` rather than a stack overflow, so the untrusted bytes a store
   hands the codec cannot abort the process.
+- A decoded byte string is a **copy**, not a view: `Decode` clones each `[]byte` field, so a retained
+  value keeps only its own bytes alive and mutating the input buffer afterwards cannot change a value
+  already decoded (go-cask#382).
 - No Go reflection: encode and decode conversions must be explicit.
 
 ```go
