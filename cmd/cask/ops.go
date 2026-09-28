@@ -120,32 +120,15 @@ func opPut(ctx context.Context, t *store.Store, args []string) error {
 
 // localPut stores bytes under the digest of their content, streaming through a
 // temp spool while hashing (hash-on-write). It takes the minimal Backend
-// contract, so the same write path serves every backend.
+// contract, so the same write path serves every backend. The spool, hash,
+// deduplicate and rewind sequence is cas.PutStream's, so the CLI and the
+// library example cannot drift into two versions of it (go-cask#342).
 func localPut(ctx context.Context, backend cas.Backend, r io.Reader) (cas.Digest, bool, error) {
-	hasher := sha256.NewHasher()
-	spool, err := os.CreateTemp("", "cask-put-*")
+	h, dedup, err := cas.PutStream(ctx, backend, sha256.New(), r)
 	if err != nil {
 		return nil, false, err
 	}
-	defer os.Remove(spool.Name())
-	defer spool.Close()
-	if _, err := io.Copy(io.MultiWriter(spool, hasher), r); err != nil {
-		return nil, false, err
-	}
-	h := cas.NewDigest(hasher.Sum(nil))
-	exists, err := backend.Exists(ctx, h)
-	if err != nil {
-		return nil, false, err
-	}
-	if !exists {
-		if _, err := spool.Seek(0, 0); err != nil {
-			return nil, false, err
-		}
-		if err := backend.Put(ctx, h, spool); err != nil {
-			return nil, false, err
-		}
-	}
-	return h, exists, nil
+	return h, dedup, nil
 }
 
 // --- get (default output: stdout) ---
