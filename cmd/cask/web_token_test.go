@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -660,13 +661,15 @@ func TestRunWebRejectsInvalidShowToken(t *testing.T) {
 }
 
 // TestResolveStartupTokenSources covers the unattended token sources of issue
-// #179: a token read from -token-file or CASK_VIEWER_TOKEN is used as given and
-// marked not generated (so it is never displayed), the flag wins over the
-// environment, and a missing or empty file fails without echoing a token.
+// #179 and the supply contract of #348: a token read from -token-file or
+// CASK_VIEWER_TOKEN is used as given and marked not generated (so it is never
+// displayed), the flag wins over the environment, and a missing, empty,
+// non-regular, oversized, too-short or off-charset value fails without echoing
+// a token.
 func TestResolveStartupTokenSources(t *testing.T) {
 	const (
-		fromFile = "FEED-FACE-0001"
-		fromEnv  = "FEED-FACE-0002"
+		fromFile = "FEED-FACE-0000-0001"
+		fromEnv  = "FEED-FACE-0000-0002"
 	)
 	file := filepath.Join(t.TempDir(), "startup-token")
 	if err := os.WriteFile(file, []byte(fromFile+"\n"), 0o600); err != nil {
@@ -716,8 +719,20 @@ func TestResolveStartupTokenSources(t *testing.T) {
 		if err != nil || !generated {
 			t.Fatalf("resolveStartupToken() = (%q, %v, %v), want a generated token", token, generated, err)
 		}
-		if len(token) != 14 {
-			t.Fatalf("generated token %q is not the documented 3-group form", token)
+		// The generated width is the documented 128-bit, 4-group form
+		// (defaults §4): changing it means changing this deliberately.
+		if len(token) != 35 || strings.Count(token, "-") != 3 {
+			t.Fatalf("generated token %q is not the documented 4-group form", token)
+		}
+		for _, group := range strings.Split(token, "-") {
+			if len(group) != 8 {
+				t.Fatalf("generated token %q group %q, want 8 hex characters", token, group)
+			}
+			for _, r := range group {
+				if (r < '0' || r > '9') && (r < 'A' || r > 'F') {
+					t.Fatalf("generated token %q carries %q, want uppercase hex groups", token, r)
+				}
+			}
 		}
 	})
 
@@ -733,6 +748,149 @@ func TestResolveStartupTokenSources(t *testing.T) {
 			}
 		}
 	})
+
+	// #348: a supplied token must come from a regular file. The refusal happens
+	// before the file is opened, which is what keeps a FIFO or a device from
+	// blocking or inflating startup instead of failing it fast.
+	t.Run("non-regular files are refused", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		cases := []struct {
+			name string
+			path string
+		}{
+			{"directory", t.TempDir()},
+			{"device", os.DevNull},
+		}
+		fifo := filepath.Join(t.TempDir(), "startup-token.fifo")
+		if makeFIFO(t, fifo) {
+			cases = append(cases, struct {
+				name string
+				path string
+			}{"FIFO", fifo})
+		} else {
+			t.Log("no mkfifo on this host: the FIFO case is not exercised")
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				// A read that consults the file without the regular-file check
+				// blocks forever on a FIFO, so the call is bounded here rather
+				// than left to the package timeout.
+				done := make(chan error, 1)
+				go func() {
+					_, _, err := resolveStartupToken(webArgs{tokenFile: tc.path})
+					done <- err
+				}()
+				select {
+				case err := <-done:
+					if err == nil {
+						t.Fatalf("-token-file %s was accepted, want an error", tc.path)
+					}
+					if !strings.Contains(err.Error(), tc.path) {
+						t.Fatalf("error %q does not name the file %q", err, tc.path)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatalf("-token-file %s blocked: a non-regular file must be refused before it is opened", tc.path)
+				}
+			})
+		}
+	})
+
+	// The read is bounded: a file past the bound is refused by size, not read
+	// into memory and then judged on its content.
+	t.Run("oversize file is refused", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		oversize := filepath.Join(t.TempDir(), "huge-token")
+		// Every byte is inside the accepted character set, so the size rule
+		// alone is what must refuse it.
+		body := []byte(strings.Repeat("A", maxStartupTokenBytes+1))
+		if err := os.WriteFile(oversize, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		token, generated, err := resolveStartupToken(webArgs{tokenFile: oversize})
+		if err == nil || token != "" || generated {
+			t.Fatalf("resolveStartupToken(oversize) = (%q, %v, %v), want an error", token, generated, err)
+		}
+		if !strings.Contains(err.Error(), oversize) || !strings.Contains(err.Error(), strconv.Itoa(maxStartupTokenBytes)) {
+			t.Fatalf("oversize error = %q, want it to name the file and the bound", err)
+		}
+	})
+
+	// The width and character-set floor, and the rule that a refused value is
+	// never restated in the error (viewer-security §11).
+	t.Run("short and malformed tokens are refused without echoing them", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		allowed := "abcd-EFGH-0123-._~" // every accepted character class
+		for _, tc := range []struct {
+			name  string
+			token string
+		}{
+			{"short", "SHORT-TOKEN"},
+			{"outside the charset", "GOOD-TOKEN-0000+0001"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "startup-token")
+				if err := os.WriteFile(path, []byte(tc.token), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				token, generated, err := resolveStartupToken(webArgs{tokenFile: path})
+				if err == nil || token != "" || generated {
+					t.Fatalf("resolveStartupToken(%q) = (%q, %v, %v), want an error", tc.token, token, generated, err)
+				}
+				if !strings.Contains(err.Error(), path) {
+					t.Fatalf("error %q does not name the file %q", err, path)
+				}
+				if strings.Contains(err.Error(), tc.token) {
+					t.Fatalf("error %q echoes the rejected token", err)
+				}
+			})
+		}
+
+		path := filepath.Join(t.TempDir(), "startup-token")
+		if err := os.WriteFile(path, []byte(allowed), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		token, generated, err := resolveStartupToken(webArgs{tokenFile: path})
+		if err != nil || token != allowed || generated {
+			t.Fatalf("resolveStartupToken(%q) = (%q, %v, %v), want it accepted", allowed, token, generated, err)
+		}
+	})
+
+	// The environment source follows the same contract, and a whitespace-only
+	// value is still "nothing supplied" rather than a rejected token.
+	t.Run("environment tokens follow the same contract", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "SHORT")
+		token, generated, err := resolveStartupToken(webArgs{})
+		if err == nil || token != "" || generated {
+			t.Fatalf("resolveStartupToken(short env) = (%q, %v, %v), want an error", token, generated, err)
+		}
+		if !strings.Contains(err.Error(), viewerTokenEnv) || strings.Contains(err.Error(), "SHORT") {
+			t.Fatalf("short env error = %q, want it to name the variable and not the value", err)
+		}
+
+		t.Setenv(viewerTokenEnv, "   ")
+		if _, generated, err := resolveStartupToken(webArgs{}); err != nil || !generated {
+			t.Fatalf("resolveStartupToken(blank env) = (%v, %v), want a generated token", generated, err)
+		}
+	})
+}
+
+// makeFIFO creates a named pipe at path where the host can, and reports whether
+// it did: mkfifo exists on Unix and not on Windows. A FIFO is the non-regular
+// file that would hang the token read rather than merely fail it, so its
+// refusal is exercised wherever one can be created.
+func makeFIFO(t *testing.T, path string) bool {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	if _, err := exec.LookPath("mkfifo"); err != nil {
+		return false
+	}
+	if out, err := exec.Command("mkfifo", path).CombinedOutput(); err != nil {
+		t.Logf("mkfifo %s: %v (%s)", path, err, out)
+		return false
+	}
+	return true
 }
 
 // TestRunWebNeverLogsSuppliedToken runs the real `cask web` startup path with an
@@ -740,7 +898,7 @@ func TestResolveStartupTokenSources(t *testing.T) {
 // (at any level) nor the announcement: an unattended deployment supplies its
 // token instead of having it printed.
 func TestRunWebNeverLogsSuppliedToken(t *testing.T) {
-	const supplied = "DEAD-BEEF-1234"
+	const supplied = "DEAD-BEEF-1234-5678"
 	tokenFile := filepath.Join(t.TempDir(), "startup-token")
 	if err := os.WriteFile(tokenFile, []byte(supplied), 0o600); err != nil {
 		t.Fatal(err)
