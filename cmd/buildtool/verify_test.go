@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/gate"
-	"github.com/dmundt/go-cask/internal/build/core/verify"
+	"github.com/dmundt/go-cask/internal/build/gate"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/verify"
 )
 
 // TestGateStepsAreWellFormed pins the step list's own shape: every step names itself once
@@ -42,8 +42,8 @@ func TestGateStepsAreWellFormed(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"gofmt", "go mod tidy", "go build", "go vet", "build engine module",
-		"layer matrix check", "codec guards", "govulncheck", "test -race + coverage gate",
+		"gofmt", "go mod tidy", "go build", "go vet",
+		"layer matrix check", "codec guards", "lint", "govulncheck", "test -race + coverage gate",
 		"fuzz smoke", "doc integrity", "package graph", "website footer",
 		"website examples", "release note sync",
 	} {

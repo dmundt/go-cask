@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/docs"
+	"github.com/dmundt/go-cask/internal/build/docs"
 )
 
 // TestEveryBuildReadmeIsVersioned pins the subtree's documentation rule: a README under

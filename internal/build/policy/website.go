@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/dmundt/go-cask/internal/build/core/website"
+import "github.com/dmundt/go-cask/internal/build/website"
 
 // The paths the published footer is made of. They are go-cask's, which is why they
 // live here rather than in the engine: the engine checks a footer, it does not know

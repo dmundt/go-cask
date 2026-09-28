@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/lane"
+	"github.com/dmundt/go-cask/internal/build/lane"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 

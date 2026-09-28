@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/claim"
+	"github.com/dmundt/go-cask/internal/build/claim"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 

@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/dmundt/go-cask/internal/build/core/docs"
+import "github.com/dmundt/go-cask/internal/build/docs"
 
 // PackageReadmeTable is the frontmatter a package-level README under `internal/build`
 // carries.

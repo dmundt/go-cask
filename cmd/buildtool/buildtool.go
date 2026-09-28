@@ -9,7 +9,7 @@
 // The step list that ran them was the last rule in that script, and it is here too:
 // `verify` runs every step in order, streams its output, and writes the gate stamp. The
 // decisions behind it are not in this file — what a run covers, how many packages it builds
-// at once, and whether an escape hatch dropped a step are internal/build/core/verify's, and
+// at once, and whether an escape hatch dropped a step are internal/build/verify's, and
 // go-cask's answers are internal/build/policy's — so what is left is orchestration. The one
 // thing that stays in shell is resolving Go itself, because PATH can only be changed in the
 // caller's shell (scripts/toolchain.sh).
@@ -44,33 +44,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/bench"
-	"github.com/dmundt/go-cask/internal/build/core/changes"
-	"github.com/dmundt/go-cask/internal/build/core/coverage"
-	"github.com/dmundt/go-cask/internal/build/core/depgraph"
-	"github.com/dmundt/go-cask/internal/build/core/deps"
-	"github.com/dmundt/go-cask/internal/build/core/docs"
-	"github.com/dmundt/go-cask/internal/build/core/examples"
-	"github.com/dmundt/go-cask/internal/build/core/layers"
-	"github.com/dmundt/go-cask/internal/build/core/release"
-	"github.com/dmundt/go-cask/internal/build/core/toolchain"
-	"github.com/dmundt/go-cask/internal/build/core/versioning"
-	"github.com/dmundt/go-cask/internal/build/core/website"
-	"github.com/dmundt/go-cask/internal/build/core/worktree"
+	"github.com/dmundt/go-cask/internal/build/bench"
+	"github.com/dmundt/go-cask/internal/build/changes"
+	"github.com/dmundt/go-cask/internal/build/coverage"
+	"github.com/dmundt/go-cask/internal/build/depgraph"
+	"github.com/dmundt/go-cask/internal/build/deps"
+	"github.com/dmundt/go-cask/internal/build/docs"
+	"github.com/dmundt/go-cask/internal/build/examples"
+	"github.com/dmundt/go-cask/internal/build/layers"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/release"
+	"github.com/dmundt/go-cask/internal/build/toolchain"
+	"github.com/dmundt/go-cask/internal/build/versioning"
+	"github.com/dmundt/go-cask/internal/build/website"
+	"github.com/dmundt/go-cask/internal/build/worktree"
 )
 
 // usage is the command's own help text.
 const usage = `usage: buildtool <command>
 
 commands:
-  verify               run the gate: formatting, module drift, build, vet, the engine
-                       module's own suite, the layer matrix, the codec guards, the
-                       vulnerability scan, the coverage tiers, the race suite and the
-                       smoke fuzz, then the documentation steps. VERIFY_SCOPE selects
-                       the scope, VERIFY_JOBS the concurrency, and the VERIFY_SKIP_*
-                       hatches drop one expensive step each — a run that skipped
-                       anything writes no gate stamp
+  verify               run the gate: formatting, module drift, build, vet, the static
+                       analyzer, the layer matrix, the codec guards, the vulnerability
+                       scan, the coverage tiers, the race suite and the smoke fuzz,
+                       then the documentation steps. VERIFY_SCOPE selects the scope,
+                       VERIFY_JOBS the concurrency, and the VERIFY_SKIP_* hatches drop
+                       one expensive step each — a run that skipped anything writes no
+                       gate stamp
   layer-matrix         check every package's imports against the dependency-layer
                        matrix (library-design.md §1.1)
   coverage-tier        check that every cas/ package carries a coverage tier or a
@@ -91,6 +91,8 @@ commands:
                        layer (cas-core §4.12, §7)
   security             install the pinned vulnerability scanner when the installed
                        one is not it, and run it over the module
+  lint                 install the pinned static analyzer when the installed one is
+                       not it, and run it over the module against .golangci.yml
   bench-baseline       capture benchmark output and refresh the committed reference
                        dump; --capture-only writes the capture alone
   bench-compare        capture a fresh run and diff it against a reference with
@@ -182,6 +184,8 @@ func run(args []string, out, errOut io.Writer) error {
 		return runCodecGuards(args[1:], out, errOut)
 	case "security":
 		return runSecurity(args[1:], out, errOut)
+	case "lint":
+		return runLint(args[1:], out, errOut)
 	case "bench-baseline":
 		return runBenchBaseline(args[1:], out, errOut)
 	case "bench-compare":

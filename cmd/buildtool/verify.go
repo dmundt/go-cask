@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/changes"
-	"github.com/dmundt/go-cask/internal/build/core/gate"
-	"github.com/dmundt/go-cask/internal/build/core/verify"
-	"github.com/dmundt/go-cask/internal/build/core/worktree"
+	"github.com/dmundt/go-cask/internal/build/changes"
+	"github.com/dmundt/go-cask/internal/build/gate"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/verify"
+	"github.com/dmundt/go-cask/internal/build/worktree"
 )
 
 // The gate's two refusals that are about the caller's tree rather than a failed step. Both
@@ -72,12 +72,10 @@ type verifyStep struct {
 type gateRun struct {
 	out, errOut io.Writer
 	table       policy.VerifyTable
-	// root is the checkout the gate was started in, and engineDir is the nested module
-	// none of the root module's `./...` patterns reach.
-	root      string
-	engineDir string
-	jobs      int
-	scope     verify.Scope
+	// root is the checkout the gate was started in.
+	root  string
+	jobs  int
+	scope verify.Scope
 	// fast is the drop-everything switch, which turns on every escape hatch at once.
 	fast bool
 	// skipped is what the run dropped, in the order the steps reported it. A run with
@@ -101,9 +99,9 @@ type gateRun struct {
 // This is the step list scripts/verify.sh held in bash, moved here when the last rule in
 // it turned out to be the list itself. The decisions are not in this file: what a run
 // covers, how many packages it may build at once and whether an escape hatch dropped a
-// step are internal/build/core/verify's; the entry points, the variables and the
+// step are internal/build/verify's; the entry points, the variables and the
 // smoke-fuzz set are internal/build/policy's; the record it writes is
-// internal/build/core/gate's. What is left is orchestration — running the steps in order,
+// internal/build/gate's. What is left is orchestration — running the steps in order,
 // streaming their output, and reporting — which is the one thing that cannot live in the
 // engine, because the engine is pure functions over caller data and this reads the world.
 func runVerify(args []string, out, errOut io.Writer) error {
@@ -135,7 +133,6 @@ func verifyGate(out, errOut io.Writer) error {
 		return err
 	}
 	run.root = root
-	run.engineDir = filepath.Join(root, filepath.FromSlash(table.EngineDir))
 
 	// A tree with no Go source is the one tree the gate has nothing to say about.
 	if !hasGoSources(root) {
@@ -162,7 +159,7 @@ func verifyGate(out, errOut io.Writer) error {
 	}
 
 	// The scope decides which steps run, and the benchmark is the merge base with the
-	// remote's main. The classification is not repeated here: internal/build/core/changes
+	// remote's main. The classification is not repeated here: internal/build/changes
 	// owns the rule and internal/build/policy the pattern list, and continuous
 	// integration's scope job asks the same command, so the gate and CI cannot drift apart
 	// on a list kept in sync only by a comment.
@@ -260,7 +257,6 @@ func gateSteps(table policy.VerifyTable) []verifyStep {
 		{Name: "module graph", Run: attested(table.Checks.ModuleGraph, func(r *gateRun) error { return runModuleGraph(nil, r.out, r.errOut) })},
 		{Name: "go vet", Run: attested(table.Checks.Vet, func(r *gateRun) error { return r.command(r.root, "go", "vet", "./...") })},
 		{Name: "cross-platform build", Run: stepCrossPlatform},
-		{Name: "build engine module", Run: stepEngineModule},
 		{Name: "layer matrix check", Run: attested(table.Checks.LayerMatrix, func(r *gateRun) error { return runLayerMatrix(nil, r.out, r.errOut) })},
 		// One step, two checks: the guard is one traversal of the import graph and it
 		// answers for both packages, but the receipt's suite names them separately, so
@@ -268,6 +264,7 @@ func gateSteps(table policy.VerifyTable) []verifyStep {
 		{Name: "codec guards", Run: attested(table.Checks.CodecGuards, func(r *gateRun) error {
 			return runCodecGuards(nil, r.out, r.errOut)
 		})},
+		{Name: "lint", Run: stepLint},
 		{Name: "govulncheck", Run: stepSecurity},
 		{Name: "test -race + coverage gate", Run: stepRaceAndCoverage},
 		{Name: "fuzz smoke", Run: stepFuzz},
@@ -472,15 +469,10 @@ func goSourceFiles(root string) ([]string, error) {
 	return files, nil
 }
 
-// stepModTidy reports dependency-file drift in either module: they have separate go.mod
-// files, so a root-only tidy would never notice drift in the engine's.
+// stepModTidy reports dependency-file drift in the module.
 func stepModTidy(r *gateRun) error {
-	if err := tidyModule(r, r.root,
-		"go.mod / go.sum drift detected; run go mod tidy and commit the result."); err != nil {
-		return err
-	}
-	return tidyModule(r, r.engineDir,
-		"the build engine's go.mod / go.sum drift detected; run go mod tidy in "+r.table.EngineDir+".")
+	return tidyModule(r, r.root,
+		"go.mod / go.sum drift detected; run go mod tidy and commit the result.")
 }
 
 // tidyModule reports drift in one module's dependency files.
@@ -499,23 +491,20 @@ func tidyModule(r *gateRun, dir, drift string) error {
 	return errors.New("dependency-file drift")
 }
 
-// stepEngineModule covers the nested module, which none of the root module's `./...`
-// patterns reach: its own build, its own vet, and its own suite under the race detector.
+// stepLint runs the pinned static analyzer over the module against the repository's
+// committed configuration.
 //
-// The engine is pure functions over caller-supplied data, so -race has little to find by
-// construction — and that is exactly why it is on: the engine must stay free of hidden
-// concurrency, and the detector is what says so rather than a review. The concurrency the
-// gate does have is in the commands, and it runs under the root module's race suite.
-func stepEngineModule(r *gateRun) error {
-	for _, args := range [][]string{
-		{"build", "./..."},
-		{"vet", "./..."},
-		{"test", "-race", "./..."},
-	} {
-		if err := r.command(r.engineDir, "go", args...); err != nil {
-			return err
-		}
+// The layer matrix is not this step's: `layer-matrix` owns it, and the analyzer's depguard
+// block only mirrors it, so a violation surfaces in an editor rather than after a whole gate
+// run.
+func stepLint(r *gateRun) error {
+	if r.escape("lint", r.table.SkipLintEnv) {
+		return nil
 	}
+	if err := runLint(nil, r.out, r.errOut); err != nil {
+		return err
+	}
+	r.mark(r.table.Checks.Lint)
 	return nil
 }
 
@@ -769,12 +758,8 @@ func stepFuzz(r *gateRun) error {
 
 // fuzzTarget runs one smoke-fuzz target and returns the log it wrote.
 func (r *gateRun) fuzzTarget(target policy.FuzzTarget, share int) (string, error) {
-	dir := r.root
-	if target.Engine {
-		dir = r.engineDir
-	}
 	var log strings.Builder
-	err := r.commandInto(&log, dir, nil, "go", "test", "-run=^$", "-fuzz="+target.Target,
+	err := r.commandInto(&log, r.root, nil, "go", "test", "-run=^$", "-fuzz="+target.Target,
 		"-fuzztime="+verifyFuzzTime, "-parallel", strconv.Itoa(share), target.Package)
 	return log.String(), err
 }

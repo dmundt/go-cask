@@ -87,3 +87,36 @@ func ScannerVersion(report, name string) string {
 func Pinned(report, name, version string) bool {
 	return version != "" && ScannerVersion(report, name) == version
 }
+
+// ReportedVersion returns the version a tool's `-version` report names for itself, in
+// either of the two shapes the gate's tools print: the `Scanner: <name>@<version>` line
+// govulncheck writes, and the `<name> has version <version> ...` line golangci-lint writes.
+// It returns "" when the report names no such tool, which is what an unrelated binary, an
+// older tool or a report in another shape prints — a caller then installs rather than
+// trusting it.
+func ReportedVersion(report, name string) string {
+	if version := ScannerVersion(report, name); version != "" {
+		return version
+	}
+	marker := name + " has version "
+	for _, line := range strings.Split(report, "\n") {
+		after, found := strings.CutPrefix(strings.TrimSpace(line), marker)
+		if !found {
+			continue
+		}
+		if fields := strings.Fields(after); len(fields) != 0 {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// PinnedRelease reports whether an installed tool is the pinned one, tolerating the `v`
+// prefix either side may carry. One tool writes the tag it was installed from (`v1.8.0`)
+// and another the plain version it was built as (`2.14.0`), and which form a caller pinned
+// must not decide whether the installed tool is accepted.
+func PinnedRelease(report, name, version string) bool {
+	installed := strings.TrimPrefix(ReportedVersion(report, name), "v")
+	wanted := strings.TrimPrefix(version, "v")
+	return installed != "" && installed == wanted
+}

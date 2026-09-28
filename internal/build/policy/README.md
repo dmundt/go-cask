@@ -2,15 +2,15 @@
 type: Guide
 title: policy (build) — go-cask
 description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, instruction-file budgets, worktree table, landing lanes, gate table, package-graph prose.
-version: v9
+version: v10
 ---
 
 # policy
 
-go-cask's answers for the engine in [`../core`](../core/README.md).
+go-cask's answers for the engine packages beside it, in [`../README.md`](../README.md).
 
 Engine ships no table. Matrix, tier, prose = one repository's decision → held here. Change
-to what the gate enforces → change one file here; engine stays reusable.
+to what the gate enforces → change one file here; the engine keeps taking it as a parameter.
 
 ## What it holds
 
@@ -27,7 +27,8 @@ to what the gate enforces → change one file here; engine stays reusable.
 | Package graph's title, prose, layer assignment | `GraphDoc` | `depgraph.Document` |
 | Where that document lives | `GraphDocPath` | the `dep-graph` command |
 | The gate's entry points and its verified-commit ledger | `Gate` | the `verify` and `pre-push` commands; `gate.Verified`, `gate.Append` |
-| The gate's own layout: nested module, variables, escape hatches, cross-platform targets, smoke-fuzz set | `Verify` | the `verify` command |
+| The gate's own layout: variables, escape hatches, cross-platform targets, smoke-fuzz set | `Verify` | the `verify` command |
+| The pinned static analyzer: name, package, version, config | `Linter` | the `lint` command, and the gate's `lint` step |
 | The local advisory slot: directory, records, idle window | `LandLane` | the `land-lane` command; `lane.Decide` |
 | The server-side lane: ref namespace, claim window, record file | `PRLane` | the `pr-lane` command; `claim.DecideLane` |
 | Task worktree location, base, lock text | `Worktrees` | the `worktree` command; `worktree.GitFile` |

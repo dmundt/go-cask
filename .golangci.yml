@@ -1,0 +1,83 @@
+# The gate's static analysis, pinned by internal/build/policy's Linter table.
+#
+# `layer-matrix` remains the owner of the import matrix: this depguard block is a second,
+# faster signal that mirrors it, so a violation surfaces in an editor rather than after a
+# whole gate run. The rule of record, and its tests, are internal/build/layers with
+# go-cask's arm table in internal/build/policy. Layered settings are Go function values
+# (OwnsTree, OwnsExact, OwnsAnyTree) and cannot be read from YAML, which is why this is a
+# mirror and not the owner.
+#
+# Two places the mirror necessarily differs from the matrix, both stated rather than implied:
+#
+#   - The matrix constrains module-local imports only — the standard library and third-party
+#     dependencies are outside it. depguard has no such "module-local only" form, so every
+#     rule lists `$gostd` and each approved dependency explicitly. A new dependency in go.mod
+#     is therefore also a row to add here; golang.org/x/sys is the one approved exception
+#     (docs/specs/coding-guidelines.md §3).
+#   - The matrix reads `go list`, which omits imports that occur only in _test.go files, so a
+#     cas/** test may keep importing internal/test. Judging test files here would report a
+#     violation the owner does not, so the rules exclude them.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errorlint
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        cas:
+          files:
+            - "**/cas/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/sys
+            - github.com/dmundt/go-cask/cas
+        gitlike:
+          files:
+            - "**/gitlike/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/sys
+            - github.com/dmundt/go-cask/cas
+        product:
+          files:
+            - "**/internal/**"
+            - "**/cmd/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/sys
+            - github.com/dmundt/go-cask/cas
+            - github.com/dmundt/go-cask/internal
+        teaching:
+          files:
+            - "**/examples/**"
+            - "**/benchmarks/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/sys
+            - github.com/dmundt/go-cask/cas
+            - github.com/dmundt/go-cask/gitlike
+        codec-guard:
+          files:
+            - "**/gitlike/**"
+            - "**/cas/pack/**"
+            - "!**/*_test.go"
+          deny:
+            - pkg: github.com/dmundt/go-cask/cas/codec
+              desc: the codec layer is the caller's to choose; inject codecs via gitlike.Codecs, or have the caller pass the codec
+    staticcheck:
+      # Correctness checks only. ST* is style and QF* is a quickfix suggestion; both would
+      # judge prose the specification set already owns.
+      checks:
+        - all
+        - -ST*
+        - -QF*

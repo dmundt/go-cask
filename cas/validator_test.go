@@ -176,12 +176,6 @@ type ifaceObj interface {
 	cas.Object[ifaceObj]
 }
 
-// implIface is the concrete implementation the interface-typed store decodes to.
-type implIface struct{ Name string }
-
-func (implIface) Type() string             { return "iface@1" }
-func (implIface) References() []cas.Digest { return nil }
-
 // TestNilObjectWithInterfaceType pins that a nil object is rejected — not a
 // panic — when T is an interface type, on both paths (Put before encoding, Get
 // after decoding a payload that is literally null).

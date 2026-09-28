@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/changes"
+	"github.com/dmundt/go-cask/internal/build/changes"
 )
 
 // ciWorkflowPath is the workflow whose scope job consumes ScopeRules.

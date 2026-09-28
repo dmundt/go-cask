@@ -138,3 +138,65 @@ func TestPinned(t *testing.T) {
 		})
 	}
 }
+
+// TestReportedVersion covers both report shapes the gate's tools print. A parser that knew
+// only the scanner's shape would read nothing from the analyzer and reinstall it on every
+// run.
+func TestReportedVersion(t *testing.T) {
+	t.Parallel()
+
+	const scanner = "Scanner: govulncheck@v1.8.0\nDB: https://vuln.go.dev\n"
+	const analyzer = "golangci-lint has version 2.14.0 built with go1.27.1 from (unknown) on (unknown)\n"
+
+	cases := []struct {
+		name   string
+		report string
+		tool   string
+		want   string
+	}{
+		{name: "the scanner shape", report: scanner, tool: "govulncheck", want: "v1.8.0"},
+		{name: "the analyzer shape", report: analyzer, tool: "golangci-lint", want: "2.14.0"},
+		{name: "a version line with no version", report: "golangci-lint has version \n", tool: "golangci-lint", want: ""},
+		{name: "another tool's report", report: analyzer, tool: "govulncheck", want: ""},
+		{name: "an empty report", report: "", tool: "golangci-lint", want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ReportedVersion(tc.report, tc.tool); got != tc.want {
+				t.Errorf("ReportedVersion(%q, %q) = %q, want %q", tc.report, tc.tool, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPinnedRelease pins the `v` tolerance: the pin is the tag `go install` takes while the
+// report carries the plain version, so a strict comparison would reinstall the analyzer on
+// every run.
+func TestPinnedRelease(t *testing.T) {
+	t.Parallel()
+
+	const analyzer = "golangci-lint has version 2.14.0 built with go1.27.1\n"
+
+	cases := []struct {
+		name    string
+		report  string
+		tool    string
+		version string
+		want    bool
+	}{
+		{name: "the tag and the plain version agree", report: analyzer, tool: "golangci-lint", version: "v2.14.0", want: true},
+		{name: "another release", report: analyzer, tool: "golangci-lint", version: "v2.15.0", want: false},
+		{name: "no version asked for", report: analyzer, tool: "golangci-lint", want: false},
+		{name: "a report that names none", report: "not an analyzer\n", tool: "golangci-lint", version: "v2.14.0", want: false},
+		{name: "the scanner shape still pins", report: "Scanner: govulncheck@v1.8.0\n", tool: "govulncheck", version: "v1.8.0", want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := PinnedRelease(tc.report, tc.tool, tc.version); got != tc.want {
+				t.Errorf("PinnedRelease(%q, %q) = %v, want %v", tc.report, tc.version, got, tc.want)
+			}
+		})
+	}
+}

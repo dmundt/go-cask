@@ -2,16 +2,15 @@
 // coverage tiers, the codec guards, the site's inventory tables, and the package
 // graph's prose.
 //
-// The engine lives in the separate module internal/build/core, which ships no
-// tables — a table is one repository's policy. This package is where go-cask's live,
-// so a change to what the gate enforces is a change to a file here, and the engine
-// that reads it stays reusable by another repository.
+// The engine packages beside this one ship no tables — a table is one repository's policy.
+// This package is where go-cask's live, so a change to what the gate enforces is a change
+// to a file here, and the engine packages keep taking every table as a parameter.
 package policy
 
 import (
-	"github.com/dmundt/go-cask/internal/build/core/coverage"
-	"github.com/dmundt/go-cask/internal/build/core/deps"
-	"github.com/dmundt/go-cask/internal/build/core/layers"
+	"github.com/dmundt/go-cask/internal/build/coverage"
+	"github.com/dmundt/go-cask/internal/build/deps"
+	"github.com/dmundt/go-cask/internal/build/layers"
 )
 
 // ModulePath is this repository's module path, which every go-cask-relative prefix

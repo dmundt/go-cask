@@ -351,8 +351,11 @@ func TestLoginRejectsEmptyToken(t *testing.T) {
 func TestThrottleRetryAfterIsTheRemainingBlock(t *testing.T) {
 	const window = 90 * time.Second
 	th := newThrottle(2, window)
-	if !th.allow("ip") || !th.allow("ip") {
-		t.Fatal("the first two attempts must be allowed")
+	if !th.allow("ip") {
+		t.Fatal("the first attempt must be allowed")
+	}
+	if !th.allow("ip") {
+		t.Fatal("the second attempt must be allowed")
 	}
 	if th.allow("ip") {
 		t.Fatal("the third attempt must be refused")
@@ -390,8 +393,11 @@ func TestThrottleExponentialBackoff(t *testing.T) {
 	}
 	time.Sleep(window + 10*time.Millisecond)
 	// The block expired after one window: two more attempts are allowed.
-	if !th.allow("ip") || !th.allow("ip") {
-		t.Fatal("attempts after the first backoff must be allowed")
+	if !th.allow("ip") {
+		t.Fatal("the first attempt after the first backoff must be allowed")
+	}
+	if !th.allow("ip") {
+		t.Fatal("the second attempt after the first backoff must be allowed")
 	}
 	if th.allow("ip") {
 		t.Fatal("budget must be exhausted again")

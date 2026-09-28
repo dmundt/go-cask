@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/website"
+	"github.com/dmundt/go-cask/internal/build/website"
 )
 
 // readRepoFile returns a repository-relative file's contents with line endings

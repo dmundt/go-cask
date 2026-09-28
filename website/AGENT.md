@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Website Authoring Guide
 description: The authoring guide for the published site under website/ — developer-facing content, the MkDocs Material build, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
-version: v5
+version: v6
 ---
 
 # Website Authoring Guide
@@ -123,7 +123,7 @@ cannot be read as one.
 `python3 website/macros.py --selftest` pins the rendered line, the `©` year, the
 `Updated` label outside the link, the omitted fragment and the fact that the
 revision is not visible text, for fixed inputs, and the gate's
-`go run ./cmd/buildtool website-footer` step runs it; `internal/build/core/website` holds
+`go run ./cmd/buildtool website-footer` step runs it; `internal/build/website` holds
 the footer's rules (`FooterLine`, `FooterFindings`, the source guards) and
 `internal/build/policy`'s `SiteFooter` pins go-cask's line, the deleted override and
 the absent plumbing, so the same text is checked from Go without MkDocs — including

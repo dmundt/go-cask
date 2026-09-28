@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/taskstate"
+	"github.com/dmundt/go-cask/internal/build/taskstate"
 )
 
 // TestParseWorktrees pins the porcelain reader: one block per registration, `worktree <path>`

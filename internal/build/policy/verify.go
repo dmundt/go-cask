@@ -2,17 +2,13 @@ package policy
 
 import "strings"
 
-// VerifyTable is the gate's own layout: where the nested module is, which variable carries
-// each escape hatch, and the smoke-fuzz set it runs.
+// VerifyTable is the gate's own layout: which variable carries each escape hatch, and the
+// smoke-fuzz set it runs.
 //
-// It is go-cask's answer, not the engine's: another repository would name a different
-// module directory, different variables and a different fuzz set. The gate reads it through
-// `cmd/buildtool verify`, which is where the step list itself lives.
+// It is go-cask's answer, not the engine's: another repository would name different
+// variables and a different fuzz set. The gate reads it through `cmd/buildtool verify`,
+// which is where the step list itself lives.
 type VerifyTable struct {
-	// EngineDir is the nested module the gate must name explicitly. `go build ./...`,
-	// `go vet ./...`, `go test ./...` and `gofmt -l .` all skip a nested module, so a step
-	// that does not name this directory lets the engine rot while the gate stays green.
-	EngineDir string
 	// JobsEnv carries how many packages may be built and tested at once.
 	JobsEnv string
 	// ScopeEnv carries the requested scope, and ScopeRule is the change-set rule whose
@@ -27,6 +23,7 @@ type VerifyTable struct {
 	SkipCoverageEnv string
 	SkipFuzzEnv     string
 	SkipSecurityEnv string
+	SkipLintEnv     string
 	// Compilers are the C compilers CGO needs. The race and coverage steps cannot run
 	// without one, so the gate refuses up front rather than failing inside a build.
 	Compilers []string
@@ -75,6 +72,7 @@ type VerifyCheckNames struct {
 	Build           string
 	ModuleGraph     string
 	Vet             string
+	Lint            string
 	CrossPlatform   string
 	LayerMatrix     string
 	CodecGuards     string
@@ -93,15 +91,15 @@ type VerifyCheckNames struct {
 // receipt states them. CI asks the gate-receipt command for `--require-suite full`, which is
 // this set: a run that did not record one of them leaves CI to run the whole gate.
 //
-// `govulncheck` is deliberately absent, and so is the engine module's own suite: CI runs
-// the vulnerability scan in its own required job, so a receipt must not be able to excuse
-// it, and the engine is covered by the root suite's recipe rather than by a receipt name.
+// `govulncheck` is deliberately absent: CI runs the vulnerability scan in its own required
+// job, so a receipt must not be able to excuse it. Every other check the gate runs is here,
+// so a receipt that does not list one leaves CI to run the whole gate.
 func VerifySuite() []string {
 	checks := Verify().Checks
 	names := []string{
 		checks.Gofmt, checks.ModTidy, checks.Build, checks.ModuleGraph, checks.Vet,
-		checks.CrossPlatform, checks.LayerMatrix, checks.TestRace, checks.CoverageTiers,
-		checks.FuzzSmoke, checks.VersionFields, checks.DocIntegrity,
+		checks.Lint, checks.CrossPlatform, checks.LayerMatrix, checks.TestRace,
+		checks.CoverageTiers, checks.FuzzSmoke, checks.VersionFields, checks.DocIntegrity,
 		checks.PackageGraph, checks.WebsiteFooter, checks.WebsiteExamples,
 	}
 	// The codec guard records two names from one step; both are required.
@@ -109,22 +107,18 @@ func VerifySuite() []string {
 }
 
 // FuzzTarget is one smoke-fuzz target the gate runs: the package argument `go test` takes,
-// the fuzz function's name, and whether the target lives in the nested engine module —
-// which decides the directory the gate runs it from, not the package argument.
+// and the fuzz function's name.
 type FuzzTarget struct {
 	// Package is the `go test` package argument, "./"-suffixed so it names a path.
 	Package string
 	// Target is the fuzz function's name in that package.
 	Target string
-	// Engine is true when the target lives in the nested engine module.
-	Engine bool
 }
 
 // Verify returns go-cask's gate table. It is a function rather than a package-level
 // variable so a caller cannot mutate the gate's policy by accident.
 func Verify() VerifyTable {
 	return VerifyTable{
-		EngineDir:       "internal/build/core",
 		JobsEnv:         "VERIFY_JOBS",
 		ScopeEnv:        "VERIFY_SCOPE",
 		ScopeRule:       "docs_only",
@@ -133,6 +127,7 @@ func Verify() VerifyTable {
 		SkipCoverageEnv: "VERIFY_SKIP_COVERAGE",
 		SkipFuzzEnv:     "VERIFY_SKIP_FUZZ",
 		SkipSecurityEnv: "VERIFY_SKIP_SECURITY",
+		SkipLintEnv:     "VERIFY_SKIP_LINT",
 		Compilers:       []string{"gcc", "clang", "cc"},
 		Checks: VerifyCheckNames{
 			Gofmt:           "gofmt",
@@ -140,6 +135,7 @@ func Verify() VerifyTable {
 			Build:           "go-build",
 			ModuleGraph:     "module-graph",
 			Vet:             "go-vet",
+			Lint:            "golangci-lint",
 			CrossPlatform:   "cross-platform",
 			LayerMatrix:     "layer-matrix",
 			CodecGuards:     "gitlike-codec-guard pack-codec-guard",
@@ -165,17 +161,17 @@ func Verify() VerifyTable {
 			// lines, a scanner's version report, a changed path, a coordination ref, a
 			// receipt and the gate's own concurrency setting. `docs` carries two because its
 			// frontmatter reader decides which files the version rule judges at all.
-			{Package: "./coverage/", Target: "FuzzParseResult", Engine: true},
-			{Package: "./versioning/", Target: "FuzzField", Engine: true},
-			{Package: "./docs/", Target: "FuzzFields", Engine: true},
-			{Package: "./docs/", Target: "FuzzFrontmatterRoundTrip", Engine: true},
-			{Package: "./lane/", Target: "FuzzParseHolder", Engine: true},
-			{Package: "./gate/", Target: "FuzzParse", Engine: true},
-			{Package: "./toolchain/", Target: "FuzzMountPath", Engine: true},
-			{Package: "./changes/", Target: "FuzzPatternMatches", Engine: true},
-			{Package: "./claim/", Target: "FuzzIssueOf", Engine: true},
-			{Package: "./verify/", Target: "FuzzJobs", Engine: true},
-			{Package: "./receipt/", Target: "FuzzParse", Engine: true},
+			{Package: "./internal/build/coverage/", Target: "FuzzParseResult"},
+			{Package: "./internal/build/versioning/", Target: "FuzzField"},
+			{Package: "./internal/build/docs/", Target: "FuzzFields"},
+			{Package: "./internal/build/docs/", Target: "FuzzFrontmatterRoundTrip"},
+			{Package: "./internal/build/lane/", Target: "FuzzParseHolder"},
+			{Package: "./internal/build/gate/", Target: "FuzzParse"},
+			{Package: "./internal/build/toolchain/", Target: "FuzzMountPath"},
+			{Package: "./internal/build/changes/", Target: "FuzzPatternMatches"},
+			{Package: "./internal/build/claim/", Target: "FuzzIssueOf"},
+			{Package: "./internal/build/verify/", Target: "FuzzJobs"},
+			{Package: "./internal/build/receipt/", Target: "FuzzParse"},
 		},
 		ReleaseEnv:     "CASK_RELEASE_TAG",
 		ReleaseFromEnv: "CASK_RELEASE_FROM_TAG",

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/core/lane"
+	"github.com/dmundt/go-cask/internal/build/lane"
 )
 
 // slotFor builds one worktree's view of the shared advisory slot: contenders get their

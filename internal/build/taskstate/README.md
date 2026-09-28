@@ -2,7 +2,7 @@
 type: Guide
 title: taskstate — build core
 description: Which branches carry work no pull request tracks — the record the report is built from, and the two findings worth acting on.
-version: v1
+version: v2
 ---
 
 # taskstate
@@ -46,7 +46,7 @@ func Findings(branches []Branch) []Finding
 ## Testing
 
 ```go
-(cd internal/build/core && go test ./taskstate/)
+(cd internal/build && go test ./taskstate/)
 ```
 
 No fuzz target: the package parses nothing. Reading `git` and `gh` output is the command's, and
@@ -54,6 +54,6 @@ that is where a parser would earn one.
 
 ## See also
 
-- [`../README.md`](../README.md) — the engine module and its packages
+- [`../README.md`](../README.md) — the engine and its packages
 - [`../../policy/README.md`](../../policy/README.md) — go-cask's tables
 - [`../../../../docs/specs/landing.md`](../../../../docs/specs/landing.md) — the lane the report serves

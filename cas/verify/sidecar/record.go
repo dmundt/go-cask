@@ -88,10 +88,10 @@ func (r *Record) encode() ([]byte, error) {
 func decodeRecord(b []byte) (*Record, error) {
 	var rec Record
 	if err := json.Unmarshal(b, &rec); err != nil {
-		return nil, fmt.Errorf("%w: sidecar: decode record: %v", cas.ErrCorrupt, err)
+		return nil, fmt.Errorf("%w: sidecar: decode record: %w", cas.ErrCorrupt, err)
 	}
 	if err := rec.validate(); err != nil {
-		return nil, fmt.Errorf("%w: sidecar: %v", cas.ErrCorrupt, err)
+		return nil, fmt.Errorf("%w: sidecar: %w", cas.ErrCorrupt, err)
 	}
 	return &rec, nil
 }

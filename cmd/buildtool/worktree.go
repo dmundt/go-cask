@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dmundt/go-cask/internal/build/core/worktree"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/worktree"
 )
 
 // worktreeContext is a resolved view of the repository the command acts on: where the

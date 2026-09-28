@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask Instruction Folder Guide
 description: Meta-guide for docs/specs/ — naming, frontmatter, structure, normative language, terminology, cross-referencing, precedence, checklist.
-version: v34
+version: v35
 tags: [go-cask]
 status: stable
 ---
@@ -169,14 +169,14 @@ higher here. Never leave two contradicting statements in the folder.
 - Fences always tagged (`go`, `yaml`, `text`, `json`, `mermaid`); raw HTML, HTML comments and
   HTML/XML/SVG fences forbidden (`docs/AGENT.md` §1.4). Pipe tables with a header separator;
   `:---:` only where meaningful. Line width ≤ ~100; LF; UTF-8. Requirements numbered (`P-01…`) only
-  when cross-referenced. `internal/build/core/docs` enforces the policy, run by
+  when cross-referenced. `internal/build/docs` enforces the policy, run by
   `./scripts/verify.sh` in both scopes.
 
 ## 10. Editing and maintenance checklist
 
 Before committing any change to a file in this folder:
 - [x] Frontmatter present; `title` == H1; one-line `description`
-- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic — the gate enforces the bump's presence: `internal/build/core/versioning` from `./scripts/verify.sh` names a changed versioned file whose `version` did not move, and never judges materiality
+- [x] `version` bumped on material change (requirements/contracts/restructure), not cosmetic — the gate enforces the bump's presence: `internal/build/versioning` from `./scripts/verify.sh` names a changed versioned file whose `version` did not move, and never judges materiality
 - [x] Structure per §4 (no body `---` separators); checklist where applicable
 - [x] Terminology matches §6 (no "debug UI", "go-coding-guidelines", "Repository in core")
 - [x] Normative language per §5
@@ -184,7 +184,7 @@ Before committing any change to a file in this folder:
 - [x] New files registered in `docs/specs/index.md` (and `docs/index.md` when a new path pattern appears)
 - [x] No contradictions with higher-precedence files (§8)
 - [x] Diagrams valid; fences tagged; every mermaid block balanced unless labeled as an illustrative fragment
-- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/core/docs`, which walks every tracked `.md` (mermaid balance included)
+- [x] No raw HTML, HTML comments, or HTML/XML/SVG fences — checked by `internal/build/docs`, which walks every tracked `.md` (mermaid balance included)
 
 ## 11. Signed pull-request workflow
 

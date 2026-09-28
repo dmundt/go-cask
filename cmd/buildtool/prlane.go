@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/claim"
+	"github.com/dmundt/go-cask/internal/build/claim"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -434,7 +434,7 @@ func prLaneTryClaim(deps prLaneDeps, repo, issue, tag string) (bool, error) {
 	if strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		return false, nil
 	}
-	return false, fmt.Errorf("claiming the lane for #%s failed: %v", issue, err)
+	return false, fmt.Errorf("claiming the lane for #%s failed: %w", issue, err)
 }
 
 // prLaneDropRef deletes a lane's ref. It answers whether the ref was there: a lane that is
@@ -449,7 +449,7 @@ func prLaneDropRef(deps prLaneDeps, repo, issue string) (bool, error) {
 	if strings.Contains(message, "does not exist") || strings.Contains(message, "not found") {
 		return false, nil
 	}
-	return false, fmt.Errorf("releasing the lane for #%s failed: %v", issue, err)
+	return false, fmt.Errorf("releasing the lane for #%s failed: %w", issue, err)
 }
 
 // prLaneClaim takes the lane, or takes over a claim past its window.
@@ -474,7 +474,7 @@ func prLaneClaim(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 	for attempt := 1; attempt <= 3; attempt++ {
 		tag, err := prLaneClaimObject(deps, repo, issue, base)
 		if err != nil {
-			return fmt.Errorf("cannot record the claim for #%s: %v", issue, err)
+			return fmt.Errorf("cannot record the claim for #%s: %w", issue, err)
 		}
 		if tag == "" {
 			return fmt.Errorf("cannot record the claim for #%s (empty tag object)", issue)

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/core/receipt"
 	"github.com/dmundt/go-cask/internal/build/policy"
+	"github.com/dmundt/go-cask/internal/build/receipt"
 )
 
 // gateReceiptRefPrefix is the namespace the receipt travels under. It is a ref and not a
@@ -85,7 +85,7 @@ const gateReceiptUsage = `usage: buildtool gate-receipt <command>
 // whose parent is the gated commit, whose tree is the gated tree and whose message is the
 // record — so a receipt carries its own signature and CI can check two structural claims
 // without reading the text at all. The record's own format belongs to
-// internal/build/core/receipt; what is here is git: signing the object, pushing it, and
+// internal/build/receipt; what is here is git: signing the object, pushing it, and
 // deciding what a receipt is allowed to excuse.
 func runGateReceipt(args []string, out, errOut io.Writer) error {
 	// The repository is resolved once, from the process's own directory, because that is

@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v54
+version: v55
 ---
 
 # Library Design — go-cask
@@ -23,7 +23,7 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 
 ### 1.1 Classes and layers
 
-Two axes, deliberately independent. **Class** says who may rely on a change and where it must be recorded; **layer** says what may import what. `internal/build/core/layers` carries the matrix below as data, `scripts/verify.sh` runs it as the layer-matrix check, and `internal/build/core/depgraph` draws `gitlike` in its own `REFERENCE` layer.
+Two axes, deliberately independent. **Class** says who may rely on a change and where it must be recorded; **layer** says what may import what. `internal/build/layers` carries the matrix below as data, `scripts/verify.sh` runs it as the layer-matrix check, and `internal/build/depgraph` draws `gitlike` in its own `REFERENCE` layer.
 
 | Class | Trees | Promise | Change record |
 | --- | --- | --- | --- |
