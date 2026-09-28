@@ -101,6 +101,70 @@ func TestPackfsSizeRejectsStaleRecordAndPersistFailure(t *testing.T) {
 	}
 }
 
+// TestPackfsStatCombinesBothValues pins the combined physical read
+// (go-cask#373): one Stat reports the pack record's payload size together with
+// the pack file's timestamp for a packed object, and the loose backend's own
+// size and timestamp for a loose-only one — the same answers Size and ModTime
+// give, from one call.
+func TestPackfsStatCombinesBothValues(t *testing.T) {
+	ctx := context.Background()
+	backend, err := New(filepath.Join(t.TempDir(), "stat"), WithEnabled())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+
+	payload := []byte("statted payload")
+	packed := cas.NewDigest([]byte("stat-packed"))
+	if err := backend.Put(ctx, packed, bytesReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	loosePayload := []byte("statted loose payload")
+	loose := cas.NewDigest([]byte("stat-loose"))
+	if err := backend.Put(ctx, loose, bytesReader(loosePayload)); err != nil {
+		t.Fatal(err)
+	}
+	backend.mu.Lock()
+	delete(backend.index, string(loose))
+	backend.mu.Unlock()
+
+	packInfo, err := os.Stat(backend.packFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size, written, err := backend.Stat(ctx, packed)
+	if err != nil {
+		t.Fatalf("Stat(packed) = %v, want nil", err)
+	}
+	if size != int64(len(payload)) || !written.Equal(packInfo.ModTime()) {
+		t.Fatalf("Stat(packed) = (%d, %v), want (%d, %v)",
+			size, written, len(payload), packInfo.ModTime())
+	}
+	wantSize, err := backend.Size(ctx, packed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != wantSize {
+		t.Fatalf("Stat(packed) size = %d, Size = %d; want one answer", size, wantSize)
+	}
+
+	size, written, err = backend.Stat(ctx, loose)
+	if err != nil {
+		t.Fatalf("Stat(loose) = %v, want nil", err)
+	}
+	if size != int64(len(loosePayload)) || written.IsZero() {
+		t.Fatalf("Stat(loose) = (%d, %v), want the %d loose bytes and its own timestamp",
+			size, written, len(loosePayload))
+	}
+
+	if _, _, err := backend.Stat(ctx, nil); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("Stat(nil) = %v, want ErrInvalidDigest", err)
+	}
+	if _, _, err := backend.Stat(ctx, cas.NewDigest([]byte("never stored"))); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Stat(absent) = %v, want ErrNotFound", err)
+	}
+}
+
 // TestPackfsModTimeReportsPackFileTimeAndLooseFallback pins cas.ModTimer on both
 // shapes: a packed object reports its pack file's modification time, and a loose
 // object reports its own file's time.

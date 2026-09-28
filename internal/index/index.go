@@ -154,7 +154,9 @@ type Snapshot struct {
 // metadataSource is what the index needs from a backend: the byte contract plus
 // the physical per-object metadata. cas.Statter names exactly Size and ModTime,
 // so the interface embeds it rather than repeating the two signatures — a
-// backend that satisfies the core's optional capability satisfies this too.
+// backend that satisfies the core's optional capability satisfies this too. A
+// source that ALSO implements cas.PhysicalStatter is asked once per object
+// instead of twice (BuildSnapshot, go-cask#373).
 type metadataSource interface {
 	cas.Backend
 	cas.Statter
@@ -163,11 +165,19 @@ type metadataSource interface {
 // BuildSnapshot scans source once and records bounded envelope metadata.
 // Unreadable records remain indexed so the browser can report them without
 // repeatedly retrying a broken object during one request burst.
+//
+// Each object's size and modification time come from one physical read when the
+// source implements cas.PhysicalStatter (fs and packfs do): the walk already had
+// both values, and asking Size and then ModTime stats the same file twice
+// (go-cask#373). A source without the capability is asked the two questions,
+// which produces the same snapshot — the capability is an optimization, never a
+// different answer.
 func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error) {
 	digests, err := source.List(ctx)
 	if err != nil {
 		return nil, err
 	}
+	physical, hasPhysical := source.(cas.PhysicalStatter)
 	s := &Snapshot{Entries: make([]Entry, 0, len(digests)), Total: len(digests)}
 	types := make(map[string]struct{})
 	versions := make(map[byte]struct{})
@@ -183,13 +193,23 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 		} else {
 			e.Version, e.Codec, e.Type = version, codec, typ
 		}
-		if e.Size, err = source.Size(ctx, d); err != nil {
-			e.Unreadable = true
+		if hasPhysical {
+			size, written, err := physical.Stat(ctx, d)
+			if err != nil {
+				e.Unreadable = true
+			} else {
+				e.Size, e.Written = size, written
+				s.Bytes += e.Size
+			}
 		} else {
-			s.Bytes += e.Size
-		}
-		if e.Written, err = source.ModTime(ctx, d); err != nil {
-			e.Unreadable = true
+			if e.Size, err = source.Size(ctx, d); err != nil {
+				e.Unreadable = true
+			} else {
+				s.Bytes += e.Size
+			}
+			if e.Written, err = source.ModTime(ctx, d); err != nil {
+				e.Unreadable = true
+			}
 		}
 		// An object whose header did not parse contributes to no census list:
 		// the viewer and the CLI must not invent a version, a codec or a type

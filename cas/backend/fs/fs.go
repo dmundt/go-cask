@@ -88,8 +88,14 @@ type Backend struct {
 }
 
 // Compile-time check that Backend satisfies the cas.Backend interface
-// (including Stats), so dropping a method breaks this package's build.
+// (including Stats), so dropping a method breaks this package's build. The
+// optional capabilities are named too: this backend opts into both metadata
+// interfaces, and cas.PhysicalStatter must stay the combined form of
+// cas.Statter's two calls (go-cask#373).
 var _ cas.Backend = (*Backend)(nil)
+var _ cas.Cleaner = (*Backend)(nil)
+var _ cas.Statter = (*Backend)(nil)
+var _ cas.PhysicalStatter = (*Backend)(nil)
 
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
@@ -335,42 +341,46 @@ func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	return nil
 }
 
-// Size returns the stored object's size in bytes. A missing object returns
-// ErrNotFound. ctx is honored at entry for cancellation.
-func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+// physicalStat is the one os.Stat behind Size, ModTime and Stat: what names the
+// caller in a key error (the guard's message is operator output, so Size and
+// ModTime keep their own names), and the two values every one of them reads.
+// A missing object is ErrNotFound, every other failure is the stat's own.
+func (s *Backend) physicalStat(ctx context.Context, d cas.Digest, what string) (int64, time.Time, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return 0, time.Time{}, err
 	}
-	if err := s.checkKey(d, "fs: size"); err != nil {
-		return 0, err
+	if err := s.checkKey(d, what); err != nil {
+		return 0, time.Time{}, err
 	}
 	fi, err := os.Stat(s.digestPath(d))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
+			return 0, time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
-		return 0, fmt.Errorf("cas: stat object: %w", err)
+		return 0, time.Time{}, fmt.Errorf("cas: stat object: %w", err)
 	}
-	return fi.Size(), nil
+	return fi.Size(), fi.ModTime(), nil
+}
+
+// Size returns the stored object's size in bytes. A missing object returns
+// ErrNotFound. ctx is honored at entry for cancellation.
+func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	size, _, err := s.physicalStat(ctx, d, "fs: size")
+	return size, err
 }
 
 // ModTime returns the filesystem modification time of a stored object. This
 // is physical backend metadata, not a content-addressed object field.
 func (s *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
-	if err := ctx.Err(); err != nil {
-		return time.Time{}, err
-	}
-	if err := s.checkKey(d, "fs: mod time"); err != nil {
-		return time.Time{}, err
-	}
-	fi, err := os.Stat(s.digestPath(d))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
-		}
-		return time.Time{}, fmt.Errorf("cas: stat object: %w", err)
-	}
-	return fi.ModTime(), nil
+	_, written, err := s.physicalStat(ctx, d, "fs: mod time")
+	return written, err
+}
+
+// Stat returns the stored object's size and its filesystem modification time
+// from one os.Stat, so a caller that needs both does not stat the same path
+// twice (cas.PhysicalStatter, go-cask#373).
+func (s *Backend) Stat(ctx context.Context, d cas.Digest) (int64, time.Time, error) {
+	return s.physicalStat(ctx, d, "fs: stat")
 }
 
 // Clean removes orphan temp files (crash leftovers) older than olderThan

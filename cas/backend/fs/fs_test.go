@@ -484,6 +484,47 @@ func TestSize(t *testing.T) {
 	}
 }
 
+// TestStat pins the combined physical read (go-cask#373): one call reports the
+// size and the write time Size and ModTime report separately, and a missing
+// object is ErrNotFound, so a caller that needs both — index.BuildSnapshot —
+// stats the file once.
+func TestStat(t *testing.T) {
+	s := mustFS(t)
+	ctx := context.Background()
+	content := []byte("statted content")
+	h := digestOf(content)
+	if err := s.Put(ctx, h, strings.NewReader(string(content))); err != nil {
+		t.Fatal(err)
+	}
+	size, written, err := s.Stat(ctx, h)
+	if err != nil {
+		t.Fatalf("Stat = %v, want nil", err)
+	}
+	if size != int64(len(content)) {
+		t.Fatalf("Stat size = %d, want %d", size, len(content))
+	}
+	// The two separate calls must agree with the combined one on the same file.
+	// The timestamp comes from physical metadata, whose granularity is coarser
+	// than Go's clock, so the two reads of one unchanged file compare equal.
+	wantSize, err := s.Size(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTime, err := s.ModTime(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != wantSize || !written.Equal(wantTime) {
+		t.Fatalf("Stat = (%d, %v), want Size/ModTime's (%d, %v)", size, written, wantSize, wantTime)
+	}
+	if _, _, err := s.Stat(ctx, digestOf([]byte("missing"))); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("Stat missing = %v; want ErrNotFound", err)
+	}
+	if _, _, err := s.Stat(ctx, nil); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("Stat(nil digest) = %v; want ErrInvalidDigest", err)
+	}
+}
+
 // TestModTime verifies ModTime reports the stored file's write time and
 // ErrNotFound for a missing object. The time is physical backend metadata, so
 // the test bounds it by the wall clock around the write rather than asserting

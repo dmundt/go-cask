@@ -244,6 +244,7 @@ type Backend struct {
 var _ cas.Backend = (*Backend)(nil)
 var _ cas.Cleaner = (*Backend)(nil)
 var _ cas.Statter = (*Backend)(nil)
+var _ cas.PhysicalStatter = (*Backend)(nil)
 var _ cas.BatchGetter = (*Backend)(nil)
 
 // New creates a pack-backed filesystem backend. It stays opt-in: without
@@ -905,6 +906,49 @@ func (b *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) 
 		}
 	}
 	return b.loose.ModTime(ctx, d)
+}
+
+// Stat returns the stored object's size and physical modification time from one
+// metadata read (cas.PhysicalStatter, go-cask#373): a pack-backed object reports
+// the pack record's payload size and its pack file's timestamp, one os.Stat for
+// both values, and a loose-only object delegates to the loose backend's own
+// Stat.
+//
+// Size and ModTime stay as they are rather than routing through this: Size must
+// not stat a pack file whose record already holds the size, and ModTime must not
+// report an index size as a timestamp. This is the combined form for a caller
+// that needs both — index.BuildSnapshot — not a third implementation of either.
+func (b *Backend) Stat(ctx context.Context, d cas.Digest) (int64, time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, time.Time{}, err
+	}
+	if err := cas.CheckDigest(d, "pack: stat"); err != nil {
+		return 0, time.Time{}, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if rec, ok := b.index[string(d)]; ok {
+		valid, err := b.validPackRecord(rec)
+		if err != nil {
+			return 0, time.Time{}, fmt.Errorf("cas: validate pack record: %w", err)
+		}
+		if !valid {
+			delete(b.index, string(d))
+			if persistErr := b.persistIndex(); persistErr != nil {
+				return 0, time.Time{}, persistErr
+			}
+		} else {
+			fi, err := os.Stat(rec.Pack)
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					return 0, time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
+				}
+				return 0, time.Time{}, fmt.Errorf("cas: stat pack file: %w", err)
+			}
+			return rec.Size, fi.ModTime(), nil
+		}
+	}
+	return b.loose.Stat(ctx, d)
 }
 
 // Clean removes stale temporary files left by pack writes and loose fs writes.
