@@ -30,11 +30,13 @@ func newTestServer(t *testing.T, rlCfg RateLimitConfig) (*testClient, *httptest.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Explicit test tokens: the example ships no default credential, so the
+	// matrix is asserted against tokens this test supplies (issue #351).
 	srv := New(backend, map[string]string{
 		"viewer-tok": "viewer",
 		"op-tok":     "operator",
 		"admin-tok":  "admin",
-	}, rlCfg)
+	}, rlCfg, 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &testClient{base: ts.URL, token: "op-tok", hc: ts.Client()}, ts
@@ -188,7 +190,7 @@ func TestLargePayload(t *testing.T) {
 func TestRoleMatrix(t *testing.T) {
 	ctx := context.Background()
 	backend, _ := fs.New(t.TempDir())
-	srv := New(backend, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"viewer-tok": "viewer", "op-tok": "operator", "admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
@@ -282,7 +284,7 @@ func TestMetaVerifyListStats(t *testing.T) {
 func TestGCAndOpenAPI(t *testing.T) {
 	ctx := context.Background()
 	backend, _ := fs.New(t.TempDir())
-	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}

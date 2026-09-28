@@ -19,12 +19,12 @@ import (
 //
 // Deliberately left uncovered, with the reason:
 //
-//   - main (main.go:23): the runnable program — it parses flags, opens a file
+//   - main (main.go): the runnable program — it parses flags, opens a file
 //     and talks to a live server.
-//   - the fatal exits inside mustReq and doRaw (main.go:88, 140, 144, 148) and
-//     fatal itself (main.go:160): each writes to stderr and calls os.Exit, so
-//     only a subprocess could observe it — that tests the exit plumbing rather
-//     than the helper's behaviour.
+//   - the fatal exits in main (the -token/-file refusals and the doRaw error
+//     path): each writes to stderr and calls os.Exit, so only a subprocess
+//     could observe it — that tests the exit plumbing rather than the helper's
+//     behaviour.
 
 // mustReq builds a GET/POST request and attaches the bearer token; the caller
 // (main) relies on the header being set, not on doing it itself.
@@ -203,8 +203,8 @@ func TestNumHandlesExtremeValues(t *testing.T) {
 	}
 }
 
-// doRaw streams the whole response body back to the caller.
-func TestDoRawReadsBody(t *testing.T) {
+// doRaw streams the whole response body away and reports its length.
+func TestDoRawCountsBody(t *testing.T) {
 	const body = "the stored bytes, streamed back"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer op-tok" {
@@ -214,13 +214,39 @@ func TestDoRawReadsBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	got := doRaw(mustReq(context.Background(), http.MethodGet, server.URL+"/api/cas/v1/objects/abc", "op-tok"))
-	if string(got) != body {
-		t.Fatalf("doRaw = %q, want %q", got, body)
+	got, err := doRaw(mustReq(context.Background(), http.MethodGet, server.URL+"/api/cas/v1/objects/abc", "op-tok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != int64(len(body)) {
+		t.Fatalf("doRaw = %d, want %d", got, len(body))
 	}
 }
 
-// doRaw rejects a non-200 answer rather than returning its error body as if it
+// doRaw reports the length of a body far larger than any read buffer: the count
+// is the stream's, and nothing accumulates it (issue #375, performance P-05 —
+// main.go never calls ReadAll, which is what keeps the download un-buffered).
+func TestDoRawCountsLargeBody(t *testing.T) {
+	const n = 8 << 20 // 8 MiB, well past io.Copy's internal buffer sizes
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for range 8 {
+			if _, err := w.Write(make([]byte, n/8)); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	got, err := doRaw(mustReq(context.Background(), http.MethodGet, server.URL, "tok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != n {
+		t.Fatalf("doRaw = %d, want %d", got, n)
+	}
+}
+
+// doRaw rejects a non-200 answer rather than counting its error body as if it
 // were the object: fatal exits the process, which the child-process test below
 // observes.
 func TestDoRawRejectsNon200(t *testing.T) {
@@ -229,8 +255,12 @@ func TestDoRawRejectsNon200(t *testing.T) {
 			http.Error(w, "not found", http.StatusNotFound)
 		}))
 		defer server.Close()
-		doRaw(mustReq(context.Background(), http.MethodGet, server.URL, "tok"))
-		return // unreachable: doRaw must have exited
+		n, err := doRaw(mustReq(context.Background(), http.MethodGet, server.URL, "tok"))
+		if err != nil {
+			fatal(err)
+		}
+		_ = n
+		return // unreachable: doRaw must have failed and fatal must have exited
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestDoRawRejectsNon200")
