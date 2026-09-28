@@ -2,7 +2,7 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v9
+version: v10
 ---
 
 # Landing — go-cask
@@ -32,7 +32,7 @@ version: v9
 - That remote-tracking ref is the only base: a local `main` can be behind the remote or carry another session's uncommitted work.
 - Exception: the `hotfix` base `branch-naming.md` §3 defines (`release/vX.Y`).
 - **Never `git add -A`**, **never `git commit -a`** — stage the paths you touched, or a shared tree sweeps another session's untracked files into your commit.
-- **A scratch tree is not storage.** `.gocache/` is the build cache, `.worktrees/` holds task worktrees; both are untracked and cleaned. A durable record goes in a pull request.
+- **A scratch tree is not storage.** Three directories, three owners: `.gocache/` is the toolchain's own cache and scratch root (`buildtool`'s `cacheDir` and its `--scratch` default) and a session MUST NOT put its own temporary files there; `.worktrees/` holds task worktrees, created by `buildtool worktree add` and no other way; `.scratch/` holds a session's intermediate and transitive scratch, and the session that made it deletes it when the work it served is done. All three are untracked and cleaned. A durable record goes in a pull request — never in `.scratch/`.
 
 ## 3. The lane
 
