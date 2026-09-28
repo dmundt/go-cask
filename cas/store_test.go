@@ -460,7 +460,7 @@ func TestStoreGetLegacyEnvelope(t *testing.T) {
 }
 
 // TestStoreCanceledOps verifies the typed store short-circuits canceled
-// contexts on Put, PutDedup, GetRaw, Get, Exists, Delete and Type.
+// contexts on Put, PutDedup, GetRaw, GetReader, Get, Exists, Delete and Type.
 func TestStoreCanceledOps(t *testing.T) {
 	st := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -473,6 +473,7 @@ func TestStoreCanceledOps(t *testing.T) {
 		{"Put", func() error { _, err := st.Put(ctx, test.Note{Title: "t"}); return err }},
 		{"PutDedup", func() error { _, _, err := st.PutDedup(ctx, test.Note{Title: "t"}); return err }},
 		{"GetRaw", func() error { _, err := st.GetRaw(ctx, h); return err }},
+		{"GetReader", func() error { _, err := st.GetReader(ctx, h); return err }},
 		{"Get", func() error { _, err := st.Get(ctx, h); return err }},
 		{"Type", func() error { _, err := st.Type(ctx, h); return err }},
 		{"Version", func() error { _, err := st.Version(ctx, h); return err }},
@@ -1136,6 +1137,13 @@ func TestStoreRejectsDigestRefusedByHasher(t *testing.T) {
 	}{
 		{"Put", func() error { _, err := s.Put(ctx, test.Note{Title: "x"}); return err }, "store: put"},
 		{"GetRaw", func() error { _, err := s.GetRaw(ctx, valid); return err }, "store: get"},
+		{"GetReader", func() error {
+			rc, err := s.GetReader(ctx, valid)
+			if rc != nil {
+				_ = rc.Close()
+			}
+			return err
+		}, "store: get"},
 		{"Exists", func() error { _, err := s.Exists(ctx, valid); return err }, "store: exists"},
 		{"Delete", func() error { return s.Delete(ctx, valid) }, "store: delete"},
 	} {
@@ -1213,6 +1221,90 @@ func TestStoreGetRawReportsReadFailure(t *testing.T) {
 	s := rawStore(t, readErrorReader{err: want})
 	if _, err := s.GetRaw(context.Background(), sha256.Of([]byte("x"))); !errors.Is(err, want) {
 		t.Fatalf("GetRaw(read error) = %v, want %v", err, want)
+	}
+}
+
+// TestStoreGetReaderDoesNotBuffer pins the streaming accessor (go-cask#381):
+// GetReader returns the backend's reader without reading a byte of it, unlike
+// GetRaw, whose whole contract is one io.ReadAll. That is what lets a tooling
+// caller obey performance.md §4 — never io.ReadAll a large object in
+// Store.GetRaw, stream or use a bounded read — and it is why the reader's
+// lifecycle belongs to the caller.
+func TestStoreGetReaderDoesNotBuffer(t *testing.T) {
+	ctx := context.Background()
+	counted := &countingBackend{Backend: backmem.New()}
+	s := newTestStore(t, counted)
+	h, err := s.Put(ctx, test.Note{Title: "streamed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counted.read = 0 // the Put above went through this backend's Put, not Get
+
+	rc, err := s.GetReader(ctx, h)
+	if err != nil {
+		t.Fatalf("GetReader = %v", err)
+	}
+	if counted.read != 0 {
+		t.Fatalf("GetReader read %d bytes, want none (the caller streams the object)", counted.read)
+	}
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("reading the returned reader: %v", err)
+	}
+	if len(data) == 0 || counted.read != len(data) {
+		t.Fatalf("the caller read %d bytes through the backend reader, want the object's %d", counted.read, len(data))
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatalf("the caller's Close = %v", err)
+	}
+}
+
+// TestStoreGetReaderGuards pins the guards the new surface shares with GetRaw:
+// an absent digest is ErrInvalidDigest before the backend is touched, a digest
+// the client's hasher refuses reports that refusal under the operation's name,
+// a digest the backend does not hold is the backend's ErrNotFound, and the
+// caller owns the close.
+func TestStoreGetReaderGuards(t *testing.T) {
+	ctx := context.Background()
+	s := cas.New(backmem.New(), jsoncodec.New[test.Note](), sha256.New())
+
+	if _, err := s.GetReader(ctx, nil); !errors.Is(err, cas.ErrInvalidDigest) {
+		t.Fatalf("GetReader(absent digest) = %v, want ErrInvalidDigest", err)
+	}
+	// A digest of the wrong width is well formed for CheckDigest (present, hex)
+	// but not for the client's algorithm, which owns the width rule.
+	narrow := cas.NewDigest(make([]byte, sha256.Size-1))
+	_, err := s.GetReader(ctx, narrow)
+	if err == nil || !strings.Contains(err.Error(), "store: get") {
+		t.Fatalf("GetReader(wrong width) = %v, want the hasher's refusal under the operation's name", err)
+	}
+	if _, err := s.GetReader(ctx, sha256.Of([]byte("missing"))); !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("GetReader(missing object) = %v, want ErrNotFound", err)
+	}
+	// The reader is the caller's: closing it twice is the caller's contract, and
+	// the store never closes it behind their back. A store-held reader would be
+	// unusable after the next call, so a second read proves it is not.
+	h, err := s.Put(ctx, test.Note{Title: "owned by the caller"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, err := s.GetReader(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatalf("Close = %v", err)
+	}
+	again, err := s.GetRaw(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, again) {
+		t.Fatalf("the streamed bytes and the buffered bytes differ: %d vs %d", len(first), len(again))
 	}
 }
 

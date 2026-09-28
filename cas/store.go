@@ -317,24 +317,46 @@ func (s *Store[T]) checkCodec(env Envelope) error {
 		ErrCodecMismatch, env.Type, env.Codec, s.codecName)
 }
 
-// GetRaw returns the raw stored bytes — the self-describing TLV envelope —
-// for inspection and tooling. It buffers the whole object.
+// GetReader returns the backend's reader for the object at d, positioned at its
+// first byte: the raw stored bytes — the self-describing TLV envelope — streamed
+// rather than buffered. The caller MUST close it.
 //
-// It does not parse the envelope, so it reports no envelope-level error: a
-// damaged frame comes back as its bytes, and a caller that wants the verdict
-// parses them with EnvelopeFromBytes (or reads the object with Get, which
-// parses the same bytes and reports ErrCorrupt). Only the guards and the
-// backend's own failures — ErrInvalidDigest, ErrNotFound — surface here. A read
-// failure wins over a close failure, through readThenClose (readclose.go,
-// go-cask#340).
-func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
+// It applies the same guards GetRaw applies (CheckDigest and the client
+// hasher's width check) and delegates to the same backend Get, so an unusable
+// key is ErrInvalidDigest and an absent object is the backend's ErrNotFound. It
+// parses nothing, exactly like GetRaw: a damaged frame streams its bytes.
+//
+// It exists because performance.md §4 forbids buffering a large object in
+// Store.GetRaw — the inspection/tooling accessor a CLI or a viewer reaches for
+// precisely on large objects — and GetRaw buffers by contract (go-cask#381). A
+// caller that wants a prefix, a hash or a copy to another store takes this
+// instead and pays no object-sized allocation; GetRaw is the documented
+// buffering form, and Store.Get keeps buffering because Codec.Decode needs
+// bytes. Its consumer today is that tooling path plus GetRaw itself, which is
+// one thin readThenClose over this reader.
+func (s *Store[T]) GetReader(ctx context.Context, d Digest) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := s.check(d, "store: get"); err != nil {
 		return nil, err
 	}
-	rc, err := s.backend.Get(ctx, d)
+	return s.backend.Get(ctx, d)
+}
+
+// GetRaw returns the raw stored bytes — the self-describing TLV envelope —
+// for inspection and tooling. It buffers the whole object, which is why a
+// streaming caller uses GetReader instead (performance.md §4, go-cask#381): this
+// is a readThenClose over GetReader (readclose.go, go-cask#340), so both
+// accessors share the guards, the backend Get and the read-then-close rule.
+//
+// It does not parse the envelope, so it reports no envelope-level error: a
+// damaged frame comes back as its bytes, and a caller that wants the verdict
+// parses them with EnvelopeFromBytes (or reads the object with Get, which
+// parses the same bytes and reports ErrCorrupt). Only the guards and the
+// backend's own failures — ErrInvalidDigest, ErrNotFound — surface here.
+func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
+	rc, err := s.GetReader(ctx, d)
 	if err != nil {
 		return nil, err
 	}
