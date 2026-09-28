@@ -2,25 +2,19 @@
 type: Agent Instructions
 title: AGENT — go-cask (agent skills)
 description: The guide for .agents/ — how a repository skill is discovered, how its SKILL.md is authored and budgeted, what belongs in user scope instead, when vendored material needs a NOTICE, and the validation checklist a new skill must pass.
-version: v4
+version: v5
 tags: [go-cask]
 status: stable
 ---
 
 # AGENT — go-cask (agent skills)
 
-Governs every skill under `.agents/skills/`. Repo-root [`AGENTS.md`](/AGENTS.md)
-routes agents to it, `docs/index.md` maps it by path. Skill loaded as
-working instructions, not as a specification: changes an agent's process,
-never the product's behavior. Follow
-[`docs/AGENT.md`](/docs/AGENT.md) §1.4 for Markdown content and §7 for
-formatting. Related: [`docs/index.md`](/docs/index.md),
-[`docs/specs/AGENT.md`](/docs/specs/AGENT.md).
+Governs every skill under `.agents/skills/`. Repo-root [`AGENTS.md`](/AGENTS.md) routes agents here; `docs/index.md` maps it by path. A skill loads as working instructions, not as a specification: it changes an agent's process, never the product's behavior. Markdown content [`docs/AGENT.md`](/docs/AGENT.md) §1.4, formatting §7. Related: [`docs/index.md`](/docs/index.md), [`docs/specs/AGENT.md`](/docs/specs/AGENT.md).
 
 ## Table of contents
 
 - [Scope](#1-scope)
-- [Discovery](#2-discovery-contract)
+- [Discovery contract](#2-discovery-contract)
 - [A skill is not a spec](#3-a-skill-is-not-a-spec)
 - [The SKILL.md contract](#4-the-skillmd-contract)
 - [Authoring rules](#5-authoring-rules)
@@ -31,27 +25,20 @@ formatting. Related: [`docs/index.md`](/docs/index.md),
 
 ## 1. Scope
 
-File owns skills in `.agents/skills/`: discovery, format,
-content budget, provenance, removal. Owns no product contract:
-skills MUST NOT state a rule a specification or an `AGENT.md` already
-states, and when a skill contradicts one of them the higher-precedence file
-wins ([`docs/specs/AGENT.md`](/docs/specs/AGENT.md) §8).
+Owns skills in `.agents/skills/`: discovery, format, content budget, provenance, removal. Owns no product contract: a skill MUST NOT state a rule a specification or an `AGENT.md` already states; on contradiction the higher-precedence file wins ([`docs/specs/AGENT.md`](/docs/specs/AGENT.md) §8).
 
 ## 2. Discovery contract
 
-Client scans roots one level deep and reads YAML frontmatter of each
-directory bundle. The rules that bind a file's location:
+Client scans roots one level deep, reads the YAML frontmatter of each directory bundle.
 
 | Rule | Value |
 |---|---|
-| Recognized shape | `<root>/<name>/SKILL.md` (a directory bundle) or `<root>/<name>.md` (flat) |
-| Not recognized | Nested `**/SKILL.md` anywhere below a root; a bundle without `SKILL.md` |
-| Repository root | `.agents/skills`, the project-scope root for agents that read this repository |
+| Recognized shape | `<root>/<name>/SKILL.md` (directory bundle) or `<root>/<name>.md` (flat) |
+| Not recognized | Nested `**/SKILL.md` below a root; a bundle without `SKILL.md` |
+| Repository root | `.agents/skills` — project scope for agents reading this repository |
 | Nesting | Exactly one level: no `skills/group/<name>/SKILL.md` |
 
-Consequence: skill placed under `docs/`, `internal/`, `scripts/`, or any
-package directory never discovered. MUST live at
-`.agents/skills/<name>/SKILL.md`.
+A skill under `docs/`, `internal/`, `scripts/` or any package directory is never discovered: MUST live at `.agents/skills/<name>/SKILL.md`.
 
 ## 3. A skill is not a spec
 
@@ -63,10 +50,7 @@ package directory never discovered. MUST live at
 | Authority | Requirements the code is measured against | Process an agent follows while changing it |
 | Failure mode | Drift from the code | Bloat, duplication, stale pointers |
 
-Repository skill earns its place only when it changes **how** work is done and
-cannot be derived from the spec set alone: a phase order, a per-surface failure
-mode, a validation gate, a delegation rule. Reference material a
-table-of-contents lookup already reaches MUST NOT be restated as a skill.
+A skill earns its place only when it changes **how** work is done and cannot be derived from the spec set: a phase order, a per-surface failure mode, a validation gate, a delegation rule. Reference material a table-of-contents lookup already reaches MUST NOT be restated as a skill.
 
 ## 4. The SKILL.md contract
 
@@ -82,53 +66,32 @@ description: >
 ```
 
 - `name` MUST equal bundle directory name, lowercase kebab-case.
-- `description` required, only text a client shows before loading
-  the body, so it carries the triggers. Keep it under 400 characters; a
-  truncated catalog entry loses the phrase a user would have typed.
-- Body is Markdown. Start with an H1 naming the skill's job, then the
-  procedure. Phase order beats topic order: an agent reads top to bottom.
+- `description` required: the only text a client shows before loading the body, so it carries the triggers. Under 400 characters — a truncated catalog entry loses the phrase a user would have typed.
+- Body Markdown: H1 naming the skill's job, then the procedure. Phase order beats topic order.
 
 ## 5. Authoring rules
 
-1. Point at the authoritative file by path; never copy a rule into a skill. A
-   duplicated rule drifts, and the copy is what the agent will follow.
-2. Keep shared laws here once, in the skill that needs them, let the
-   others reference the file that states them.
-3. Write commands and paths exactly as the repository spells them, including the
-   WSL requirement for the verification gate and the literal closing line that
-   marks a green run.
-4. Use tables to compress enumerations: one row per change surface, with the
-   failure mode that actually happens and the file to read.
+1. Point at the authoritative file by path; never copy a rule in. A duplicated rule drifts, and the copy is what the agent follows.
+2. Keep a shared law once, in the skill that needs it; the others reference the file that states it.
+3. Write commands and paths exactly as the repository spells them — the WSL requirement for the verification gate, the literal closing line marking a green run.
+4. Tables to compress enumerations: one row per change surface, with the failure mode that actually happens and the file to read.
 5. State stop conditions: the changes that require asking before proceeding.
-6. Raw HTML forbidden, as everywhere in this repository. Prefer tables and
-   fenced code with a language tag; keep line width within repository
-   convention.
-7. Never restate session style rules of a communication skill as technical
-   requirements. Style skill governs how a session talks, not how the
-   repository is built.
-8. Personal communication preference — how a session talks, not how this
-   repository is built — does not ship here. Belongs to the contributor's own
-   agent configuration: user-scope skills or a profile prompt patch. This
-   directory ships practices any contributor of this repository should
-   follow, and a taste preference is not one of them.
+6. Raw HTML forbidden, as everywhere here. Prefer tables and language-tagged fences; line width within repository convention.
+7. Never restate a communication skill's session style rules as technical requirements: a style skill governs how a session talks, not how the repository is built.
+8. Personal communication preference does not ship here. It belongs in the contributor's own agent configuration: user-scope skills or a profile prompt patch. This directory ships practices any contributor should follow, and a taste preference is not one.
 
 ## 6. Budget and trimming
 
-Loaded skill enters the context budget of every session that triggers it.
+A loaded skill enters the context budget of every session that triggers it.
 
-- Target 2 to 6 KB per skill. Beyond that, split by change surface instead of
-  growing one file.
-- Every section MUST answer "what does the agent do differently because of
-  this". Delete a section that only explains.
-- Prefer pointers over prose. Skill mostly links is doing its job; skill
-  mostly explanation is a spec in the wrong directory.
-- Re-read the skill when the files it points at materially change, update
-  the paths in the same change that moves them.
+- Target 2 to 6 KB per skill; beyond that, split by change surface, never grow one file.
+- Every section MUST answer "what does the agent do differently because of this". Delete a section that only explains.
+- Prefer pointers over prose: a skill that mostly links is doing its job; one that mostly explains is a spec in the wrong directory.
+- Re-read the skill when the files it points at materially change; move the paths in the same change.
 
 ## 7. Vendored provenance and NOTICE
 
-Skill copied or adapted from outside this repository is vendored
-material, MUST carry a `NOTICE` file in its bundle directory recording:
+A skill copied or adapted from outside this repository is vendored material and MUST carry a `NOTICE` in its bundle directory:
 
 | Field | Content |
 |---|---|
@@ -138,22 +101,16 @@ material, MUST carry a `NOTICE` file in its bundle directory recording:
 | License | The upstream license, and confirmation that the copied path is covered by it |
 | Local changes | What was adapted, stated minimally |
 
-Skill body also names its upstream and license in a short provenance block,
-so the attribution travels with the loaded text. Never edit vendored rules in
-place: re-vendor, then update the revision and blob hash.
+The skill body also names its upstream and license in a short provenance block, so attribution travels with the loaded text. Never edit vendored rules in place: re-vendor, then update revision and blob hash.
 
 ## 8. Adding, changing, removing a skill
 
 1. Create `.agents/skills/<name>/SKILL.md` with the two-key frontmatter.
-2. Add or update `.agents/skills/` row in [`docs/index.md`](/docs/index.md)
-   so a path match reaches the skill, name the skill in the [`README.md`](/README.md)
-   "Repository layout" list when the set of skills changes.
+2. Add or update the `.agents/skills/` row in [`docs/index.md`](/docs/index.md) so a path match reaches the skill; name the skill in the [`README.md`](/README.md) "Repository layout" list when the set of skills changes.
 3. Add a `NOTICE` when §7 applies.
-4. On removal, delete the bundle and both mentions. Dangling pointer in the
-   index is worse than no row.
+4. On removal, delete the bundle and both mentions — a dangling pointer in the index is worse than no row.
 
-Skills do not change product behavior, so they do not get a `CHANGELOG.md`
-entry. Agent tooling, not a shipped capability.
+Skills change no product behavior, so they get no `CHANGELOG.md` entry: agent tooling, not a shipped capability.
 
 ## 9. Checklist
 

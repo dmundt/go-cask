@@ -2,17 +2,19 @@
 type: Specification
 title: Frontend Architecture — go-cask
 description: How the browser-facing frontend is architected — hypermedia-driven server-side rendering with nested Go templates, htmx interactions, fragment-based updates, URL-as-state navigation, and scoped viewer CSS.
-version: v15
+version: v16
 ---
 
 # Frontend Architecture — go-cask
 
-Governs the browser-facing architecture of go-cask (the viewer and any future frontend); concrete screens/routes/wireframe are defined by `viewer-design.md`. Related: viewer-design, viewer-security, coding-guidelines (scoped viewer CSS, no viewer script, templates+htmx), api-design.
+- The browser-facing architecture of go-cask (the viewer and any future frontend); screens/routes/wireframe are defined by `viewer-design.md`.
+- Related: viewer-design, viewer-security, coding-guidelines, api-design.
 
 ## 1. Purpose and scope
 
 - The frontend is everything the browser receives: **HTML pages and htmx fragments**, all server-rendered by `html/template`.
-- Deliberately **not** an SPA: no client framework, no client-side state, no JSON between browser and server, no JS-generated DOM. The browser is a hypermedia client (links, form submits, htmx fragment swaps).
+- Deliberately **not** an SPA: no client framework, no client-side state, no JSON between browser and server, no JS-generated DOM.
+- The browser is a hypermedia client: links, form submits, htmx fragment swaps.
 
 ## 2. Rendering model (hypermedia-driven)
 
@@ -24,8 +26,8 @@ Governs the browser-facing architecture of go-cask (the viewer and any future fr
 
 - `html/template` only — auto-escaping is the XSS boundary; never `text/template` for HTML, never HTML built by Go string concatenation (coding-guidelines §5–§6).
 - Embedded via `embed.FS` + `template.ParseFS` — no runtime file I/O, no build step.
-- **Nested composition** via `{{define}}`/`{{template}}`/`{{block}}`. The concrete template tree is defined once in `viewer-design.md` §4, not duplicated here; any frontend follows the same nesting.
-- **Fragments are the same partials rendered standalone:** an htmx endpoint returns a named template; the identical partial serves full-page composition and swaps (one source of truth).
+- **Nested composition** via `{{define}}`/`{{template}}`/`{{block}}`; the template tree is defined once in `viewer-design.md` §4 — any frontend follows the same nesting.
+- **Fragments are the same partials rendered standalone:** an htmx endpoint returns a named template; the identical partial serves full-page composition and swaps.
 - Minimal template logic (`{{if}}`/`{{range}}`/`{{with}}` + pipelines); all computation in Go; registered pure `FuncMap` helpers.
 
 ## 4. Interaction architecture (htmx)
@@ -43,55 +45,40 @@ Governs the browser-facing architecture of go-cask (the viewer and any future fr
 | Inspector width | native CSS `resize` bounded by `min-width`/`max-width`; no script, no persistence or application state |
 
 - GET endpoints are side-effect free; every mutation is a POST form with CSRF (viewer-security).
-- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, paging), `#object-inspector` (selection and its tabs), `#hexdump` (lazy bytes), `#integrity` (verify result), `#verify-all` (the sweep control's refreshed state) — never the whole page. No delete or GC target exists, because the viewer has no such route.
-- No custom events, no `_hyperscript`, no Alpine, no hand-written JS at
-  all: htmx is the only script the viewer ships (coding-guidelines §4).
+- `hx-target`/`hx-swap` always target a semantic container — `#object-list` (filter, sort, paging), `#object-inspector` (selection and its tabs), `#hexdump` (lazy bytes), `#integrity` (verify result), `#verify-all` (the sweep control's refreshed state) — never the whole page. No delete or GC target exists: the viewer has no such route.
+- No custom events, no `_hyperscript`, no Alpine, no hand-written JS: htmx is the only script the viewer ships (coding-guidelines §4).
 
 ## 5. Navigation and state
 
-- **URLs are the state:** `q`, `type`, `size`, `sort`, `dir`, `limit`,
-  `offset`, `selected`, and inspector `tab` (`metadata`, `references`, or
-  `bytes`) identify an object-browser view. `tab=actions` is a legacy alias an
-  old bookmark may still carry: it is rewritten to `metadata`, which absorbed
-  that panel, rather than rejected.
-  `hx-push-url` keeps that state in the address bar; refresh and back/forward
-  work; no client-side state exists to lose or rehydrate.
-- Identity comes from the server session cookie (always `HttpOnly`,
-  `SameSite=Strict`, and `Secure` — viewer-security); the browser never holds
-  tokens/secrets.
-- Fragments are reachable both standalone and as parts of full pages — the URL always identifies the resource, not a client-side view.
+- **URLs are the state:** `q`, `type`, `size`, `sort`, `dir`, `limit`, `offset`, `selected`, and inspector `tab` (`metadata`, `references`, or `bytes`) identify an object-browser view.
+- `tab=actions` is a legacy alias an old bookmark may still carry: rewritten to `metadata`, which absorbed that panel, rather than rejected.
+- `hx-push-url` keeps that state in the address bar; refresh and back/forward work.
+- Identity comes from the server session cookie (always `HttpOnly`, `SameSite=Strict`, and `Secure` — viewer-security); the browser never holds tokens/secrets.
+- Fragments are reachable standalone and as parts of full pages — the URL identifies the resource, not a client-side view.
 
 ## 6. Assets and embedding
 
-- Single binary: templates, `internal/web/viewer.css`, and vendored htmx,
-  embedded via `embed.FS`.
-- No npm, no build step, no static asset pipeline. The only viewer
-  stylesheet is the local, class-scoped `/viewer/static/viewer.css`; no remote
-  fonts, imports, images, or other style dependencies. The only runtime script
-  is vendored htmx.
+- Single binary: templates, `internal/web/viewer.css`, and vendored htmx, embedded via `embed.FS`. No npm, no build step, no static asset pipeline.
+- The only viewer stylesheet is the local, class-scoped `/viewer/static/viewer.css` — no remote fonts, imports, images, or other style dependencies; the only runtime script is vendored htmx.
 
 ## 7. Semantics and accessibility
 
-- Raw semantic HTML: main and navigation elements; tables with captions and
-  scoped headers; description lists for metadata; preformatted blocks for
-  bytes; forms with labels for input — no generic-container soup or inline
-  styles. CSS supplies layout and visual hierarchy only; semantics and
-  meaningful text stay in templates.
-- Accessibility: labels on all inputs, `alt` text, logical heading order, keyboard-operable links/forms. htmx keeps native elements native (progressive enhancement), so focus/semantics survive.
+- Raw semantic HTML: main and navigation elements; tables with captions and scoped headers; description lists for metadata; preformatted blocks for bytes; forms with labels for input — no generic-container soup or inline styles. CSS supplies layout and visual hierarchy only.
+- Accessibility: labels on all inputs, `alt` text, logical heading order, keyboard-operable links/forms; htmx keeps native elements native, so focus/semantics survive.
 - Elegance without CSS comes from structure, whitespace, consistent layout (viewer-design §2).
 
 ## 8. The viewer (reference frontend)
 
-Reference implementation of this architecture: object-browser-first, low-level technical inspection (viewer-design §7). Any new frontend MUST follow this architecture and reuse its template/htmx conventions; screens live in `viewer-design.md`.
+- Reference implementation of this architecture: object-browser-first, low-level technical inspection (viewer-design §7). Any new frontend MUST follow this architecture and reuse its template/htmx conventions.
 
 ## 9. Security
 
 - Nothing sensitive reaches the browser: no tokens, no secrets, no storage internals — only rendered HTML (viewer-security).
 - Sessions are cookies (`HttpOnly`, `SameSite=Strict`); CSRF tokens protect every mutation; 401/403 responses are empty bodies never disclosing existence.
-- Error responses carry the viewer's own prose only. A failure the operator can see is classified and explained; the Go error behind it goes to the audit line, because interpreter text names the layer underneath (filesystem paths, syscalls) rather than the finding (viewer-design §3).
-- No response is cacheable: every response is `Cache-Control: no-store`, and pages whose body depends on the session vary on `Cookie`, so a proxy in front of the viewer cannot serve one session's page to another (viewer-security §10).
+- Error responses carry the viewer's own prose only: the Go error behind a failure goes to the audit line, because interpreter text names the layer underneath (filesystem paths, syscalls), not the finding (viewer-design §3).
+- No response is cacheable: every response is `Cache-Control: no-store`, and session-dependent pages vary on `Cookie` (viewer-security §10).
 - htmx requests carry the same session cookie as full-page navigation — the backend cannot distinguish them and MUST NOT need to.
-- A route whose work is O(store) rather than O(request) is bounded, and the bound is part of the contract: at most one such operation at a time, a per-session budget, `429` + `Retry-After` when it is exceeded, and never a queue behind the running operation. The metadata snapshot is the same bound spent differently — a refused rebuild serves the published snapshot, so a page always renders (viewer-design §3, defaults.md).
+- A route whose work is O(store) rather than O(request) is bounded, and the bound is part of the contract: at most one such operation at a time, a per-session budget, `429` + `Retry-After` when exceeded, never a queue behind the running operation. The metadata snapshot is the same bound spent differently — a refused rebuild serves the published snapshot, so a page always renders (viewer-design §3, defaults.md).
 
 ## 10. Checklist
 

@@ -1,23 +1,23 @@
 ---
 okf_version: "0.2"
 title: Design Docs — go-cask
-description: Non-normative design documents — orientation, design history, viewer briefs and implementation plans. See docs/index.md for top-level rule index.
-version: v12
+description: Non-normative design documents — orientation, design history, viewer briefs, implementation plans. Rule lookup is docs/index.md.
+version: v13
 ---
 
 # Design Docs — go-cask
 
-Non-normative. Inform, never override instruction specs.
-
 | File | What |
 |---|---|
-| [`core-overview.md`](core-overview.md) | Orientation: the layer diagram (ASCII and Mermaid) and the component inventory; points at `cas-core.md` §3.3/§4 |
-| [`design-history.md`](design-history.md) | How the design converged: the origin conversation, its ten stages, where each landed |
+| [`core-overview.md`](core-overview.md) | Orientation; diagrams `cas-core.md` §3.3, contracts §4 |
+| [`design-history.md`](design-history.md) | Origin conversation, ten stages, where each landed |
 | [`viewer-brief.md`](viewer-brief.md) | Viewer next-iteration design brief (OpenDesign input) |
-| [`object-browser-logic.md`](object-browser-logic.md) | Formal server-state and rendering translation of mockup logic |
-| [`viewer-implementation-plan.md`](viewer-implementation-plan.md) | Phased viewer implementation plan |
-| [`viewer-template-index.md`](viewer-template-index.md) | Viewer template component inventory and composition tree |
-| [`viewer-mockup-parity-audit.md`](viewer-mockup-parity-audit.md) | Viewer mockup comparison and intentional exclusions |
-| [`package-graph.md`](package-graph.md) | Generated local package dependency graph (Mermaid), owned by `internal/build/depgraph` |
+| [`object-browser-logic.md`](object-browser-logic.md) | Server-state and rendering translation |
+| [`viewer-implementation-plan.md`](viewer-implementation-plan.md) | Phased implementation plan |
+| [`viewer-template-index.md`](viewer-template-index.md) | Viewer template components and tree |
+| [`viewer-mockup-parity-audit.md`](viewer-mockup-parity-audit.md) | Mockup parity audit, exclusions |
+| [`package-graph.md`](package-graph.md) | Dependency graph, by `internal/build/depgraph` |
 | [`go-cask-viewer.html`](go-cask-viewer.html) | Viewer HTML mockup |
 | [`go-cask-object-browser.design.json`](go-cask-object-browser.design.json) | Object browser design artifact |
+
+Sibling indexes: [`docs/index.md`](../index.md), [`docs/specs/index.md`](../specs/index.md).

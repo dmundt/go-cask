@@ -2,30 +2,31 @@
 type: Specification
 title: Branch Naming — go-cask
 description: The simple, effective Git branch concept for go-cask — one permanent branch (main), short-lived type-prefixed branches, optional release branches; naming patterns, examples, and lifecycle rules.
-version: v8
+version: v9
 ---
 
 # Branch Naming — go-cask
 
-Git branch rules: **one permanent branch, short-lived typed branches, optional release branches**. No long-lived integration/per-developer branches. Related: `versioning.md` §3 (lifecycle) and §5 (release process), `AGENT.md` (folder conventions).
+- Git branch rules: **one permanent branch, short-lived typed branches, optional release branches**; no long-lived integration/per-developer branches.
+- Related: `versioning.md` §3 (lifecycle), §5 (release process); `AGENT.md` (folder conventions).
 
 ## 1. Concept
 
 - `main` is the ONLY permanent branch; always releasable; all version tags land on it (versioning §3). Never force-pushed, never deleted.
 - Everything else is short-lived: branched from `main`, merged via PR, deleted after merge.
-- Every branch is created from the freshly fetched `origin/main` — the remote-tracking ref a task worktree branches from (`go run ./cmd/buildtool worktree add` fetches, then `-b <branch> origin/main`). A local `main` is not a substitute: in the primary checkout it can be behind the remote or carry another session's uncommitted work. §3 owns the one exception.
+- Every branch is created from the freshly fetched `origin/main` (`go run ./cmd/buildtool worktree add` fetches, then `-b <branch> origin/main`); a local `main` is not a substitute — it can be behind the remote or carry another session's uncommitted work. §3 owns the one exception.
 - Forbidden concepts: `develop`, `trunk`, per-developer branches, long-running integration branches. A branch living longer than a few days is too big — split it.
 - A branch name's type prefix is the contract, stating the branch's purpose.
 
 ## 2. Naming pattern
 
-Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the name, not decoration.
-
+- Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the name, not decoration.
 - `<type>` ∈ {`feat` (new feature/additive), `fix` (bug fix, pre-release), `hotfix` (urgent fix for a shipped release, PATCH), `refactor` (no behavior change), `perf` (performance), `docs`, `chore` (tooling/CI/deps/maintenance), `release` (`release/vX.Y`), `experiment` (throwaway spike/prototype)}.
-- `<NNN>`: the issue the branch serves, as a bare number (`245`). Every branch starts from an issue — a branch can never exist before the problem it addresses — and the number makes it traceable to the discussion that justifies it.
+- `<NNN>`: the issue the branch serves, as a bare number (`245`); the trace from branch to the discussion that justifies it.
 - `<kebab-description>`: kebab-case, lowercase, ASCII-only, hyphens between words, no trailing punctuation (`feat/1234-memory-backend`).
 - Whole branch ≤ 50 characters.
-- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix, issue number, or description is invalid (`new-branch`, `fix/1234`, `fix/memory-backend`). `release` requires the `v` (`release/vX.Y`, never `release/1.2`); it is the one exception to the issue number, cut from `main` on a schedule rather than opened for an issue.
+- Forbidden: names `master`, `trunk`, `develop`, `dev`, `staging`, `prod`; uppercase letters; underscores; slashes inside the description; reserved Git names (`HEAD`, `-`). Missing type prefix, issue number, or description is invalid (`new-branch`, `fix/1234`, `fix/memory-backend`).
+- `release` requires the `v` (`release/vX.Y`, never `release/1.2`); the one exception to the issue number, cut from `main` on a schedule rather than opened for an issue.
 
 ## 3. Lifecycle
 
@@ -37,7 +38,7 @@ Grammar: `<type>/<NNN>-<kebab-description>` — the issue number is part of the 
 | `experiment` | `main` | never | delete |
 
 - `release/vX.Y` exists only while that minor receives PATCH releases; created on demand, never preemptively (versioning §3/§5).
-- In the table's "Branch from" column, `main` means the freshly fetched `origin/main` (§1), never a local `main`; `hotfix` is the one type that may instead base on the open `release/vX.Y`.
+- In "Branch from", `main` means the freshly fetched `origin/main` (§1), never a local `main`; `hotfix` is the one type that may instead base on the open `release/vX.Y`.
 - Squash-merge or merge commits both acceptable — keep history readable (Conventional Commits, versioning §4); do not rebase `main`.
 
 ## 4. Interaction with versioning

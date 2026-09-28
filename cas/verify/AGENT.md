@@ -2,25 +2,23 @@
 type: Agent Instructions
 title: Agent instructions — `cas/verify`
 description: The package-local guide for cas/verify — keep integrity validation explicit and layered above the store, with caller-chosen hashers for checksum-addressed stores and the sidecar as the cheap second check over a strongly-addressed one.
-version: v2
+version: v3
 ---
 
 # Agent instructions — `cas/verify`
 
-Package keeps integrity validation explicit and separate from storage model.
-
 ## Purpose
 
-- Raw store remains `Digest -> bytes` backend.
-- Caller chooses verification algorithm, passes it explicitly to `cas.Verify` or `cas.NewVerifier`.
-- Maintenance helpers such as `cas/verify/crc32` are `cas.Hasher` implementations for a store deliberately addressed by that checksum — they address and validate same objects, cannot validate object addressed by another algorithm.
-- `cas/verify/sidecar` is sibling maintenance layer for other direction: records a per-object checksum beside objects addressed by a strong hash, validates stored bytes against that record, so a checksum can act as cheap second check without changing object's address (operations §6).
+- Raw store remains a `Digest -> bytes` backend.
+- Caller chooses the algorithm and passes it explicitly to `cas.Verify` or `cas.NewVerifier`.
+- `cas/verify/crc32` (and siblings `adler32`, `crc64`) are `cas.Hasher` implementations for a store deliberately addressed by that checksum: they address and validate the same objects, and cannot validate an object addressed by another algorithm.
+- `cas/verify/sidecar` handles the other direction: it records a per-object checksum beside objects addressed by a strong hash and validates stored bytes against that record, so a checksum is a cheap second check without changing the object's address (operations §6).
 
 ## Rules
 
-- Never change backend contract or object-address semantics.
-- Keep verification layered above store, not inside it.
-- Checksum hasher verifies only objects addressed with same checksum: `cas.Verify` compares recomputed digest to object's address, so never document or test one as cheap check over strongly-addressed store. Cheap check is `cas/verify/sidecar`'s job — compares against recorded checksum, never against address (`cas/verify/README.md`).
+- Never change the backend contract or object-address semantics.
+- Keep verification layered above the store, not inside it.
+- A checksum hasher verifies only objects addressed with the same checksum: `cas.Verify` compares the recomputed digest to the object's address, so never document or test one as a cheap check over a strongly-addressed store. That cheap check is `cas/verify/sidecar`'s job — it compares against the recorded checksum, never the address (`cas/verify/README.md`).
 - Prefer caller-controlled `Hasher` implementations and explicit helper packages.
 - Helper tagged maintenance check: say so clearly in docs and examples.
 

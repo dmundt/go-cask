@@ -2,12 +2,12 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v15
+version: v16
 ---
 
 # Benchmarks — go-cask
 
-The go-cask benchmarks measure the `cas` core's speed and allocations. They are **manual, on-demand tools** — CI never runs `-bench` and there is no nightly workflow, so a benchmark result is never a required check (CI enforces correctness/race/coverage/fuzz). The normative contract is `performance.md` §5 and §11; this file is the operator's run-and-read guide.
+Measure the `cas` core's speed and allocations. **Manual, on-demand**: CI never runs `-bench`, no nightly workflow, so a benchmark result is never a required check (CI enforces correctness/race/coverage/fuzz). Normative contract: `performance.md` §5 and §11. This file is the operator's run-and-read guide.
 
 ## Table of contents
 
@@ -16,28 +16,28 @@ The go-cask benchmarks measure the `cas` core's speed and allocations. They are 
 - [Regular perf suite](#3-regular-perf-suite)
 - [Bloom filter benchmark results](#32-bloom-filter-benchmark-results)
 - [Codec/hash matrix](#33-codechash-matrix)
-- [Scale probes](#4-scale-probes-benchmarkscale)
+- [Scale probes](#4-scale-probes)
 
 ## 1. Benchmark layout
 
-The suite is split by subsystem so each family keeps a coherent ownership boundary.
+Split by subsystem, so each family keeps a coherent ownership boundary.
 
 | File | Role |
 |---|---|
-| [`shared_test.go`](./shared_test.go) | Shared benchmark scaffolding: `testNote`, size matrix, codec/hasher matrix, summary helper |
+| [`shared_test.go`](./shared_test.go) | Shared scaffolding: `testNote`, size matrix, codec/hasher matrix, summary helper |
 | [`store_bench_test.go`](./store_bench_test.go) | Core store API benchmarks (`Put`, `Get`, round-trip) |
-| [`backend_bench_test.go`](./backend_bench_test.go) | Raw backend write/read path for in-memory and fs backends |
-| [`codec_bench_test.go`](./codec_bench_test.go) | Codec-only and full codec+hasher round-trip benchmarks |
-| [`hash_bench_test.go`](./hash_bench_test.go) | Hasher digest and parse benchmarks |
-| [`cache_bench_test.go`](./cache_bench_test.go) | Cache hit-path benchmarks |
-| [`pack_bench_test.go`](./pack_bench_test.go) | Pack-layer chunking and sidecar metadata benchmarks |
-| [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard benchmarks |
-| [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, and concurrency checks |
+| [`backend_bench_test.go`](./backend_bench_test.go) | Raw backend write/read path, in-memory and fs |
+| [`codec_bench_test.go`](./codec_bench_test.go) | Codec-only and full codec+hasher round-trip |
+| [`hash_bench_test.go`](./hash_bench_test.go) | Hasher digest and parse |
+| [`cache_bench_test.go`](./cache_bench_test.go) | Cache hit-path |
+| [`pack_bench_test.go`](./pack_bench_test.go) | Pack-layer chunking and sidecar metadata |
+| [`bloom_bench_test.go`](./bloom_bench_test.go) | Bloom filter add/contains and guard |
+| [`verify_bench_test.go`](./verify_bench_test.go) | Verify, parse, concurrency |
 | [`scale_bench_test.go`](./scale_bench_test.go) | On-demand state-scaling probes |
 | [`viewer_bench_test.go`](./viewer_bench_test.go) | On-demand authenticated viewer object-browser rendering at 100–100,000 stored objects |
 | `internal/index/index_bench_test.go` | Viewer metadata snapshot scan at 100/1,000 objects |
 
-All files live in `benchmarks/` and use standard `go test -bench`. Every timed benchmark reports allocations. `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput is reported only where one payload of known size defines each operation; benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
+All in `benchmarks/`, standard `go test -bench`. Every timed benchmark reports allocations; `BenchmarkScaleStoreEconomics` is a layout/count probe that times nothing. Throughput only where one payload of known size defines each operation — benchmarks never invent byte counts for metadata, parsing, mixed concurrent, or layout work.
 
 ## 2. Common flags
 
@@ -54,84 +54,65 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 | `-timeout <dur>` | Whole-run timeout (default 10 min); `-timeout 0` for long prefills |
 | `CASK_BENCH_SUMMARY=1` | Emits the extra summary logs used for manual comparison and diagnosis; default output stays standard Go benchmark output |
 
-To refresh the reference dump for a machine or branch, run:
+Refresh the reference dump for a machine or branch:
 
 ```bash
 go run ./cmd/buildtool bench-baseline
 ```
 
-It runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1` and writes the capture to
-`benchmarks/data/archive/baseline-<UTC-stamp>.txt` (or to the path given as its first argument).
-Only a deliberate run **without** `--capture-only` refreshes the committed reference
-`benchmarks/data/baseline.txt`, and it archives the previous canonical dump under
-`benchmarks/data/archive/` first; `--capture-only` leaves the reference untouched. `-h`/`--help`
-prints usage, and an unknown option exits 2. That dump is one machine's raw `go test` output
-(currently a Windows amd64 `i7-13800H` run, 2026-09), so it is a comparison point, **not** a
-threshold and **not** a gate.
+Runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1`; writes the capture to `benchmarks/data/archive/baseline-<UTC-stamp>.txt` (or the first-argument path). Only a deliberate run **without** `--capture-only` refreshes the committed reference `benchmarks/data/baseline.txt`, archiving the previous canonical dump under `benchmarks/data/archive/` first; `--capture-only` leaves the reference untouched. `-h`/`--help` prints usage, an unknown option exits 2. One machine's raw `go test` output (currently a Windows amd64 `i7-13800H` run, 2026-09): a comparison point, **not** a threshold, **not** a gate.
 
-To compare a fresh run against it, use:
+Compare a fresh run against it:
 
 ```bash
 go run ./cmd/buildtool bench-compare
 ```
 
-It picks the baseline **before** capturing — the committed `benchmarks/data/baseline.txt`, else the
-newest file in `benchmarks/data/archive/` — then captures into `benchmarks/data/current.txt` by
-default and never writes the canonical reference itself, so a comparison cannot overwrite what it
-compares against. Pass a baseline path, or a baseline and a current path, to compare other files. It
-exits 1 when no baseline exists or when baseline and current resolve to the same file, warns when the
-two captures are byte-identical, and exits 2 with the manual `diff -u` hint when `benchstat` is
-absent. Nothing is scheduled: a maintainer refreshes the reference by hand, on demand, on a quiet
-machine. Because the capture uses `-count=1`, treat the `benchstat` output as a coarse smoke
-comparison and use `-count=5` or more (§5) for a real conclusion.
+Picks the baseline **before** capturing — the committed `benchmarks/data/baseline.txt`, else the newest file in `benchmarks/data/archive/` — then captures into `benchmarks/data/current.txt` by default and never writes the canonical reference itself, so a comparison cannot overwrite what it compares against. Pass a baseline path, or a baseline and a current path, to compare other files. Exits 1 when no baseline exists or when baseline and current resolve to the same file; warns when the two captures are byte-identical; exits 2 with the manual `diff -u` hint when `benchstat` is absent. Nothing is scheduled: a maintainer refreshes the reference by hand, on demand, on a quiet machine. The capture uses `-count=1`, so treat `benchstat` output as a coarse smoke comparison and use `-count=5` or more (§5) for a real conclusion.
 
-The commands' ownership split is asserted by an ordinary Go test
-(`go test ./cmd/buildtool/`), which drives them through injected collaborators and runs
-no real benchmark; the gate covers it in its race suite.
+An ordinary Go test (`go test ./cmd/buildtool/`) asserts the commands' ownership split, driving them through injected collaborators and running no real benchmark; the gate covers it in its race suite.
 
 ## 3. Regular perf suite
 
 ### 3.1 Benchmarks
 
-The regular perf suite is split across the subsystem files listed above. The canonical comparisons are grouped by concern, not by a single monolithic file.
+Grouped by concern, not by a single monolithic file.
 
 | Benchmark | File | Cases | Tells you |
 |---|---|---|---|
 | `BenchmarkStorePut` | [`store_bench_test.go`](./store_bench_test.go) | `steady-state` + `cold-start` across 64 B–1 MiB | Typed `Store[T].Put` cost under different setup assumptions |
-| `BenchmarkStoreGetHot` / `BenchmarkStoreGetCold` / `BenchmarkStoreGetMixed` | [`store_bench_test.go`](./store_bench_test.go) | hot, cold-start, and mixed hot/cold read patterns | Whether reads are dominated by object locality or one-time setup |
+| `BenchmarkStoreGetHot` / `BenchmarkStoreGetCold` / `BenchmarkStoreGetMixed` | [`store_bench_test.go`](./store_bench_test.go) | hot, cold-start, mixed hot/cold read patterns | Whether reads are dominated by object locality or one-time setup |
 | `BenchmarkStoreBaselineJSONSHA256` | [`store_bench_test.go`](./store_bench_test.go) | 1 KiB anchor | Single canonical comparison point for JSON + SHA-256 |
-| `BenchmarkStoreWorkflowWriteReadVerify` | [`store_bench_test.go`](./store_bench_test.go) | fixed-size write/read/verify workflow | Realistic end-to-end object lifecycle | 
+| `BenchmarkStoreWorkflowWriteReadVerify` | [`store_bench_test.go`](./store_bench_test.go) | fixed-size write/read/verify workflow | Realistic end-to-end object lifecycle |
 | `BenchmarkRoundTrip` | [`store_bench_test.go`](./store_bench_test.go) | one fixed-size cycle | Minimal store round-trip cost |
-| `BenchmarkBackendWriteRead` / `BenchmarkBackendWriteReadBaseline` | [`backend_bench_test.go`](./backend_bench_test.go) | `mem` + `fs` across the same size ladder | Raw backend byte-path behavior and a clean baseline |
-| `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageEncodeDecode` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | JSON, CBOR, binary + hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations and the lightweight CBOR metadata path |
+| `BenchmarkBackendWriteRead` / `BenchmarkBackendWriteReadBaseline` | [`backend_bench_test.go`](./backend_bench_test.go) | `mem` + `fs`, same size ladder | Raw backend byte-path behavior, clean baseline |
+| `BenchmarkCodecPackageRoundTrip` / `BenchmarkCodecPackageEncodeDecode` / `BenchmarkCodecRoundTripBaseline` | [`codec_bench_test.go`](./codec_bench_test.go) | JSON, CBOR, binary + hash matrix + anchor baseline | Comparable end-to-end codec/hash combinations; the lightweight CBOR metadata path |
 | `BenchmarkHashPackageDigest` / `BenchmarkHashPackageParse` / `BenchmarkHashPackageDigestBaseline` | [`hash_bench_test.go`](./hash_bench_test.go) | `sha256`/`sha512`/`sha512_256` × sizes + valid/invalid parse | Hash-only throughput and parsing costs |
-| `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost and a clean single-object reference |
-| `BenchmarkPackSplitJoin` / `BenchmarkPackManifestRoundTrip` / `BenchmarkPackManifestSaveLoadFile` | [`pack_bench_test.go`](./pack_bench_test.go) | chunking and metadata round-trip cases | Pack-layer throughput and file-sidecar overhead without changing the CAS object model |
-| `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile and a stable reference for hit-path checks |
-| `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkVerifyMaintenanceChecks` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, maintenance checksum validators, parse, concurrency | Integrity, maintenance-layer checksum cost, and hot/cold parallel access |
+| `BenchmarkCacheMemoryGet` / `BenchmarkCacheMemoryGetBaseline` / `BenchmarkCacheLRUGet` | [`cache_bench_test.go`](./cache_bench_test.go) | cached object access path + baseline hit | Cache hit-path cost, clean single-object reference |
+| `BenchmarkPackSplitJoin` / `BenchmarkPackManifestRoundTrip` / `BenchmarkPackManifestSaveLoadFile` | [`pack_bench_test.go`](./pack_bench_test.go) | chunking and metadata round-trip | Pack-layer throughput, file-sidecar overhead, object model unchanged |
+| `BenchmarkBloomStandard*` / `BenchmarkBloomStandardContainsHitBaseline` / `BenchmarkBloomCounting*` / `BenchmarkBloomPersistent*` / `BenchmarkBloomGuardExists` | [`bloom_bench_test.go`](./bloom_bench_test.go) | membership + update + guard checks + baseline hit | Bloom filter cost profile, stable reference for hit-path checks |
+| `BenchmarkVerify` / `BenchmarkVerifyBaseline` / `BenchmarkVerifyMaintenanceChecks` / `BenchmarkParseDigest` / `BenchmarkParallelPutGet` | [`verify_bench_test.go`](./verify_bench_test.go) | verify, maintenance checksum validators, parse, concurrency | Integrity, maintenance-layer checksum cost, hot/cold parallel access |
 
-Store cases run against the in-memory backend (deterministic); the `fs` cases write to an auto-cleaned temp dir. The suite intentionally distinguishes steady-state, warm, cold, and baseline cases so the developer can tell whether a change affects the core path or just the one-time setup path.
+Store cases run on the in-memory backend (deterministic); `fs` cases write to an auto-cleaned temp dir. Steady-state, warm, cold and baseline cases stay distinct, so a developer can tell whether a change affects the core path or just the one-time setup path.
 
-The maintenance verification family is intentionally separate from the canonical digest path: `BenchmarkVerifyMaintenanceChecks` measures `sha256`, `crc32`, `crc64`, and `adler32` checks against the same payload so the caller can compare the cost of an auxiliary consistency check without conflating it with the object-address algorithm.
+The maintenance verification family is separate from the canonical digest path: `BenchmarkVerifyMaintenanceChecks` measures `sha256`, `crc32`, `crc64` and `adler32` checks against the same payload, so an auxiliary consistency check's cost compares without conflating it with the object-address algorithm.
 
 ### 3.1.1 How to read benchmark numbers
 
-Read benchmark output by workload, not by a single aggregated `ns/op` value.
+Read by workload, not by a single aggregated `ns/op` value.
 
-- Compare like with like: same machine, same Go version, same payload mix, same backend, same codec+hasher combination, and a repeated run (`-count=5` or more).
-- Separate setup cost from steady-state cost: `setup/cold-start` includes object creation or temp-dir creation; `steady-state` measures the repeated operation after setup is done.
+- Compare like with like: same machine, same Go version, same payload mix, same backend, same codec+hasher combination, repeated run (`-count=5` or more).
+- Separate setup cost from steady-state cost: `setup/cold-start` includes object or temp-dir creation; `steady-state` measures the repeated operation after setup.
 - Prefer anchors: a baseline case such as JSON + SHA-256 is a reference point, not a universal winner. Use it to judge deltas within the same family.
-- Keep hot and cold measurements distinct: a mixed hot/cold benchmark is not a substitute for a true cold-start or steady-state read. A mixed run should document the hot-set size and cold ratio in its name or comment.
-- Noise guard: if a single benchmark is more than ~2x away from the median on the same machine, rerun before interpreting it as a real regression. A noisy outlier is usually a scheduling or cache-state artifact, not a trustworthy result.
-- Do not over-interpret one machine run. Small deltas can be noise; large deltas only matter when the workload and payload mix are the same.
+- Keep hot and cold distinct: a mixed hot/cold benchmark is no substitute for a true cold-start or steady-state read. A mixed run should document the hot-set size and cold ratio in its name or comment.
+- Noise guard: a single benchmark more than ~2x away from the machine's median → rerun before calling it a regression. A noisy outlier is usually a scheduling or cache-state artifact.
+- Do not over-interpret one machine run: small deltas can be noise; large deltas matter only when workload and payload mix are the same.
 
-The benchmark matrix stays intentionally narrow: a small set of anchor sizes and one reference case per family keeps the suite diagnosable without turning it into a wall of unanchored numbers.
+The matrix stays intentionally narrow: a few anchor sizes and one reference case per family keep the suite diagnosable without a wall of unanchored numbers.
 
 ### 3.2 Bloom filter benchmark results
 
-The Bloom family measures the advisory hot-path pre-check layer in `cas/bloom`: the filters are intentionally separate from the authoritative CAS backend and are evaluated only for `Exists`-style membership cost and update overhead.
-
-Run them directly:
+The Bloom family measures the advisory hot-path pre-check layer in `cas/bloom`: separate from the authoritative CAS backend by design, evaluated only for `Exists`-style membership cost and update overhead.
 
 ```powershell
 go test ./benchmarks/ -run=^$ -bench='^BenchmarkBloom' -benchmem -count=3
@@ -149,18 +130,16 @@ Measured on this runner (median of 3 runs):
 | `BenchmarkBloomPersistentContains` | 222 | 96 | 2 | persistent membership stays near standard lookup cost |
 | `BenchmarkBloomGuardExists` | 266 | 96 | 2 | guard adds minimal overhead over the underlying filter |
 
-Discussion:
+- `standard` and `persistent` share almost the same cost profile; both are good hot-path pre-checks for large negative lookups.
+- The counting filter is roughly 2x slower: per-slot counters, more work on `Add`/`Remove`.
+- The backend guard does not materially change the guard's fast-path cost: a Bloom filter short-circuits on a miss, a positive hit falls through to a real backend `Exists`.
+- Short-circuiting negative results is the intended win: a Bloom miss avoids backend work, a Bloom hit still validates against the underlying store — the repo's correctness model kept, with the usual advisory lookup reduction.
 
-- `standard` and `persistent` filters share almost the same cost profile; both are good hot-path pre-checks for large negative lookups.
-- The counting filter is roughly 2x slower because it maintains per-slot counters and does more work on `Add`/`Remove`.
-- The backend guard does not materially change the cost of the guard's fast path: the Bloom filter short-circuits on a miss, and a positive hit falls through to a real backend `Exists`.
-- Short-circuiting negative results is the intended win: a Bloom miss avoids backend work, while a Bloom hit still validates against the underlying store. This preserves the repo's correctness model while getting the usual advisory lookup reduction.
-
-In practice, the standard filter is the best default for a hot-path `Exists` pre-check. Use the counting variant when remove/update semantics matter; use the persistent variant when a restart-safe index is needed; keep the guard as the integration point that preserves the storage layer as the source of truth.
+In practice: standard filter = best default for a hot-path `Exists` pre-check; counting variant when remove/update semantics matter; persistent variant for a restart-safe index; the guard is the integration point keeping the storage layer the source of truth.
 
 ### 3.3 Codec/hash matrix
 
-The raw round-trip matrix now lives in [`data/store-codec-hash-roundtrip.json`](./data/store-codec-hash-roundtrip.json). The README keeps the dense narrative summary; the JSON file is the canonical, queryable source for deeper slicing by codec, hasher, payload size, or runner metadata.
+The raw round-trip matrix lives in [`data/store-codec-hash-roundtrip.json`](./data/store-codec-hash-roundtrip.json): the README keeps the dense narrative summary, the JSON is the canonical, queryable source for deeper slicing by codec, hasher, payload size or runner metadata.
 
 The matrix covers:
 
@@ -168,19 +147,19 @@ The matrix covers:
 - codecs: `json`, `gzip`, `zlib`, `flate`, `gob`, `binary`, `cbor`
 - hashers: `sha256`, `sha512`, `sha512_256`
 
-Every row in the JSON is one `codec + hasher + payload-size` cell. The benchmark measures full typed-store round trips: codec encode/decode, envelope, hashing, and memory-backend Put/Get. It does not isolate codec or hash cost by itself. Gob remains the Go-compatibility comparison; JSON remains the portable default; binary and CBOR are the compact caller-defined formats.
+Every JSON row is one `codec + hasher + payload-size` cell. The benchmark measures full typed-store round trips — codec encode/decode, envelope, hashing, memory-backend Put/Get — and does not isolate codec or hash cost. Gob remains the Go-compatibility comparison; JSON the portable default; binary and CBOR the compact caller-defined formats.
 
-The JSON file also records runner metadata and the `winner` list used below so future analyses can be repeated without re-editing the README by hand.
+The JSON also records runner metadata and the `winner` list used below, so future analyses repeat without re-editing the README by hand.
 
 ```powershell
 go test ./benchmarks/ -run=^$ -bench='^BenchmarkCodecPackageRoundTrip$' -benchmem -count=1
 ```
 
-The canonical JSON in this repo is a fresh local snapshot, not a universal cross-machine truth. Use `-count=5` or more when you need a medians-based comparison on a stable machine.
+The canonical JSON is a fresh local snapshot, not universal cross-machine truth. Use `-count=5` or more for a medians-based comparison on a stable machine.
 
 #### Winner by payload size
 
-This is the current winner list from the JSON matrix on the local runner. Read `ns/op` first, then check `MB/s` and `allocs/op` together.
+Current winner list from the JSON matrix on the local runner. Read `ns/op` first, then `MB/s` and `allocs/op` together.
 
 | Payload size | Winner | ns/op | MB/s | B/op | allocs/op |
 |---|---|---:|---:|---:|---:|
@@ -193,19 +172,17 @@ This is the current winner list from the JSON matrix on the local runner. Read `
 | 256KiB | `cbor` + `sha256` | 542588 | 483.14 | 2751524 | 75 |
 | 1MiB | `cbor` + `sha256` | 2200407 | 476.54 | 10511204 | 83 |
 
-The main pattern is clear:
+- `binary` wins the tiny end-to-end matrix at `64B` and `256B`, especially with the shorter hashers in this snapshot.
+- `cbor` wins from `1KiB` upward across the current ladder after the hot-path rewrite: `sha512_256` at `1KiB` and `4KiB`, `sha256` from `16KiB` onward.
+- Crossover steep and clean: small objects prefer `binary`, the compact CBOR path takes over once the payload amortizes its overhead.
+- `json` remains the portable default, but is not the fastest in the current snapshot.
+- Compression codecs (`gzip`, `zlib`, `flate`) remain much slower end-to-end: size reduction traded for a large runtime cost.
 
-- `binary` still wins the tiny end-to-end matrix at `64B` and `256B`, especially with the shorter hashers in this snapshot.
-- `cbor` is now the winner from `1KiB` upward across the current ladder after the hot-path rewrite, with `sha512_256` at `1KiB` and `4KiB` and `sha256` from `16KiB` onward.
-- The crossover is steep and clean: small objects prefer `binary`, while the compact CBOR path takes over once the payload is large enough to amortize its overhead.
-- `json` remains the portable default, but it is not the fastest in the current snapshot.
-- Compression codecs (`gzip`, `zlib`, `flate`) remain much slower in this end-to-end round-trip path; they trade size reduction for a large runtime cost.
-
-`ns/op` is the headline summary for this section because it directly measures the end-to-end round-trip cost; `MB/s` and `allocs/op` are companion views for throughput and allocation pressure. Use them together when choosing a default, not one metric alone.
+`ns/op` is the headline here — it directly measures the end-to-end round-trip cost; `MB/s` and `allocs/op` are companion views for throughput and allocation pressure. Use them together when choosing a default, not one metric alone.
 
 #### How to choose a codec + hasher for a real workload
 
-There is no single universal winner. Use the choice that matches the payload size, portability requirements, and the precision of the benchmark you trust.
+No single universal winner. Match the payload size, the portability requirements, and the precision of the benchmark you trust.
 
 | Workload shape | Best measured choice | Why | Use when |
 |---|---|---|---|
@@ -216,23 +193,23 @@ There is no single universal winner. Use the choice that matches the payload siz
 | Portable/default policy | `json` + `sha256` | readable and broadly interop-friendly | debugging, tooling, exchange formats, human-inspected payloads |
 | Compression-heavy workflow | `gzip`/`zlib`/`flate` only when size reduction matters more than speed | they can be acceptable when payloads are highly compressible and storage budget is tight | use only when the application explicitly prefers compressed size over raw throughput |
 
-A practical default policy:
+Practical default policy:
 
-- Use `json` + `sha256` as the default portable choice when interoperability and readability matter.
-- Use `binary` + `sha512_256` for the smallest hot objects in the current snapshot.
-- Use `cbor` + `sha512_256` or `cbor` + `sha256` for the larger compact payloads that need the best current end-to-end throughput.
-- Keep `gob` as a compatibility-only benchmark/reference path. It is not a good general-purpose default for CAS payloads.
+- `json` + `sha256` as the default portable choice when interoperability and readability matter.
+- `binary` + `sha512_256` for the smallest hot objects in the current snapshot.
+- `cbor` + `sha512_256` or `cbor` + `sha256` for larger compact payloads needing the best current end-to-end throughput.
+- `gob` stays a compatibility-only benchmark/reference path, never a good general-purpose default for CAS payloads.
 - Compression wrappers remain a storage-optimization choice, not the runtime winner in the fresh matrix.
 
-This summary is intentionally short. For deeper analysis, use the JSON matrix directly: filter by `payload`, `codec`, `hasher`, or compare how the `winner` set changes across size bands without reformatting a huge markdown table by hand.
+For deeper analysis use the JSON matrix directly: filter by `payload`, `codec`, `hasher`, or compare how the `winner` set changes across size bands without reformatting a huge markdown table by hand.
 
 #### Focused isolation benchmarks (median of 5 runs)
 
 `BenchmarkCodecPackageEncodeDecode` isolates pure serialization cost without hashing or store I/O. `BenchmarkHashPackageDigest` isolates pure hash throughput without encoding or backend work.
 
-These are diagnostic benchmarks, not product defaults. They help answer: “is the slowdown mostly codec cost or hash cost?” They do not replace the end-to-end matrix above.
+Diagnostic, not product defaults: they answer "is the slowdown mostly codec cost or hash cost?" and do not replace the end-to-end matrix above.
 
-Recommendation: prefer `sha256` for hashing, but do not assume `json` is the fastest payload format in the current matrix. After the CBOR hot-path rewrite, `cbor` wins the isolation benchmark across the mid/large payload range while `binary` still wins the tiny 64 B case. For portability and debugging, `json` remains the default readable choice. `gob` remains compatibility-only and not a general default.
+Recommendation: prefer `sha256` for hashing, but do not assume `json` is the fastest payload format in the current matrix. After the CBOR hot-path rewrite, `cbor` wins the isolation benchmark across the mid/large payload range while `binary` still wins the tiny 64 B case. For portability and debugging, `json` remains the default readable choice; `gob` remains compatibility-only, not a general default.
 
 ##### Codec-only isolation
 
@@ -302,10 +279,10 @@ Each runs as `Memory` and `FS` sub-benchmarks (`fs.New` writes to an auto-cleane
 | `BenchmarkScaleDelete` | Deleting objects (store shrinks) |
 | `BenchmarkScaleList` | Full `List` scan — materializes every hash; **O(N) memory/op, keep N modest** |
 | `BenchmarkScaleStats` | `Stats` summary (counts, bytes) on both backends |
-| `BenchmarkScaleStoreEconomics` | FS on-disk layout cost at N: object-file count, dirs, leaf-dir spread (min/avg/max), object bytes — for `(2,1)` vs `(4,1)` (needs `-v`) |
-| `BenchmarkViewerObjectsScale` | Authenticated `/viewer/objects` rendering on filesystem storage at 100, 1,000, 10,000, and 100,000 objects; uses the normal post-load metadata-snapshot cache |
+| `BenchmarkScaleStoreEconomics` | FS on-disk layout cost at N: object-file count, dirs, leaf-dir spread (min/avg/max), object bytes — `(2,1)` vs `(4,1)` (needs `-v`) |
+| `BenchmarkViewerObjectsScale` | Authenticated `/viewer/objects` rendering on filesystem storage at 100, 1,000, 10,000 and 100,000 objects; uses the normal post-load metadata-snapshot cache |
 
-The N-object prefill happens before the timed loop (can take minutes at large N) and is **not** part of the per-op numbers.
+The N-object prefill happens before the timed loop (minutes at large N) and is **not** part of the per-op numbers.
 
 ### 4.4 Run them
 
@@ -321,20 +298,18 @@ go test ./benchmarks/ -run=^$ -bench=Scale -benchtime=100x -v -timeout 0
 CASK_SCALE_OBJECTS=100000 go test -run=^$ -bench=Scale -benchtime=1000x -v ./benchmarks/
 ```
 
-To run every viewer scale case, use the largest supported count. Prefilling
-100,000 filesystem objects can consume substantial time and temporary disk
-space, so start with `100` or `1000` when validating the harness:
+For every viewer scale case use the largest supported count. Prefilling 100,000 filesystem objects can consume substantial time and temporary disk space: start with `100` or `1000` when validating the harness.
 
 ```bash
 CASK_SCALE_OBJECTS=100000 go test ./benchmarks/ -run=^$ \
   -bench='^BenchmarkViewerObjectsScale$' -benchmem -benchtime=10x -timeout 0
 ```
 
-Notes: `-v` is required for the `[scale]` projection lines; `-benchtime=NNx` is recommended (exact counts, bounded runs); without it Go's `1s` calibration re-runs each bench (wasteful at large N); add `-timeout 0` when the prefill nears minutes.
+Notes: `-v` is required for the `[scale]` projection lines; `-benchtime=NNx` recommended (exact counts, bounded runs) — without it Go's `1s` calibration re-runs each bench, wasteful at large N; add `-timeout 0` when the prefill nears minutes.
 
 ### 4.5 Hash-choice comparison
 
-The scale probes now compare the default `sha256` path against the `sha512_256` path in the same benchmark family, so you can compare throughput without changing the benchmark harness:
+The scale probes compare the default `sha256` path against the `sha512_256` path in the same family, so throughput compares without changing the harness:
 
 ```text
 BenchmarkScalePut/Memory/sha256-8
@@ -343,7 +318,7 @@ BenchmarkScaleGet/FS/sha256-8
 BenchmarkScaleGet/FS/sha512_256-8
 ```
 
-Use them to answer the practical question: is the extra digest width worth the cost for your deployment? In practice, `SHA-256` is the default recommendation for durability and interoperability; `SHA-512/256` is a supported fast secure alternative if a workload favors a slightly different tradeoff. Do not use MD5 or SHA-1 for new content-addressed data.
+They answer the practical question: is the extra digest width worth the cost for your deployment? `SHA-256` is the default recommendation for durability and interoperability; `SHA-512/256` a supported fast secure alternative if a workload favors a slightly different tradeoff. Do not use MD5 or SHA-1 for new content-addressed data.
 
 ### 4.6 Reading the projection line
 
@@ -366,7 +341,7 @@ Run the same N at a few magnitudes (10k/100k/1M/…) on one machine; flat vs. su
 
 - **Memory:** ~a few hundred bytes/object (map entry + payload); 10^7 objects needs single-digit GBs of RAM.
 - **FS:** on-disk cost is FS-dominated (block/cluster size + dir entries + fan-out) — expect ~the cluster size (commonly 4 KiB) per object: 10^6 ≈ 4+ GB, 10^7 ≈ 40+ GB. Start small.
-- The FS temp dir is removed on a clean run; a failed/`Ctrl+C` run can leave it (under the system temp dir, named by `b.TempDir`).
+- The FS temp dir is removed on a clean run; a failed/`Ctrl+C` run can leave it (system temp dir, named by `b.TempDir`).
 
 ## 5. Comparing results
 

@@ -1,25 +1,42 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (docs/design/)
-description: This file governs docs/design/ — non-normative design docs (core-overview pointer, viewer-brief, mockups). Follows the conventions in docs/AGENT.md.
-version: v8
+description: Router for docs/design/ — non-normative design artifacts (core-overview, design-history, viewer briefs, mockups); conventions in docs/AGENT.md.
+version: v10
 tags: [go-cask]
 status: stable
 ---
 
 # AGENT — go-cask (docs/design/)
 
-`docs/design/` holds non-normative design artifacts (core-overview pointer, viewer design brief, object-browser design JSON, viewer HTML mockup); instruction specs live in `docs/specs/`, governed by `docs/specs/AGENT.md`; repo-root `AGENTS.md` is entry point. Before any change, read `docs/index.md` first.
+Router, not manual. Governs `docs/design/`; carries no rule body it does not own. Read
+[`docs/AGENT.md`](../AGENT.md) for the conventions this file does not own.
 
-## 1. File naming
+| Topic | Owner |
+| --- | --- |
+| Entry point; path → spec, longest match | `docs/index.md` |
+| Repo-root session rules | `AGENTS.md` |
+| Frontmatter, trimming, diagrams, checklist | `docs/AGENT.md` §1.1–1.4, §2, §3, §5, §7, §8 |
+| Instruction files are routers; 3 KiB ceiling (this file) | `docs/AGENT.md` §2.1 |
+| Rebuild branch from `main`, `git cherry-pick -S`, `git verify-commit`, `--force-with-lease` | `docs/specs/landing.md` |
+| Viewer design contract `viewer-brief.md` serves | `docs/specs/viewer-design.md` |
+| What lives in `docs/design/` | `index.md` |
 
-- `.md` files lowercase kebab-case (`core-overview.md`, `viewer-brief.md`).
-- Vendor file names preserved (`go-cask-object-browser.design.json`, `go-cask-viewer.html`).
-- No `.instructions.md` suffix (convention for spec folder).
+## Owned here
 
-## 2. Frontmatter (required)
+| Rule | Value |
+| --- | --- |
+| File names | `.md` kebab-case (`core-overview.md`, `viewer-brief.md`); no `.instructions.md` suffix |
+| Vendor names | kept as-is: `go-cask-object-browser.design.json`, `go-cask-viewer.html` |
+| Frontmatter | four keys — `type`, `title` (`{Title} — go-cask`), one-line `description`, `version` |
+| `type` value | `Design` here; `Agent Instructions` for this file (`docs/AGENT.md` §1.2) |
+| HTML/JSON artifacts | carry no frontmatter |
+| Raw HTML | forbidden in `.md`; HTML only in the dedicated non-Markdown mockup artifact |
+| Cross-refs | specs by `docs/specs/` path; siblings relative (`./viewer-brief.md`) |
+| Precedence | non-normative — conflict → spec wins (`docs/specs/AGENT.md` §8) |
+| Lifecycle | fold a viewer-brief outcome into `docs/specs/viewer-design.md`, then delete the brief |
 
-Every `.md` file MUST begin with four YAML keys spec folder uses (`type`, `title`, `description`, `version`):
+Markdown frontmatter every file here MUST open with:
 
 ```yaml
 ---
@@ -29,27 +46,3 @@ description: One sentence stating the document's purpose.
 version: v1
 ---
 ```
-
-- `version` = simple marker; bump by one on material change, not cosmetic fixes.
-- HTML and JSON files need no frontmatter — display/reference artifacts.
-- Markdown files MUST NOT contain raw HTML, HTML comments, tags, layout
-  wrappers, or HTML/XML/SVG code fences; keep HTML only in dedicated
-  non-Markdown mockup artifacts.
-
-## 3. Cross-referencing
-
-- Instruction specs by `docs/specs/` paths; sibling design docs by relative path (`./viewer-brief.md`); `docs/index.md` for entry.
-
-## 4. Maintenance
-
-- Docs **non-normative** — inform but never override instruction specs; conflict: instruction spec wins (`docs/specs/AGENT.md` §8).
-- Viewer-brief outcomes folded back into viewer specs: delete brief (extend existing file rather than add parallel one).
-- `docs/design/` entries listed in design docs; no section-10-style inventory needed.
-
-## 5. Signed pull-request workflow
-
-Repository policy requires signed commits: rebuild PR branches locally from
-current `main`; never use GitHub's server-side rebase or update-branch operation.
-Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, push with `git push --force-with-lease`. Enable
-auto-merge only after signature verification and required checks pass.

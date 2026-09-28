@@ -1,6 +1,9 @@
 # hash
 
-The hash layer is the client-side algorithm seam for the generic `cas` core. The core stores raw digests and does not know which algorithm produced them; the caller injects a `cas.Hasher` implementation when building a store.
+Client-side algorithm seam for the generic `cas` core: raw digests stored, no algorithm named; the
+caller injects a `cas.Hasher` when building a store. Changing the algorithm is a format transition,
+not a configuration change — `cas` imports no concrete hasher (`docs/specs/cas-core.md` §4.2;
+`docs/specs/defaults.md` §2).
 
 ## Included implementations
 
@@ -8,12 +11,7 @@ The hash layer is the client-side algorithm seam for the generic `cas` core. The
 - [sha512](./sha512/README.md) — full-width standard-library SHA-512 option
 - [sha512_256](./sha512_256/README.md) — fast secure alternative with a 256-bit output size
 
-## Policy
-
-- Prefer `SHA-256` for new durable content-addressed data.
-- Use `SHA-512/256` when you want a fast secure alternative with the same 256-bit security level.
-- Treat MD5 and SHA-1 as obsolete for new content-addressed data: neither ships with this module, and supporting a legacy source means writing a `cas.Hasher` for it.
-
-## Notes
-
-The core stays hash-agnostic by design. A digest is just bytes; the algorithm is part of the caller's contract and documentation, and implemented explicitly in the selected hasher package.
+Each leaf owns its `Name`/`Size` and the shared digest helpers `hash.FormatDigest`,
+`hash.ParseDigest` (rejects another algorithm's prefix with `cas.ErrInvalidDigest`) and
+`hash.ValidateDigestSize`. Display form: `cas.Digest.Prefix(n)`, the first `n` hex characters
+(§4.1) — the digest carries no algorithm.

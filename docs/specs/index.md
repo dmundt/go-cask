@@ -2,12 +2,12 @@
 okf_version: "0.2"
 title: go-cask Specification Set
 description: Index of every instruction file by concern. See docs/index.md for path-first lookup.
-version: v6
+version: v7
 ---
 
 # go-cask Specification Set
 
-All files in this folder. [`AGENT.md`](AGENT.md) governs them; start at [`docs/index.md`](../index.md).
+Every file here. [`AGENT.md`](AGENT.md) governs them; start at [`docs/index.md`](../index.md).
 
 | Concern | File |
 |---|---|

@@ -2,48 +2,67 @@
 type: Specification
 title: Operations — go-cask
 description: Running CASK in production — durability and fsync policy, crash recovery, observability (slog/metrics), integrity cadence, digest/layout migration, and backup guidance.
-version: v19
+version: v20
 ---
 
 # Operations — go-cask
 
-How a CASK-backed deployment stays durable, observable, and migratable. Related: `cas-core.md` (`Stats`/`Verify`/`GC`), `viewer-security.md` (audit logging), `library-design.md` (`ErrDigestMismatch`).
+Durable, observable, migratable CASK deployment. Related: `cas-core.md` (`Stats`/`Verify`/`GC`),
+`viewer-security.md` (audit logging), `library-design.md` (`ErrDigestMismatch`).
 
 ## 1. Durability
 
-- Writes: uniquely named temp file (created `O_CREATE|O_EXCL`; a numeric suffix is appended if another process holds `<path>.tmp`) → `f.Sync()` → `os.Rename`. The unique name means concurrent writers (even across processes) never share a temp inode; `f.Sync()` before rename guarantees data is on disk before it becomes visible.
-- Optional full durability: fsync the containing directory after rename so the rename survives a crash; configurable (cost vs. durability trade-off).
-- The store never exposes partial writes — atomic rename is the contract.
-- **The packfile backend's durable object is the loose one.** `packfs.Put` writes through the fs backend's temp-file→`Sync`→rename path and *then* appends to the active pack, so the fsync contract above still holds and the pack append is an additional, non-fsynced copy. Losing the pack (or its index) loses the packed view, not the object (cas-core §4.14).
+- Write: `O_CREATE|O_EXCL` temp file (numeric suffix if another process holds `<path>.tmp`) → `f.Sync()` → `os.Rename`.
+- Unique name → no shared temp inode, even cross-process.
+- `f.Sync()` before rename → bytes on disk before visibility.
+- Directory fsync after rename: optional, configurable (cost vs. durability); survives a crash.
+- Atomic rename is the contract — no partial writes exposed.
+- `packfs` durable object = the loose one: `packfs.Put` uses the fs temp-file→`Sync`→rename path, then appends to the active pack.
+- Append = extra, non-fsynced copy: losing pack or index loses the packed view, not the object (cas-core §4.14).
 
 ## 2. Crash recovery
 
-- Orphan `*.tmp` files (crash mid-write) are ignored by `List`/`Stats`; provide a documented maintenance operation (e.g. `clean`) removing `*.tmp` older than a threshold.
-- After a crash: run `Verify` over the store (or a representative sample) to detect corruption; restore from backup on mismatch.
-- **The packfile index is not a recovery dependency.** A stale record (pack missing, shorter than the record, outside `packs/`) is dropped on use; the object is re-read from the loose tree, which holds every object. A **deleted** `packs/index.json` costs the packed view only — the index repopulates as objects are written, and nothing scans packs to rebuild it. A **malformed** one is refused at construction (`packfs.New` fails decoding it rather than guessing): the operator deletes or repairs the file and reopens (cas-core §4.14).
+- Orphan `*.tmp`: ignored by `List`/`Stats`; a documented operation (e.g. `clean`) removes `*.tmp` older than a threshold.
+- After a crash: `Verify` the store or a representative sample; restore from backup on mismatch.
+- Packfile index is no recovery dependency: a stale record (pack missing, shorter than the record, outside `packs/`) is dropped on use; the object is re-read from the loose tree, which holds every object.
+- **Deleted** `packs/index.json` → packed view only: the index repopulates as objects are written; nothing scans packs to rebuild it.
+- **Malformed** `packs/index.json` → refused at construction (`packfs.New` fails decoding rather than guessing); operator deletes or repairs it and reopens (cas-core §4.14).
 
 ## 3. Observability
 
-- Structured logging (`log/slog`) as implemented: the viewer audits login, throttle and CSRF rejections and every verification result (`internal/web/auth.go`, `internal/web/verify.go`); `examples/api` logs its put/delete/verify/GC mutations with the affected hash; `cask web` logs lifecycle errors. A **slow-operation** line (latency above a threshold) is designed but not implemented: no code path measures an operation's duration against a threshold (extensions §3).
-- Metrics (counters) as implemented: `cas.Stats` reports object count and total bytes only; the cache layer reports its own `CacheStats` (hits/misses/loads/evicts, `cas/cache/mem`). Store-level operation counters (objects stored/read/deleted, bytes in/out, login-throttle count) and any read-only viewer stats page are designed but not implemented — the viewer has no stats route (`internal/web/web.go`; extensions §3). Do NOT add a metrics dependency unless required (coding-guidelines §3); if needed, expose a small interface the deployment implements.
-- Audit logging follows `viewer-security.md`: never log tokens or secrets.
+- **Structured logging (`log/slog`), implemented.** Viewer: login, throttle and CSRF rejections, verification results (`internal/web/auth.go`, `internal/web/verify.go`); `examples/api`: put/delete/verify/GC mutations with the affected hash; `cask web`: lifecycle errors.
+- **Slow-operation line (latency threshold), designed, not implemented:** no code path measures duration against a threshold (extensions §3).
+- **Metrics counters, implemented.** `cas.Stats`: object count and total bytes; the cache layer: `CacheStats` (hits/misses/loads/evicts, `cas/cache/mem`).
+- **Store-level counters (objects stored/read/deleted, bytes in/out, login-throttle count), read-only viewer stats page, designed, not implemented:** no stats route (`internal/web/web.go`; extensions §3).
+- **Metrics dependency: rule.** Do NOT add one unless required (coding-guidelines §3); else expose a small interface the deployment implements.
+- **Audit logging: rule.** Per `viewer-security.md` — never log tokens or secrets.
 
 ## 4. Integrity cadence
 
-- `Verify` on every read is expensive; recommended: verify on write-back (re-read after `Put`) for critical data, and run the full scan on an operator-chosen cadence. As implemented the product schedules and samples nothing: `cask verify <hash>|--all` and the viewer's Verify control are on demand. A **scheduled** full `Verify` (e.g. nightly) and a **random-sample** `Verify` during `List` are designed but not implemented (extensions §3); no nightly CI job exists.
-- On mismatch: return `ErrDigestMismatch` (or record the digest in `Report.Bad`) and audit-log it. **Quarantine** (moving the object aside) and alerting are designed but not implemented (extensions §3).
+- `Verify` per read is expensive → write-back verify (re-read after `Put`) for critical data; full scan on an operator-chosen cadence.
+- Nothing is scheduled or sampled: `cask verify <hash>|--all` and the viewer's Verify control are on demand.
+- Scheduled full `Verify` (e.g. nightly), random-sample `Verify` during `List`: designed, not implemented (extensions §3); no nightly CI job.
+- On mismatch: `ErrDigestMismatch` (or the digest in `Report.Bad`) plus an audit-log line.
+- Quarantine (object moved aside), alerting: designed, not implemented (extensions §3).
 
 ## 5. Migration
 
-- **The address carries no algorithm and the layout has no algorithm directory.** A `Digest` is raw bytes at `<base>/<fan-out dirs>/<full hex digest>`; the core names no algorithm and keeps no registry, so nothing in the store records which algorithm produced a key. A store is therefore effectively single-format, like a Git object database with one object format.
-- **Algorithm migration** (e.g. `sha256` → `blake3`, or a legacy SHA-1 store) is a **client-side re-digest and rewrite**: not a configuration switch, not an operation the library performs for you. Run it at the byte layer with a client: `List` every digest → `Get` each object's bytes → digest them with the target `cas.Hasher` → `Put` under the new digest → `Verify` **each** target object through that hasher → delete the source **only** after its replacement verifies. No registry to consult, no per-algorithm filter to lean on (`Backend.List(ctx)` returns every digest; `Backend.Stats` reports only `ObjectCount`/`TotalSize`).
-- **Objects stored before the digest change are not migrated at all.** An object with no reference fields (a blob) still decodes; every object whose payload contains a reference — tree, commit, tag — does not. Object type names stay `@1`, but reference payloads changed from `"sha256:hexdigest"` to bare hex **and** the layout lost its algorithm directory. Expect these symptoms in order. First, `Get`/`Verify` on an old digest returns `ErrNotFound` — the file sits at `<base>/sha256/…`, the current backend reads `<base>/…` — even though `List`/`Stats` still report that digest (the walk matches on the file *name* at any depth, cas-core §4.4): an old store looks populated but nothing in it is fetchable, and `GC`/`Prune` cannot reclaim those files. Then, once an object is at its canonical path, decoding fails with `ErrCorrupt`: strict hex parsing rejects the legacy `sha256:` prefix instead of resolving to a different address. There is no migration tool and no `@2` type. Keep the previous build available to decode those objects, re-create the values with the current build, and treat the old store as read-only until then (versioning §4). Never point the current build's backend at a *parent* of an old store — that turns its objects into phantom entries (cas-core §4.4, one base = one store).
-- **Layout migration** (change `FanOut`/`FanLevels`): same procedure — copy under the new layout, verify, then remove the old (or keep both during a transition, with reads falling back to the old layout).
-- Algorithm and layout transitions are offline or low-write operations; document the maintenance window.
+- **Address and layout carry no algorithm.** `Digest` = raw bytes at `<base>/<fan-out dirs>/<full hex digest>`; no algorithm name, no registry — one store, one format.
+- **Algorithm migration** (e.g. `sha256` → `blake3`, a legacy SHA-1 store) = **client-side re-digest and rewrite** — no configuration switch, no library operation. Byte layer:
+- Pipeline: `List` every digest → `Get` each object's bytes → re-digest with the target `cas.Hasher` → `Put` under the new digest → `Verify` **each** target object through that hasher → delete the source **only** after its replacement verifies.
+- No per-algorithm filter: `Backend.List(ctx)` returns every digest; `Backend.Stats` reports only `ObjectCount`/`TotalSize`.
+- **Objects stored before the digest change are not migrated at all.** A blob (no reference fields) still decodes; any object whose payload holds a reference — tree, commit, tag — does not.
+- Type names stay `@1`; reference payloads went from `"sha256:hexdigest"` to bare hex and the layout lost its algorithm directory. Symptoms:
+  - `Get`/`Verify` on an old digest → `ErrNotFound`: file at `<base>/sha256/…`, the backend reads `<base>/…`, yet `List`/`Stats` report that digest (the walk matches the file *name* at any depth, cas-core §4.4) — nothing fetchable, `GC`/`Prune` reclaim nothing.
+  - At the canonical path, decoding fails with `ErrCorrupt`: strict hex parsing rejects the legacy `sha256:` prefix instead of resolving to another address.
+- No migration tool, no `@2` type: the previous build decodes those objects, the current build re-creates the values, the old store stays read-only until then (versioning §4).
+- Never point the current backend at a *parent* of an old store — phantom entries (cas-core §4.4, one base = one store).
+- **Layout migration** (`FanOut`/`FanLevels` change): copy under the new layout, verify, remove the old (or keep both in transition, reads falling back to the old layout).
+- Algorithm and layout transitions: offline or low-write; document the maintenance window.
 
 ## 5.1. Migration playbook (algorithm and layout moves)
 
-The repo keeps a single base directory per store, and every object path is content-addressed; that matters during a digest or fan-out migration, because the old store stays a valid byte tree until the new one is validated. Treat the move as an offline rewrite with a snapshot and a rollback path.
+- One base directory per store; every object path content-addressed; the old store stays a valid byte tree until the new one validates — offline rewrite with snapshot + rollback.
 
 ### 5.1.1 Algorithm migration example (`sha256` → `sha512_256`)
 
@@ -54,7 +73,7 @@ cp -a ./store ./store-backup-$(date -u +%Y%m%dT%H%M%SZ)
 find ./store -name '*.tmp' -delete
 ```
 
-2. Create the target store and a one-off rewrite helper. The helper is project-local and can live in `/tmp` for a single migration; what matters is that it rehashes each object under the new algorithm, writes under the new canonical layout, and verifies before deleting the source value.
+2. Create the target store and a one-off rewrite helper (project-local; `/tmp` fine for one migration): rehashes each object under the new algorithm, writes under the new canonical layout, verifies before deleting the source value.
 
 ```bash
 mkdir -p ./store-next
@@ -94,7 +113,7 @@ EOF
 go run /tmp/cask-rehash.go ./store ./store-next
 ```
 
-3. Verify the new store before promotion. The repo's verification gate is the CI gate: `./scripts/verify.sh` plus a targeted test for the changed package. For a migration, also check the target store's objects one-by-one with the new hasher and verify the references graph.
+3. Verify before promotion: gate = the CI gate, `./scripts/verify.sh` plus a targeted test for the changed package. For a migration, check the target's objects one-by-one with the new hasher and verify the references graph.
 
 ```bash
 ./scripts/verify.sh
@@ -117,7 +136,7 @@ mv ./store-old ./store
 
 ### 5.1.2 Layout migration example (`FanOut`/`FanLevels` change)
 
-The same pattern applies to a path-layout rewrite; only the destination mapping changes. Safest path:
+- Same pattern for a path-layout rewrite; only the destination mapping changes.
 
 ```bash
 cp -a ./store ./store-backup-$(date -u +%Y%m%dT%H%M%SZ)
@@ -134,13 +153,14 @@ done < /tmp/cask-layout-files.txt
 ./scripts/verify.sh
 ```
 
-If the new layout is canonical and verified, replace the old store path in place; otherwise recover from `./store-backup-*` before writes resume. The core rule is unchanged: keep the old data tree intact until the new one passes `Verify`, then flip the active root. There is no silent in-place migration in the library: migration is an operational rewrite plus a verified cutover.
+- New layout canonical and verified → replace the store path in place; else recover from `./store-backup-*` before writes resume.
+- Old data tree intact until the new one passes `Verify`; then flip the active root.
+- No silent in-place migration in the library: operational rewrite plus verified cutover.
 
 ## 6. Object descriptor + sidecar checksum
 
-The core puts no payload checksum inside the TLV envelope. The object digest already checksums the stored bytes, so a payload checksum can only be an optional sidecar record **above** the `Backend` contract: inside the object bytes it would become part of the object identity and create a circular dependency, the checksum being computed over bytes that contain the checksum.
-
-`cas/verify/sidecar` implements that record. It is **opt-in** — a store has one only when a caller wraps its backend — and holds no objects: deleting the record directory loses the cheap check, never an object. Its purpose is the one thing content addressing cannot express: a cheap second check over a store whose address is a strong hash, so bytes can be re-read with a CRC while SHA-256 stays the identity.
+- `cas/verify/sidecar`: **opt-in** sidecar record **above** the `Backend` contract (§6.4) — only when a caller wraps its backend; holds no objects, so deleting the record directory loses the cheap check, never an object.
+- Purpose: a cheap second check on a store addressed by a strong hash — bytes re-read with a CRC while SHA-256 stays the identity.
 
 ### 6.1 Layout
 
@@ -150,9 +170,11 @@ The core puts no payload checksum inside the TLV envelope. The object digest alr
 <base>/.meta/<hex>.<n>.tmp    atomic-write scratch, reclaimed by the backend's Clean
 ```
 
-`<base>` is the directory the backend reports as `BasePath()`: for `fs` the path passed to `fs.New`; for `packfs` the loose tree at `<base>/loose`, the directory its `List`, `Stats` and `Clean` operate on.
-
-`.meta` is the one sanctioned resident under a store's base (cas-core §4.4): every file in it falls outside both rules that make a base single-owner. The `.json` suffix keeps a record out of `List`/`Stats`, which read a digest from the last path element only; the `.tmp` suffix puts a crashed write inside the backend's own scratch reclamation. A record is never an object, and an object without a record is never damage.
+- `<base>`: backend's `BasePath()` — for `fs` the path passed to `fs.New`; for `packfs` the loose tree at `<base>/loose`, where its `List`, `Stats` and `Clean` operate.
+- `.meta`: the one sanctioned resident under a store's base (cas-core §4.4) — outside both rules that make a base single-owner.
+- `.json` suffix: keeps a record out of `List`/`Stats`, which read a digest from the last path element only.
+- `.tmp` suffix: puts a crashed write inside the backend's own scratch reclamation.
+- A record is never an object; an object without a record is never damage.
 
 ### 6.2 Record, version 1
 
@@ -169,56 +191,63 @@ The core puts no payload checksum inside the TLV envelope. The object digest alr
 }
 ```
 
-- `digest` and `checksum` are bare lowercase hex (`cas.Digest` through `encoding.TextMarshaler`, cas-core §4.6).
-- `checksum` covers the **stored bytes** — exactly what `Backend.Get` returns, in one streaming pass. Not a payload checksum: a logical-payload layer is a larger feature, and v1 does not claim it.
-- `checksum_algo` names the algorithm the writer used (for example `crc32.Name`) and is compared on read, because crc32 and adler32 are both four bytes wide: width alone cannot tell a wrong-algorithm read from corruption.
-- `type` and `codec` are derived best-effort from a bounded prefix of the stored bytes; both are empty when those bytes are not a go-cask envelope (a `snapshot` archive, for instance) or the envelope does not fit the captured prefix. A write never fails because an optional field could not be derived, and the object is never buffered.
-- The write path is bounded by the read cap. A record that would exceed `WithMaxRecordBytes` is written without the optional `type`/`codec` fields — both are never required (above) — and a record that still does not fit is refused with `sidecar.ErrRecordTooLarge`, publishing nothing. The writer therefore never produces a record its own reader would refuse as `cas.ErrCorrupt` (go-cask#362).
-- `size` is the stored byte count. A disagreement with the object's actual size is reported, never repaired.
-- `created_at` is the first-record time (UTC). A repeat `Put` of the same digest under the same algorithm leaves an existing valid record untouched: the record stays deterministic and its creation time is not refreshed.
-- No `references` field in v1: only the typed layer knows `References()`, a byte-layer producer cannot derive it, and the object type stays the authoritative traversal source.
+| Field | Rule |
+|---|---|
+| `digest`, `checksum` | bare lowercase hex (`cas.Digest` via `encoding.TextMarshaler`, cas-core §4.6) |
+| `checksum` | the **stored bytes** — exactly what `Backend.Get` returns, one streaming pass; not a payload checksum (v1 claims no logical-payload layer) |
+| `checksum_algo` | the writer's algorithm (e.g. `crc32.Name`), compared on read: crc32 and adler32 are both four bytes wide, so width alone cannot tell a wrong-algorithm read from corruption |
+| `type`, `codec` | best-effort from a bounded prefix of the stored bytes; empty when those bytes are no go-cask envelope (a `snapshot` archive) or the envelope does not fit the captured prefix; a write never fails on an underivable optional field; the object is never buffered |
+| `type`/`codec` overflow | write path bounded by the read cap: over `WithMaxRecordBytes`, the record is written without them (never required); still too large → `sidecar.ErrRecordTooLarge`, publishing nothing; a record the reader would refuse as `cas.ErrCorrupt` is therefore never written (go-cask#362) |
+| `size` | the stored byte count; disagreement with the object's actual size is reported, never repaired |
+| `created_at` | first-record time (UTC); a repeat `Put` of the same digest under the same algorithm leaves a valid record untouched — deterministic, creation time not refreshed |
+| `references` | none in v1: only the typed layer knows `References()`, a byte-layer producer cannot derive it; the object type stays the authoritative traversal source |
 
 ### 6.3 Read path, failures and reconciliation
 
-A reader checks a record, never the address: `cas.Verify` with the addressing hasher remains the identity check, and the two are independent.
+- Reader checks a record, never the address: `cas.Verify` with the addressing hasher stays the identity check; the two are independent.
 
 | Condition | Result |
 |---|---|
-| record absent | `cas.ErrNotFound` (wrapped by `sidecar.ErrUnrecorded`) — an unchecked object, never corruption |
+| record absent | `cas.ErrNotFound` (wrapped by `sidecar.ErrUnrecorded`) — unchecked object, never corruption |
 | `checksum_algo` differs from the reader's configured name | `sidecar.ErrChecksumAlgorithm`; a reader change must not read as damage, the same reasoning as `cas.ErrCodecMismatch` |
 | recomputed checksum or stored size differs | `cas.ErrCorrupt`, wrapped |
 | record's `digest` disagrees with the object, or the record is unparseable, the wrong version, or larger than the read cap | `cas.ErrCorrupt` on read, never a silent skip |
-| the same unusable record during a full pass (`VerifyAll`) | reported in `VerifyReport.Unreadable`, and the pass keeps checking the rest of the store — one damaged record must not report the whole store as unchecked (go-cask#362) |
-| a `.json` name in `.meta` that is not a digest | not a record: `Keys`/`Reconcile` skip it, `Reconcile` reports it in `ReconcileReport.Foreign`, and neither aborts (go-cask#362) |
+| the same unusable record during a full pass (`VerifyAll`) | `VerifyReport.Unreadable`; the pass keeps checking the rest — one damaged record must not report the whole store unchecked (go-cask#362) |
+| a `.json` name in `.meta` that is not a digest | not a record: `Keys`/`Reconcile` skip it, `Reconcile` reports it in `ReconcileReport.Foreign`, neither aborts (go-cask#362) |
 | the inner backend returns before the reader reaches EOF | a loud error and **no** record: a checksum over partial bytes is worse than none |
 
-Ordering and crash rule: **object first, record second**. A crash between the two leaves an object with no record — unchecked, never corrupt — and a record the cap refuses (§6.2) leaves the same state, because the object is already published when the record is encoded. `Reconcile` closes the gap. A record write is temp file → `f.Sync()` → rename inside `.meta`; the directory sync is opt-in (`WithDirSync`), matching the backend's configurable directory fsync (§1).
-
-`Reconcile` removes the record of every object that is gone and reports stored objects with no record. It never deletes an object and never invents a record: only a writer that read the bytes can record a checksum. A `.json` name it cannot read as a digest is skipped and reported as foreign, never removed: a file this layer cannot interpret is not its own to delete. `cask gc` and a non-dry `cask prune` run it after their sweep, so a store with records accumulates no orphans; the backend's `Clean` reclaims `.meta` scratch like any other temp file.
+- Ordering and crash rule: **object first, record second** — a crash leaves an object with no record (unchecked, never corrupt), as does a record the cap refuses (§6.2); `Reconcile` closes the gap.
+- Record write: temp file → `f.Sync()` → rename inside `.meta`; directory sync opt-in (`WithDirSync`), matching the backend's configurable directory fsync (§1).
+- `Reconcile` removes the record of every gone object, reports stored objects with no record; never deletes an object, never invents a record.
+- A `.json` name it cannot read as a digest: skipped, reported foreign, never removed.
+- `cask gc` and a non-dry `cask prune` run it after their sweep; the backend's `Clean` reclaims `.meta` scratch like any other temp file.
 
 ### 6.4 Why not in the TLV?
 
-Putting the checksum into the object bytes would make it part of the object identity — a circular dependency: the checksum must be computed over bytes containing the checksum itself. The result is a different hash for a different payload, and a store whose object identity no longer matches the bytes stored. The repo therefore keeps the TLV envelope stable and checksum metadata in a sidecar record outside the hash input.
+- The object digest already checksums the stored bytes; a payload checksum inside the TLV would join the identity — circular, computed over bytes containing it.
+- The envelope stays stable; checksum metadata lives only **above** the `Backend` contract, outside the hash input (identity would otherwise stop matching the stored bytes).
 
 ### 6.5 Not implemented
 
-Quarantine of a mismatching object, alerting, a logical-payload (as opposed to stored-bytes) checksum, and a `references` field in the record stay deferred (extensions §3.1; consistency §2). This path reports; it never moves bytes aside and never repairs an object.
+- Deferred: quarantine of a mismatching object, alerting, a logical-payload (as opposed to stored-bytes) checksum, a `references` field in the record (extensions §3.1; consistency §2).
+- This path reports; it never moves bytes aside, never repairs an object.
 
 ## 7. Backup
 
-- The store is a plain directory tree — back it up with standard tooling (tar/rsync/object-storage sync).
-- Consistent snapshot without quiescing: copy while running, then `Verify` the copy — atomic writes guarantee the copy holds no partial objects, only possibly the newest ones.
-- Dedup keeps backups small. The packfile backend does **not**: it keeps the loose tree and mirrors every object into a pack, so backing up a `packfs` store copies the data twice and a sweep never shrinks it. Choose `packfs` for read-open amortization, not backup or disk size (performance §9, cas-core §4.14).
+- Store = plain directory tree: standard tooling (tar/rsync/object-storage sync).
+- Snapshot without quiescing: copy while running, then `Verify` the copy — atomic writes mean no partial objects, only possibly the newest ones.
+- Dedup keeps backups small; `packfs` does **not**: it keeps the loose tree and mirrors every object into a pack — a backup copies the data twice, and a sweep never shrinks it.
+- Choose `packfs` for read-open amortization, not backup or disk size (performance §9, cas-core §4.14).
 
 ## 8. Checklist
 
-- [x] fsync-before-rename enforced; directory fsync configurable
-- [x] orphan `*.tmp` sweep documented/implemented
-- [x] slog logging for the viewer's mutations/audit lines and login-throttle rejections; `examples/api` logs its mutation and GC runs
+- [x] fsync-before-rename; directory fsync configurable
+- [x] orphan `*.tmp` sweep
+- [x] slog for the viewer's mutations/audit lines and login-throttle rejections; `examples/api` mutations and GC
 - [ ] slow-operation (latency-threshold) logging — not implemented (extensions §3)
-- [ ] store-level metric counters (objects/bytes) and a read-only viewer stats page — not implemented; only `cas.Stats` and the cache layer's `CacheStats` exist (extensions §3)
-- [x] verify runs on demand; mismatch → `ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT` report, viewer audit
-- [ ] quarantine on mismatch + alerting — not implemented (extensions §3)
-- [x] migration procedures (algorithm and layout) documented with verify-before-delete; the un-migrated digest break recorded
-- [x] object descriptor + sidecar checksum — implemented opt-in as `cas/verify/sidecar` (`<base>/.meta/<hex>.json`, record version 1): producer, reader, checksum validation, `cask verify --checksums`, and record reconciliation in `cask gc`/`prune` (§6); quarantine, alerting, a logical-payload checksum and a `references` field stay deferred (extensions §3.1)
-- [x] backup procedure documented; the packfile backend's doubled on-disk footprint and missing space reclamation stated (performance §9)
+- [ ] store-level metric counters, read-only viewer stats page — not implemented; only `cas.Stats`, `CacheStats` (extensions §3)
+- [x] verify on demand; mismatch → `ErrDigestMismatch`/`Report.Bad`, CLI `CORRUPT`, viewer audit
+- [ ] quarantine on mismatch, alerting — not implemented (extensions §3)
+- [x] migration procedures (algorithm, layout) with verify-before-delete; un-migrated digest break recorded
+- [x] sidecar checksum, opt-in `cas/verify/sidecar` (`<base>/.meta/<hex>.json`, version 1): producer, reader, validation, `cask verify --checksums`, `cask gc`/`prune` reconciliation (§6); quarantine, alerting, logical-payload checksum, `references` deferred (extensions §3.1)
+- [x] backup documented; packfile backend's doubled footprint and missing reclamation (performance §9)

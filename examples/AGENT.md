@@ -2,21 +2,24 @@
 type: Agent Instructions
 title: AGENT — go-cask Examples
 description: Rules for runnable example programs under examples/, including folder conventions, README requirements, test expectations, and the allowed scope of teaching code.
-version: v6
+version: v7
 ---
 
 # AGENT — go-cask Examples
 
-Folder contains runnable teaching programs for go-cask. Every example MUST stay focused on one real pattern, keep library core untouched, document pattern clearly enough that an app author can copy it.
+Runnable teaching programs. Each example MUST stay focused on one real pattern, keep library
+core untouched, and document the pattern clearly enough to copy.
 
 Related: [AGENTS.md](../AGENTS.md), [docs/specs/examples.md](../docs/specs/examples.md), [docs/index.md](../docs/index.md).
 
 ## 1. Purpose and scope
 
-- `examples/<name>/` for runnable programs (`package main`) and their tests/docs.
-- Examples = teaching code, not library code. Must demonstrate real app wiring using public API only.
-- `gitlike/` = reference support library at module root, not example: 2nd-class library at application layer that apps and examples import (library-design.md §1.1).
-- Never change core `cas` package to accommodate an example's convenience or missing feature. Feature missing: fix library or spec instead of hacking around it in example.
+- `examples/<name>/` — runnable programs (`package main`) plus their tests/docs.
+- Examples = teaching code, not library code: real app wiring, public API only.
+- `gitlike/` = reference support library at module root, not an example: 2nd-class library at
+  the application layer that apps and examples import (library-design.md §1.1).
+- Never change core `cas` for an example's convenience or missing feature: fix the library or
+  the spec.
 
 ## 2. Mandatory structure
 
@@ -31,37 +34,41 @@ Each example directory MUST include:
 Each example README MUST include:
 
 - short title and purpose
-- `What it demonstrates` describing primary aspect and acceptance criteria
-- list of exact `cas`/`gitlike` APIs used
+- `What it demonstrates`: primary aspect and acceptance criteria
+- exact `cas`/`gitlike` APIs used
 - what the example extends or wires together
-- code walkthrough pointing to key files and their roles
+- code walkthrough naming key files and roles
 - a Mermaid diagram
-- how to run it with exact commands and expected output shape
+- exact run commands and expected output shape
 
-Keep README short and direct. Should teach pattern and scope, not duplicate full API reference.
+Short and direct: teach pattern and scope, never duplicate the full API reference.
 
 ## 4. Example rules
 
 - One focus per example: one real workflow, not a kitchen sink.
-- Use stdlib only. No external dependencies in example code.
-- Never import another example package, `internal/**` or `cmd/**`; module's libraries (`cas/**`, `gitlike`) are ordinary imports. Rule 11 of `docs/specs/examples.md` §2 states it, library-design.md §1.1 carries the layer matrix.
-- Keep examples self-contained. Prefer teaching code inline rather than introducing a new helper package unless a second consumer justifies it.
-- Use secure defaults: `SHA-256` for identity, JSON for readable formats, filesystem storage for durable examples.
-- Never add `any` to example APIs. Prefer explicit typed models.
-- Use command-line or simple app wiring patterns easy to follow.
-- Keep output meaningful: hashes, stats, graph traversal, dedup results, loaded objects, or error output that proves the pattern.
+- stdlib only; no external dependencies in example code.
+- Never import another example package, `internal/**` or `cmd/**`; `cas/**` and `gitlike` are
+  ordinary imports (examples.md §2 rule 11; layer matrix in library-design.md §1.1).
+- Self-contained: teach inline rather than adding a helper package unless a second consumer
+  justifies it.
+- Secure defaults: `SHA-256` identity, JSON readable formats, filesystem storage for durable
+  examples.
+- No `any` in example APIs; explicit typed models.
+- Command-line or simple app wiring, easy to follow.
+- Meaningful output: hashes, stats, graph traversal, dedup results, loaded objects, or error
+  output that proves the pattern.
 
 ## 5. Testing and validation
 
-- Examples MUST compile with repo's Go toolchain.
-- Example tests should verify behavior the example teaches.
-- Use `go test ./examples/...` as standard local validation command for this folder.
+- Examples MUST compile with the repo's Go toolchain.
+- Example tests verify the behavior the example teaches.
+- Standard local validation: `go test ./examples/...`.
 
 ## 6. Scope boundaries
 
-- Examples are not core library. Must not be used to bend library into app-specific APIs.
-- Examples may define small local types and helper structs when needed for teaching, but must not become a second shared library.
-- Keep design consistent with `docs/specs/examples.md` and repo root `AGENTS.md`.
+- Examples are not core library and MUST NOT bend it into app-specific APIs.
+- Small local types and helper structs are allowed for teaching; a second shared library is not.
+- Keep design consistent with `docs/specs/examples.md` and root `AGENTS.md`.
 
 ## 7. Checklist
 
@@ -73,8 +80,7 @@ Keep README short and direct. Should teach pattern and scope, not duplicate full
 
 ## 8. Signed pull-request workflow
 
-Repository policy requires signed commits: rebuild PR branches locally from
-current `main`; never use GitHub's server-side rebase or update-branch operation.
-Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, push with `git push --force-with-lease`. Enable
-auto-merge only after signature verification and required checks pass.
+Signed commits: rebuild PR branches locally from current `main`, never GitHub's server-side
+rebase or update-branch; `git cherry-pick -S`, `git verify-commit` every head commit,
+`git push --force-with-lease`, auto-merge only after signature verification and the required
+checks pass (`docs/specs/landing.md`).
