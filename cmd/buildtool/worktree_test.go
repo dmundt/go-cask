@@ -266,6 +266,65 @@ func TestWorktreeRemoveClearsAHalfRemovedWorktree(t *testing.T) {
 	}
 }
 
+// TestWorktreeRemoveFollowsGitToAWorktreeOutsideThePolicyParent pins the resolution: remove
+// asks git where the name is registered and removes the path git reports. A path computed from
+// policy reported `worktree removed`, exit 0, over a worktree that lives elsewhere — it deleted
+// the registration and left the directory, with no way back through `git worktree remove`,
+// which then refused the surviving path as "not a working tree" (go-cask#461).
+func TestWorktreeRemoveFollowsGitToAWorktreeOutsideThePolicyParent(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	table := policy.Worktrees()
+
+	elsewhere := filepath.Join(fixture.primary, "elsewhere", table.Prefix+"t5")
+	fixture.git("worktree", "add", "--detach", elsewhere, table.Base)
+	admin := worktree.Admin(fixture.context.common, table.Prefix+"t5")
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "remove", "t5")
+	if status != 0 {
+		t.Fatalf("removing a worktree outside the policy parent = %d\n%s", status, errOut)
+	}
+	if !strings.Contains(out, "worktree removed: "+table.Prefix+"t5") {
+		t.Errorf("the removal reported %q, want it to name the worktree", out)
+	}
+	if _, err := os.Stat(elsewhere); !os.IsNotExist(err) {
+		t.Errorf("the worktree at %s survived a removal that reported success", elsewhere)
+	}
+	if _, err := os.Stat(admin); !os.IsNotExist(err) {
+		t.Errorf("the registration survived: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.context.parent, table.Prefix+"t5")); !os.IsNotExist(err) {
+		t.Errorf("a path git never reported was touched: %v", err)
+	}
+}
+
+// TestWorktreeRemoveRefusesADirectoryGitDoesNotRegister pins the refusal that replaces the
+// accidental removal. The policy path is a guess, and a directory at it that git registers
+// nowhere is not a worktree: the verb refuses with its own status and names what it found, so
+// the caller removes it deliberately instead of reading a success line about nothing.
+func TestWorktreeRemoveRefusesADirectoryGitDoesNotRegister(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	table := policy.Worktrees()
+
+	stray := filepath.Join(fixture.context.parent, table.Prefix+"stray")
+	if err := os.MkdirAll(stray, 0o755); err != nil {
+		t.Fatalf("creating the stray directory: %v", err)
+	}
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "remove", "stray")
+	if status != 3 {
+		t.Fatalf("removing an unregistered directory = %d %q, want the documented status 3", status, errOut)
+	}
+	if out != "" {
+		t.Errorf("the refusal wrote %q to stdout", out)
+	}
+	if !strings.Contains(errOut, "no such worktree") || !strings.Contains(errOut, stray) {
+		t.Errorf("the refusal %q does not name the worktree and the directory it found", errOut)
+	}
+	if _, err := os.Stat(stray); err != nil {
+		t.Errorf("the refused removal removed the directory anyway: %v", err)
+	}
+}
+
 // TestWorktreePruneRefuses pins the refusal: prune is never performed, it is explained, and
 // the status is the one the wrapper used.
 func TestWorktreePruneRefuses(t *testing.T) {
