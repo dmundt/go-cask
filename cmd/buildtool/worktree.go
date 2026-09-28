@@ -63,8 +63,8 @@ func runWorktree(args []string, out, errOut io.Writer) error {
 }
 
 // worktreeUsage is the command's own help, which is also its usage error.
-const worktreeUsage = "usage: buildtool worktree [add <name> [<branch>] | remove <name> [--force] | " +
-	"lock [<name>...] | prune | list]"
+const worktreeUsage = "usage: buildtool worktree [add [--allow-stale] <name> [<branch>] | " +
+	"remove <name> [--force] | lock [<name>...] | prune | list]"
 
 // worktreeCommand is the command with its context injected.
 func worktreeCommand(args []string, out, errOut io.Writer, context *worktreeContext) error {
@@ -97,17 +97,34 @@ func worktreeCommand(args []string, out, errOut io.Writer, context *worktreeCont
 // worktreeAdd creates a task worktree from the freshly fetched base and makes it usable from
 // both toolchains: the `.git` link is rewritten in the relative form, the registration is
 // locked, and git's own answer is checked against the admin directory the link must name.
+//
+// The base is the freshly fetched remote-tracking ref, and a fetch that failed REFUSES the
+// command rather than warning and carrying on: every worktree is supposed to start on current
+// `origin/main`, and quietly basing one on whatever the local ref happens to be turns that
+// invariant into "whatever was last fetched" — a landing built on that base then needs a
+// rebuild before it can merge (go-cask#344). The refusal is exit 3 and echoes the fetch
+// failure, and `--allow-stale` is the deliberate opt-in for the operator who has just fetched
+// by other means.
 func worktreeAdd(args []string, out, errOut io.Writer, context *worktreeContext) error {
 	table := policy.Worktrees()
-	if len(args) == 0 {
-		return usageError{"usage: buildtool worktree add <name> [<branch>]"}
+	allowStale := false
+	var positional []string
+	for _, arg := range args {
+		if arg == "--allow-stale" {
+			allowStale = true
+			continue
+		}
+		positional = append(positional, arg)
 	}
-	if len(args) > 2 {
-		return usageError{fmt.Sprintf("unexpected extra argument: %s", args[2])}
+	if len(positional) == 0 {
+		return usageError{"usage: buildtool worktree add [--allow-stale] <name> [<branch>]"}
 	}
-	name, branch := args[0], ""
-	if len(args) > 1 {
-		branch = args[1]
+	if len(positional) > 2 {
+		return usageError{fmt.Sprintf("unexpected extra argument: %s", positional[2])}
+	}
+	name, branch := positional[0], ""
+	if len(positional) > 1 {
+		branch = positional[1]
 	}
 	gitName := table.Prefix + name
 	dir := filepath.Join(context.parent, gitName)
@@ -119,14 +136,25 @@ func worktreeAdd(args []string, out, errOut io.Writer, context *worktreeContext)
 		return fmt.Errorf("creating %s: %w", context.parent, err)
 	}
 
-	// A failed fetch (a toolchain without a usable SSL backend, for one) would silently base
-	// the new worktree on a stale base — say so instead of pretending it is current.
+	// A failed fetch (a toolchain without a usable SSL backend, for one) means the base
+	// cannot be shown to be current: refuse, unless the caller has explicitly accepted a
+	// stale one.
 	if _, err := gitOutputIn(context.primary, "fetch", "--quiet", "--all"); err != nil {
-		fmt.Fprintf(errOut, "worktree: 'git fetch' failed — using the local %s, which may be stale\n", table.Base)
+		if !allowStale {
+			return statusError{code: 3, message: fmt.Sprintf(
+				"worktree: 'git fetch' failed, so %s cannot be shown to be current — refusing to base a "+
+					"worktree on a stale ref:\n  %v\n"+
+					"  Fetch from a toolchain that can (this host: the Windows git, not the WSL one), or "+
+					"re-run with --allow-stale when you have just fetched by other means.",
+				table.Base, err)}
+		}
+		fmt.Fprintf(errOut, "worktree: 'git fetch' failed; --allow-stale given, using the local %s\n", table.Base)
 	}
+	// The FULL commit id, so the transcript identifies the exact base rather than a short
+	// sha that a later fetch can leave ambiguous.
 	base := "unknown"
-	if short, err := gitOutputIn(context.primary, "rev-parse", "--short", table.Base); err == nil {
-		base = strings.TrimSpace(short)
+	if full, err := gitOutputIn(context.primary, "rev-parse", table.Base); err == nil {
+		base = strings.TrimSpace(full)
 	}
 
 	add := []string{"worktree", "add", dir}

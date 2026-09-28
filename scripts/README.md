@@ -48,7 +48,9 @@ command.
   that took over. Git history keeps them.
 - Task worktrees = `go run ./cmd/buildtool worktree {add,remove,lock,list}`: writes the worktree's
   `.git` in the relative form both toolchains resolve, locks the registration against
-  `git worktree prune`, refuses `prune` outright. Rules: `internal/build/worktree`.
+  `git worktree prune`, refuses `prune` outright. `add` refuses when the fetch fails — a task
+  worktree is never based on a stale `origin/main`; `--allow-stale` accepts the local ref
+  deliberately. Rules: `internal/build/worktree`.
 
 Landing layer, two layers, both Go:
 

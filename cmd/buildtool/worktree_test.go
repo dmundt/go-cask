@@ -250,6 +250,123 @@ func TestWorktreeLockReportsARegistrationWhoseAdminIsGone(t *testing.T) {
 	}
 }
 
+// pointOriginAtMissingRemote repoints the fixture's `origin` at a directory that is not a
+// repository, which is how a real failed fetch arrives: the toolchain runs `git fetch`, the
+// remote cannot be reached, and the command has to decide what to do about it. The remote's
+// URL is set in the local config so both toolchains read the same broken remote.
+func pointOriginAtMissingRemote(t *testing.T, fixture *worktreeFixture) {
+	t.Helper()
+	missing := filepath.Join(t.TempDir(), "gone.git")
+	if _, err := gitOutputIn(fixture.primary, "remote", "set-url", "origin", missing); err != nil {
+		t.Fatalf("repointing origin: %v", err)
+	}
+	if _, err := gitOutputIn(fixture.primary, "fetch", "--quiet", "--all"); err == nil {
+		t.Fatal("the fixture's fetch succeeded against a remote that is not there")
+	}
+}
+
+// TestWorktreeAddRefusesAStaleBase pins go-cask#344: a failed `git fetch` refuses the add
+// rather than warning and basing the new worktree on whatever local `origin/main` happens to
+// be. The invariant every session relies on is that a task worktree starts on current
+// `origin/main`, and a warning turned that into "whatever was last fetched".
+func TestWorktreeAddRefusesAStaleBase(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	pointOriginAtMissingRemote(t, fixture)
+	table := policy.Worktrees()
+	dir := filepath.Join(fixture.context.parent, table.Prefix+"stale")
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "add", "stale")
+	if status != 3 {
+		t.Fatalf("add with a failed fetch = %d, want the documented status 3\n%s", status, errOut)
+	}
+	if out != "" {
+		t.Errorf("the refusal wrote %q to stdout", out)
+	}
+	for _, want := range []string{"git fetch", "cannot be shown to be current", "--allow-stale"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the refusal %q does not carry %q", errOut, want)
+		}
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("a refused add created the worktree anyway: %v", err)
+	}
+}
+
+// TestWorktreeAddAllowStaleOptsIn pins the deliberate half of the refusal: the caller who has
+// just fetched by other means says so, and the add proceeds — saying which stale base it used.
+func TestWorktreeAddAllowStaleOptsIn(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	pointOriginAtMissingRemote(t, fixture)
+	table := policy.Worktrees()
+	dir := filepath.Join(fixture.context.parent, table.Prefix+"stale")
+
+	want, err := gitOutputIn(fixture.primary, "rev-parse", table.Base)
+	if err != nil {
+		t.Fatalf("resolving the base: %v", err)
+	}
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "add", "--allow-stale", "stale")
+	if status != 0 {
+		t.Fatalf("add --allow-stale = %d\n%s", status, errOut)
+	}
+	if !strings.Contains(errOut, "using the local "+table.Base) {
+		t.Errorf("the run did not say which base it accepted: %q", errOut)
+	}
+	// The full commit id: the transcript names the exact base, not a short sha a later fetch
+	// could leave ambiguous.
+	full := strings.TrimSpace(want)
+	if !strings.Contains(out, "on "+full) {
+		t.Errorf("the ready line %q does not name the full base commit %s", out, full)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("the accepted add did not create the worktree: %v", err)
+	}
+}
+
+// TestWorktreeAddNamesTheFullBaseCommit pins the other half of go-cask#344: the `worktree
+// ready:` line identifies the base by its full commit id.
+func TestWorktreeAddNamesTheFullBaseCommit(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+	table := policy.Worktrees()
+
+	full, err := gitOutputIn(fixture.primary, "rev-parse", table.Base)
+	if err != nil {
+		t.Fatalf("resolving the base: %v", err)
+	}
+	full = strings.TrimSpace(full)
+	if len(full) != 40 {
+		t.Fatalf("the fixture's base is %q, not a full commit id", full)
+	}
+
+	out, errOut, status := runWorktreeCommand(t, fixture.context, "add", "fullline")
+	if status != 0 {
+		t.Fatalf("add = %d\n%s", status, errOut)
+	}
+	if !strings.Contains(out, "on "+full) {
+		t.Errorf("the ready line %q does not name the full base commit %s", out, full)
+	}
+	if strings.Contains(out, "on "+full[:7]) && !strings.Contains(out, "on "+full) {
+		t.Errorf("the ready line %q names an abbreviated base", out)
+	}
+}
+
+// TestWorktreeAddUsageCoversTheNewFlag pins the invocation contract: `--allow-stale` is a
+// flag, not the name, and a caller who passes it alone gets the usage rather than a worktree
+// named after it.
+func TestWorktreeAddUsageCoversTheNewFlag(t *testing.T) {
+	fixture := newWorktreeFixture(t)
+
+	for _, args := range [][]string{{"add"}, {"add", "--allow-stale"}, {"add", "t", "b", "extra"}} {
+		_, errOut, status := runWorktreeCommand(t, fixture.context, args...)
+		if status != 2 {
+			t.Errorf("worktree %q = %d %q, want the usage status", args, status, errOut)
+		}
+	}
+	if !strings.Contains(worktreeUsage, "--allow-stale") {
+		t.Errorf("the usage %q does not document the flag", worktreeUsage)
+	}
+}
+
 // TestWorktreeRemoveRefusesUncommittedWork pins the removal contract: an unclean worktree is
 // refused with the status the wrapper documented, and --force discards.
 func TestWorktreeRemoveRefusesUncommittedWork(t *testing.T) {

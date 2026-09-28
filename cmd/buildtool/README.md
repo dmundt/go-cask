@@ -26,7 +26,7 @@ an exit status a gate step can act on.
 | `land-lane` | the local advisory slot: its `status`/`whoami`/`acquire`/`renew`/`release` verbs, its idle-time staleness rule and the takeover record an eviction leaves |
 | `pr-lane` | the server-side lane: its `claim`/`check`/`status`/`release`/`whoami` verbs, the ref that is the compare-and-swap, the open pull request that is the lease, and the claim window past which a claim with no pull request is taken over; the verdict is `internal/build/claim`'s |
 | `pre-push` | the mechanical landing rule a push must satisfy, and the advisory-slot note; the rules are `internal/build/gate`'s |
-| `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses |
+| `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses. `add` refuses (exit 3) when the fetch fails, so no worktree is based on a stale `origin/main`; `--allow-stale` accepts it deliberately, and the `worktree ready:` line names the full base commit |
 | `task-status` | which branches carry work no pull request tracks: one line per branch against the base ref, then the branches worth acting on. It reads git, one `gh pr list` and the worktree list; it reports and always exits 0 |
 | `codec-guards` | that `gitlike` and `cas/pack` do not reach the codec layer transitively |
 | `module-graph` | that `go list -m` names this module as the main one |

@@ -139,6 +139,9 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   `hotfix` from `release/vX.Y` ([`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md)
   §3, [`docs/specs/landing.md`](../docs/specs/landing.md) §2). Link, admin directory, lock:
   `internal/build/worktree`, pinned by `cmd/buildtool/worktree_test.go`.
+- **A failed fetch refuses `worktree add`** (exit 3): a warning let a session start from a stale
+  `origin/main`, and nothing downstream catches that base. `--allow-stale` is the deliberate
+  opt-in; the `worktree ready:` line names the base's full commit id.
 - **A destructive verb reports success only on evidence.**
   `go run ./cmd/buildtool worktree remove <task>` exits 3 when it removed nothing (unregistered
   name, or half a worktree left behind) and says which; `os.RemoveAll` returns nil for a missing

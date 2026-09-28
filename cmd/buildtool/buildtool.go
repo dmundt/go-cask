@@ -111,7 +111,9 @@ commands:
   pre-push             the mechanical landing rule a push must satisfy: a green
                        gate stamp for this exact commit, plus the advisory slot note
   worktree             task worktrees both toolchains resolve: add, remove, lock,
-                       list; prune refuses and says why
+                       list; prune refuses and says why. add refuses when the fetch
+                       fails, so a worktree is never based on a stale origin/main;
+                       --allow-stale accepts the local ref deliberately
   task-status          report which branches carry work no pull request tracks: one
                        line per branch against the base ref, then the branches worth
                        acting on
