@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
@@ -776,12 +775,7 @@ func TestVersionAndWebHelpers(t *testing.T) {
 	})
 
 	t.Run("runWeb", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			<-time.After(150 * time.Millisecond)
-			cancel()
-		}()
-		if code := runWeb(ctx, modeFlags{store: t.TempDir()}, []string{"-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"}); code != 0 {
+		if _, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"); code != 0 {
 			t.Fatalf("runWeb exit = %d, want 0", code)
 		}
 	})
