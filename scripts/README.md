@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the buildtool launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/buildtool.
-version: v18
+version: v19
 ---
 
 # Scripts — go-cask
@@ -103,9 +103,9 @@ The gate executes them; it does not restate them.
   no pattern list, threshold table, `case` matrix or step — the step list is
   `cmd/buildtool verify`'s `gateSteps`; a decision behind a step → `internal/build` with a test.
   Owner: [`AGENT.md`](./AGENT.md) "`verify.sh` stays forever".
-- **Fast-turnaround options:** `VERIFY_SKIP_TESTS`, `VERIFY_SKIP_COVERAGE`, `VERIFY_SKIP_FUZZ` and
-  `VERIFY_SKIP_SECURITY` drop one step each; `VERIFY_FAST=true` drops all four. A run using one is
-  not a verified run.
+- **Fast-turnaround options:** `VERIFY_SKIP_TESTS`, `VERIFY_SKIP_COVERAGE`, `VERIFY_SKIP_FUZZ`,
+  `VERIFY_SKIP_SECURITY` and `VERIFY_SKIP_LINT` drop one step each; `VERIFY_FAST=true` drops all
+  five. A run using one is not a verified run.
 - A skipped run prints what it skipped and writes **no** gate stamp → `.githooks/pre-push` still
   refuses to push that commit: time on a working tree, never a landing.
 - Only the test step is worth dropping, and only both hatches drop it: coverage measurement and
@@ -182,7 +182,7 @@ The gate executes them; it does not restate them.
 ```bash
 ./scripts/verify.sh
 go run ./cmd/buildtool verify                   # the same gate, without the shim
-VERIFY_FAST=true ./scripts/verify.sh            # quick pass: skips tests/coverage/fuzz/security, never stamps
+VERIFY_FAST=true ./scripts/verify.sh            # quick pass: skips tests/coverage/fuzz/security/lint, never stamps
 VERIFY_SKIP_TESTS=true ./scripts/verify.sh      # skip only the race suite (~79s) while iterating
 go run ./cmd/buildtool layer-matrix             # the gate's decisions, run on their own
 go run ./cmd/buildtool coverage-tier
