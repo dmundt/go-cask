@@ -2,34 +2,24 @@
 
 package main
 
-import "syscall"
+import (
+	"errors"
+	"os/exec"
+	"syscall"
+)
 
-// signalOf names the signal a terminated process reported, and reports whether this
-// platform carries one in a process's status. Only POSIX hosts do: elsewhere the status is
-// an ordinary exit code and a kill and an ordinary failure are indistinguishable.
-//
-// The name is what the diagnosis prints, because that is the fact a lane can act on: a
-// SIGKILL is the kernel reclaiming memory, while a failure with no signal is the step
-// reporting its own verdict.
-func signalOf(status int) (string, bool) {
-	if status >= 0 {
-		return "", false
+// killedBy reports the signal that killed a process, so the diagnosis can name it: a
+// SIGKILL is the kernel reclaiming memory, while a step reporting its own failure is a
+// different thing entirely. The signal is a process status on a POSIX host; the platform
+// without one says so with false.
+func killedBy(err error) (int, bool) {
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) {
+		return 0, false
 	}
-	switch syscall.Signal(-status) {
-	case syscall.SIGKILL:
-		return "SIGKILL", true
-	case syscall.SIGTERM:
-		return "SIGTERM", true
-	case syscall.SIGINT:
-		return "SIGINT", true
-	case syscall.SIGQUIT:
-		return "SIGQUIT", true
-	case syscall.SIGABRT:
-		return "SIGABRT", true
-	case syscall.SIGSEGV:
-		return "SIGSEGV", true
-	case syscall.SIGHUP:
-		return "SIGHUP", true
+	status, ok := exited.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() {
+		return 0, false
 	}
-	return "", false
+	return int(status.Signal()), true
 }

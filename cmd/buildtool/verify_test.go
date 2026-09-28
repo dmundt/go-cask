@@ -571,11 +571,11 @@ func TestVerifyGateReleasesTheSlotWhenItFails(t *testing.T) {
 // a signal is reported as a kill — the signal, how many concurrent verify processes this
 // host can see, and the advice to hold the slot — instead of exiting 15 with an empty tail.
 func TestGateStepKilledNamesTheSignal(t *testing.T) {
-	killed := fakeExitError(-1)
+	killed := fakeExitError("KILL")
 	if killed == nil {
 		t.Log("this platform carries no signal in a process status; the kill path has nothing to read here")
-	} else if signal, ok := killedStep(killed); !ok || signal == "" {
-		t.Errorf("a signal-killed command = (%q, %t), want a named kill", signal, ok)
+	} else if signal, ok := killedStep(killed); !ok || signal != "SIGKILL" {
+		t.Errorf("a SIGKILL-killed command = (%q, %t), want SIGKILL", signal, ok)
 	}
 	if signal, ok := killedStep(errors.New("go test: exit status 1")); ok {
 		t.Errorf("an ordinary failure was read as a kill by %s", signal)
@@ -610,7 +610,7 @@ func TestGateStepKilledNamesTheSignal(t *testing.T) {
 	if stepErr == nil {
 		t.Fatal("a killed step carried no diagnosis")
 	}
-	for _, want := range []string{"killed by", "land-lane wait", "processes visible on this host"} {
+	for _, want := range []string{"killed by SIGKILL", "land-lane wait", "processes visible on this host"} {
 		if !strings.Contains(stepErr.Error(), want) {
 			t.Errorf("the step's diagnosis %q does not carry %q", stepErr, want)
 		}

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -309,23 +309,9 @@ func gateRunLabel() string {
 // killed the step, how many concurrent `buildtool verify` processes this host can see, and
 // what to do about it.
 
-// killedStep reports whether a step's command was killed by a signal rather than failing on
-// its own merits, and which one. It is deliberately quiet on a host whose process status
-// carries no signal: there a kill and an ordinary failure are indistinguishable, and a
-// guess would misdirect the lane that owns the commit.
-func killedStep(err error) (string, bool) {
-	code := exitCodeOf(err)
-	if code >= 0 {
-		return "", false
-	}
-	if signal, known := signalOf(code); known {
-		return signal, true
-	}
-	// This platform reports that the process did not exit normally without naming the
-	// signal. Saying so is still the difference between a red gate a lane can read and one
-	// it cannot.
-	return strconv.Itoa(-code), true
-}
+// killedStep and its per-platform half live in signals.go, signals_unix.go and
+// signals_windows.go: whether a process status carries a signal is the platform's fact, and
+// the diagnosis must not guess at one.
 
 // gateStepKilledReport is the diagnosis a killed step prints. It names the step, the
 // signal, how many concurrent verify processes this host can see, and the advice — hold
@@ -376,10 +362,11 @@ func gateVerifyProcesses() int {
 }
 
 // isVerifyCommand reports whether one process's argv is a gate run: a buildtool binary or
-// `go run` invocation whose next argument is `verify`.
+// `go run` invocation whose next argument is `verify`. Both separators are read, because the
+// listing may be a Windows process table read from a POSIX shell, or the other way round.
 func isVerifyCommand(argv []string) bool {
 	for index, arg := range argv {
-		base := strings.ToLower(filepath.Base(arg))
+		base := strings.ToLower(path.Base(strings.ReplaceAll(arg, `\`, "/")))
 		if base != "buildtool" && base != "buildtool.exe" {
 			continue
 		}
