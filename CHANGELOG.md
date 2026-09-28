@@ -163,6 +163,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The viewer names a frame's version **Envelope** rather than "Envelope version" or
+  "Version" — in the object table's column header, in the inspector's Identity block, and
+  in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
+  `version` filter and the `?version=` query value stay decimal, so every existing URL and
+  filter selection keeps working.
 - The example JSON surface (`examples/api`) is bounded and credentialed like a real one:
   request bodies are refused with `413` before they are read (objects 64 MiB by default,
   `-max-size`; `/gc` 8 MiB), the server sets `ReadTimeout` 60 s, `WriteTimeout` 5 min and
