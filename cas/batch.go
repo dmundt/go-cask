@@ -102,11 +102,20 @@ func getManyEach(ctx context.Context, raw Backend, digests []Digest, fn func(Dig
 // whether fn returned an error or panicked. fn's error wins; a failing Close is
 // reported only when fn itself succeeded, so a close failure never masks the
 // real cause.
-func closeAfterFn(fn func(Digest, io.ReadCloser) error, d Digest, reader io.ReadCloser) (err error) {
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("cas: get many: close %s: %w", d, closeErr)
-		}
-	}()
-	return fn(d, reader)
+//
+// The sequence and that precedence are readThenClose's (readclose.go,
+// go-cask#340) with readWins — the batch path's deliberate choice, named there
+// instead of restated here. Only the message stays local, because it names the
+// digest. cas/backend/packfs.callBatchFn keeps its own copy of this function:
+// that package cannot see an unexported helper in cas (library-design §1), and
+// one commented copy in a backend is cheaper than an exported form the core
+// does not otherwise need.
+func closeAfterFn(fn func(Digest, io.ReadCloser) error, d Digest, reader io.ReadCloser) error {
+	_, err := readThenClose(reader,
+		func(io.Reader) (struct{}, error) { return struct{}{}, fn(d, reader) },
+		readWins,
+		nil,
+		func(err error) error { return fmt.Errorf("cas: get many: close %s: %w", d, err) },
+	)
+	return err
 }

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -321,6 +323,138 @@ func (s *snapshotSource) ModTime(context.Context, cas.Digest) (time.Time, error)
 		return time.Time{}, s.modErr
 	}
 	return s.modTime, nil
+}
+
+// physicalSource is snapshotSource plus cas.PhysicalStatter: it counts the
+// combined stat and each of the two separate calls, so a test can assert which
+// question BuildSnapshot asked (go-cask#373).
+type physicalSource struct {
+	*snapshotSource
+	size      int64
+	written   time.Time
+	statErr   error
+	statCalls int
+	sizeCalls int
+	modCalls  int
+}
+
+func (s *physicalSource) Stat(context.Context, cas.Digest) (int64, time.Time, error) {
+	s.statCalls++
+	if s.statErr != nil {
+		return 0, time.Time{}, s.statErr
+	}
+	return s.size, s.written, nil
+}
+
+func (s *physicalSource) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	s.sizeCalls++
+	return s.snapshotSource.Size(ctx, d)
+}
+
+func (s *physicalSource) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
+	s.modCalls++
+	return s.snapshotSource.ModTime(ctx, d)
+}
+
+// seedFrames stores count distinct envelopes in source.
+func seedFrames(t *testing.T, source cas.Backend, count int) {
+	t.Helper()
+	for i := range count {
+		frame := test.TLVEnvelope("blob@1", fmt.Appendf(nil, "payload-%d", i))
+		if err := source.Put(context.Background(), sha256.Of(frame), bytes.NewReader(frame)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestBuildSnapshotStatsEachObjectOnce pins the capability go-cask#373 adds: a
+// source that reports size and modification time from one physical read is asked
+// once per object, and the two separate Statter calls are not made at all.
+func TestBuildSnapshotStatsEachObjectOnce(t *testing.T) {
+	ctx := context.Background()
+	written := time.Unix(1700, 0)
+	const objects = 5
+	source := &physicalSource{
+		snapshotSource: &snapshotSource{Backend: backmem.New()},
+		size:           7,
+		written:        written,
+	}
+	seedFrames(t, source.Backend, objects)
+
+	snapshot, err := BuildSnapshot(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.statCalls != objects {
+		t.Fatalf("Stat calls = %d, want one per object (%d)", source.statCalls, objects)
+	}
+	if source.sizeCalls != 0 || source.modCalls != 0 {
+		t.Fatalf("Size/ModTime calls = (%d, %d), want none: the combined stat answered both",
+			source.sizeCalls, source.modCalls)
+	}
+	if snapshot.Bytes != int64(objects*7) {
+		t.Fatalf("snapshot.Bytes = %d, want %d", snapshot.Bytes, objects*7)
+	}
+	for _, entry := range snapshot.Entries {
+		if entry.Unreadable || entry.Size != 7 || !entry.Written.Equal(written) {
+			t.Fatalf("entry = %#v, want the one stat's size and time", entry)
+		}
+	}
+}
+
+// TestBuildSnapshotFallbackIsIdentical pins the other half: a source without the
+// capability produces exactly the snapshot the combined stat produces, so the
+// capability is an optimization and never a different answer.
+func TestBuildSnapshotFallbackIsIdentical(t *testing.T) {
+	ctx := context.Background()
+	written := time.Unix(1700, 0)
+	const objects = 3
+	plain := &snapshotSource{Backend: backmem.New(), modTime: written}
+	combined := &physicalSource{
+		snapshotSource: &snapshotSource{Backend: backmem.New()},
+		size:           1,
+		written:        written,
+	}
+	seedFrames(t, plain.Backend, objects)
+	seedFrames(t, combined.Backend, objects)
+
+	fromTwoCalls, err := BuildSnapshot(ctx, plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromOneStat, err := BuildSnapshot(ctx, combined)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fromTwoCalls, fromOneStat) {
+		t.Fatalf("the fallback snapshot %#v differs from the combined-stat one %#v", fromTwoCalls, fromOneStat)
+	}
+	if combined.sizeCalls != 0 || combined.modCalls != 0 {
+		t.Fatalf("the combined-stat source was also asked separately: (%d, %d)", combined.sizeCalls, combined.modCalls)
+	}
+}
+
+// TestBuildSnapshotRecordsStatFailure pins the combined stat's failure: the
+// entry stays indexed and unreadable, exactly as a failing Size or ModTime left
+// it, and the object contributes no bytes.
+func TestBuildSnapshotRecordsStatFailure(t *testing.T) {
+	ctx := context.Background()
+	source := &physicalSource{
+		snapshotSource: &snapshotSource{Backend: backmem.New()},
+		statErr:        errors.New("stat failed"),
+	}
+	seedFrames(t, source.Backend, 1)
+
+	snapshot, err := BuildSnapshot(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Entries) != 1 || !snapshot.Entries[0].Unreadable {
+		t.Fatalf("snapshot = %#v, want one unreadable entry", snapshot)
+	}
+	if snapshot.Bytes != 0 {
+		t.Fatalf("snapshot.Bytes = %d, want 0 for a failed stat", snapshot.Bytes)
+	}
 }
 
 func TestBuildSnapshot(t *testing.T) {

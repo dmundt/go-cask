@@ -317,8 +317,38 @@ func (s *Store[T]) checkCodec(env Envelope) error {
 		ErrCodecMismatch, env.Type, env.Codec, s.codecName)
 }
 
+// GetReader returns the backend's reader for the object at d, positioned at its
+// first byte: the raw stored bytes — the self-describing TLV envelope — streamed
+// rather than buffered. The caller MUST close it.
+//
+// It applies the same guards GetRaw applies (CheckDigest and the client
+// hasher's width check) and delegates to the same backend Get, so an unusable
+// key is ErrInvalidDigest and an absent object is the backend's ErrNotFound. It
+// parses nothing, exactly like GetRaw: a damaged frame streams its bytes.
+//
+// It exists because performance.md §4 forbids buffering a large object in
+// Store.GetRaw — the inspection/tooling accessor a CLI or a viewer reaches for
+// precisely on large objects — and GetRaw buffers by contract (go-cask#381). A
+// caller that wants a prefix, a hash or a copy to another store takes this
+// instead and pays no object-sized allocation; GetRaw is the documented
+// buffering form, and Store.Get keeps buffering because Codec.Decode needs
+// bytes. Its consumer today is that tooling path plus GetRaw itself, which is
+// one thin readThenClose over this reader.
+func (s *Store[T]) GetReader(ctx context.Context, d Digest) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.check(d, "store: get"); err != nil {
+		return nil, err
+	}
+	return s.backend.Get(ctx, d)
+}
+
 // GetRaw returns the raw stored bytes — the self-describing TLV envelope —
-// for inspection and tooling. It buffers the whole object.
+// for inspection and tooling. It buffers the whole object, which is why a
+// streaming caller uses GetReader instead (performance.md §4, go-cask#381): this
+// is a readThenClose over GetReader (readclose.go, go-cask#340), so both
+// accessors share the guards, the backend Get and the read-then-close rule.
 //
 // It does not parse the envelope, so it reports no envelope-level error: a
 // damaged frame comes back as its bytes, and a caller that wants the verdict
@@ -326,25 +356,11 @@ func (s *Store[T]) checkCodec(env Envelope) error {
 // parses the same bytes and reports ErrCorrupt). Only the guards and the
 // backend's own failures — ErrInvalidDigest, ErrNotFound — surface here.
 func (s *Store[T]) GetRaw(ctx context.Context, d Digest) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := s.check(d, "store: get"); err != nil {
-		return nil, err
-	}
-	rc, err := s.backend.Get(ctx, d)
+	rc, err := s.GetReader(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		_ = rc.Close()
-		return nil, fmt.Errorf("cas: read object: %w", err)
-	}
-	if err := rc.Close(); err != nil {
-		return nil, fmt.Errorf("cas: close object: %w", err)
-	}
-	return data, nil
+	return readThenClose(rc, io.ReadAll, readWins, wrap("cas: read object"), wrap("cas: close object"))
 }
 
 // Type reports the versioned type name stored at d without decoding the payload
@@ -396,26 +412,19 @@ func (s *Store[T]) Version(ctx context.Context, d Digest) (byte, error) {
 // large object costs a header read rather than a full read and allocation.
 //
 // The header error is the one reported when the peek fails: the read is over
-// either way, and a reader that cannot be released must not mask the diagnosis.
-// A close failure after a successful peek is reported, because the caller has
-// its answer and the residual failure is the only thing left to say. cas.Header
-// keeps its own plumbing deliberately: it reads all three header fields through
-// PeekHeader and gives a failed close precedence.
+// either way, and a reader that cannot be released must not mask the diagnosis
+// (readWins, readclose.go, go-cask#340). A close failure after a successful peek
+// is reported, because the caller has its answer and the residual failure is the
+// only thing left to say. cas.Header keeps its own plumbing deliberately: it
+// reads all three header fields through PeekHeader and gives a failed close
+// precedence (closeWins).
 func peekAt[R any](ctx context.Context, backend Backend, d Digest, peek func(io.Reader) (R, error)) (R, error) {
 	var zero R
 	rc, err := backend.Get(ctx, d)
 	if err != nil {
 		return zero, err
 	}
-	value, err := peek(rc)
-	if err != nil {
-		_ = rc.Close() // the header error is the one worth reporting
-		return zero, err
-	}
-	if err := rc.Close(); err != nil {
-		return zero, fmt.Errorf("cas: close object: %w", err)
-	}
-	return value, nil
+	return readThenClose(rc, peek, readWins, nil, wrap("cas: close object"))
 }
 
 // Exists reports whether the object is stored. Delegates to the backend.

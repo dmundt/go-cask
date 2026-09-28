@@ -47,6 +47,10 @@ type landLaneSlot struct {
 	token string
 	// who is the identity this worktree acts under.
 	who string
+	// label names the acquisition in the slot's record, so a session that finds the slot
+	// taken can read what took it. It is what the gate sets so a waiting run reports which
+	// gate run it is waiting for.
+	label string
 	// staleMinutes is the idle window after which another session may take the slot.
 	staleMinutes int
 	// deadGraceSeconds is how long a holder that is provably gone must have been idle
@@ -112,6 +116,7 @@ func resolveLandLane(repo string) (*landLaneSlot, error) {
 		takeover:         filepath.Join(dir, table.Takeover),
 		token:            filepath.Join(gitDir, table.Token),
 		who:              lane.Identity(repoID, lane.WorktreeName(primary, filepath.Base(toplevel)), branch),
+		label:            "land-lane",
 		staleMinutes:     staleMinutes(table),
 		deadGraceSeconds: deadGraceSeconds(table),
 		waitSeconds:      waitSeconds(table),
@@ -288,6 +293,73 @@ func landLaneStatus(slot *landLaneSlot, out, errOut io.Writer) error {
 		fmt.Fprintln(errOut, "land lane: this identity is recorded, but this worktree holds no outstanding acquisition for it")
 	}
 	return exitStatus(status.ExitCode())
+}
+
+// claimForGate is one non-blocking attempt at the slot, for a caller that runs its own
+// wait loop: the gate holds the slot for a whole run and needs to report the holder it is
+// waiting for and read the slot again after each attempt, which the batch form of the
+// command's claim does not give it. staleDead is set so a holder whose process is provably
+// gone does not make the clone's queue wait out a window nobody will ever renew.
+//
+// A refusal is reported rather than recorded, so a caller that only asked is handed the
+// same answer `acquire` gives the shell: who holds the slot.
+func (s *landLaneSlot) claimForGate(label string, force, staleDead bool) (gateClaim, error) {
+	holder := s.read()
+	decision := lane.Decide(holder, s.who, s.mine(),
+		time.Duration(s.staleMinutes)*time.Minute, time.Duration(s.deadGraceSeconds)*time.Second,
+		force, staleDead, lane.LivenessOf(derefHolder(holder), currentHost(), processStartFunc), now())
+
+	switch decision.Outcome {
+	case lane.AlreadyMine, lane.RefusedSameIdentity, lane.RefusedFresh:
+		return gateClaim{holder: &decision.Found}, nil
+	case lane.Unreadable:
+		// The winner creates the slot before it writes the record into it. Waiting for
+		// the record — rather than taking the half-written slot over — is what keeps two
+		// acquirers from holding one slot; a claim that named no holder is the caller's
+		// signal to try again.
+		return gateClaim{}, nil
+	}
+
+	token, err := randomID()
+	if err != nil {
+		return gateClaim{}, err
+	}
+	if decision.Outcome.TakesOver() {
+		how := lane.Expired
+		switch decision.Outcome {
+		case lane.TakeoverForced:
+			how = lane.Forced
+		case lane.TakeoverDead:
+			how = lane.Dead
+		}
+		s.recordTakeover(decision.Found, how)
+		// The evicted holder's record has to leave the slot before the exclusive create
+		// below, or every attempt reads the same stale record and reports the same
+		// eviction. Another evictor may have moved it first, which is why this is a
+		// rename that reports whether it won.
+		if aside, taken := s.takeAside(); taken {
+			_ = os.Remove(aside)
+		}
+	}
+	if err := s.claim(label, token); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// Lost the create: either another holder took the slot in between, or
+			// another evictor did. The next attempt reads whichever record won.
+			return gateClaim{}, nil
+		}
+		return gateClaim{}, err
+	}
+	return gateClaim{held: true}, nil
+}
+
+// derefHolder is the holder a decision reads: the slot's own, or a zero holder for the
+// free slot the acquisition is about to claim. A free slot is never judged live, so the
+// zero value is the one input Decide ignores.
+func derefHolder(holder *lane.Holder) lane.Holder {
+	if holder == nil {
+		return lane.Holder{}
+	}
+	return *holder
 }
 
 // landLaneClaim takes the slot, waiting until deadline when one is given. It is the ONE claim

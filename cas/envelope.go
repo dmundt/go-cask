@@ -308,30 +308,45 @@ const headerPrefixLimit = 2 * maxPeekNameLen
 //     dispatch: a frame that parses and names a type nothing has a decoder for
 //     is no error here (that is the caller's ErrUnknownType decision).
 //
+// headerFields is the three values Header reads in one walk, carried together
+// because readThenClose returns one value: the frame version, the codec identity
+// tag and the versioned type name.
+type headerFields struct {
+	version  byte
+	codec    string
+	typeName string
+}
+
 // A caller reading a store that legitimately holds raw, un-enveloped objects
 // (`cask put` writes a file's own bytes) must therefore decide what ErrCorrupt
 // means to it: internal/index.Header is the documented best-effort wrapper that
 // reads such an object as headerless rather than damaged. cas.PeekHeader remains
 // the streaming form for a caller that already holds an io.Reader.
+//
+// The read-then-close plumbing, and the fact that a failed close wins, are
+// readThenClose's closeWins rule (readclose.go, go-cask#340) — the message
+// strings stay here, because they are this function's operator output.
 func Header(ctx context.Context, backend Backend, d Digest) (version byte, codec, typeName string, err error) {
 	rc, err := backend.Get(ctx, d)
 	if err != nil {
 		return 0, "", "", err
 	}
-	// LimitReader rather than a read-all: only the fields PeekHeader walks
-	// matter, and the bound keeps a damaged length prefix from consuming the
-	// payload.
-	version, codec, typeName, peekErr := PeekHeader(io.LimitReader(rc, headerPrefixLimit))
-	// A failed close wins: the read is over either way, and a reader that cannot
-	// be released is the caller's problem to hear about first. A read error is
-	// still reported when the close succeeded, so the peek failure is never lost.
-	if closeErr := rc.Close(); closeErr != nil {
-		return 0, "", "", fmt.Errorf("cas: close object header reader: %w", closeErr)
+	fields, err := readThenClose(rc,
+		func(r io.Reader) (headerFields, error) {
+			// LimitReader rather than a read-all: only the fields PeekHeader
+			// walks matter, and the bound keeps a damaged length prefix from
+			// consuming the payload.
+			v, c, t, peekErr := PeekHeader(io.LimitReader(r, headerPrefixLimit))
+			return headerFields{version: v, codec: c, typeName: t}, peekErr
+		},
+		closeWins,
+		wrap("cas: read object header"),
+		wrap("cas: close object header reader"),
+	)
+	if err != nil {
+		return 0, "", "", err
 	}
-	if peekErr != nil {
-		return 0, "", "", fmt.Errorf("cas: read object header: %w", peekErr)
-	}
-	return version, codec, typeName, nil
+	return fields.version, fields.codec, fields.typeName, nil
 }
 
 // HeaderType is Header's type-only convenience, for a caller that needs to know

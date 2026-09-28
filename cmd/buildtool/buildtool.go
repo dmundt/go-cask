@@ -70,7 +70,9 @@ commands:
                        then the documentation steps. VERIFY_SCOPE selects the scope,
                        VERIFY_JOBS the concurrency, and the VERIFY_SKIP_* hatches drop
                        one expensive step each — a run that skipped anything writes no
-                       gate stamp
+                       gate stamp. The run holds the clone's local advisory slot for its
+                       whole length; --slot=takeover takes it from a holder whose run is
+                       known to be gone instead of waiting
   layer-matrix         check every package's imports against the dependency-layer
                        matrix (library-design.md §1.1)
   coverage-tier        check that every cas/ package carries a coverage tier or a
@@ -109,7 +111,9 @@ commands:
   pre-push             the mechanical landing rule a push must satisfy: a green
                        gate stamp for this exact commit, plus the advisory slot note
   worktree             task worktrees both toolchains resolve: add, remove, lock,
-                       list; prune refuses and says why
+                       list; prune refuses and says why. add refuses when the fetch
+                       fails, so a worktree is never based on a stale origin/main;
+                       --allow-stale accepts the local ref deliberately
   task-status          report which branches carry work no pull request tracks: one
                        line per branch against the base ref, then the branches worth
                        acting on

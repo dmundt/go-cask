@@ -77,6 +77,61 @@ func BenchmarkStoreGetHot(b *testing.B) {
 	}
 }
 
+// BenchmarkStoreGetRawStream is the paired measurement performance.md §4 asks
+// for: GetRaw buffers the whole object — one io.ReadAll, and with it the
+// doubling — while GetReader hands back the backend's reader for a caller that
+// consumes the object without holding it. Both cases read every byte: the
+// streamed case hashes the object through the reader, the copy-a-large-object
+// shape the rule is about, so its allocs/op is the object size it never
+// allocates (go-cask#381).
+func BenchmarkStoreGetRawStream(b *testing.B) {
+	for _, sz := range benchSizes {
+		b.Run(fmt.Sprintf("store-get/steady-state/raw-buffered/%s", sz.name), func(b *testing.B) {
+			ctx := context.Background()
+			s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
+			h, err := s.Put(ctx, benchNoteWithSeed(sz.size, 0))
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(sz.size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, err := s.GetRaw(ctx, h); err != nil {
+					b.Fatal(err)
+				}
+			}
+			benchmarkSummary(b, "store-get/steady-state/raw-buffered", sz.size)
+		})
+		b.Run(fmt.Sprintf("store-get/steady-state/reader-streamed/%s", sz.name), func(b *testing.B) {
+			ctx := context.Background()
+			s := cas.New(backmem.New(), jsoncodec.New[testNote](), sha256.New())
+			h, err := s.Put(ctx, benchNoteWithSeed(sz.size, 0))
+			if err != nil {
+				b.Fatal(err)
+			}
+			hasher := sha256.New()
+			b.SetBytes(int64(sz.size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				rc, err := s.GetReader(ctx, h)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := hasher.Digest(rc); err != nil {
+					_ = rc.Close()
+					b.Fatal(err)
+				}
+				if err := rc.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+			benchmarkSummary(b, "store-get/steady-state/reader-streamed", sz.size)
+		})
+	}
+}
+
 func BenchmarkStoreGetCold(b *testing.B) {
 	for _, sz := range benchSizes {
 		b.Run(fmt.Sprintf("store-get/setup/cold-start/%s", sz.name), func(b *testing.B) {

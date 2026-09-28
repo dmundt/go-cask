@@ -187,7 +187,7 @@ func TestPutIsIdempotentWhenThePublishRenameFails(t *testing.T) {
 			t.Fatalf("Put over a held-open destination = %v, want nil (the object is already published)", err)
 		}
 	} else {
-		// The temp file createTempExcl creates is <object path>.tmp.
+		// The temp file atomicfile.Publish creates is <object path>.tmp.
 		r := &removeTempOnEOF{payload: payload, tmp: s.digestPath(d) + ".tmp"}
 		if err := s.Put(ctx, d, r); err != nil {
 			t.Fatalf("Put with a vanished temp object = %v, want nil (the object is already published)", err)
@@ -220,26 +220,19 @@ func TestPutIsIdempotentWhenThePublishRenameFails(t *testing.T) {
 // written down instead of papered over by a test that fakes the condition
 // (testing-strategy.md §5):
 //
-//   - syncParentDir's `runtime.GOOS == "windows"` early return: the condition is
-//     a compile-time platform constant and the gate measures this package on
-//     Linux only (testing-strategy.md §5, "Platform-split packages"). No job
-//     executes it anywhere: the platform matrix cross-compiles and vets
-//     windows/amd64 on a Linux runner, so this branch is compile-checked,
-//     not run.
+//   - the parent-directory fsync's `runtime.GOOS == "windows"` early return and
+//     Put's two cleanup branches for a failing Sync and a failing Close: all
+//     three moved to go-cask#339's shared publish (atomicfile), which reaches
+//     them through its own injectable seam and covers them there. The platform
+//     early return is still a compile-time constant the Linux-only measurement
+//     never executes (testing-strategy.md §5, "Platform-split packages"); the
+//     gate cross-compiles and vets windows/amd64 on a Linux runner, so it is
+//     compile-checked, not run.
 //
-//   - Put's two cleanup branches for a failing f.Sync() and a failing f.Close()
-//     (the `cleanup()` helper and the `os.Remove(tmp)` before the close error):
-//     createTempExcl opens the scratch file with O_CREATE|O_EXCL inside the
-//     object's own directory, so the handle is always a freshly created regular
-//     file on a filesystem that has already accepted the directory and the
-//     writes. fsync or close on that handle fails only for a hardware or quota
-//     fault (EIO, EDQUOT) or a filesystem that filled up between the copy and
-//     the sync — no deterministic filesystem state produces it (a read-only
-//     directory, a directory where a file is expected, a pre-existing temp name,
-//     a vanished base and a short write all fail earlier, in branches the suite
-//     covers). Both are best-effort cleanup whose failure cannot change the
-//     outcome: the temp file is discarded and the primary error is what Put
-//     reports.
+//   - the phase mapping in Put (putError) for a failing temp-file Sync and a
+//     failing Close: those phases need the same real I/O fault described here
+//     before the publish owned them, and this backend maps them onto its own
+//     message rather than producing them.
 //
 //   - ValidateBase's volume-root check in policy.go: on Linux
 //     filepath.VolumeName(clean) is always "", so the remainder is the cleaned
