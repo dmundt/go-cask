@@ -85,8 +85,8 @@ func TestDirSyncRoundTrip(t *testing.T) {
 }
 
 // TestCleanRemovesTempCollisionFallbacks pins Clean's scope: both "<hex>.tmp"
-// and the "<hex>.tmp.<n>" collision fallbacks createTempExcl may leave behind
-// are reclaimed, while a real object file is not.
+// and the "<hex>.tmp.<n>" collision fallbacks atomicfile.Publish may leave
+// behind are reclaimed, while a real object file is not.
 func TestCleanRemovesTempCollisionFallbacks(t *testing.T) {
 	ctx := context.Background()
 	s := mustFS(t)
@@ -151,7 +151,9 @@ func TestCleanKeepsFreshTempFiles(t *testing.T) {
 }
 
 // TestPutUniqueTempPerWriterFallback pins that a Put into a directory holding a
-// stale temp file still succeeds: createTempExcl falls back to "<hex>.tmp.<n>".
+// stale temp file still succeeds: atomicfile.Publish falls back to
+// "<hex>.tmp.<n>" rather than removing a name another writer may own
+// (go-cask#339).
 func TestPutUniqueTempPerWriterFallback(t *testing.T) {
 	ctx := context.Background()
 	s := mustFS(t)
@@ -853,31 +855,5 @@ func TestPutReportsDirSyncFailure(t *testing.T) {
 
 	if err := s.Put(ctx, d, bytes.NewReader(data)); err == nil {
 		t.Fatal("Put must report a failed directory sync")
-	}
-}
-
-// TestCreateTempExclFallbackFailure covers the retry loop's non-collision
-// failure branch: the first candidate name is taken, but the fallback name is
-// rejected (here it is longer than a single name may be), so the loop reports
-// that error instead of spinning to its 10000-candidate bound. The base name is
-// padded to the classic NAME_MAX so the ".1" candidate cannot fit; a filesystem
-// with a wider name budget accepts it and the test skips rather than asserting
-// a platform limit.
-func TestCreateTempExclFallbackFailure(t *testing.T) {
-	dir := t.TempDir()
-	const maxName = 255
-	path := filepath.Join(dir, strings.Repeat("a", maxName-len(".tmp")))
-	base := path + ".tmp" // exactly NAME_MAX characters
-	if err := os.WriteFile(base, []byte("occupied"), 0o644); err != nil {
-		t.Skipf("this filesystem cannot hold a %d-character name: %v", maxName, err)
-	}
-	f, tmp, err := createTempExcl(path)
-	if err == nil {
-		f.Close()
-		os.Remove(tmp)
-		t.Skipf("this filesystem accepts names longer than %d characters", maxName)
-	}
-	if os.IsExist(err) {
-		t.Fatalf("createTempExcl = %v; want the fallback name rejected, not reported as a collision", err)
 	}
 }

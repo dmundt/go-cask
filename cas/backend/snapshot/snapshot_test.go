@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	fsbackend "github.com/dmundt/go-cask/cas/backend/fs"
@@ -58,6 +59,55 @@ func TestExportDeterministicAndImportAcrossBackends(t *testing.T) {
 		defer destination.Close()
 		importAndCompare(t, destination, first.Bytes(), objects)
 	})
+}
+
+// statterStub is a Backend that also reports a chosen physical size (or a
+// failure) for every digest, so payloadHint's branches are reachable without a
+// real metadata store.
+type statterStub struct {
+	cas.Backend
+	size int64
+	err  error
+}
+
+func (s statterStub) Size(context.Context, cas.Digest) (int64, error) { return s.size, s.err }
+
+func (s statterStub) ModTime(context.Context, cas.Digest) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+// TestPayloadHint pins the export's pre-allocation hint (go-cask#385): the
+// source's physical size when it reports one, and zero — grow the buffer from
+// the stream instead — when the source has no Statter, reports nothing usable
+// or fails the stat, because a hint makes an export cheaper and must never make
+// it fail or behave differently.
+func TestPayloadHint(t *testing.T) {
+	ctx := context.Background()
+	d := sha256.Of([]byte("payload"))
+
+	fs, err := fsbackend.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Put(ctx, d, strings.NewReader("payload")); err != nil {
+		t.Fatal(err)
+	}
+	if got := payloadHint(ctx, fs, d); got != int64(len("payload")) {
+		t.Errorf("payloadHint(fs) = %d, want the object's %d bytes", got, len("payload"))
+	}
+
+	if got := payloadHint(ctx, backmem.New(), d); got != 0 {
+		t.Errorf("payloadHint(a backend without Statter) = %d, want 0", got)
+	}
+	if got := payloadHint(ctx, statterStub{Backend: backmem.New(), err: errors.New("stat failed")}, d); got != 0 {
+		t.Errorf("payloadHint(failing stat) = %d, want 0", got)
+	}
+	if got := payloadHint(ctx, statterStub{Backend: backmem.New()}, d); got != 0 {
+		t.Errorf("payloadHint(no size) = %d, want 0", got)
+	}
+	if got := payloadHint(ctx, statterStub{Backend: backmem.New(), size: 128}, d); got != 128 {
+		t.Errorf("payloadHint(size 128) = %d, want 128", got)
+	}
 }
 
 func importAndCompare(t *testing.T, destination cas.Backend, archive []byte, objects map[string]cas.Digest) {

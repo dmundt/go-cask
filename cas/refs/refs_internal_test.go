@@ -13,13 +13,18 @@ import (
 	"github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
-func TestWriteFileAtomicReplacesStaleTmp(t *testing.T) {
+// TestWriteFileAtomicStaleTmpAndFallback pins the temp-name rule the shared
+// publish uses (go-cask#339): an occupied "<name>.tmp" is left exactly as it is
+// — a stale leftover from a crashed writer and a concurrent writer's live temp
+// file look identical, so neither is removed — and the publish falls back to
+// "<name>.tmp.1", which the rename consumes.
+func TestWriteFileAtomicStaleTmpAndFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "main")
 	if err := os.WriteFile(path+".tmp", []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileAtomic(path, []byte("fresh\n")); err != nil {
+	if err := writeFileAtomic(context.Background(), path, []byte("fresh\n")); err != nil {
 		t.Fatalf("writeFileAtomic = %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -28,6 +33,12 @@ func TestWriteFileAtomicReplacesStaleTmp(t *testing.T) {
 	}
 	if string(data) != "fresh\n" {
 		t.Fatalf("writeFileAtomic wrote %q, want %q", string(data), "fresh\n")
+	}
+	if stale, err := os.ReadFile(path + ".tmp"); err != nil || string(stale) != "stale" {
+		t.Fatalf("the occupied temp name was disturbed: (%q, %v)", stale, err)
+	}
+	if _, err := os.Stat(path + ".tmp.1"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the fallback temp file survived the publish: %v", err)
 	}
 }
 
@@ -218,37 +229,72 @@ func TestWriteFileAtomicReportsUncreatableParent(t *testing.T) {
 	if err := os.WriteFile(file, []byte("not a directory"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileAtomic(filepath.Join(file, "ref"), []byte("v\n")); err == nil {
+	if err := writeFileAtomic(context.Background(), filepath.Join(file, "ref"), []byte("v\n")); err == nil {
 		t.Fatal("writeFileAtomic under a regular file = nil error, want error")
 	}
 }
 
-// TestWriteFileAtomicReportsUnexpandableTmpPath covers writeFileAtomic's
-// non-collision open failure: the temp path exists but is not an entry the
-// writer may replace (here a non-empty directory), so the single ErrExist retry
-// cannot clear it and the write is reported as failed. Set wraps the same
-// failure, and the ref must still be absent afterwards.
-func TestWriteFileAtomicReportsUnexpandableTmpPath(t *testing.T) {
+// TestWriteFileAtomicWithAnOccupiedTmpDirectory pins the temp-name rule at its
+// sharpest (go-cask#339): "<name>.tmp" is occupied by a non-empty directory, so
+// it can neither be opened nor removed. An existing temp name is never removed
+// — it may be a concurrent writer's live temp file — so the outcome follows the
+// platform's open() semantics: POSIX reports the ordinary ErrExist collision and
+// the publish falls back to "<name>.tmp.1", while Windows fails the open with
+// "is a directory" (not ErrExist) and the publish reports that error rather than
+// masking it with a fallback. Both are the same rule, and neither destroys the
+// occupied entry.
+func TestWriteFileAtomicWithAnOccupiedTmpDirectory(t *testing.T) {
 	ctx := context.Background()
+	occupy := func(t *testing.T, dir string) string {
+		t.Helper()
+		occupied := filepath.Join(dir, "main.tmp")
+		if err := os.MkdirAll(occupied, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(occupied, "occupied"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return occupied
+	}
+
 	dir := t.TempDir()
-	stale := filepath.Join(dir, "main.tmp")
-	if err := os.MkdirAll(stale, 0o755); err != nil {
-		t.Fatal(err)
+	occupied := occupy(t, dir)
+	err := writeFileAtomic(ctx, filepath.Join(dir, "main"), []byte("v\n"))
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Error("writeFileAtomic over an unopenable temp directory = nil error, want the open failure")
+		}
+	} else {
+		if err != nil {
+			t.Errorf("writeFileAtomic with an occupied temp path = %v, want the fallback name", err)
+		}
+		if got, readErr := os.ReadFile(filepath.Join(dir, "main")); readErr != nil || string(got) != "v\n" {
+			t.Errorf("the fallback publish = (%q, %v), want the value written", got, readErr)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(stale, "occupied"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(occupied, "occupied")); err != nil {
+		t.Errorf("the occupied temp entry was disturbed: %v", err)
 	}
 
-	if err := writeFileAtomic(filepath.Join(dir, "main"), []byte("v\n")); err == nil {
-		t.Error("writeFileAtomic with an unreplaceable temp path = nil error, want error")
+	// The same rule through the Store, on its own directory: the write above
+	// published a value the ref parser would refuse, so the ref path needs a
+	// fresh tree.
+	refDir := t.TempDir()
+	occupy(t, refDir)
+	s := &Store{dir: refDir, now: time.Now}
+	d := sha256.Of([]byte("v1"))
+	setErr := s.Set(ctx, "main", d)
+	if runtime.GOOS == "windows" {
+		if setErr == nil {
+			t.Error("Set over an unopenable temp directory = nil error, want the open failure")
+		}
+		return
 	}
-
-	s := &Store{dir: dir, now: time.Now}
-	if err := s.Set(ctx, "main", sha256.Of([]byte("v1"))); err == nil {
-		t.Error("Set with an unreplaceable temp path = nil error, want error")
+	if setErr != nil {
+		t.Fatalf("Set with an occupied temp path = %v, want the fallback name", setErr)
 	}
-	if _, err := s.Get(ctx, "main"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Get after the failed Set = %v, want ErrNotFound (no value was published)", err)
+	if got, getErr := s.Get(ctx, "main"); getErr != nil || !got.Equal(d) {
+		t.Errorf("Get after the fallback Set = (%s, %v), want %s", got, getErr, d)
 	}
 }
 
@@ -264,7 +310,7 @@ func TestWriteFileAtomicReportsRenameFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(path, "occupied"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileAtomic(path, []byte("v\n")); err == nil {
+	if err := writeFileAtomic(context.Background(), path, []byte("v\n")); err == nil {
 		t.Fatal("writeFileAtomic onto a non-empty directory = nil error, want error")
 	}
 	if _, err := os.Stat(path + ".tmp"); !errors.Is(err, os.ErrNotExist) {
@@ -272,18 +318,10 @@ func TestWriteFileAtomicReportsRenameFailure(t *testing.T) {
 	}
 }
 
-// TestSyncParentDirReportsUnopenableParent covers syncParentDir's open failure:
-// with no directory to fsync, the write cannot claim durability and must report
-// it. syncParentDir is a documented no-op on Windows (a Windows directory
-// cannot be opened for Sync), so the assertion is POSIX-only.
-func TestSyncParentDirReportsUnopenableParent(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("syncParentDir is a no-op on Windows")
-	}
-	if err := syncParentDir(filepath.Join(t.TempDir(), "missing", "ref")); err == nil {
-		t.Fatal("syncParentDir with a missing parent = nil error, want error")
-	}
-}
+// TestSyncParentDirReportsUnopenableParent covered the parent-directory fsync's
+// open failure. That fsync is atomicfile.SyncParentDir now (go-cask#339) and its
+// own package tests the failure (atomicfile.TestSyncParentDirReportsUnopenableParent),
+// so this package keeps no copy of the sequence — or of its test.
 
 // TestSetAndDeleteReportReflogFailures covers appendLog's two reachable
 // failures, driven through Set and Delete: the log directory cannot be created
@@ -465,14 +503,13 @@ func TestDeleteReportsUndeletableValue(t *testing.T) {
 // Deliberately uncovered in refs.go, none reachable from a test that does not
 // depend on the host filesystem or scheduler:
 //
-//   - writeFileAtomic's Write/Sync/Close failure returns (491-503): the temp
-//     file is created successfully and is this process's own descriptor, so
-//     only a device-level failure (a full or read-only filesystem, an I/O
-//     error) can produce one — no up-front filesystem state can.
 //   - appendLog's Write failure return (425-426): same reason, on a log file
 //     opened O_APPEND.
 //   - List's filepath.Rel failure return (277-278): Rel only fails when the two
 //     paths share no common root (a different Windows volume), which cannot be
 //     arranged from inside one temp directory.
-//   - syncParentDir's Windows short-circuit (516-517): covered only when the
-//     suite runs on Windows, which the WSL coverage gate by definition is not.
+//
+// writeFileAtomic's own write/sync/close failures no longer appear here: since
+// go-cask#339 the sequence is atomicfile.Publish, whose injectable seam covers
+// every phase (atomicfile.TestPublishFailurePhases), and the parent-directory
+// fsync's Windows short-circuit moved to atomicfile.SyncParentDir.

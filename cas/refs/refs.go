@@ -9,13 +9,15 @@
 // A Store keeps one small file per ref under a directory the caller owns
 // (conventionally "refs/" beside a store's "objects/" — the two are
 // independent trees and Open takes whichever directory the caller wants refs
-// rooted at). Each Set call replaces the ref's value file atomically
-// (temp file + fsync + rename, plus a best-effort parent-directory fsync on
-// POSIX) and appends one line to the ref's reflog, so History/Previous never
-// need to scan the object store the way a peek-every-object approach does.
+// rooted at). Each Set call replaces the ref's value file atomically through
+// atomicfile.Publish — a temp file beside the destination, fsync, rename, then
+// a parent-directory fsync on POSIX (go-cask#339) — and appends one line to the
+// ref's reflog, so History/Previous never need to scan the object store the way
+// a peek-every-object approach does.
 package refs
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -23,7 +25,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/internal/atomicfile"
 )
 
 // logSubdir holds the reflog files, one per ref name, mirroring the value
@@ -220,7 +222,7 @@ func (s *Store) Set(ctx context.Context, name string, d cas.Digest) error {
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	if err := writeFileAtomic(s.valuePath(name), []byte(d.String()+"\n")); err != nil {
+	if err := writeFileAtomic(ctx, s.valuePath(name), []byte(d.String()+"\n")); err != nil {
 		return fmt.Errorf("refs: set %s: %w", name, err)
 	}
 	if err := s.appendLog(name, old, d); err != nil {
@@ -260,7 +262,10 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-// List returns every stored ref, sorted by name.
+// List returns every stored ref, sorted by name. A scratch file a publish left
+// behind — "<name>.tmp" or a collision fallback "<name>.tmp.<n>", the names
+// atomicfile.Publish uses (go-cask#339) — is skipped, never reported as a ref
+// and never read as a value, so a crashed write cannot shadow a name.
 func (s *Store) List(ctx context.Context) ([]Ref, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -287,7 +292,7 @@ func (s *Store) List(ctx context.Context) ([]Ref, error) {
 			}
 			return nil
 		}
-		if de.IsDir() || strings.HasSuffix(path, ".tmp") {
+		if de.IsDir() || atomicfile.IsTempFile(de.Name()) {
 			return nil
 		}
 		name := filepath.ToSlash(rel)
@@ -469,57 +474,17 @@ func parseLogDigest(s string) (cas.Digest, error) {
 	return cas.ParseDigest(s)
 }
 
-// writeFileAtomic replaces path's content with data via temp file + fsync +
-// rename, plus a best-effort parent-directory fsync on POSIX (Windows
-// directories cannot be fsynced and do not need it: MoveFileEx there is
-// already durable enough for this package's purposes).
-func writeFileAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if errors.Is(err, os.ErrExist) {
-		// A previous writer crashed before renaming; the leftover is unusable
-		// (List already ignores ".tmp" files), so replace it and retry once.
-		_ = os.Remove(tmp)
-		f, err = os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	}
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return syncParentDir(path)
-}
-
-// syncParentDir fsyncs the directory containing path, so the rename in
-// writeFileAtomic survives a crash, not just the file content. A no-op on
-// Windows, which cannot open a directory for Sync.
-func syncParentDir(path string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+// writeFileAtomic replaces path's content with data through the one publish the
+// cas tree shares, atomicfile.Publish (go-cask#339): a temp file beside the
+// destination, fsynced, renamed into place, then a parent-directory fsync on
+// POSIX (Windows cannot fsync a directory and needs no equivalent: MoveFileEx
+// there is already durable enough for this package's purposes).
+//
+// The failure is reported as the failing syscall left it: this package has
+// never named the step, and atomicfile.Error's text is the underlying error's.
+func writeFileAtomic(ctx context.Context, path string, data []byte) error {
+	return atomicfile.Publish(ctx, path, bytes.NewReader(data), atomicfile.Options{
+		Mode:    0o644,
+		SyncDir: true,
+	})
 }

@@ -62,6 +62,13 @@ func New(opts ...Option) *Backend {
 // oversized Put cannot allocate past the cap — except at the int64 ceiling,
 // where the budget bounds nothing a stream can deliver and the read is left
 // unbounded.
+//
+// The unbounded read is sized from the reader's own declaration when it has one
+// (backend.ReadWhole; Store.Put hands over a *bytes.Reader, whose Len is exact),
+// so a large object is allocated once instead of io.ReadAll's doubling
+// (go-cask#385). A reader that declares nothing grows exactly as before, and the
+// budget-limited path below is unchanged: it bounds the read itself, not the
+// buffer, and the cap is enforced on the bytes that arrived.
 func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -70,17 +77,21 @@ func (m *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 		return err
 	}
 	key := string(d)
-	reader := r
-	if budget, capped := m.budget(key); capped && budget < math.MaxInt64 {
+	budget, capped := m.budget(key)
+	if capped && budget < math.MaxInt64 {
 		// One byte past the budget is enough to detect an overflow, so the
 		// read never buffers more than the cap allows. At the ceiling
 		// budget+1 would wrap to MinInt64 and io.LimitReader reports EOF at
 		// once for a non-positive limit, storing an empty object under the
 		// caller's digest (go-cask#355), so the bound is skipped there: no
 		// stream can deliver MaxInt64 bytes, and store still enforces the cap.
-		reader = io.LimitReader(r, budget+1)
+		data, err := io.ReadAll(backend.ContextReader{Ctx: ctx, R: io.LimitReader(r, budget+1)})
+		if err != nil {
+			return fmt.Errorf("cas: buffer object: %w", err)
+		}
+		return m.store(key, data)
 	}
-	data, err := io.ReadAll(backend.ContextReader{Ctx: ctx, R: reader})
+	data, err := backend.ReadWhole(ctx, r, 0)
 	if err != nil {
 		return fmt.Errorf("cas: buffer object: %w", err)
 	}

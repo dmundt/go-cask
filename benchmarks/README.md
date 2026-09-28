@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v16
+version: v17
 ---
 
 # Benchmarks — go-cask
@@ -82,6 +82,7 @@ Grouped by concern, not by a single monolithic file.
 |---|---|---|---|
 | `BenchmarkStorePut` | [`store_bench_test.go`](./store_bench_test.go) | `steady-state` + `cold-start` across 64 B–1 MiB | Typed `Store[T].Put` cost under different setup assumptions |
 | `BenchmarkStoreGetHot` / `BenchmarkStoreGetCold` / `BenchmarkStoreGetMixed` | [`store_bench_test.go`](./store_bench_test.go) | hot, cold-start, mixed hot/cold read patterns | Whether reads are dominated by object locality or one-time setup |
+| `BenchmarkStoreGetRawStream` | [`store_bench_test.go`](./store_bench_test.go) | `raw-buffered` (`Store.GetRaw`, one `io.ReadAll`) vs `reader-streamed` (`Store.GetReader` hashed through the reader), 64 B–1 MiB | The allocation `GetRaw`'s buffering costs, which the streaming accessor avoids (performance §4, go-cask#381) |
 | `BenchmarkStoreBaselineJSONSHA256` | [`store_bench_test.go`](./store_bench_test.go) | 1 KiB anchor | Single canonical comparison point for JSON + SHA-256 |
 | `BenchmarkStoreWorkflowWriteReadVerify` | [`store_bench_test.go`](./store_bench_test.go) | fixed-size write/read/verify workflow | Realistic end-to-end object lifecycle |
 | `BenchmarkRoundTrip` | [`store_bench_test.go`](./store_bench_test.go) | one fixed-size cycle | Minimal store round-trip cost |

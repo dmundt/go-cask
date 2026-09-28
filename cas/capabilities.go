@@ -69,3 +69,19 @@ type Statter interface {
 	Size(ctx context.Context, d Digest) (int64, error)
 	ModTime(ctx context.Context, d Digest) (time.Time, error)
 }
+
+// PhysicalStatter is implemented by backends that can report an object's size
+// and modification time from one physical metadata read, where Statter names
+// them as two independent calls. It is the same information, read once: a
+// caller that needs both — index.BuildSnapshot is the one today — asks Stat
+// instead of Size and then ModTime, so a filesystem backend stats each object
+// once instead of twice (go-cask#373).
+//
+// It is optional in the same way Statter is, and it does not replace it: a
+// caller that needs only the size or only the time keeps using Statter, and a
+// backend without the capability is asked the two questions instead, which must
+// give the same answer. Stat's error contract matches Size's: ErrNotFound for
+// an absent object, the backend's own failure otherwise.
+type PhysicalStatter interface {
+	Stat(ctx context.Context, d Digest) (size int64, modTime time.Time, err error)
+}

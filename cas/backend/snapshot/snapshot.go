@@ -32,6 +32,14 @@ const (
 // buffered while its record length is determined; the archive itself is
 // written incrementally. src is not locked by this operation, so callers
 // should avoid concurrent mutations when they need a point-in-time export.
+//
+// The per-record buffer is sized from the object's physical size when the
+// source can report it (payloadHint: cas.Statter's Size for fs and packfs), so
+// a large object is allocated once instead of io.ReadAll's doubling
+// (go-cask#385). The size is only a pre-allocation hint — backend.ReadWhole
+// still reads to EOF — so a size that changed since List is harmless, and a
+// source that cannot report one, or reports an unreadable one, buffers exactly
+// as before.
 func Export(ctx context.Context, src cas.Backend, w io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -72,7 +80,7 @@ func Export(ctx context.Context, src cas.Backend, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("snapshot: get %s: %w", digest, err)
 		}
-		payload, readErr := io.ReadAll(backend.ContextReader{Ctx: ctx, R: rc})
+		payload, readErr := backend.ReadWhole(ctx, rc, payloadHint(ctx, src, digest))
 		closeErr := rc.Close()
 		if readErr != nil {
 			return fmt.Errorf("snapshot: read %s: %w", digest, readErr)
@@ -94,6 +102,28 @@ func Export(ctx context.Context, src cas.Backend, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// payloadHint is how many bytes the record for d holds, when the source can
+// report that without reading the object: cas.Statter.Size, which fs and packfs
+// implement. It returns 0 — "no hint, grow the buffer as the stream delivers" —
+// for a source without the capability, for a size that is not positive, and for
+// a stat that fails: a hint makes the export cheaper, never different, so an
+// unreadable size must not fail an export the read itself would have completed.
+//
+// The extra stat is deliberate: one call against the 2× the object io.ReadAll
+// can transiently allocate for a large record (performance.md §4,
+// go-cask#385).
+func payloadHint(ctx context.Context, src cas.Backend, d cas.Digest) int64 {
+	statter, ok := src.(cas.Statter)
+	if !ok {
+		return 0
+	}
+	size, err := statter.Size(ctx, d)
+	if err != nil || size <= 0 {
+		return 0
+	}
+	return size
 }
 
 // Import reads an archive and writes its objects to dst. The archive is

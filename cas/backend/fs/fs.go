@@ -11,15 +11,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dmundt/go-cask/cas"
-	"github.com/dmundt/go-cask/cas/backend"
+	"github.com/dmundt/go-cask/cas/internal/atomicfile"
 )
 
 // Default fan-out parameters, Git-like: <base>/<2 hex>/<full hex>.
@@ -90,8 +88,14 @@ type Backend struct {
 }
 
 // Compile-time check that Backend satisfies the cas.Backend interface
-// (including Stats), so dropping a method breaks this package's build.
+// (including Stats), so dropping a method breaks this package's build. The
+// optional capabilities are named too: this backend opts into both metadata
+// interfaces, and cas.PhysicalStatter must stay the combined form of
+// cas.Statter's two calls (go-cask#373).
 var _ cas.Backend = (*Backend)(nil)
+var _ cas.Cleaner = (*Backend)(nil)
+var _ cas.Statter = (*Backend)(nil)
+var _ cas.PhysicalStatter = (*Backend)(nil)
 
 // New creates a filesystem backend rooted at basePath, creating the
 // directory tree. Options default to the Git-like fan-out (2,1).
@@ -139,19 +143,6 @@ func (s *Backend) walkDir(root string, fn fs.WalkDirFunc) error {
 		return filepath.WalkDir(root, fn)
 	}
 	return s.walk(root, fn)
-}
-
-// syncParentDir fsyncs the directory containing path.
-func syncParentDir(path string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
 }
 
 // addressable reports whether d is long enough for the configured layout: its
@@ -207,6 +198,13 @@ func pathToDigest(rel string) (cas.Digest, error) {
 }
 
 // Put stores the bytes read from r under d (atomic temp-file write + rename).
+//
+// The publish itself — temp file, fsync, rename, and the optional
+// parent-directory fsync — is atomicfile.Publish (go-cask#339), the one
+// implementation cas/backend/fs, cas/pack and cas/refs share. This method keeps
+// the backend's own decisions: the object's mode, the idempotent-rename rule
+// below, and the operator-facing error text for the phase that failed.
+//
 // A symbolic link anywhere between the base and the object, or a non-directory
 // where a fan-out directory belongs, is refused with ErrUnsafeTarget instead of
 // being followed: a write that lands outside the base is out of the
@@ -229,72 +227,47 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ValidateFile(s.base, path); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("cas: create object dir: %w", err)
-	}
-	f, tmp, err := createTempExcl(path)
+	err := atomicfile.Publish(ctx, path, r, atomicfile.Options{
+		Mode:    0o644,
+		SyncDir: s.dirSync,
+		// The content address makes the object already stored, so an existing
+		// regular file satisfies an idempotent Put (cas-core §4.4). On Windows
+		// the rename can also fail because another reader holds the file open
+		// — the same answer, for the same reason.
+		ExistingIsSuccess: true,
+	})
 	if err != nil {
-		return fmt.Errorf("cas: create temp file: %w", err)
-	}
-	cleanup := func() {
-		// Best effort: the write already failed, so a cleanup error here cannot
-		// be reported without hiding the primary error.
-		_ = f.Close()      // the file is about to be discarded
-		_ = os.Remove(tmp) // the temp object is unusable
-	}
-	if _, err := io.Copy(f, backend.ContextReader{Ctx: ctx, R: r}); err != nil {
-		cleanup()
-		return fmt.Errorf("cas: write object: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf("cas: sync object: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp) // the temp object is unusable
-		return fmt.Errorf("cas: close object: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		// Windows cannot always replace a file another reader has open; the
-		// content address makes the object already stored, so an existing
-		// regular file satisfies an idempotent Put (cas-core §4.4). Anything
-		// else at the path (a directory, a device) is a real failure.
-		if fi, statErr := os.Stat(path); statErr == nil && fi.Mode().IsRegular() {
-			_ = os.Remove(tmp) // the object is already published
-			return nil
-		}
-		_ = os.Remove(tmp) // best effort: the publish error is what matters
-		return fmt.Errorf("cas: publish object: %w", err)
-	}
-	if s.dirSync {
-		if err := syncParentDir(path); err != nil {
-			return fmt.Errorf("cas: sync object dir: %w", err)
-		}
+		return putError(err)
 	}
 	return nil
 }
 
-// createTempExcl creates a uniquely named temp file for an object write.
-func createTempExcl(path string) (*os.File, string, error) {
-	base := path + ".tmp"
-	f, err := os.OpenFile(base, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err == nil {
-		return f, base, nil
+// putError names the phase of a failed atomicfile.Publish in the backend's
+// operator-facing vocabulary, so moving the publish into the shared
+// implementation changed no message this backend reports (go-cask#339).
+func putError(err error) error {
+	phase, cause, ok := atomicfile.FailedPhase(err)
+	if !ok {
+		return err
 	}
-	if !os.IsExist(err) {
-		return nil, "", err
+	switch phase {
+	case atomicfile.PhaseDir:
+		return fmt.Errorf("cas: create object dir: %w", cause)
+	case atomicfile.PhaseTemp:
+		return fmt.Errorf("cas: create temp file: %w", cause)
+	case atomicfile.PhaseWrite:
+		return fmt.Errorf("cas: write object: %w", cause)
+	case atomicfile.PhaseSync:
+		return fmt.Errorf("cas: sync object: %w", cause)
+	case atomicfile.PhaseClose:
+		return fmt.Errorf("cas: close object: %w", cause)
+	case atomicfile.PhasePublish:
+		return fmt.Errorf("cas: publish object: %w", cause)
+	case atomicfile.PhaseDirSync:
+		return fmt.Errorf("cas: sync object dir: %w", cause)
+	default:
+		return err
 	}
-	for i := 1; i < 10000; i++ {
-		name := fmt.Sprintf("%s.%d", base, i)
-		f, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-		if err == nil {
-			return f, name, nil
-		}
-		if !os.IsExist(err) {
-			return nil, "", err
-		}
-	}
-	return nil, "", fmt.Errorf("temp name exhausted for %s", path)
 }
 
 // Get returns a stream of the object's bytes; the caller MUST close it.
@@ -381,47 +354,51 @@ func (s *Backend) Delete(ctx context.Context, d cas.Digest) error {
 	return nil
 }
 
-// Size returns the stored object's size in bytes. A missing object returns
-// ErrNotFound. ctx is honored at entry for cancellation.
-func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+// physicalStat is the one os.Stat behind Size, ModTime and Stat: what names the
+// caller in a key error (the guard's message is operator output, so Size and
+// ModTime keep their own names), and the two values every one of them reads.
+// A missing object is ErrNotFound, every other failure is the stat's own.
+func (s *Backend) physicalStat(ctx context.Context, d cas.Digest, what string) (int64, time.Time, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return 0, time.Time{}, err
 	}
-	if err := s.checkKey(d, "fs: size"); err != nil {
-		return 0, err
+	if err := s.checkKey(d, what); err != nil {
+		return 0, time.Time{}, err
 	}
 	fi, err := os.Stat(s.digestPath(d))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return 0, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
+			return 0, time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
 		}
-		return 0, fmt.Errorf("cas: stat object: %w", err)
+		return 0, time.Time{}, fmt.Errorf("cas: stat object: %w", err)
 	}
-	return fi.Size(), nil
+	return fi.Size(), fi.ModTime(), nil
+}
+
+// Size returns the stored object's size in bytes. A missing object returns
+// ErrNotFound. ctx is honored at entry for cancellation.
+func (s *Backend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	size, _, err := s.physicalStat(ctx, d, "fs: size")
+	return size, err
 }
 
 // ModTime returns the filesystem modification time of a stored object. This
 // is physical backend metadata, not a content-addressed object field.
 func (s *Backend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
-	if err := ctx.Err(); err != nil {
-		return time.Time{}, err
-	}
-	if err := s.checkKey(d, "fs: mod time"); err != nil {
-		return time.Time{}, err
-	}
-	fi, err := os.Stat(s.digestPath(d))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return time.Time{}, fmt.Errorf("%w: %s", cas.ErrNotFound, d)
-		}
-		return time.Time{}, fmt.Errorf("cas: stat object: %w", err)
-	}
-	return fi.ModTime(), nil
+	_, written, err := s.physicalStat(ctx, d, "fs: mod time")
+	return written, err
+}
+
+// Stat returns the stored object's size and its filesystem modification time
+// from one os.Stat, so a caller that needs both does not stat the same path
+// twice (cas.PhysicalStatter, go-cask#373).
+func (s *Backend) Stat(ctx context.Context, d cas.Digest) (int64, time.Time, error) {
+	return s.physicalStat(ctx, d, "fs: stat")
 }
 
 // Clean removes orphan temp files (crash leftovers) older than olderThan
 // (olderThan <= 0 removes them all). It removes both "<hex>.tmp" and the
-// collision fallbacks "<hex>.tmp.<n>" that createTempExcl may leave behind.
+// collision fallbacks "<hex>.tmp.<n>" that atomicfile.Publish may leave behind.
 // Walk and removal errors are returned, not swallowed.
 //
 // The sweep is cleanTemp (policy.go), the one implementation of the temp-file
@@ -433,21 +410,12 @@ func (s *Backend) Clean(ctx context.Context, olderThan time.Duration) (int, erro
 }
 
 // isTempFile reports whether name is an object temp file: "<hex>.tmp" or a
-// collision fallback "<hex>.tmp.<n>" (createTempExcl).
+// collision fallback "<hex>.tmp.<n>" (atomicfile.createTemp). The predicate is
+// atomicfile.IsTempFile, the one rule the packages that publish a file through
+// that package share (go-cask#339), so this backend's sweep and cas/refs's
+// listing cannot drift on what counts as scratch.
 func isTempFile(name string) bool {
-	_, after, ok := strings.Cut(name, ".tmp")
-	if !ok {
-		return false
-	}
-	rest := after
-	if rest == "" {
-		return true
-	}
-	if rest[0] != '.' {
-		return false
-	}
-	_, err := strconv.Atoi(rest[1:])
-	return err == nil
+	return atomicfile.IsTempFile(name)
 }
 
 // List returns every stored digest, sorted. Digests are rebuilt from their

@@ -76,6 +76,13 @@ func (v *Verifier) Verify(ctx context.Context, d Digest) error {
 // Verify re-reads the object at d and recomputes its digest with the supplied
 // hasher. The backend does not own integrity checking; it stores backend bytes
 // and exposes them to an explicit verification layer.
+//
+// The read-then-close sequence is readThenClose with readWins (readclose.go,
+// go-cask#340): a read failure is the diagnosis, and a failing close is reported
+// only when the read succeeded. internal/web.verifyObject is the same sequence
+// with the same two messages across the module boundary — it also returns the
+// recomputed digest, which this function discards, so the viewer keeps its own
+// copy rather than exporting a form the core does not need.
 func Verify(ctx context.Context, backend Backend, d Digest, hasher Hasher) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -97,13 +104,9 @@ func Verify(ctx context.Context, backend Backend, d Digest, hasher Hasher) error
 		return err
 	}
 
-	actual, err := hasher.Digest(rc)
+	actual, err := readThenClose(rc, hasher.Digest, readWins, wrap("cas: verify read"), wrap("cas: verify close"))
 	if err != nil {
-		_ = rc.Close()
-		return fmt.Errorf("cas: verify read: %w", err)
-	}
-	if err := rc.Close(); err != nil {
-		return fmt.Errorf("cas: verify close: %w", err)
+		return err
 	}
 	if !actual.Equal(d) {
 		return fmt.Errorf("%w: %s", ErrDigestMismatch, d)
