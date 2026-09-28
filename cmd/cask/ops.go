@@ -51,6 +51,18 @@ func (e usageError) Error() string { return e.msg }
 
 func usagef(format string, args ...any) error { return usageError{msg: fmt.Sprintf(format, args...)} }
 
+// reportSweepBase names the store directory a destructive maintenance command is
+// about to act on, with every symbolic link in the -store path resolved once at
+// the store-opening seam (internal/store.ResolveBase). An operator who points
+// -store at a link sees the tree the sweep really touches instead of the
+// spelling they typed, so a followed link is explicit rather than silent
+// (cli.md §2, §3; cas-core §4.4). It prints to stdout, the stream these
+// commands already summarize on, and it runs after the command's arguments are
+// validated and before anything is swept.
+func reportSweepBase(cmd string, t *store.Store) {
+	fmt.Printf("%s: store %s\n", cmd, t.Path())
+}
+
 // reachableSet builds the byte-layer reachable set from the root digests the
 // user listed. The set is complete as given: the store cannot interpret
 // references, so cask cannot expand a root into what it points to —
@@ -857,6 +869,7 @@ func opGC(ctx context.Context, t *store.Store, args []string) error {
 	// §5). roots is the complete reachable set at the byte layer: the store
 	// cannot interpret references; graph-aware reachability is the app's job
 	// (cas-core §4.11).
+	reportSweepBase("gc", t)
 	doomed, err := t.Sweep(ctx, "gc", reachableSet(roots), a.minAge, false)
 	if err != nil {
 		return err
@@ -894,6 +907,7 @@ func opClean(ctx context.Context, t *store.Store, args []string) error {
 	if flags.NArg() != 0 {
 		return usagef("clean takes no positional arguments")
 	}
+	reportSweepBase("clean", t)
 	removed, err := t.Clean(ctx, a.minAge)
 	if err != nil {
 		return err
@@ -943,6 +957,7 @@ func opPrune(ctx context.Context, t *store.Store, args []string) error {
 	// job, cas-core §4.11) — pass every digest that must survive, not just
 	// entry points. The store picks the backend's native Prune when it has
 	// one and the portable cas.Sweep otherwise (backend-architecture §5).
+	reportSweepBase("prune", t)
 	doomed, err := t.Sweep(ctx, "prune", reachableSet(roots), a.minAge, a.dryRun)
 	if err != nil {
 		return err

@@ -23,6 +23,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,6 +93,11 @@ type Store struct {
 	// unsupported-operation error reports.
 	Kind Kind
 
+	// path is the resolved store directory: the -store path with every symbolic
+	// link in it followed once, at Open. Every operation is built from it, and
+	// Path reports it to a command that names the directory it acted on.
+	path string
+
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -107,6 +116,12 @@ var _ pruner = (*fsbackend.Backend)(nil)
 // Open opens the store selected by opts over path. A missing path or an
 // unknown kind is a caller error; a backend failure is returned as it is, so
 // the CLI can classify it (cli.md §3).
+//
+// The path is resolved once, before the backend is opened (ResolveBase), and the
+// backend is opened over the resolved directory. A symbolic link standing where
+// -store points is therefore followed deliberately and visibly: every operation
+// runs on the directory the link names, and Store.Path reports that directory so
+// a destructive command can print the tree it acted on.
 func Open(ctx context.Context, opts Options) (*Store, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -118,21 +133,25 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	if opts.Path == "" {
 		return nil, errors.New("cask: store path is required")
 	}
+	resolved, err := ResolveBase(opts.Path)
+	if err != nil {
+		return nil, err
+	}
 	switch kind {
 	case KindFS:
-		backend, err := fsbackend.New(opts.Path)
+		backend, err := fsbackend.New(resolved)
 		if err != nil {
 			return nil, err
 		}
-		return newStore(kind, backend), nil
+		return newStore(kind, resolved, backend), nil
 	case KindPackFS:
 		// Packing is the point of selecting packfs: every Put also appends to
 		// the active pack file, so the CLI maintains a genuinely packed store.
-		backend, err := packfs.New(opts.Path, packfs.WithEnabled())
+		backend, err := packfs.New(resolved, packfs.WithEnabled())
 		if err != nil {
 			return nil, err
 		}
-		return newStore(kind, backend), nil
+		return newStore(kind, resolved, backend), nil
 	default:
 		// ParseKind accepts only the kinds above, so this is unreachable for
 		// a caller that went through it; a Store built by hand may still carry
@@ -168,7 +187,70 @@ func OpenViewer(ctx context.Context, opts Options) (*fsbackend.Backend, error) {
 	if opts.Path == "" {
 		return nil, errors.New("cask: store path is required")
 	}
-	return fsbackend.New(opts.Path)
+	// The same resolution Open performs, so the viewer reads the directory the
+	// resolved -store names and not whatever a link at that path points at
+	// silently (cli.md §1, §2; backend.BasePath reports it).
+	resolved, err := ResolveBase(opts.Path)
+	if err != nil {
+		return nil, err
+	}
+	return fsbackend.New(resolved)
+}
+
+// ResolveBase returns the physical store directory base names: every symbolic
+// link in the path is followed once, here, so the store the CLI opens and the
+// tree its destructive sweeps act on are the directory the operator is really
+// pointing at rather than a link standing in for it. Following is deliberate and
+// reported — clean/gc/prune and the viewer print the resolved base — not silent.
+//
+// The last component of base need not exist: the CLI creates a store directory
+// on first use, so the longest existing prefix is resolved and the missing tail
+// is appended unchanged (a path that is not there cannot be a link). An empty or
+// whitespace-only base is returned as it is — the caller rejects it — and a path
+// that cannot be resolved at all (an unreadable component, a regular file where
+// a directory is needed) is an error rather than a half-resolved base.
+//
+// It performs I/O and no mutation: nothing is created, and the one-time cost is
+// paid where a store is opened, not on any operation.
+func ResolveBase(base string) (string, error) {
+	if strings.TrimSpace(base) == "" {
+		return base, nil
+	}
+	cur := filepath.Clean(base)
+	var tail []string
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			if len(tail) == 0 {
+				return resolved, nil
+			}
+			// The missing tail can only be created beneath a directory, and the
+			// platforms disagree about how they report the alternative: POSIX
+			// fails the whole lookup with ENOTDIR, while Windows resolves a
+			// regular file and leaves the child to fail later. Checking here
+			// keeps the answer the same on both.
+			info, statErr := os.Stat(resolved)
+			if statErr != nil {
+				return "", fmt.Errorf("cask: resolve store base %q: %w", base, statErr)
+			}
+			if !info.IsDir() {
+				return "", fmt.Errorf("cask: resolve store base %q: %s is not a directory", base, resolved)
+			}
+			return filepath.Join(append([]string{resolved}, tail...)...), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("cask: resolve store base %q: %w", base, err)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Nothing on the path exists (a missing volume root): there is no
+			// link to follow, and the backend's own creation step reports what
+			// is wrong with the path.
+			return filepath.Clean(base), nil
+		}
+		tail = append([]string{filepath.Base(cur)}, tail...)
+		cur = parent
+	}
 }
 
 // viewerRefusal is the viewer's one refusal: it wraps cas.ErrUnsupported (so a
@@ -183,13 +265,38 @@ func viewerRefusal(kind Kind) error {
 }
 
 // newStore wraps an opened backend with the maintenance capabilities the CLI
-// consults.
-func newStore(kind Kind, backend cas.Backend) *Store {
+// consults. path is the resolved store directory the backend was opened over.
+func newStore(kind Kind, path string, backend cas.Backend) *Store {
 	return &Store{
 		Backend:      backend,
 		Capabilities: cas.CapabilitiesOf(backend),
 		Kind:         kind,
+		path:         path,
 	}
+}
+
+// Path returns the store directory this store was opened over, with every
+// symbolic link in the -store path resolved once at Open: the directory the
+// backend's bytes really live in, and the one a maintenance command names before
+// it sweeps (cli.md §2). It is the resolved form of Options.Path, not the string
+// the operator typed — an intentional symlinked store keeps working, and the
+// redirection is visible instead of silent.
+//
+// A Store assembled by hand — a test, a decorator — carries no recorded path and
+// reports its backend's BasePath instead, so a caller that only opened a backend
+// still gets the directory its bytes live under (for packfs that is the loose
+// tree, since its pack files are an append-only mirror).
+func (s *Store) Path() string {
+	if s == nil {
+		return ""
+	}
+	if s.path != "" {
+		return s.path
+	}
+	if reporter, ok := s.Backend.(interface{ BasePath() string }); ok {
+		return reporter.BasePath()
+	}
+	return ""
 }
 
 // unsupported reports op as unsupported by the named backend. The message names

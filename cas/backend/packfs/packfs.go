@@ -85,7 +85,6 @@ type ops struct {
 	mkdirAll   func(string, os.FileMode) error
 	openFile   func(string, int, os.FileMode) (*os.File, error)
 	readFile   func(string) ([]byte, error)
-	writeFile  func(string, []byte, os.FileMode) error
 	rename     func(string, string) error
 	open       func(string) (*os.File, error)
 	createTemp func(string, string) (*os.File, error)
@@ -104,7 +103,6 @@ func realOps() ops {
 		mkdirAll:   os.MkdirAll,
 		openFile:   os.OpenFile,
 		readFile:   os.ReadFile,
-		writeFile:  os.WriteFile,
 		rename:     os.Rename,
 		open:       os.Open,
 		createTemp: os.CreateTemp,
@@ -145,14 +143,6 @@ func (o ops) readFileDo(name string) ([]byte, error) {
 		return os.ReadFile(name)
 	}
 	return o.readFile(name)
-}
-
-// writeFileDo writes a whole file, or calls the installed seam.
-func (o ops) writeFileDo(name string, data []byte, perm os.FileMode) error {
-	if o.writeFile == nil {
-		return os.WriteFile(name, data, perm)
-	}
-	return o.writeFile(name, data, perm)
 }
 
 // renameDo renames a file, or calls the installed seam.
@@ -271,11 +261,23 @@ func newWithOps(basePath string, op ops, opts ...Option) (*Backend, error) {
 	if err := op.mkdirAllDo(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack base: %w", err)
 	}
+	// The two directories the base owns are validated before they are created:
+	// os.MkdirAll follows a link, so a link planted at either name would build
+	// the tree — and then every pack append and loose object — outside the base
+	// (cas-core §4.4). A directory that is not there yet is not a link, so this
+	// refuses exactly the shapes that redirect an existing one.
 	packDir := filepath.Join(basePath, "packs")
+	if err := fsbackend.ValidateDir(basePath, packDir); err != nil {
+		return nil, fmt.Errorf("cas: create pack dir: %w", err)
+	}
 	if err := op.mkdirAllDo(packDir, 0o755); err != nil {
 		return nil, fmt.Errorf("cas: create pack dir: %w", err)
 	}
-	loose, err := fsbackend.New(filepath.Join(basePath, "loose"))
+	looseDir := filepath.Join(basePath, "loose")
+	if err := fsbackend.ValidateDir(basePath, looseDir); err != nil {
+		return nil, fmt.Errorf("cas: create loose backend: %w", err)
+	}
+	loose, err := fsbackend.New(looseDir)
 	if err != nil {
 		return nil, fmt.Errorf("cas: create loose backend: %w", err)
 	}
@@ -355,6 +357,17 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		return false, errInvalidPackRecord
 	}
+	// The final component Lstat below pins a regular file; this pins every
+	// component on the way to it. A link planted at a pack *parent* (a
+	// subdirectory under packs/) passes the name checks and the final Lstat and
+	// would still be followed by the open that serves the record, so the chain
+	// is part of the record's validity, not a separate concern.
+	if err := fsbackend.ValidateFile(b.packDir, rec.Pack); err != nil {
+		if errors.Is(err, fsbackend.ErrUnsafeTarget) {
+			return false, fmt.Errorf("%w: %w", errInvalidPackRecord, err)
+		}
+		return false, err
+	}
 	info, err := os.Lstat(rec.Pack)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -374,6 +387,16 @@ func (b *Backend) validPackRecord(rec packRecord) (bool, error) {
 // persistIndex writes the pack index atomically: the manifest carries every
 // indexed digest in hex form (see manifest), so it survives the JSON round trip
 // into the next process.
+//
+// The scratch file is created with os.CreateTemp — an exclusive, random name —
+// rather than a fixed "index.json.tmp": a fixed name lets two writers share one
+// scratch inode (the interleaved manifest then fails to decode at the next
+// New), and a symbolic link planted at that name makes the truncating write
+// land on whatever it points at. It is created in the manifest's own directory
+// (the pack directory), so the publishing rename stays intra-directory and
+// atomic. The bytes are written through the handle CreateTemp returned, never
+// reopened by name, so nothing between the create and the write can redirect
+// them.
 func (b *Backend) persistIndex() error {
 	m := manifest{Entries: make(map[string]packRecord, len(b.index))}
 	for key, rec := range b.index {
@@ -383,11 +406,31 @@ func (b *Backend) persistIndex() error {
 	if err != nil {
 		return fmt.Errorf("cas: encode pack manifest: %w", err)
 	}
-	tmp := b.manifestPath + ".tmp"
-	if err := b.op.writeFileDo(tmp, data, 0o644); err != nil {
+	packDir := filepath.Dir(b.manifestPath)
+	if err := fsbackend.ValidateDir(b.base, packDir); err != nil {
 		return fmt.Errorf("cas: write pack manifest: %w", err)
 	}
-	return b.op.renameDo(tmp, b.manifestPath)
+	f, err := b.op.createTempDo(packDir, "index-*.tmp")
+	if err != nil {
+		return fmt.Errorf("cas: write pack manifest: %w", err)
+	}
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		// Best effort: the scratch file is discarded, and the write error is
+		// what the caller must see.
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("cas: write pack manifest: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp) // the scratch file is unusable
+		return fmt.Errorf("cas: write pack manifest: %w", err)
+	}
+	if err := b.op.renameDo(tmp, b.manifestPath); err != nil {
+		_ = os.Remove(tmp) // best effort: the publish error is primary
+		return fmt.Errorf("cas: rename pack manifest: %w", err)
+	}
+	return nil
 }
 
 func (b *Backend) ensurePackFile() error {
@@ -395,6 +438,13 @@ func (b *Backend) ensurePackFile() error {
 		return nil
 	}
 	path := filepath.Join(b.packDir, "current.pack")
+	// A symlinked current.pack (or a symlinked packs/ directory) would make
+	// every packed Put append attacker-influenced bytes to the link's target:
+	// the open below follows it, and the append-only file is a write primitive,
+	// not just a redirection. Refuse a link or a non-regular entry first.
+	if err := fsbackend.ValidateFile(b.base, path); err != nil {
+		return fmt.Errorf("cas: open pack file: %w", err)
+	}
 	f, err := b.op.openFileDo(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: open pack file: %w", err)
@@ -415,6 +465,11 @@ func (b *Backend) rotatePackFile() error {
 		b.packFile = nil
 	}
 	path := filepath.Join(b.packDir, fmt.Sprintf("pack-%d.pack", time.Now().UnixNano()))
+	// Same rule as ensurePackFile: a rotated pack is created inside packs/, so
+	// a link on the way there must be refused rather than followed.
+	if err := fsbackend.ValidateFile(b.base, path); err != nil {
+		return fmt.Errorf("cas: rotate pack file: %w", err)
+	}
 	f, err := b.op.openFileDo(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("cas: rotate pack file: %w", err)

@@ -21,7 +21,13 @@ import (
 // the fix, 2 608–2 878 B/op after on windows/amd64, 34 520 before and 1 752
 // after on linux/amd64. The regression is a flat 32 KiB step per call, not a
 // slow drift, so the ceiling separates the two by an order of magnitude.
-const putAllocBudget = 4 << 10
+//
+// The write path's link refusal (cas-core §4.4, go-cask#352) adds two Lstats to
+// every Put — the fan-out directory chain and the target entry — which measure
+// 3 592–4 028 B/op on windows/amd64's more expensive stat path and 2 584–2 680
+// B/op on linux/amd64. The ceiling has room for that deliberate syscall pair and
+// still separates the 32 KiB regression by about 6×.
+const putAllocBudget = 6 << 10
 
 // putAllocRaceBudget is the same ceiling for a binary built with the race
 // detector, which the gate's test step always is. Race instrumentation makes

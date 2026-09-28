@@ -314,7 +314,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	}
 	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("cask web listening (viewer)", "addr", listener.Addr(), "store", a.store)
+		// The store logged is the resolved one the viewer actually reads
+		// (backend.BasePath): -store, or the ./objects default, is resolved
+		// once at the opening seam, so a symlinked store is named by its target
+		// instead of being followed silently (cli.md §1, §2).
+		slog.Info("cask web listening (viewer)", "addr", listener.Addr(), "store", backend.BasePath())
 		if err := httpSrv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("serve", "err", err)
 			serverErr <- err
