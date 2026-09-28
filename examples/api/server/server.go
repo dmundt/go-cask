@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -192,55 +191,37 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// Store backend bytes — the digest is computed while streaming
-// the body to a temp spool (memory-bounded), then the spool streams into
-// the store. Identical bytes → identical digest → deduplicated. The body is
-// bounded before it is read (413), so an oversized upload is neither spooled
-// nor stored.
+// Store backend bytes — the digest is computed while streaming the body to a
+// temp spool (memory-bounded), then the spool streams into the store. Identical
+// bytes → identical digest → deduplicated. The body is bounded before it is read
+// (413), so an oversized upload is neither spooled nor stored, and the spool,
+// hash and dedup sequence is cas.PutStream's — the same one the CLI's `put`
+// calls (go-cask#342) — so the example and cmd/cask cannot drift apart.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxObjectBytes)
-	hasher := sha256.NewHasher()
-	spool, err := os.CreateTemp("", "cask-upload-*")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "upload spool failed"})
-		return
-	}
-	defer os.Remove(spool.Name())
-	defer spool.Close()
-
-	size, err := spoolAndHash(spool, hasher, r.Body)
-	if err != nil {
-		if isBodyTooLarge(err) {
-			writeJSON(w, http.StatusRequestEntityTooLarge,
-				map[string]string{"error": "object exceeds the maximum body size"})
-			return
-		}
+	// A declared zero-length body is refused before anything is spooled or
+	// stored: the HTTP contract's minimum size is decided here, not by the
+	// library, whose byte layer stores an empty object like any other.
+	if r.ContentLength == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
 		return
 	}
-	if size == 0 {
+	h, exists, err := spoolAndPut(r.Context(), s.backend, r.Body)
+	switch {
+	case errors.Is(err, errEmptyUpload):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
-		return
+	case isBodyTooLarge(err):
+		// The body bound is what stopped the upload, and it advertises itself
+		// through MaxBytesReader's error rather than a size this code compares
+		// (api-design §9): answer 413 instead of the generic failure.
+		writeJSON(w, http.StatusRequestEntityTooLarge,
+			map[string]string{"error": "object exceeds the maximum body size"})
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store failed"})
+	default:
+		slog.Info("cas api audit", "action", "put", "hash", h.String(), "deduplicated", exists)
+		writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 	}
-	h := cas.NewDigest(hasher.Sum(nil))
-	ctx := r.Context()
-	exists, err := s.backend.Exists(ctx, h)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store check failed"})
-		return
-	}
-	if !exists {
-		if _, err := spool.Seek(0, 0); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "spool rewind failed"})
-			return
-		}
-		if err := s.backend.Put(ctx, h, spool); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store failed"})
-			return
-		}
-	}
-	slog.Info("cas api audit", "action", "put", "hash", h.String(), "size", size, "deduplicated", exists)
-	writeJSON(w, http.StatusCreated, map[string]any{"hash": h.String(), "deduplicated": exists})
 }
 
 // List objects with pagination.

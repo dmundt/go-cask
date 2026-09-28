@@ -477,8 +477,8 @@ func (b *Backend) encodeRecord(rec *Record) ([]byte, error) {
 
 // syncDir fsyncs the record directory after a rename, so the rename itself
 // survives a crash. Windows has no directory fsync — the handle cannot be
-// opened for it — so this is a no-op there, exactly as the filesystem backend's
-// own directory sync is (cas/backend/fs, syncParentDir).
+// opened for it — so this is a no-op there, exactly as the shared publish's
+// directory sync is (cas/internal/atomicfile.SyncParentDir).
 func syncDir(path string) error {
 	if runtime.GOOS == "windows" {
 		return nil

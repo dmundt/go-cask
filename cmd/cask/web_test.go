@@ -78,20 +78,10 @@ func TestSplitList(t *testing.T) {
 // list starts the viewer (viewer-security §5.2), and a malformed entry fails
 // startup instead of quietly trusting nothing.
 func TestRunWebTrustedProxy(t *testing.T) {
-	runWebOnce := func(args ...string) int {
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			<-time.After(150 * time.Millisecond)
-			cancel()
-		}()
-		defer cancel()
-		return runWeb(ctx, modeFlags{store: t.TempDir()}, args)
-	}
-
-	if code := runWebOnce("-bind", "127.0.0.1:0", "-no-open", "-trusted-proxy", "10.0.0.0/8, 127.0.0.1"); code != 0 {
+	if _, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-trusted-proxy", "10.0.0.0/8, 127.0.0.1"); code != 0 {
 		t.Fatalf("runWeb with a valid -trusted-proxy exit = %d, want 0", code)
 	}
-	if code := runWebOnce("-bind", "127.0.0.1:0", "-no-open", "-trusted-proxy", "not-an-address"); code != 1 {
+	if _, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-trusted-proxy", "not-an-address"); code != 1 {
 		t.Fatalf("runWeb with a malformed -trusted-proxy exit = %d, want 1", code)
 	}
 }

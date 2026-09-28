@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Security — go-cask
 description: Security requirements for the embedded viewer — secure by default, authn/authz, session management, cookie requirements, and audit logging.
-version: v18
+version: v19
 ---
 
 # Viewer Security — go-cask
@@ -56,9 +56,18 @@ Groups: access, sessions, authorization, operations, deployment. Priority: §14.
   `-token-file`/`CASK_VIEWER_TOKEN`, or shown once on **standard output** (interactive terminal, or
   `cask web -show-token`), loopback bind only (§5.1, §7, §11); never via the logging package at any
   level (cli.md §4, §9, §11); never plaintext config; regenerated each restart unless supplied.
+- **Startup token strength (MUST):** a generated startup token MUST carry ≥128 bits of entropy; a
+  supplied one MUST be a **regular file** (`-token-file`; a directory, FIFO, device or symlink is
+  refused before the open), read under a **4 KiB** bound, holding **≥16 characters** from
+  `A-Z a-z 0-9 - . _ ~`. A refused token MUST fail startup with an error naming the flag, the file or
+  the variable — never the value.
 - Session establishment: `POST /viewer/login` (preferred) or `GET /viewer/?token=<token>`, the
   `cask web` "open viewer" deep link. Every other endpoint MUST reject the token and require a
-  session cookie. Token-accepting endpoints accept a token only from the viewer's own origin (§5.1).
+  session cookie. Token-accepting endpoints accept a token only from the viewer's own origin (§5.1),
+  and the POST MUST read the submitted token from the request body only: a `?token=` value in that
+  POST's query string MUST NOT authenticate (a URL-borne credential leaks to logs, bookmarks,
+  proxies and `Referer`; api-design §9). The GET deep link is the one URL carrier and reads the
+  query on purpose.
 - **CSRF (MUST):** every viewer mutation is POST with a per-session CSRF token compared in constant
   time; the token MUST come from the request body (form hidden field) or `X-CSRF-Token`, never the
   query string (URL-borne tokens leak to logs, bookmarks, proxies, `Referer`). A `?csrf=<token>` value
@@ -111,6 +120,9 @@ directly: §4, §12).
 
 - After auth: secure session + session cookie; no per-request re-entry of the startup token.
 - Idle timeout 30 min; maximum lifetime 8 h; re-authenticate on idle expiry, max lifetime or restart.
+- Session-scoped verification results are bounded: one session retains at most 50 000 results
+  (defaults §4); past the bound the map is dropped wholesale, so a dropped object reads
+  `not-verified` ("Unverified") again, and the login-time sweep remains the session-level cleanup.
 
 ## 7. Cookie requirements
 
@@ -160,6 +172,9 @@ one MUST extend this table in the same commit.
   logged, its response carrying `Referrer-Policy: no-referrer`.
 - A startup token MAY come from `-token-file` or `CASK_VIEWER_TOKEN`, and MAY be shown once on
   standard output (§5) — loopback bind only (§5.1, §7).
+- A supplied startup token MUST clear §5's strength contract — a regular file, read under the 4 KiB
+  bound, at least 16 characters from the closed set — and a value that fails it MUST fail startup
+  rather than weaken the admin credential.
 - Otherwise it MUST NOT appear in the process log at any level, in the output of a process not asked
   to display it, or in an API response.
 - Browser launch: only when the bind is loopback and the display is not suppressed with

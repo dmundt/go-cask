@@ -20,14 +20,14 @@ package refs
 //     write branch needs an open handle that rejects a write, which this
 //     package exposes no seam for.
 //
-//   - refs.go writeFileAtomic's three failure returns after the temp file
-//     exists: a short write (refs.go:492), a failing fsync (refs.go:497) and a
-//     failing close (refs.go:502). The function is unexported and takes no file
-//     seam, and the temp file lives in a directory the test owns, so the only
-//     way to fail those steps is a real I/O fault (ENOSPC, EIO) that a test
-//     cannot stage portably.
+//   - refs.go writeFileAtomic's own body has no branch left to reach: it is one
+//     call to atomicfile.Publish since go-cask#339, and the publish's temp-file
+//     write, fsync and close failures are covered by that package's injectable
+//     seam (atomicfile.TestPublishFailurePhases) rather than by a real I/O fault
+//     a test cannot stage portably.
 //
-//   - refs.go syncParentDir's Windows early return (refs.go:517). It is
-//     compiled into every build, but the coverage gate measures on Linux only
-//     (testing-strategy §5, "Platform-split packages are measured on Linux
-//     only"), and on Linux the branch is false by construction.
+//   - the parent-directory fsync's Windows early return: it is
+//     atomicfile.SyncParentDir since go-cask#339. It is compiled into every
+//     build, but the coverage gate measures on Linux only (testing-strategy §5,
+//     "Platform-split packages are measured on Linux only"), and on Linux the
+//     branch is false by construction.

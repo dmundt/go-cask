@@ -2,7 +2,7 @@
 type: Specification
 title: Testing Strategy — go-cask
 description: The correctness bar for CASK — the CAS laws, requirement traceability (every feature/requirement tested at least once), corner and error cases, fuzz/race/corruption/golden tests, and a coverage gate as high as practical.
-version: v34
+version: v35
 ---
 
 # Testing Strategy — go-cask
@@ -84,7 +84,7 @@ Every ID'd requirement and named contract MUST have ≥ one test (test name or m
 | Layout | co-located `*_test.go`; `Example` tests as documentation |
 | CI | `go test -race ./...`, fuzz smoke; benchmarks, `benchstat` not gates (performance §5); `benchmarks/data/baseline.txt` committed machine-specific dump |
 | Tiers | every `cas/**` package, numeric threshold; two tiers |
-| 90 | core `cas`; backends `cas/backend`, `cas/backend/fs`, `cas/backend/mem`, `cas/backend/snapshot`; refs `cas/repo`, `cas/refs`, `cas/pack`; default codec `cas/codec/flate`; `cas/bloom/persistent` (only `golang.org/x/sys` consumer); seam `internal/store` |
+| 90 | core `cas`; backends `cas/backend`, `cas/backend/fs`, `cas/backend/mem`, `cas/backend/snapshot`; the shared filesystem publish helper `cas/internal/atomicfile`; refs `cas/repo`, `cas/refs`, `cas/pack`; default codec `cas/codec/flate`; `cas/bloom/persistent` (only `golang.org/x/sys` consumer); seam `internal/store` |
 | 80 | codec wrappers, hash clients, verification helpers, advisory index layer, cache validation layer + three caches, `cas/backend/packfs`, viewer + index, `gitlike`, `cmd/cask` |
 | Policy owner | `internal/build/coverage`: format, shape check, pass/fail. Table (threshold, package, tier name per gated package; tier documents, threshold enforces): `internal/build/policy`. Ungated packages: parallel exemption register + reason, empty today. List omitted. `go run ./cmd/buildtool coverage-tier` reports it |
 | Totality | `internal/build/coverage` compares `go list ./cas/...` against table + register; a `cas/` package in neither → non-zero + offenders. Every gated package: **one** `go test -race -cover` pass, per-package numbers from the profile it writes, not a log line — one run reports a failing suite and every sub-tier package |
@@ -92,7 +92,7 @@ Every ID'd requirement and named contract MUST have ≥ one test (test name or m
 | Exemptions | decision, not measurement: ungated packages never measured, only registered with a reason; the adding PR classifies the package in the same PR; revisited at first consumer or 80-tier coverage |
 | Baseline | tier from coverage measured under the real gate; thresholds never lowered; a sub-tier package is raised with real tests in the same change or recorded in the lower tier with a reason; coverage never bought with line-executing, non-asserting tests — unreachable defensive branches stay in the lower tier and are documented as unreachable |
 | Identifiers | every exported identifier exercised; untested branches need a comment why — error branches no filesystem state or injected seam can produce are listed with their reason in the package's own tests; viewer: every named template rendered in ≥ one test |
-| Platform split | Linux-only measurement; matrix targets compiled, not executed. Coverage in the single Linux `verify` job: `cas/bloom/persistent` (per-OS files `persistent_unix.go` / `persistent_windows.go`) reports Linux numbers against the 90 tier. `platform-matrix` cross-compiles and vets `windows/amd64`, `darwin/amd64`, `darwin/arm64`, `linux/amd64`, `linux/arm64` on one Linux runner, never `go test ./...` natively (`.github/AGENT.md`, "Workflow policy"): no non-Linux binary executed. Windows compiles and passes `go vet`, never runs — no CI covers `persistent_windows.go` or `syncParentDir`'s Windows early return; same on macOS. Revisit on a second such package |
+| Platform split | Linux-only measurement; matrix targets compiled, not executed. Coverage in the single Linux `verify` job: `cas/bloom/persistent` (per-OS files `persistent_unix.go` / `persistent_windows.go`) reports Linux numbers against the 90 tier. `platform-matrix` cross-compiles and vets `windows/amd64`, `darwin/amd64`, `darwin/arm64`, `linux/amd64`, `linux/arm64` on one Linux runner, never `go test ./...` natively (`.github/AGENT.md`, "Workflow policy"): no non-Linux binary executed. Windows compiles and passes `go vet`, never runs — no CI covers `persistent_windows.go` or `cas/internal/atomicfile.SyncParentDir`'s Windows early return; same on macOS. Revisit on a second such package |
 | Non-`cas` | `gitlike`, `internal/index`, `internal/store`, `internal/web`, `cmd/cask`: same table, same two tiers; tier check covers `cas/**` |
 | Smoke | CI smoke: four targets named by `internal/build/policy`'s gate table — `FuzzParseDigest`, `FuzzPathRoundTrip`, `FuzzVerify`, `FuzzCodecRoundTrip`; rest on demand; report on core PRs |
 | Ownership | `cas/*` ownership: `docs/index.md`; no index row, no gate entry = visibly unowned |

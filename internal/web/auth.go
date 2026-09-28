@@ -154,14 +154,22 @@ func (s *Server) loginToken(w http.ResponseWriter, r *http.Request, token string
 // loginPost submits the login form. The body is parsed under the viewer's
 // bound before the token is read, so an oversized body is refused 413 and a
 // non-form body — a multipart one, which ParseForm leaves unread — never
-// reaches memory or a temp file (viewer-security §13). FormValue is safe after
-// that parse: it re-parses nothing, and in particular never triggers the
+// reaches memory or a temp file (viewer-security §13). PostFormValue is safe
+// after that parse: it re-parses nothing, and in particular never triggers the
 // multipart parse it would otherwise run on its own.
+//
+// The submitted token is read from the POST body only, with the accessor the
+// CSRF token uses and for the same reason (csrf.go, viewer-security §5): a
+// query value is never the carrier for a credential, because URLs are captured
+// by access logs, bookmarks, proxies, and Referer chains (api-design §9).
+// PostFormValue ignores the query, so `POST /viewer/login?token=…` never
+// authenticates; the GET deep link reads the query on purpose and is unchanged
+// (viewer-security §5.1).
 func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 	if !parseFormBody(w, r) {
 		return
 	}
-	s.loginToken(w, r, r.FormValue("token"))
+	s.loginToken(w, r, r.PostFormValue("token"))
 }
 
 // sameOrigin reports whether a credential-bearing login request provably comes

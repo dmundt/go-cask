@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v26
+version: v28
 ---
 
 # Performance — go-cask
@@ -36,6 +36,7 @@ only (coding-guidelines §3). Related: cas-core, coding-guidelines, testing-stra
 
 - `Store.Put`: marshal the envelope once into one buffer → digest with the injected `Hasher` → stream to `raw.Put`. Never marshaled twice.
 - Hash-on-write surfaces (the CLI's `put`, `examples/api`'s upload): spool and hash in one pass through `io.MultiWriter`/`io.Copy` into `sha256.NewHasher()`.
+- `cas.PutStream` is the shared implementation of that pattern: it spools and hashes in library code, so the CLI and the example cannot drift. Because `cas.Hasher` exposes only a reader-based `Digest` (below), it writes the spool once and hashes the spool; a caller that already holds a streaming `hash.Hash` (`sha256.NewHasher`) still does it in one pass.
 - `Backend.Put(ctx, d, r)` MUST stream `r` without buffering; the digest `d` is the trusted address (`Verify` is the integrity check).
 - Recorded sidecar checksums cost one extra read per recorded `Put` (`cas/verify/sidecar`, operations §6): one streaming pass over what `Get` returns after the write publishes the object, plus one extra file and atomic rename per `Put`.
 - `cas.Hasher` exposes only a reader-based `Digest` — no incremental writer, and the sidecar may not add one to the core.
@@ -46,12 +47,14 @@ only (coding-guidelines §3). Related: cas-core, coding-guidelines, testing-stra
 
 - `Store.Put`/`Get` (small objects) and `fs.Backend.Put`/`Get` SHOULD keep allocations flat/bounded; prove with `b.ReportAllocs()`.
 - Reuse buffers via `sync.Pool` for scratch in the HTTP layer and verify/hexdump paths.
-- Never `io.ReadAll` a large object in a byte-layer `Backend.Get` or `Store.GetRaw` — stream or use a bounded read. `Store.Get` MAY buffer because `Codec.Decode` needs bytes; document that.
+- Never `io.ReadAll` a large object in a byte-layer `Backend.Get` or `Store.GetRaw` — stream or use a bounded read. `Store.GetReader` is that stream: the same guards and the same backend `Get`, with the reader handed to the caller, so a tooling path that wants a prefix, a hash or a copy to another store pays one buffer instead of the object. `Store.GetRaw` keeps its buffering contract and is exempt as the deliberate inspection accessor — it is one `readThenClose` over `GetReader` (go-cask#381); `Store.Get` MAY buffer because `Codec.Decode` needs bytes; document that.
+- Size a whole-object read when the length is knowable: `backend.ReadWhole(ctx, r, declared)` pre-sizes the buffer from the caller's declared length or the reader's own `Len()`, so `mem.Put` (whose reader is the `*bytes.Reader` `Store.Put` hands over) and `snapshot.Export` (which asks `cas.Statter.Size`) allocate once instead of paying `io.ReadAll`'s doubling. A length is never a read limit and the pre-allocation is capped at `maxPrealloc`; with no hint the read grows exactly as before. `backend.ReadPayload` keeps its deliberate refusal to size anything from an untrusted declared header (go-cask#385).
+- Ask `cas.PhysicalStatter.Stat` when a caller needs an object's size **and** modification time: it is one physical read where `cas.Statter`'s `Size` + `ModTime` are two, and `index.BuildSnapshot` uses it whenever its source implements it (fs, packfs), halving the per-object syscalls of a snapshot build (go-cask#373).
 - Avoid `fmt` in hot paths — use `encoding/hex` directly, not `%x` loops.
 
 ## 5. Benchmark suite
 
-Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut` (steady-state + cold-start, 64 B–1 MiB) and the read patterns `BenchmarkStoreGetHot`/`BenchmarkStoreGetCold`/`BenchmarkStoreGetMixed`; the raw byte path `BenchmarkBackendWriteRead` (`mem`/`fs` × steady-state/cold-start); the codec/hash matrix `BenchmarkCodecPackageRoundTrip` (`json`/`gzip`/`zlib`/`flate`/`gob`/`binary`/`cbor` × `sha256`/`sha512`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules; `benchmarks/README.md` is the run-and-read guide.
+Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut` (steady-state + cold-start, 64 B–1 MiB) and the read patterns `BenchmarkStoreGetHot`/`BenchmarkStoreGetCold`/`BenchmarkStoreGetMixed`, the paired allocation measurement `BenchmarkStoreGetRawStream` (buffered `GetRaw` vs `GetReader` streamed through the reader); the raw byte path `BenchmarkBackendWriteRead` (`mem`/`fs` × steady-state/cold-start); the codec/hash matrix `BenchmarkCodecPackageRoundTrip` (`json`/`gzip`/`zlib`/`flate`/`gob`/`binary`/`cbor` × `sha256`/`sha512`/`sha512_256` × size); `BenchmarkRoundTrip`; `BenchmarkVerify`; `BenchmarkParseDigest` (valid + invalid); `BenchmarkParallelPutGet` (exercises §2); `BenchmarkScale{...}`; `BenchmarkBloom*` families for advisory pre-check layers. `benchmarks/AGENT.md` freezes the package-local measurement and maintenance rules; `benchmarks/README.md` is the run-and-read guide.
 
 ### 5.1 Optional Bloom acceleration
 

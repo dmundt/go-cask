@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v33
+version: v34
 generated: internal/build/depgraph
 ---
 
@@ -84,6 +84,7 @@ flowchart TD
     cas_hash_sha256["cas/hash/sha256"]
     cas_hash_sha512["cas/hash/sha512"]
     cas_hash_sha512_256["cas/hash/sha512_256"]
+    cas_internal_atomicfile["cas/internal/atomicfile"]
     cas_pack["cas/pack"]
     cas_refs["cas/refs"]
     cas_repo["cas/repo"]
@@ -126,6 +127,7 @@ flowchart TD
     cas_hash_sha256["cas/hash/sha256"]
     cas_hash_sha512["cas/hash/sha512"]
     cas_hash_sha512_256["cas/hash/sha512_256"]
+    cas_internal_atomicfile["cas/internal/atomicfile"]
     cas_pack["cas/pack"]
     cas_refs["cas/refs"]
     cas_repo["cas/repo"]
@@ -136,7 +138,7 @@ flowchart TD
   end
 
   cas_backend_fs --> cas
-  cas_backend_fs --> cas_backend
+  cas_backend_fs --> cas_internal_atomicfile
   cas_backend_mem --> cas
   cas_backend_mem --> cas_backend
   cas_backend_packfs --> cas
@@ -176,8 +178,11 @@ flowchart TD
   cas_hash_sha512_256 --> cas
   cas_hash_sha512_256 --> cas_hash
   cas_hash --> cas
+  cas_internal_atomicfile --> cas_backend
   cas_pack --> cas
+  cas_pack --> cas_internal_atomicfile
   cas_refs --> cas
+  cas_refs --> cas_internal_atomicfile
   cas_repo --> cas
   cas_verify_adler32 --> cas
   cas_verify_adler32 --> cas_hash

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -229,6 +230,15 @@ func TestRunWebPinsLoopbackBindings(t *testing.T) {
 	} {
 		t.Run(tc.bind, func(t *testing.T) {
 			if tc.ipv6 {
+				if runtime.GOOS == "windows" {
+					// The probe and the run both open an IPv6 listener, which is
+					// reported to raise the interactive firewall prompt a
+					// non-loopback bind does, so this row cannot run unattended
+					// there (#440). Its spelling stays pinned on every platform
+					// by the bind table in TestVersionAndWebHelpers, which never
+					// binds, and the row still runs on the gate's Linux.
+					t.Skip("an IPv6 listener raises an interactive Windows firewall prompt, so this row cannot run unattended (go-cask#440)")
+				}
 				// A host with no IPv6 loopback cannot listen on [::1]; the
 				// spelling itself stays pinned by the bind table in
 				// TestVersionAndWebHelpers either way.
@@ -558,20 +568,103 @@ func runWebNoticeOn(t *testing.T, bind string, args ...string) (stdout, stderr, 
 	t.Helper()
 	t.Setenv(viewerTokenEnv, "")
 	logs := installRecorder(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		<-time.After(150 * time.Millisecond)
-		cancel()
-	}()
-	var code int
-	stdout, stderr = captureStreams(t, func() {
-		code = runWeb(ctx, modeFlags{store: t.TempDir()}, append(args, "-bind", bind, "-no-open"))
-	})
+	stdout, stderr, code := runWebOn(t, t.TempDir(), append(args, "-bind", bind, "-no-open")...)
 	if code != 0 {
 		t.Fatalf("runWeb exit = %d, want 0 (stdout %q, log %q)", code, stdout, logs.String())
 	}
 	return stdout, stderr, logs.String()
+}
+
+// webStartupNotice is the prefix every viewer startup writes to stdout: the
+// login hint or the location notice announceLogin prints (cli.md §3, §4). By the
+// time it appears the preview graph is built, the listener is bound and the
+// server is about to serve, so it is the viewer's readiness signal.
+const webStartupNotice = "cask web: "
+
+// webStartupTimeout bounds the wait for that notice. It bounds a run that never
+// comes up rather than a startup budget: the preview walk hashes up to
+// maxPreviewCount ordinals, which a machine loaded by the rest of the gate can
+// stretch to seconds — time this harness must spend waiting, not canceling.
+const webStartupTimeout = 90 * time.Second
+
+// runWebOn runs the real `cask web` startup path over store with args and
+// cancels it as soon as the viewer has announced itself, returning runWeb's exit
+// code with what the run wrote to stdout and stderr.
+//
+// The cancellation is driven by the startup notice, never by a wall-clock timer.
+// runWeb builds the preview reference index on this context and threads it into
+// every backend.Exists call (preview_seed.go), so a timer that expires mid-walk
+// is reported as a startup failure: a harness that guessed 150 ms measured
+// machine load instead of the contract it names (go-cask#440). A run that fails
+// before it announces anything returns that failure's exit code for the caller
+// to assert, and a run that never announces anything fails the wait.
+func runWebOn(t *testing.T, store string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	dir := t.TempDir()
+	outPath, errPath := filepath.Join(dir, "stdout"), filepath.Join(dir, "stderr")
+	out, err := os.Create(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	errOut, err := os.Create(errPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer errOut.Close()
+
+	// Files rather than pipes: the wait below polls stdout while the run is still
+	// writing to it, and an *os.File is what os.Stdout already is, so the notice
+	// keeps the same non-terminal behavior a pipe would give it.
+	prevOut, prevErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = out, errOut
+	defer func() { os.Stdout, os.Stderr = prevOut, prevErr }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan int, 1)
+	go func() { done <- runWeb(ctx, modeFlags{store: store}, args) }()
+	code = awaitWebNotice(t, cancel, done, outPath)
+
+	os.Stdout, os.Stderr = prevOut, prevErr
+	return readCapture(t, outPath), readCapture(t, errPath), code
+}
+
+// awaitWebNotice waits for the viewer's startup notice in the captured stdout,
+// then cancels the run and returns its exit code. A run that returns before it
+// announces anything (a startup failure) is reported at once, so the wait is
+// bounded by the run itself whenever the viewer cannot come up — the timeout
+// only guards a run that neither starts nor fails.
+func awaitWebNotice(t *testing.T, cancel context.CancelFunc, done <-chan int, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(webStartupTimeout)
+	for {
+		if strings.Contains(readCapture(t, path), webStartupNotice) {
+			cancel()
+			return <-done
+		}
+		select {
+		case code := <-done:
+			return code
+		default:
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatalf("the viewer printed no startup notice within %s (stdout %q)", webStartupTimeout, readCapture(t, path))
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// readCapture returns everything written to path so far. The run holds the file
+// open, which is what lets the wait poll a stream that is still being written.
+func readCapture(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 // TestRunWebNoticeGoesToStdout is the stream contract of issue #212: the
@@ -632,7 +725,22 @@ func TestRunWebShowTokenControlsTheDisplay(t *testing.T) {
 // #260: even with -show-token asking for the hint, a bind the notice may not
 // print a link for displays no token, and the run logs why — never the token
 // (viewer-security §9, §11).
+//
+// Observing a non-loopback notice on the real path needs a real non-loopback
+// listener, and on Windows opening one raises the interactive firewall prompt a
+// freshly built test binary asks for, so the test cannot run unattended there
+// (#440). The rule is not left to it: noticeOrigin answers "" for a non-loopback
+// address (TestNoticeOrigin), announceLogin prints the location notice and no
+// link for that answer (TestAnnounceLoginNonLoopbackPrintsNoLink), and the launch
+// that would carry the token is refused for it (TestBrowserLaunchAllowed) — all
+// without a socket, on every platform. The skip therefore leaves unpinned on
+// Windows only the wiring between them (runWeb handing noticeOrigin's answer to
+// announceLogin), and it loses nothing where the gate runs: the race suite is
+// Linux.
 func TestRunWebNonLoopbackNeverShowsTheToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a non-loopback bind raises an interactive Windows firewall prompt, so this test cannot run unattended (go-cask#440)")
+	}
 	stdout, stderr, logged := runWebNoticeOn(t, "0.0.0.0:0", "-allow-insecure-bind", "-show-token")
 	if strings.Contains(stdout, "?token=") {
 		t.Fatalf("a non-loopback run displayed the login link: %q", stdout)
@@ -660,13 +768,15 @@ func TestRunWebRejectsInvalidShowToken(t *testing.T) {
 }
 
 // TestResolveStartupTokenSources covers the unattended token sources of issue
-// #179: a token read from -token-file or CASK_VIEWER_TOKEN is used as given and
-// marked not generated (so it is never displayed), the flag wins over the
-// environment, and a missing or empty file fails without echoing a token.
+// #179 and the supply contract of #348: a token read from -token-file or
+// CASK_VIEWER_TOKEN is used as given and marked not generated (so it is never
+// displayed), the flag wins over the environment, and a missing, empty,
+// non-regular, oversized, too-short or off-charset value fails without echoing
+// a token.
 func TestResolveStartupTokenSources(t *testing.T) {
 	const (
-		fromFile = "FEED-FACE-0001"
-		fromEnv  = "FEED-FACE-0002"
+		fromFile = "FEED-FACE-0000-0001"
+		fromEnv  = "FEED-FACE-0000-0002"
 	)
 	file := filepath.Join(t.TempDir(), "startup-token")
 	if err := os.WriteFile(file, []byte(fromFile+"\n"), 0o600); err != nil {
@@ -716,8 +826,20 @@ func TestResolveStartupTokenSources(t *testing.T) {
 		if err != nil || !generated {
 			t.Fatalf("resolveStartupToken() = (%q, %v, %v), want a generated token", token, generated, err)
 		}
-		if len(token) != 14 {
-			t.Fatalf("generated token %q is not the documented 3-group form", token)
+		// The generated width is the documented 128-bit, 4-group form
+		// (defaults §4): changing it means changing this deliberately.
+		if len(token) != 35 || strings.Count(token, "-") != 3 {
+			t.Fatalf("generated token %q is not the documented 4-group form", token)
+		}
+		for _, group := range strings.Split(token, "-") {
+			if len(group) != 8 {
+				t.Fatalf("generated token %q group %q, want 8 hex characters", token, group)
+			}
+			for _, r := range group {
+				if (r < '0' || r > '9') && (r < 'A' || r > 'F') {
+					t.Fatalf("generated token %q carries %q, want uppercase hex groups", token, r)
+				}
+			}
 		}
 	})
 
@@ -733,6 +855,149 @@ func TestResolveStartupTokenSources(t *testing.T) {
 			}
 		}
 	})
+
+	// #348: a supplied token must come from a regular file. The refusal happens
+	// before the file is opened, which is what keeps a FIFO or a device from
+	// blocking or inflating startup instead of failing it fast.
+	t.Run("non-regular files are refused", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		cases := []struct {
+			name string
+			path string
+		}{
+			{"directory", t.TempDir()},
+			{"device", os.DevNull},
+		}
+		fifo := filepath.Join(t.TempDir(), "startup-token.fifo")
+		if makeFIFO(t, fifo) {
+			cases = append(cases, struct {
+				name string
+				path string
+			}{"FIFO", fifo})
+		} else {
+			t.Log("no mkfifo on this host: the FIFO case is not exercised")
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				// A read that consults the file without the regular-file check
+				// blocks forever on a FIFO, so the call is bounded here rather
+				// than left to the package timeout.
+				done := make(chan error, 1)
+				go func() {
+					_, _, err := resolveStartupToken(webArgs{tokenFile: tc.path})
+					done <- err
+				}()
+				select {
+				case err := <-done:
+					if err == nil {
+						t.Fatalf("-token-file %s was accepted, want an error", tc.path)
+					}
+					if !strings.Contains(err.Error(), tc.path) {
+						t.Fatalf("error %q does not name the file %q", err, tc.path)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatalf("-token-file %s blocked: a non-regular file must be refused before it is opened", tc.path)
+				}
+			})
+		}
+	})
+
+	// The read is bounded: a file past the bound is refused by size, not read
+	// into memory and then judged on its content.
+	t.Run("oversize file is refused", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		oversize := filepath.Join(t.TempDir(), "huge-token")
+		// Every byte is inside the accepted character set, so the size rule
+		// alone is what must refuse it.
+		body := []byte(strings.Repeat("A", maxStartupTokenBytes+1))
+		if err := os.WriteFile(oversize, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		token, generated, err := resolveStartupToken(webArgs{tokenFile: oversize})
+		if err == nil || token != "" || generated {
+			t.Fatalf("resolveStartupToken(oversize) = (%q, %v, %v), want an error", token, generated, err)
+		}
+		if !strings.Contains(err.Error(), oversize) || !strings.Contains(err.Error(), strconv.Itoa(maxStartupTokenBytes)) {
+			t.Fatalf("oversize error = %q, want it to name the file and the bound", err)
+		}
+	})
+
+	// The width and character-set floor, and the rule that a refused value is
+	// never restated in the error (viewer-security §11).
+	t.Run("short and malformed tokens are refused without echoing them", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "")
+		allowed := "abcd-EFGH-0123-._~" // every accepted character class
+		for _, tc := range []struct {
+			name  string
+			token string
+		}{
+			{"short", "SHORT-TOKEN"},
+			{"outside the charset", "GOOD-TOKEN-0000+0001"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "startup-token")
+				if err := os.WriteFile(path, []byte(tc.token), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				token, generated, err := resolveStartupToken(webArgs{tokenFile: path})
+				if err == nil || token != "" || generated {
+					t.Fatalf("resolveStartupToken(%q) = (%q, %v, %v), want an error", tc.token, token, generated, err)
+				}
+				if !strings.Contains(err.Error(), path) {
+					t.Fatalf("error %q does not name the file %q", err, path)
+				}
+				if strings.Contains(err.Error(), tc.token) {
+					t.Fatalf("error %q echoes the rejected token", err)
+				}
+			})
+		}
+
+		path := filepath.Join(t.TempDir(), "startup-token")
+		if err := os.WriteFile(path, []byte(allowed), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		token, generated, err := resolveStartupToken(webArgs{tokenFile: path})
+		if err != nil || token != allowed || generated {
+			t.Fatalf("resolveStartupToken(%q) = (%q, %v, %v), want it accepted", allowed, token, generated, err)
+		}
+	})
+
+	// The environment source follows the same contract, and a whitespace-only
+	// value is still "nothing supplied" rather than a rejected token.
+	t.Run("environment tokens follow the same contract", func(t *testing.T) {
+		t.Setenv(viewerTokenEnv, "SHORT")
+		token, generated, err := resolveStartupToken(webArgs{})
+		if err == nil || token != "" || generated {
+			t.Fatalf("resolveStartupToken(short env) = (%q, %v, %v), want an error", token, generated, err)
+		}
+		if !strings.Contains(err.Error(), viewerTokenEnv) || strings.Contains(err.Error(), "SHORT") {
+			t.Fatalf("short env error = %q, want it to name the variable and not the value", err)
+		}
+
+		t.Setenv(viewerTokenEnv, "   ")
+		if _, generated, err := resolveStartupToken(webArgs{}); err != nil || !generated {
+			t.Fatalf("resolveStartupToken(blank env) = (%v, %v), want a generated token", generated, err)
+		}
+	})
+}
+
+// makeFIFO creates a named pipe at path where the host can, and reports whether
+// it did: mkfifo exists on Unix and not on Windows. A FIFO is the non-regular
+// file that would hang the token read rather than merely fail it, so its
+// refusal is exercised wherever one can be created.
+func makeFIFO(t *testing.T, path string) bool {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	if _, err := exec.LookPath("mkfifo"); err != nil {
+		return false
+	}
+	if out, err := exec.Command("mkfifo", path).CombinedOutput(); err != nil {
+		t.Logf("mkfifo %s: %v (%s)", path, err, out)
+		return false
+	}
+	return true
 }
 
 // TestRunWebNeverLogsSuppliedToken runs the real `cask web` startup path with an
@@ -740,20 +1005,13 @@ func TestResolveStartupTokenSources(t *testing.T) {
 // (at any level) nor the announcement: an unattended deployment supplies its
 // token instead of having it printed.
 func TestRunWebNeverLogsSuppliedToken(t *testing.T) {
-	const supplied = "DEAD-BEEF-1234"
+	const supplied = "DEAD-BEEF-1234-5678"
 	tokenFile := filepath.Join(t.TempDir(), "startup-token")
 	if err := os.WriteFile(tokenFile, []byte(supplied), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	logs := installRecorder(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-time.After(150 * time.Millisecond)
-		cancel()
-	}()
-	if code := runWeb(ctx, modeFlags{store: t.TempDir()}, []string{
-		"-bind", "127.0.0.1:0", "-no-open", "-token-file", tokenFile,
-	}); code != 0 {
+	if _, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-token-file", tokenFile); code != 0 {
 		t.Fatalf("runWeb exit = %d, want 0", code)
 	}
 	if logged := logs.String(); strings.Contains(logged, supplied) {

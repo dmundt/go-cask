@@ -136,6 +136,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   seeds the viewer preview graph under the algorithm the viewer reads it with.
   Seeding was always sha256 before, so a viewer started with any other
   `-hash-algo` silently found no graph and showed no references.
+- `cas.PutStream` spools a raw stream while hashing it, deduplicates and stores it, so the CLI's `put` and the `examples/api` upload share one owner for the sequence instead of each hand-rolling it (go-cask#342).
 
 - `gitlike.Resolver` satisfies `cas/repo.Resolver`: its new `Resolve(ctx, d)`
   returns the concrete object, so `cas/repo.Walk` and `cas/repo.Reachable` run
@@ -160,6 +161,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   build language is Go", and the reason is the testability the rule above it
   gives: a rule written in a script is covered by no test and drags whichever
   interpreter the operator happens to have into the build.
+- `Store[T].GetReader(ctx, digest) (io.ReadCloser, error)` streams a stored object's raw bytes to the caller, who closes the reader: the same guards and the same backend `Get` as `Store.GetRaw`, without buffering the object. `GetRaw` keeps its contract (the whole envelope as bytes) and is now one `readThenClose` over the new accessor, so a tooling path that only needs a prefix, a hash or a copy to another store no longer pays `io.ReadAll`'s doubling — the allocation `performance.md` §4 forbids (go-cask#381).
+- `cas.PhysicalStatter` is the optional capability a backend implements to report an object's size and modification time from **one** physical read: `Stat(ctx, digest) (size int64, modTime time.Time, err error)`, alongside `cas.Statter`'s two separate calls. `fs.Backend` and `packfs.Backend` implement it, and `index.BuildSnapshot` asks it when its source has it — one stat per object instead of two — falling back to `Size` + `ModTime` for every backend that does not, whose snapshot is unchanged (go-cask#373).
 
 ### Changed
 
@@ -175,6 +178,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deliberately instead of silently. `clean`, `gc` and `prune` print the resolved base they acted on
   (`clean: store <dir>`) and `cask web` logs it; the maintenance lock is taken in the resolved store.
   An intentional symlinked store keeps working (go-cask#353).
+- `cask web` mints its startup admin token at 128 bits (16 bytes as four dash-separated groups of
+  eight hex characters) instead of 48, and validates a supplied one (`-token-file`,
+  `CASK_VIEWER_TOKEN`): a regular file read under a 4 KiB bound, at least 16 characters from
+  `A-Z a-z 0-9 - . _ ~`, with a rejection naming the flag, file or variable and never the value.
+  A session also retains at most 50 000 verification results; past the bound a dropped object reads
+  `Unverified` again instead of a stale verdict.
 - The viewer names a frame's version **Envelope** rather than "Envelope version" or
   "Version" — in the object table's column header, in the inspector's Identity block, and
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
@@ -353,6 +362,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
   filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
   now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
+- `cask stats` and a filtered `cask list` each walk the store once instead of twice: the census snapshot already carries the object count and byte total that `Store.Stats` produced (go-cask#372).
 
 ### Removed
 
@@ -567,6 +577,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   decode or a failed `Verify`, which reads as store corruption rather than as a
   rejected write. The ceiling now stores the bytes it was given, and every
   smaller cap behaves exactly as before.
+- `cask list` rejects a surplus operand with a usage error (exit 2) instead of ignoring it and printing the whole store (go-cask#366).
 
 ### Security
 
@@ -594,6 +605,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trust the filter's negatives. **On-disk layout change:** a file written by an
   earlier build has zero reserved bytes and is rebuilt on first open — a lost hint
   set, never a wrong answer — then rewritten in the new format.
+- The viewer's login token is read from the `POST /viewer/login` form body only: `?token=<token>` in
+  the request's query string no longer authenticates. The documented `GET /viewer/?token=` deep link
+  is unchanged. URLs reach access logs, browser history, proxies and `Referer` chains, so a
+  credential in one is a credential leaked.
 - An authenticated viewer session can no longer monopolize the server by
   refreshing: the two routes whose work is proportional to the *store* rather
   than to the request are bounded. `POST /viewer/objects/verify` runs one sweep
@@ -669,6 +684,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now bounded at `cbor.MaxDepth` (128 levels) and reported as the new
   `cbor.ErrTooDeep`, distinct from a truncation error; a payload at or below the
   limit decodes exactly as before.
+- `cask stats` and `cask meta` no longer print a stored envelope type name or codec identity tag verbatim: every header-derived string is rendered through one helper that replaces C0/C1 control characters, so an object authored by someone else can no longer rewrite the operator's terminal or forge a census line (go-cask#354).
+- A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune` and `cask web` report the directory they actually act on, so a link planted at the store path can no longer redirect a destructive sweep silently (go-cask#353).
 
 ## [v1.6.5] - 2026-09-22
 
