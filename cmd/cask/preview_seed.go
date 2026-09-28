@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/dmundt/go-cask/cas"
+	casjson "github.com/dmundt/go-cask/cas/codec/json"
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 	"github.com/dmundt/go-cask/internal/store"
 )
@@ -166,38 +168,36 @@ type previewObject struct {
 	data       []byte
 }
 
-// previewObjectFor builds one preview object with a payload buffer of its own,
-// for a caller that needs a single ordinal. A caller that builds a run of them —
+// previewObjectFor builds one preview object with a padding fill of its own, for
+// a caller that needs a single ordinal. A caller that builds a run of them —
 // seeding and the viewer's startup walk both do — threads one previewBuilder
-// through the run instead, so the payload is filled into one reusable buffer.
+// through the run instead, so the fill is grown once for the whole run.
 func previewObjectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
 	var builder previewBuilder
 	return builder.objectFor(ordinal, digests, hasher)
 }
 
-// previewBuilder builds a run of preview objects, reusing one payload buffer
+// previewBuilder builds a run of preview objects, reusing one padding fill
 // across them.
 //
-// An ordinal's payload is only ever read to be framed: cas.EncodeEnvelope copies
-// it into the frame it returns, and only that frame outlives the ordinal (is
-// hashed, written or indexed). Allocating the payload per ordinal therefore
-// materializes every ordinal's bytes twice — the payload and the frame holding
-// its copy — which for the viewer's documented bound (maxPreviewCount ordinals,
-// whose payloads grow with the ordinal) is the largest single allocation burst
-// in `cask web` startup (go-cask#374). One buffer, refilled per ordinal, pays for
-// the payload once; the frame is then the ordinal's only other allocation, and
-// the digests are byte-identical because the framed bytes are (the payload
-// content is the same bytes.Repeat pattern previewEnvelope always produced).
+// The payload is the preview codec's output — it must be, or the frame's codec
+// tag would name a format that did not produce its bytes (go-cask#333) — so the
+// codec allocates it. What the builder reuses is the document's input: an
+// ordinal's padding is a slice of one fill string. An ordinal's payload is only
+// ever read to be framed — cas.EncodeEnvelope copies it into the frame it
+// returns, and only that frame outlives the ordinal (is hashed, written or
+// indexed) — so building the fill per ordinal would add a third, payload-sized
+// allocation for the same repeated byte (go-cask#374).
 //
-// A builder is not safe for concurrent use: it owns the buffer it refills.
+// A builder is not safe for concurrent use: it owns the fill it grows.
 type previewBuilder struct {
-	payload []byte
+	padding string
 }
 
-// objectFor returns ordinal's preview object, refilling the builder's payload
-// buffer. The returned object's data is the freshly framed envelope, which the
-// caller owns; the payload buffer stays the builder's and is overwritten by the
-// next call.
+// objectFor returns ordinal's preview object, drawing its padding from the
+// builder's fill. The returned object's data is the freshly framed envelope,
+// which the caller owns; the fill stays the builder's and every later ordinal
+// slices it again.
 func (b *previewBuilder) objectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
 	references := previewObjectReferences(ordinal, digests)
 	data, err := b.previewEnvelope(
@@ -253,47 +253,82 @@ func previewRootOrdinal(ordinal int) bool {
 	return ordinal%previewBlockSize == previewRootOffset
 }
 
-// previewCodecTag is the codec identity seeded preview objects carry. Their
-// payload is a synthetic byte pattern no shipped codec produced, so the tag
-// names the preview layer instead of claiming to be a decoder (cli.md §2): a
-// reader sees a decodable-looking object whose codec identity is honest about
-// where the bytes came from.
-const previewCodecTag = "preview"
+// previewDocument is the deterministic payload of a seeded preview object: the
+// document the preview codec encodes for the ordinal. Every field is derived
+// from the ordinal and from the digests of the ordinals before it — one seed
+// value, one document, one digest — and Padding only carries the rest of the
+// ordinal's representative payload size (previewObjectSize), never entropy of
+// its own.
+type previewDocument struct {
+	Ordinal int          `json:"ordinal"`
+	Type    string       `json:"type"`
+	Refs    []cas.Digest `json:"refs,omitempty"`
+	Padding string       `json:"padding"`
+}
 
-// previewEnvelope fills the builder's payload buffer with this ordinal's
-// synthetic payload — the repeated byte the payload has always carried, with the
-// ordinal's header copied over its start — and frames it with the core's writer.
+// previewPaddingText fills the document's padding field: one fixed, JSON-safe
+// byte, so the field carries the ordinal's representative payload size and
+// nothing that could vary between two seeds of the same ordinal.
+const previewPaddingText = "x"
+
+// previewCodec returns the codec seeded preview objects are written with: the
+// shipped JSON codec. A seeded frame therefore carries that codec's own identity
+// tag and a payload that codec produced, so every reader that trusts the frame's
+// tag — the store's ErrCodecMismatch check, the census, the viewer's Codec
+// column and its `-codec` filter — reads a format the bytes really are
+// (go-cask#333). No second literal can drift from that identity: the tag is
+// CodecName()'s and the bytes are the same codec's Encode output.
+//
+// It is a function rather than a package-level value so the seeder shares no
+// state a caller could reach: the codec is stateless, and each caller gets its
+// own zero-size value.
+func previewCodec() casjson.Codec[previewDocument] { return casjson.New[previewDocument]() }
+
+// previewPaddingLen returns how many padding bytes the ordinal's document needs
+// to reach payloadSize. The skeleton — the document with no padding at all — is
+// encoded through the preview codec and measured, so the fill follows the codec's
+// own layout instead of a second, hand-counted copy of it. The skeleton is a few
+// dozen bytes, so measuring it never costs a payload-sized allocation.
+func previewPaddingLen(doc previewDocument, payloadSize int) (int, error) {
+	doc.Padding = ""
+	skeleton, err := previewCodec().Encode(doc)
+	if err != nil {
+		return 0, fmt.Errorf("encode preview payload: %w", err)
+	}
+	return max(payloadSize-len(skeleton), 0), nil
+}
+
+// previewEnvelope encodes this ordinal's document with the preview codec and
+// frames it with that codec's own identity tag, so the tag and the bytes cannot
+// disagree: a reader holding the codec the tag names decodes the payload
+// (go-cask#333).
 func (b *previewBuilder) previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
-	referenceText := ""
-	for _, reference := range references {
-		referenceText += " " + reference.String()
+	doc := previewDocument{Ordinal: ordinal, Type: typ, Refs: references}
+	padding, err := previewPaddingLen(doc, payloadSize)
+	if err != nil {
+		return nil, err
 	}
-	header := fmt.Sprintf("preview object %03d: %s refs:%s", ordinal, typ, referenceText)
-	size := max(payloadSize, len(header))
-	if cap(b.payload) < size {
-		b.payload = make([]byte, size)
+	doc.Padding = b.paddingFill(padding)
+	payload, err := previewCodec().Encode(doc)
+	if err != nil {
+		return nil, fmt.Errorf("encode preview payload: %w", err)
 	}
-	b.payload = b.payload[:size]
-	repeatByte(b.payload, byte(ordinal))
-	copy(b.payload, header)
 	// The frame comes from the core's writer, not from a local copy of the
 	// layout: the digest of these bytes must equal the digest of the bytes the
 	// store would write, or the preview graph the viewer rebuilds points at
 	// objects that do not exist (go-cask#187).
-	return cas.EncodeEnvelope(previewCodecTag, typ, b.payload)
+	return cas.EncodeEnvelope(previewCodec().CodecName(), typ, payload)
 }
 
-// repeatByte fills buf with b, doubling the part already written, so a whole
-// buffer costs O(log len(buf)) copies — bytes.Repeat's own strategy, without the
-// allocation it makes for every call (go-cask#374).
-func repeatByte(buf []byte, b byte) {
-	if len(buf) == 0 {
-		return
+// paddingFill returns n padding bytes, sliced from one fill string the builder
+// grows as the ordinals ask for larger payloads. Slicing a string copies
+// nothing, and the fill is the same byte repeated, so the document stays
+// deterministic while a whole run pays for one fill instead of one per ordinal.
+func (b *previewBuilder) paddingFill(n int) string {
+	if len(b.padding) < n {
+		b.padding = strings.Repeat(previewPaddingText, n)
 	}
-	buf[0] = b
-	for n := 1; n < len(buf); n *= 2 {
-		copy(buf[n:], buf[:n])
-	}
+	return b.padding[:n]
 }
 
 type previewReferenceIndex struct {
@@ -342,8 +377,9 @@ func previewReferences(ctx context.Context, backend cas.Backend, hasher cas.Hash
 	}
 	digests := make([]cas.Digest, 0, maxPreviewCount)
 	missingInBlock := 0
-	// One payload buffer for the whole walk: every ordinal's payload is framed
-	// into a fresh envelope and only the frame outlives the ordinal (go-cask#374).
+	// One padding fill for the whole walk: every ordinal's payload is encoded
+	// and framed into a fresh envelope, and only the frame outlives the ordinal
+	// (go-cask#374).
 	var builder previewBuilder
 	for ordinal := range maxPreviewCount {
 		object, err := builder.objectFor(ordinal, digests, hasher)

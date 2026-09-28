@@ -10,8 +10,9 @@ import (
 )
 
 // censusFixture seeds the store every census test reads: the deterministic
-// preview graph (current-format frames carrying the `preview` codec tag) plus
-// one raw object written by `put`, which has no envelope at all.
+// preview graph (current-format frames carrying the `json` codec tag their
+// payload's codec produced) plus one raw object written by `put`, which has no
+// envelope at all.
 func censusFixture(t *testing.T) modeFlags {
 	t.Helper()
 	mf := localMF(t)
@@ -68,7 +69,7 @@ func decodeMetaJSON(t *testing.T, out string) metaJSON {
 
 // TestListAndMetaAgreeOnTheHeader pins the cross-surface contract: for every
 // digest in one store, `cask list -json` and `cask meta -json` report the same
-// type, frame version and codec — the preview frames as 2/preview, the raw
+// type, frame version and codec — the preview frames as 2/json, the raw
 // object written by `put` as no header at all (type "", version 0) with an
 // explicitly unspecified codec.
 func TestListAndMetaAgreeOnTheHeader(t *testing.T) {
@@ -90,8 +91,8 @@ func TestListAndMetaAgreeOnTheHeader(t *testing.T) {
 		switch object.Version {
 		case 2:
 			sawFrame = true
-			if object.Codec != "preview" {
-				t.Fatalf("seeded %s codec = %q, want preview", object.Hash, object.Codec)
+			if want := previewCodec().CodecName(); object.Codec != want {
+				t.Fatalf("seeded %s codec = %q, want %q", object.Hash, object.Codec, want)
 			}
 		case 0:
 			sawRaw = true
@@ -119,7 +120,7 @@ func TestListFiltersOnTheHeader(t *testing.T) {
 	wantRaw := map[string]bool{}
 	wantBlob := map[string]bool{}
 	for _, object := range all.Objects {
-		if object.Codec == "preview" {
+		if object.Codec == previewCodec().CodecName() {
 			wantPreview[object.Hash] = true
 		} else {
 			wantRaw[object.Hash] = true
@@ -134,7 +135,7 @@ func TestListFiltersOnTheHeader(t *testing.T) {
 		args []string
 		want map[string]bool
 	}{
-		{"codec tag", []string{"list", "-codec", "preview", "-json"}, wantPreview},
+		{"codec tag", []string{"list", "-codec", previewCodec().CodecName(), "-json"}, wantPreview},
 		{"unspecified codec", []string{"list", "-codec", "unspecified", "-json"}, wantRaw},
 		{"versioned type", []string{"list", "-type", "blob@1", "-json"}, wantBlob},
 		{"bare type means @1", []string{"list", "-type", "blob", "-json"}, wantBlob},
@@ -201,8 +202,8 @@ func TestStatsCensusSumsToTheObjectCount(t *testing.T) {
 				axis, sum, want, census.Objects, census.Unreadable, census.Headerless)
 		}
 	}
-	if got := census.Codecs["preview"]; got == 0 {
-		t.Fatalf("codecs = %v, want the seeded preview frames counted", census.Codecs)
+	if got := census.Codecs[previewCodec().CodecName()]; got == 0 {
+		t.Fatalf("codecs = %v, want the seeded preview frames counted under their codec's own tag", census.Codecs)
 	}
 	if _, ok := census.Codecs["unspecified"]; ok {
 		t.Fatalf("codecs = %v, must not count the headerless object as an unspecified codec", census.Codecs)

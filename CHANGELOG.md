@@ -43,7 +43,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   digest from the frame it is about to write — and it hand-rolled a **version 1**
   layout, so a seeded store mixed formats with everything `cask put` writes and
   carried no codec identity. Seeded objects are now format-version 2 frames
-  tagged `preview` (`cask seed-preview -hash-algo sha512` too). Migration: their
+  tagged `json` (`cask seed-preview -hash-algo sha512` too). Migration: their
   addresses change, so an already-seeded store keeps its old v1 objects beside
   the new ones and the preview reference graph only sees the new set — re-run
   `cask seed-preview`, then `cask gc` the old objects if they are unwanted.
@@ -166,6 +166,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `cask seed-preview` tags the objects it seeds with the codec that actually
+  produced their payload. Seeded frames carried a `preview` codec tag over a
+  synthetic byte pattern no codec produced, so every surface that trusts the tag
+  — the store's codec-mismatch check, `cask list -codec`, `cask meta`, the
+  `cask stats` codec census, and the viewer's Codec column, `codec` filter and
+  inspector — named a format nothing in the tree implemented and no reader could
+  decode. Seeded payloads are now deterministic JSON documents encoded by
+  `cas/codec/json` and framed with that codec's own `json` tag, so the same
+  codec reads them back (`cask get` on a seeded object now round-trips) and the
+  demo store shows the format it reports. Every seeded address changes — the
+  payload and the tag live inside the frame — so re-run `cask seed-preview` on a
+  demo store seeded before this change: the viewer re-derives the graph's
+  digests and finds no graph in the old one.
 - The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
   36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
   height, bar height, control heights and every gutter drawn from one spacing and type scale;

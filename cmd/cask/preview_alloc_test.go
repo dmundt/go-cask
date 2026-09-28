@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/cas"
@@ -21,33 +22,43 @@ type presentBackend struct{ cas.Backend }
 // Exists reports every digest as stored.
 func (presentBackend) Exists(context.Context, cas.Digest) (bool, error) { return true, nil }
 
-// TestPreviewWalkAllocatesOnePayloadPerOrdinal pins the allocation floor of the
+// TestPreviewWalkAllocationFloorPerOrdinal pins the allocation volume of the
 // viewer's startup walk (`cask web` calls previewReferences on every start,
 // web.go), against a ceiling expressed in payloads per ordinal.
 //
-// Every ordinal's envelope carries a synthetic payload built from
-// previewObjectSize, and the frame that carries it is a copy of those bytes in
-// one contiguous slice (cas.EncodeEnvelope). Materializing the payload separately
-// for every ordinal therefore costs two payloads per ordinal — the payload and
-// the frame that holds its copy — where one is enough: the walk can fill one
-// buffer and reuse it across the whole run, because only the frame outlives the
-// ordinal (go-cask#374).
+// A seeded payload is now the preview codec's own output — the frame's codec tag
+// names the format that produced its bytes, so the payload can no longer be
+// hand-filled into one buffer (go-cask#333) — and encoding/json materializes a
+// payload twice: once in the encoder state it grows and re-grows (the collector
+// drops that pool between ordinals), and once as the slice Marshal returns. The
+// frame cas.EncodeEnvelope returns is the third materialization, and the last one
+// the walk cannot avoid, so the floor moves from the 1.02 payloads the synthetic
+// payload cost (go-cask#374) to ~3.0.
 //
-// The ceiling is 1.5 payloads per ordinal: the frame (one payload plus a few
-// dozen header bytes) and the index's own bounded bookkeeping fit well inside
-// it, while a second full payload per ordinal — the defect — sits at 2.0 and
-// fails by construction. Measured on go1.27.1 windows/amd64 over the walk's
-// documented bound of 10000 ordinals: 5 641 133 096 B total, 564 113 B/ordinal,
-// 2.02 payloads before the fix, and 2 850 468 320 B total, 285 046 B/ordinal,
-// 1.02 payloads after — 2.79 GB (49%) less. The benchmark suite is manual and CI
-// runs no -bench, so this test is the guard that keeps the duplication gone.
-func TestPreviewWalkAllocatesOnePayloadPerOrdinal(t *testing.T) {
+// What stayed avoidable, and what this test still guards, is the padding: one
+// fill string the builder grows once and slices per ordinal. Building it per
+// ordinal would add a payload-sized string for every ordinal on top of the
+// codec's two and the frame — ~4.0 payloads, which this budget fails by
+// construction. TestPreviewBuilderSlicesOneFill pins that mechanism
+// deterministically, without a volume sample.
+//
+// The ceiling is 17/4 payloads (4.25). Measured on go1.27.1 windows/amd64 and
+// linux/amd64 (WSL) over the walk's documented bound of 10000 ordinals:
+// 8 431 660 008 B total, 843 166 B/ordinal, 3.02 payloads of 278 973 B — the same
+// figure on both platforms, stable to hundredths of a payload across runs. The
+// gate's race suite measures 3.88 payloads on the same tree: the race detector's
+// own shadow allocations ride along with every payload the codec materializes, so
+// the ceiling has to clear the instrumented figure while still failing a further
+// payload-sized copy per ordinal. The benchmark suite is manual and CI runs no
+// -bench, so this test is the guard that keeps the volume from creeping past the
+// codec's own cost.
+func TestPreviewWalkAllocationFloorPerOrdinal(t *testing.T) {
 	var totalPayload int
 	for ordinal := range maxPreviewCount {
 		totalPayload += previewObjectSize(ordinal)
 	}
 	meanPayload := totalPayload / maxPreviewCount
-	budget := int64(meanPayload) * 3 / 2
+	budget := int64(meanPayload) * 17 / 4
 
 	// The collector stays on: TotalAlloc counts every byte allocated whether or
 	// not it was collected, so the figure is the walk's own allocation volume and
@@ -69,35 +80,64 @@ func TestPreviewWalkAllocatesOnePayloadPerOrdinal(t *testing.T) {
 		maxPreviewCount, after.TotalAlloc-before.TotalAlloc, perOrdinal,
 		float64(perOrdinal)/float64(meanPayload), meanPayload, budget)
 	if perOrdinal > budget {
-		t.Fatalf("the preview walk allocated %d B/ordinal, want <= %d B/ordinal = 1.5 payloads: each ordinal's payload is being materialized twice — once for itself and once into the frame cas.EncodeEnvelope returns (go-cask#374)",
+		t.Fatalf("the preview walk allocated %d B/ordinal, want <= %d B/ordinal = 4.25 payloads: the codec's payload (materialized twice by encoding/json) and the frame are the floor, so a further payload-sized allocation per ordinal means the document's padding fill is being rebuilt for every ordinal instead of sliced from one (go-cask#374, go-cask#333)",
 			perOrdinal, budget)
 	}
 }
 
-// previewEnvelopeByRepeat frames one preview object the way the walk did before
-// go-cask#374: a payload allocated for the ordinal with bytes.Repeat and then
-// copied whole into the frame cas.EncodeEnvelope returns. It is deliberately the
-// allocating form — the reference the reused-buffer builder must reproduce byte
-// for byte, since a preview object's digest is the address the store and the
-// viewer must agree on (cli.md §2).
-func previewEnvelopeByRepeat(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
-	referenceText := ""
-	for _, reference := range references {
-		referenceText += " " + reference.String()
+// TestPreviewBuilderSlicesOneFill pins the mechanism the volume budget rests on:
+// once the fill has grown to the largest payload of a run, padding an ordinal
+// allocates nothing, whatever size it asks for. It asserts allocations rather
+// than volumes, so it holds on any machine and any collector setting where the
+// volume sample above is only a budget.
+func TestPreviewBuilderSlicesOneFill(t *testing.T) {
+	largest := 0
+	for ordinal := range maxPreviewCount {
+		largest = max(largest, previewObjectSize(ordinal))
 	}
-	header := fmt.Sprintf("preview object %03d: %s refs:%s", ordinal, typ, referenceText)
-	payload := bytes.Repeat([]byte{byte(ordinal)}, max(payloadSize, len(header)))
-	copy(payload, header)
-	return cas.EncodeEnvelope(previewCodecTag, typ, payload)
+	var builder previewBuilder
+	builder.paddingFill(largest) // pay for the fill once, as a run of ordinals does
+
+	var got string
+	for _, size := range []int{0, 1, previewObjectSize(3), previewObjectSize(5), largest} {
+		allocs := testing.AllocsPerRun(10, func() { got = builder.paddingFill(size) })
+		if len(got) != size {
+			t.Fatalf("paddingFill(%d) returned %d bytes, want %d", size, len(got), size)
+		}
+		if allocs != 0 {
+			t.Fatalf("paddingFill(%d) allocated %.1f times, want 0: a run must slice one fill, not build a padding string per ordinal (go-cask#374)", size, allocs)
+		}
+	}
 }
 
-// TestPreviewBuilderReproducesThePerOrdinalFraming proves the reused payload
-// buffer is a pure allocation fix (go-cask#374): for a sequence of ordinals that
-// covers every size in the table, a byte that wraps past 255, and a large payload
-// followed by the smallest one — the case a stale buffer would corrupt — the
-// builder's frame and digest are byte-identical to the per-ordinal framing the
-// walk used before, and to the digests that framing produced.
-func TestPreviewBuilderReproducesThePerOrdinalFraming(t *testing.T) {
+// previewEnvelopeByCodec frames one preview object the way the walk did before
+// go-cask#374: a payload the codec produces for the ordinal, padded from a string
+// allocated for that ordinal alone, and then copied whole into the frame
+// cas.EncodeEnvelope returns. It is deliberately the allocating form — the
+// reference the fill-reusing builder must reproduce byte for byte, since a
+// preview object's digest is the address the store and the viewer must agree on
+// (cli.md §2).
+func previewEnvelopeByCodec(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
+	doc := previewDocument{Ordinal: ordinal, Type: typ, Refs: references}
+	padding, err := previewPaddingLen(doc, payloadSize)
+	if err != nil {
+		return nil, err
+	}
+	doc.Padding = strings.Repeat(previewPaddingText, padding)
+	payload, err := previewCodec().Encode(doc)
+	if err != nil {
+		return nil, err
+	}
+	return cas.EncodeEnvelope(previewCodec().CodecName(), typ, payload)
+}
+
+// TestPreviewBuilderReproducesTheCodecFraming proves the reused padding fill is a
+// pure allocation fix (go-cask#374): for a sequence of ordinals that covers every
+// size in the table, a byte that wraps past 255, and a large payload followed by
+// the smallest one — the case a stale fill would corrupt — the builder's frame
+// and digest are byte-identical to the per-ordinal encoding the codec does, and
+// to the digests that encoding produced.
+func TestPreviewBuilderReproducesTheCodecFraming(t *testing.T) {
 	// A fixed reference list, so every object carries the references its ordinal
 	// asks for (previewObjectReferences) whatever the digest chain would have
 	// handed it.
@@ -106,7 +146,7 @@ func TestPreviewBuilderReproducesThePerOrdinalFraming(t *testing.T) {
 		references = append(references, sha256.Of(fmt.Appendf(nil, "preview reference %d", i)))
 	}
 	// Ascending ordinals cycle the sizes 128 B → 1.2 MiB and shrink again, so the
-	// buffer is grown and reused; 0 after 9995 is the shrink case (1.2 MiB buffer,
+	// fill is grown and reused; 0 after 9995 is the shrink case (1.2 MiB fill,
 	// 128 B payload), and 1000/1001 cover ordinals whose byte() is not their own.
 	ordinals := make([]int, 0, 28)
 	for ordinal := range 24 {
@@ -117,23 +157,24 @@ func TestPreviewBuilderReproducesThePerOrdinalFraming(t *testing.T) {
 	// The anchor: ordinal 0 carries no references whatever the digest chain is
 	// (previewObjectReferences asks for min(len(digests), 0)), so its address is a
 	// fixed constant — the one every seeded preview store holds for the first
-	// object, and the one the per-ordinal framing produced before go-cask#374. It
-	// is short enough to check by hand against the TLV layout cas-core §8 d1
-	// documents (a 146-byte frame).
-	const firstDigest = "sha256:c5f1b05d7efe5628c020354295fabfb62db4206e615182cb3cefbcb9a7e94f24"
+	// object, and the one the codec's own encoding produced. It is short enough to
+	// check by hand against the TLV layout cas-core §8 d1 documents (a 143-byte
+	// frame: 1 version + 1 codec length + 4 `json` + 1 type length + 6 `blob@1` +
+	// 2 payload length + a 128-byte payload).
+	const firstDigest = "sha256:909796aa4788031b3197d97197b56be65961f290356c4f3bc9db3406f30444b9"
 	first, err := previewObjectFor(0, nil, sha256.New())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := sha256.Format(first.digest); got != firstDigest {
-		t.Fatalf("the first preview object's digest = %s, want %s: the framed bytes must not change (go-cask#374)", got, firstDigest)
+		t.Fatalf("the first preview object's digest = %s, want %s: the codec's framed bytes must stay pinned", got, firstDigest)
 	}
 
 	var builder previewBuilder
 	for _, ordinal := range ordinals {
 		typ, size := previewObjectType(ordinal), previewObjectSize(ordinal)
 		refs := previewObjectReferences(ordinal, references)
-		want, err := previewEnvelopeByRepeat(typ, ordinal, size, refs)
+		want, err := previewEnvelopeByCodec(typ, ordinal, size, refs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +183,7 @@ func TestPreviewBuilderReproducesThePerOrdinalFraming(t *testing.T) {
 			t.Fatalf("ordinal %d: %v", ordinal, err)
 		}
 		if !bytes.Equal(got.data, want) {
-			t.Fatalf("ordinal %d: the reused-payload frame differs from the per-ordinal framing (%d vs %d bytes)", ordinal, len(got.data), len(want))
+			t.Fatalf("ordinal %d: the reused-fill frame differs from the per-ordinal encoding (%d vs %d bytes)", ordinal, len(got.data), len(want))
 		}
 		wantDigest, err := sha256.New().Digest(bytes.NewReader(want))
 		if err != nil {

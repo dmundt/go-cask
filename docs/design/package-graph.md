@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v34
+version: v35
 generated: internal/build/depgraph
 ---
 
@@ -212,6 +212,7 @@ flowchart TD
   cmd_buildtool --> internal_build_website
   cmd_buildtool --> internal_build_worktree
   cmd_cask --> cas
+  cmd_cask --> cas_codec_json
   cmd_cask --> cas_hash
   cmd_cask --> cas_hash_sha256
   cmd_cask --> cas_hash_sha512
