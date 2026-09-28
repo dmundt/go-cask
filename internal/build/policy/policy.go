@@ -74,6 +74,7 @@ func Coverage() coverage.Policy {
 			{Threshold: 90, Package: "cas/backend/fs", Tier: "backend"},
 			{Threshold: 90, Package: "cas/backend/mem", Tier: "backend"},
 			{Threshold: 90, Package: "cas/backend/snapshot", Tier: "backend"},
+			{Threshold: 90, Package: "cas/internal/atomicfile", Tier: "backend"},
 			{Threshold: 90, Package: "cas/repo", Tier: "reference"},
 			{Threshold: 90, Package: "cas/refs", Tier: "reference"},
 			{Threshold: 90, Package: "cas/pack", Tier: "reference"},
