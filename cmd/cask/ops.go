@@ -257,6 +257,14 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
+	// list takes no operands: flag.FlagSet.Parse stops at the first non-flag
+	// argument and leaves it in Args(), so without this check a surplus word
+	// (`cask list extra`) would exit 0 and print the whole store as if nothing
+	// were wrong. A mistyped filter is a usage error, not a silent no-op
+	// (cli.md §2, §3).
+	if flags.NArg() != 0 {
+		return usagef("list takes no positional arguments")
+	}
 	if a.limit < 1 || a.limit > 1000 {
 		return usagef("limit must be between 1 and 1000, got %d", a.limit)
 	}
@@ -273,7 +281,9 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 	if a.typeFilter != "" || a.codecFilter != "" {
 		// A filter needs every object's header, so the walk is the whole store:
 		// the alternative would be a walk per page and a total that depends on
-		// where the page starts (cli.md §2).
+		// where the page starts (cli.md §2). That one snapshot walk IS the
+		// listing — taking a separate t.List first would walk the store twice
+		// for one report and throw the first result away (go-cask#372).
 		matched, snapshotSkipped, err := filteredItems(ctx, t, a)
 		if err != nil {
 			return err
@@ -464,7 +474,12 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 	// The census walks the store once and counts the three header fields. An
 	// object whose header cannot be read is counted in no axis, so each axis
 	// sums to the readable object count and `unreadable` names the rest
-	// (cli.md §2).
+	// (cli.md §2). That walk also produces the object count and the byte total
+	// the summary reports — snapshot.Total and snapshot.Bytes are the same two
+	// numbers Store.Stats computes, over the same listing — so calling Stats
+	// here would walk the whole store a second time for one report and discard
+	// it (go-cask#372). The two readings agree on every object, including an
+	// unreadable one, which contributes to neither.
 	snapshot, err := index.BuildSnapshot(ctx, t)
 	if err != nil {
 		return err
@@ -554,6 +569,10 @@ func (c headerCensus) print(w io.Writer) {
 		for _, key := range keys {
 			parts = append(parts, fmt.Sprintf("%s=%d", key, axis.count[key]))
 		}
+		// The rendered parts are sorted, not the raw keys: sanitizing can map
+		// two different stored names onto one rendering, and ordering by the
+		// text that is actually printed keeps the line stable either way.
+		slices.Sort(parts)
 		fmt.Fprintf(w, "%s: %s\n", axis.label, strings.Join(parts, ", "))
 	}
 	if c.headerless > 0 {
