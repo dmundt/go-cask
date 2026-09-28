@@ -160,6 +160,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   build language is Go", and the reason is the testability the rule above it
   gives: a rule written in a script is covered by no test and drags whichever
   interpreter the operator happens to have into the build.
+- `Store[T].GetReader(ctx, digest) (io.ReadCloser, error)` streams a stored object's raw bytes to the caller, who closes the reader: the same guards and the same backend `Get` as `Store.GetRaw`, without buffering the object. `GetRaw` keeps its contract (the whole envelope as bytes) and is now one `readThenClose` over the new accessor, so a tooling path that only needs a prefix, a hash or a copy to another store no longer pays `io.ReadAll`'s doubling — the allocation `performance.md` §4 forbids (go-cask#381).
+- `cas.PhysicalStatter` is the optional capability a backend implements to report an object's size and modification time from **one** physical read: `Stat(ctx, digest) (size int64, modTime time.Time, err error)`, alongside `cas.Statter`'s two separate calls. `fs.Backend` and `packfs.Backend` implement it, and `index.BuildSnapshot` asks it when its source has it — one stat per object instead of two — falling back to `Size` + `ModTime` for every backend that does not, whose snapshot is unchanged (go-cask#373).
 
 ### Changed
 

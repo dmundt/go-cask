@@ -2,7 +2,7 @@
 type: Specification
 title: Library Design — go-cask
 description: The lean-core contract for the cas library — exported-surface budget, the citizen classes and the dependency-layer matrix, sentinel errors with errors.Is, explicit configuration without mutable globals, API shape rules, and a compatibility policy.
-version: v56
+version: v57
 ---
 
 # Library Design — go-cask
@@ -11,12 +11,12 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 
 ## 1. Lean-core budget
 
-- **Ceiling**: `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 **code lines** and ≤ ~51 exported identifiers — 21 functions, 22 types, 1 exported constant, 7 sentinels.
+- **Ceiling**: `cas/` (excluding `_test.go`) SHOULD stay ≤ ~1600 **code lines** and ≤ ~52 exported identifiers — 21 functions, 23 types, 1 exported constant, 7 sentinels.
 - **Metric**: *code lines* = lines neither blank nor comment-only, across `cas/*.go` without `_test.go` (go-cask#271).
 - **Measure**: `find cas -maxdepth 1 -name '*.go' ! -name '*_test.go' | xargs grep -hvE '^[[:space:]]*(//|$)' | wc -l` → **906** today; 1669 non-blank; 1765 raw.
 - **Enforced against** the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322.
 - **Advisory** ceiling for additions, not a shrinking target. Every exported name must earn its place; one that can live in a subpackage or an example does.
-- **Stable core surface** (the API docs promise — cas-core §7.1) — 51 identifiers, all in `package cas`, same list as cas-core §7.1:
+- **Stable core surface** (the API docs promise — cas-core §7.1) — 52 identifiers, all in `package cas`, same list as cas-core §7.1:
 
 | Group | Identifiers |
 | --- | --- |
@@ -24,7 +24,7 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 | Byte layer | `Backend`, `Stats` |
 | Codec seam | `Codec[T]`, `CodecNamer` (codec identity the store resolves once and writes into the envelope), `Object`, `Validator` (optional object invariant the store enforces) |
 | Store | `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker`, `WalkDigests`, `Node`, `NodeResolver` (the one graph traversal `Walker[T]` and `cas/repo.Walk` are adapters over — go-cask#319), `Reachable`, `RefLister`, `RefListerFunc` (the reachable-set expansion `Backend.GC`/`Backend.Prune` require), `BatchGetter` (byte-layer opt-in: a backend serves a batch its own way), `GetMany` (package-level batch read, sequential `Get` fallback, so every `Backend` already satisfies it — go-cask#173) |
-| Maintenance | `Verify`, `Verifier`/`NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter` (generic, backend-agnostic maintenance layer — go-cask#137) |
+| Maintenance | `Verify`, `Verifier`/`NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter`, `PhysicalStatter` (generic, backend-agnostic maintenance layer — go-cask#137) |
 | Envelope | `Envelope`, `EnvelopeFromBytes`, `EncodeEnvelope` (the writer `Store.Put` frames through), `EnvelopeType`, `PeekHeader` (version, codec tag and type in one pass — `PeekType`/`PeekVersion` resolve the layout through the same walk), `Header` (the one bounded header read: `(ctx, backend, digest)`; shared by `cas/repo`, gitlike, `internal/index`, the viewer — go-cask#319), `HeaderType`, `PeekType` (streaming header-only peek `Store.Type` is built on), `PeekVersion`, `EnvelopeVersion` (the frame's leading version byte, readable alone) |
 | Sentinels | `ErrNotFound`, `ErrDigestMismatch`, `ErrInvalidDigest`, `ErrUnknownType`, `ErrCorrupt`, `ErrCodecMismatch`, `ErrUnsupported` |
 
@@ -32,10 +32,10 @@ The `cas` package must be small, obvious, hard to misuse. Related: `cas-core.md`
 
 | Tree | Exports |
 | --- | --- |
-| `cas/backend/fs` | `fs.Backend`, `fs.Option`, `fs.New(base, opts...)` (validates `base` via `fs.ValidateBase` first), `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, `fs.DefaultFanOut`/`fs.DefaultFanLevels`/`fs.MaxFanDepth`, `fs.ValidateBase`/`fs.EnsureBase`/`fs.CleanupTemp`/`fs.CleanTemp`, `Verify`/`GC`/`Prune`, `Clean`/`Size`/`ModTime` |
+| `cas/backend/fs` | `fs.Backend`, `fs.Option`, `fs.New(base, opts...)` (validates `base` via `fs.ValidateBase` first), `fs.WithFanOut`, `fs.WithFanLevels`, `fs.WithDirSync`, `fs.DefaultFanOut`/`fs.DefaultFanLevels`/`fs.MaxFanDepth`, `fs.ValidateBase`/`fs.EnsureBase`/`fs.CleanupTemp`/`fs.CleanTemp`, `Verify`/`GC`/`Prune`, `Clean`/`Size`/`ModTime`/`Stat` |
 | `cas/backend/mem` | `backmem.Backend`, `backmem.Option`, `backmem.New(opts...)`, `backmem.WithMaxSize`, `Snapshot`/`Restore` |
-| `cas/backend/packfs` | `packfs.Backend`, `packfs.Option`, `packfs.New`, `packfs.WithEnabled`/`WithPackMaxBytes`/`WithPackMaxEntries`, `GetMany`/`Close`/`Clean`/`Size`/`ModTime` |
-| `cas/backend` | `WriteAll`/`ReadAll`/`ReadPayload`, `ContextReader` (its `WriteTo` is the ctx-checked, pooled-buffer copy loop `io.Copy` takes, so a small `Put` allocates no 32 KiB scratch — go-cask#368; a method on a subpackage type moves no count in the budget above) |
+| `cas/backend/packfs` | `packfs.Backend`, `packfs.Option`, `packfs.New`, `packfs.WithEnabled`/`WithPackMaxBytes`/`WithPackMaxEntries`, `GetMany`/`Close`/`Clean`/`Size`/`ModTime`/`Stat` |
+| `cas/backend` | `WriteAll`/`ReadAll`/`ReadPayload`/`ReadWhole`, `ContextReader` (its `WriteTo` is the ctx-checked, pooled-buffer copy loop `io.Copy` takes, so a small `Put` allocates no 32 KiB scratch — go-cask#368; a method on a subpackage type moves no count in the budget above) |
 | `cas/backend/snapshot` | `Export`/`Import` (raw-digest archives) |
 | `cas/hash/*` | `cas/hash/sha256`, `cas/hash/sha512`, `cas/hash/sha512_256`; `Hasher`, `New`, `NewHasher`, `Of`, `Parse`, `Format`, `Name`, `Size` — sha256 is the default go-cask's clients wire in; nothing in `cas` imports it |
 | `cas/verify/*` | `cas/verify/adler32`/`crc32`/`crc64` |
@@ -147,7 +147,7 @@ The third exception is the last: any further breaking change follows the ordinar
 
 ## 6. Lean checklist
 
-- [x] `cas/` ≤ ~1600 code lines (906 today; blank and comment-only lines do not count) and ≤ ~51 exported identifiers — 51 today (`EncodeEnvelope` by go-cask#187, `PeekHeader` by go-cask#322, then `Header`, `HeaderType`, `WalkDigests`, `Node` and `NodeResolver` by go-cask#319), re-checked against the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322 (§1 budget, metric stated in go-cask#271)
+- [x] `cas/` ≤ ~1600 code lines (906 today; blank and comment-only lines do not count) and ≤ ~52 exported identifiers — 52 today (`EncodeEnvelope` by go-cask#187, `PeekHeader` by go-cask#322, then `Header`, `HeaderType`, `WalkDigests`, `Node` and `NodeResolver` by go-cask#319), re-checked against the package's exported declarations in go-cask#191, go-cask#319 and go-cask#322 (§1 budget, metric stated in go-cask#271)
 - [x] sentinel errors + `errors.Is` everywhere; no string-compared errors
 - [x] no mutable globals (no algorithm registry and no algorithm table; the client injects a `Hasher`)
 - [x] functional options; zero values usable; `context.Context` first
