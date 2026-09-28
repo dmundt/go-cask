@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os/exec"
 )
 
@@ -16,8 +17,8 @@ func fakeExitError(signal string) error {
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	err := command.Run()
-	exited, ok := err.(*exec.ExitError)
-	if !ok {
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) {
 		return nil
 	}
 	exited.Stderr = stderr.Bytes()
