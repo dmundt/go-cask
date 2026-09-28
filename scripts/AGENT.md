@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v26
+version: v27
 ---
 
 # Agent instructions — `scripts/`
