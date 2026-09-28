@@ -269,3 +269,21 @@ func TestWorkbenchInteractionStates(t *testing.T) {
 		}
 	}
 }
+
+// TestTableCellsInheritTheBodyForeground pins the table's one colour decision:
+// every body cell takes the body foreground, so no selector paints a single
+// column muted — a column that does reads as disabled next to its neighbours.
+// The one cell with a voice of its own is the object whose bytes cannot be read.
+func TestTableCellsInheritTheBodyForeground(t *testing.T) {
+	css := strings.ReplaceAll(string(viewerCSS), "\r\n", "\n")
+	if strings.Contains(css, "viewer-type") {
+		t.Error("the stylesheet paints a single table column by type again, which mutes it against every other body cell")
+	}
+	if !strings.Contains(css, ".viewer-unreadable {\n  color: #8a3030;\n  font-style: italic;\n}") {
+		t.Error("the unreadable cell lost its own colour and voice")
+	}
+	// The row link and the cell padding are what the dropped class did not carry.
+	if !strings.Contains(css, ".viewer-table td") {
+		t.Error("the table lost its cell styling along with the type hook")
+	}
+}

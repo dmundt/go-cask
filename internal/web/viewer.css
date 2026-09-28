@@ -406,10 +406,6 @@ a {
   background: #cfe1ff;
 }
 
-.viewer-table .viewer-type {
-  color: var(--viewer-muted);
-}
-
 /* An object whose bytes cannot be read has no type to show. The cell says so
    in the type's own voice rather than sitting empty, which would read as an
    untyped object. */

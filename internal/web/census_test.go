@@ -48,25 +48,77 @@ func seedHeaderCensus(t *testing.T) (ts *httptest.Server, admin *http.Client, ta
 }
 
 // TestHeaderCensusInTheViewer pins the viewer's half of the census: the table
-// carries a version and a codec column, a version 1 frame reads as explicitly
-// unspecified rather than blank, and raw bytes show the viewer's not-read marker
-// instead of an invented version (viewer-design §3).
+// carries an envelope and a codec column, the cells render the version marked as
+// one (`v1`, `v2`) and a version 1 frame explicitly unnamed rather than blank,
+// raw bytes show the viewer's not-read marker instead of an invented version, and
+// the inspector's Identity block names and marks the same field the same way
+// (viewer-design §3).
 func TestHeaderCensusInTheViewer(t *testing.T) {
-	ts, admin, _, _, _ := seedHeaderCensus(t)
+	ts, admin, _, _, raw := seedHeaderCensus(t)
 	page := getBody(t, admin, ts.URL+"/viewer/objects")
 	for _, want := range []string{
-		"Envelope version", "Codec",
-		">2<", ">json<", // the current-format frame
-		">1<", ">" + index.UnspecifiedCodec + "<", // the version 1 frame
-		">—<", // the headerless object
+		`viewer-sort-head">Envelope<a class="viewer-sort-button"`, // the column heading, not "Envelope version"
+		`aria-label="Sort envelope version ascending"`,            // the heading's accessible name
+		">v2</a></td>", ">json<", // the current-format frame
+		">v1</a></td>", ">" + index.UnspecifiedCodec + "<", // the version 1 frame
+		">—</a></td>", // the headerless object
+		// The Identity block reads Algorithm, Type, Envelope, Codec in that
+		// order, with the selected object's version marked as one.
+		`<h2>Identity</h2><dl class="viewer-meta"><dt>Algorithm</dt><dd>sha256</dd><dt>Type</dt><dd>blob@1</dd><dt>Envelope</dt><dd>v2</dd><dt>Codec</dt><dd>json</dd></dl>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("object browser is missing %s: %.800q", want, page)
 		}
 	}
-	// The inspector shows the same two fields for the selected object.
-	if !strings.Contains(page, "<dt>Envelope version</dt>") || !strings.Contains(page, "<dt>Codec</dt>") {
-		t.Fatalf("inspector has no version/codec row: %.800q", page)
+	// A version 0 object — bytes with no walkable header — keeps the not-read
+	// marker in the inspector as well as in its cells: there is no frame whose
+	// version could be stated, so `v0` would assert one that does not exist.
+	rawPage := getBody(t, admin, ts.URL+"/viewer/objects?selected="+raw.String())
+	if !strings.Contains(rawPage, "<dt>Envelope</dt><dd>—</dd>") {
+		t.Fatalf("the inspector lost the not-read marker for headerless bytes: %.800q", rawPage)
+	}
+	if strings.Contains(rawPage, "<dd>v0</dd>") {
+		t.Fatalf("the inspector invented a version 0 frame: %.800q", rawPage)
+	}
+}
+
+// TestVersionFilterKeepsItsDecimalValue pins the one route the display marker
+// could have leaked into: the version axis carries the frame's leading byte in
+// decimal form (viewer-design §3) even though its cells now render `vN`, so
+// `?version=2` selects the version 2 frame, `?version=99` and the marked form
+// are still the 400 an absent value earns, `?sort=version` still sorts, and the
+// filter's own option keeps the value the URL carries. Both strings come out of
+// one decision point (versionFilterValue), so this fails the moment the marker
+// is pushed back into the filter.
+func TestVersionFilterKeepsItsDecimalValue(t *testing.T) {
+	ts, admin, tagged, v1, raw := seedHeaderCensus(t)
+	page := getBody(t, admin, ts.URL+"/viewer/objects?version=2")
+	if !strings.Contains(page, shortDigest(tagged)) {
+		t.Fatalf("?version=2 did not list the version 2 frame: %.600q", page)
+	}
+	for _, digest := range []cas.Digest{v1, raw} {
+		if strings.Contains(page, shortDigest(digest)) {
+			t.Fatalf("?version=2 listed %s, which carries no version 2 frame", digest)
+		}
+	}
+	if !strings.Contains(page, ">v2</a></td>") {
+		t.Fatalf("the version 2 cell does not render vN: %.600q", page)
+	}
+	if !strings.Contains(page, `<option value="2" selected>2</option>`) {
+		t.Fatalf("the version filter's option no longer carries the decimal query value: %.600q", page)
+	}
+	// The sort key is the sort's identity, not a display string: `sort=version`
+	// still owns the sort, and its announced name now reads envelope version.
+	sorted := getBody(t, admin, ts.URL+"/viewer/objects?sort=version&dir=asc")
+	for _, want := range []string{`aria-sort="ascending"`, `aria-label="Sort envelope version descending"`} {
+		if !strings.Contains(sorted, want) {
+			t.Fatalf("?sort=version no longer sorts the envelope column (%s missing): %.600q", want, sorted)
+		}
+	}
+	for _, query := range []string{"?version=99", "?version=v2"} {
+		if got := statusCode(t, admin, ts.URL+"/viewer/objects"+query); got != http.StatusBadRequest {
+			t.Fatalf("/viewer/objects%s = %d, want 400", query, got)
+		}
 	}
 }
 
