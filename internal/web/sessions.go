@@ -35,7 +35,11 @@ type Session struct {
 	// CSRF is the per-session CSRF token.
 	CSRF string
 	// Verifications holds the session-scoped integrity result for each object.
-	// Results disappear when the session expires or the server restarts.
+	// The map is bounded per session (sessions.verificationLimit): once it
+	// reaches the bound it is dropped wholesale, so an object whose result was
+	// dropped reads "not-verified" again (the inspector's "Unverified") rather
+	// than a stale verdict. Results disappear when the session expires or the
+	// server restarts.
 	Verifications map[string]verification
 	// Trail is the ordered list of objects inspected in this session, and
 	// TrailPos points at the current one (-1 while the trail is empty). It
@@ -71,9 +75,21 @@ type verification struct {
 type sessions struct {
 	mu   sync.Mutex
 	byID map[string]*Session
+	// verificationLimit is the per-session bound on Verifications, from
+	// objectVerificationLimit. Zero leaves the map unbounded.
+	verificationLimit int
 }
 
-func newSessions() *sessions { return &sessions{byID: make(map[string]*Session)} }
+// newSessions returns the session store the viewer runs with.
+func newSessions() *sessions { return newSessionsWith(objectVerificationLimit) }
+
+// newSessionsWith takes the per-session verification bound explicitly, so a
+// test can pin the eviction without verifying a store that large. A limit of
+// zero leaves the map unbounded — the same escape hatch newExpensiveOpsWith's
+// zero cooldown provides.
+func newSessionsWith(verificationLimit int) *sessions {
+	return &sessions{byID: make(map[string]*Session), verificationLimit: verificationLimit}
+}
 
 func (s *sessions) create(role string) (*Session, error) {
 	id, err := randomHex(32)
@@ -108,9 +124,9 @@ func expiredLocked(sess *Session, now time.Time) bool {
 
 // sweepLocked drops every expired session. get() expires a session it is asked
 // for, but an abandoned session is never asked for again, so without this
-// sweep it would live until the process exits — holding a verification record
-// per object it ever checked. Login is the natural moment to run it: it is the
-// only operation that grows the map, and it is rare.
+// sweep it would live until the process exits — holding a bounded but still
+// live verification map and trail. Login is the natural moment to run it: it is
+// the only operation that grows the map, and it is rare.
 func (s *sessions) sweepLocked(now time.Time) {
 	for id, sess := range s.byID {
 		if expiredLocked(sess, now) {
@@ -153,12 +169,27 @@ func (s *sessions) verificationReport(id, digest string) (string, time.Time, act
 	return "not-verified", time.Time{}, actionOutcome{}
 }
 
+// setVerification records one object's result in session id's map. The map is
+// bounded by the store's verificationLimit: recording a digest that is not
+// already present drops the whole map once the bound is reached, so an
+// abandoned session retains at most the bound × entry size instead of one entry
+// per stored object. The drop is wholesale for the same reason the metadata
+// cache's is — the value is a session-scoped convenience that is cheap to
+// recompute — and a dropped object reads "not-verified" ("Unverified") again
+// rather than a stale verdict. Re-recording a digest already in the map evicts
+// nothing, so a single object checked repeatedly never flushes its neighbours.
 func (s *sessions) setVerification(id, digest, result string, report actionOutcome) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sess, ok := s.byID[id]; ok {
-		sess.Verifications[digest] = verification{Result: result, Checked: time.Now(), Report: report}
+	sess, ok := s.byID[id]
+	if !ok {
+		return
 	}
+	if _, recorded := sess.Verifications[digest]; !recorded &&
+		s.verificationLimit > 0 && len(sess.Verifications) >= s.verificationLimit {
+		clear(sess.Verifications)
+	}
+	sess.Verifications[digest] = verification{Result: result, Checked: time.Now(), Report: report}
 }
 
 // visit records digest as the newest trail entry. Revisiting the current entry

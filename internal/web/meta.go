@@ -16,6 +16,18 @@ import (
 // possible eviction for immutable data.
 const objectMetaCacheLimit = 50_000
 
+// objectVerificationLimit bounds one session's recorded verification results.
+// Its entries are heavier than the metadata cache's — a 64-character digest key
+// plus a result and a rendered report — and a session lives for up to 8 hours,
+// so without a bound a single verify-all over a large store would pin one
+// result per object in the viewer's memory for the life of the session. Overflow
+// drops the whole map for the same reason the metadata cache does: a recorded
+// result is a session-scoped convenience ("results disappear when the session
+// expires or the server restarts"), so a dropped object simply reads
+// "not-verified" — the inspector's "Unverified" — again rather than a stale
+// verdict, and re-verifying it costs one read (viewer-design §3, defaults §4).
+const objectVerificationLimit = 50_000
+
 // objectMeta is everything the object list needs about one object. Every field
 // is a property of the stored bytes, and the bytes are addressed by their own
 // digest, so the values can never change for a given key — that is what makes

@@ -364,6 +364,103 @@ func TestVerifyAllUpdatesEveryObject(t *testing.T) {
 	}
 }
 
+// TestVerifyAllBoundsSessionVerificationMap pins the session's verification
+// bound (#371, viewer-design §3, defaults §4): a sweep over more objects than
+// the bound keeps at most the bound, and an object whose result the drop
+// discarded reads "not-verified" — the inspector's "Unverified" — again rather
+// than a stale verdict. The bound is injected, so the test never needs a store
+// of the real size.
+func TestVerifyAllBoundsSessionVerificationMap(t *testing.T) {
+	ctx := context.Background()
+	backend, err := fs.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const objects = 5
+	digests := make([]cas.Digest, 0, objects)
+	for i := range objects {
+		data := test.TLVEnvelope("blob@1", []byte(fmt.Sprintf("sound object %d", i)))
+		h := sha256.Of(data)
+		if err := backend.Put(ctx, h, bytes.NewReader(data)); err != nil {
+			t.Fatal(err)
+		}
+		digests = append(digests, h)
+	}
+	srv, err := New(backend, Config{StartupToken: testStartupToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two entries are enough to observe an eviction over five objects.
+	const bound = 2
+	srv.sessions = newSessionsWith(bound)
+	ts := httptest.NewTLSServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	admin := login(t, ts, testStartupToken)
+
+	csrf := csrfFromPage(getBody(t, admin, ts.URL+"/viewer/objects"))
+	if csrf == "" {
+		t.Fatal("object browser carried no CSRF token")
+	}
+	resp, err := admin.PostForm(ts.URL+"/viewer/objects/verify", url.Values{"csrf": {csrf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verify-all = %d, want 200", resp.StatusCode)
+	}
+
+	srv.sessions.mu.Lock()
+	id := ""
+	recorded := make([]string, 0, bound)
+	for sid, sess := range srv.sessions.byID {
+		id = sid
+		for digest := range sess.Verifications {
+			recorded = append(recorded, digest)
+		}
+	}
+	srv.sessions.mu.Unlock()
+	if id == "" {
+		t.Fatal("the sweep left no session behind")
+	}
+	if len(recorded) > bound {
+		t.Fatalf("session holds %d verification results, want at most %d", len(recorded), bound)
+	}
+	if len(recorded) == 0 {
+		t.Fatalf("the sweep recorded nothing, want up to %d results", bound)
+	}
+
+	kept := make(map[string]bool, len(recorded))
+	for _, digest := range recorded {
+		kept[digest] = true
+	}
+	dropped := ""
+	for _, d := range digests {
+		if !kept[d.String()] {
+			dropped = d.String()
+			break
+		}
+	}
+	if dropped == "" {
+		t.Fatalf("the bound dropped none of the %d objects while recording %d", len(digests), len(recorded))
+	}
+	// A dropped result is absent, not stale: the inspector shows the neutral
+	// state again, and the store's own verdict is unchanged.
+	if got := srv.sessions.verification(id, dropped); got != "not-verified" {
+		t.Fatalf("a dropped result reads %q, want not-verified", got)
+	}
+	if _, checked := srv.sessions.verificationRecord(id, dropped); !checked.IsZero() {
+		t.Fatal("a dropped result must carry no check time")
+	}
+	if got := integrityLabel("not-verified"); got != "Unverified" {
+		t.Fatalf("integrityLabel(not-verified) = %q, want Unverified", got)
+	}
+	refreshed := getBody(t, admin, ts.URL+"/viewer/objects")
+	if !strings.Contains(refreshed, "viewer-status-not-verified") {
+		t.Fatalf("the object list must render a dropped result as Unverified: %.400q", refreshed)
+	}
+}
+
 func TestVerificationRefreshesObjectList(t *testing.T) {
 	ts, srv := newTestServer(t)
 	ctx := context.Background()
