@@ -2,7 +2,7 @@ package board
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -275,7 +275,7 @@ func Outside(files, scope []string) []string {
 			outside = append(outside, path)
 		}
 	}
-	sort.Strings(outside)
+	slices.Sort(outside)
 	return dedupe(outside)
 }
 

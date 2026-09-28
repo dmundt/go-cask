@@ -1,8 +1,9 @@
 package board
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -28,7 +29,7 @@ func (f Files) Paths() []string {
 	for path := range f.Changed {
 		paths = append(paths, path)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	return paths
 }
 
@@ -91,7 +92,7 @@ func Collide(lanes []Files, points []string, notes []string) Collisions {
 		pointSet[CanonicalPath(point)] = true
 	}
 	ordered := append([]Files(nil), lanes...)
-	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
+	slices.SortStableFunc(ordered, func(a, b Files) int { return cmp.Compare(a.Name, b.Name) })
 	for i := 0; i < len(ordered); i++ {
 		for j := i + 1; j < len(ordered); j++ {
 			for _, path := range sharedPaths(ordered[i], ordered[j]) {
@@ -109,14 +110,14 @@ func Collide(lanes []Files, points []string, notes []string) Collisions {
 			}
 		}
 	}
-	sort.SliceStable(report.Overlaps, func(i, j int) bool {
-		if report.Overlaps[i].File != report.Overlaps[j].File {
-			return report.Overlaps[i].File < report.Overlaps[j].File
+	slices.SortStableFunc(report.Overlaps, func(a, b Overlap) int {
+		if c := cmp.Compare(a.File, b.File); c != 0 {
+			return c
 		}
-		if report.Overlaps[i].A != report.Overlaps[j].A {
-			return report.Overlaps[i].A < report.Overlaps[j].A
+		if c := cmp.Compare(a.A, b.A); c != 0 {
+			return c
 		}
-		return report.Overlaps[i].B < report.Overlaps[j].B
+		return cmp.Compare(a.B, b.B)
 	})
 	return report
 }
@@ -143,7 +144,7 @@ func serializationPoints(lanes []Files, points []string) []Serialized {
 			canonical = append(canonical, path)
 		}
 	}
-	sort.Strings(canonical)
+	slices.Sort(canonical)
 
 	reported := make([]Serialized, 0, len(canonical))
 	for _, path := range canonical {
@@ -153,7 +154,7 @@ func serializationPoints(lanes []Files, points []string) []Serialized {
 				point.Lanes = append(point.Lanes, laneLabel(lane))
 			}
 		}
-		sort.Strings(point.Lanes)
+		slices.Sort(point.Lanes)
 		point.Conflict = len(point.Lanes) > 1
 		reported = append(reported, point)
 	}
@@ -168,7 +169,7 @@ func sharedPaths(a, b Files) []string {
 			shared = append(shared, path)
 		}
 	}
-	sort.Strings(shared)
+	slices.Sort(shared)
 	return shared
 }
 
@@ -197,11 +198,11 @@ func overlapLines(a, b [][2]int) []string {
 			}
 		}
 	}
-	sort.Slice(lines, func(i, j int) bool {
-		if lines[i].first != lines[j].first {
-			return lines[i].first < lines[j].first
+	slices.SortFunc(lines, func(a, b lineSpan) int {
+		if c := cmp.Compare(a.first, b.first); c != 0 {
+			return c
 		}
-		return lines[i].last < lines[j].last
+		return cmp.Compare(a.last, b.last)
 	})
 	rendered := make([]string, 0, len(lines))
 	for _, span := range lines {

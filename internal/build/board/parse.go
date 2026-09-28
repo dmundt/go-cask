@@ -1,9 +1,10 @@
 package board
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ func ParseIssues(raw string) ([]Issue, error) {
 		}
 		issues = append(issues, issue)
 	}
-	sort.SliceStable(issues, func(i, j int) bool { return issues[i].Number < issues[j].Number })
+	slices.SortStableFunc(issues, func(a, b Issue) int { return cmp.Compare(a.Number, b.Number) })
 	return issues, nil
 }
 
@@ -73,7 +74,7 @@ func ParsePullRequests(raw string) ([]PullRequest, error) {
 			Mergeable:  entry.Mergeable,
 		})
 	}
-	sort.SliceStable(pulls, func(i, j int) bool { return pulls[i].Number < pulls[j].Number })
+	slices.SortStableFunc(pulls, func(a, b PullRequest) int { return cmp.Compare(a.Number, b.Number) })
 	return pulls, nil
 }
 

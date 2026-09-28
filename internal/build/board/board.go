@@ -17,7 +17,8 @@
 package board
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -247,8 +248,8 @@ func BoardOf(issues []Issue, lanes map[int]*Lane, pulls map[int]*PullRequest, wh
 		row.Next = NextAction(row)
 		assembled.Rows = append(assembled.Rows, row)
 	}
-	sort.SliceStable(assembled.Rows, func(i, j int) bool {
-		return assembled.Rows[i].Issue.Number < assembled.Rows[j].Issue.Number
+	slices.SortStableFunc(assembled.Rows, func(a, b Row) int {
+		return cmp.Compare(a.Issue.Number, b.Issue.Number)
 	})
 	return assembled
 }
