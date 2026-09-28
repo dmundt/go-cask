@@ -2,6 +2,7 @@ package persistent
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,8 +168,10 @@ func TestFilterPersistentCustomHashKind(t *testing.T) {
 	}
 }
 
-// TestHeaderRoundTrip pins the fixed header layout and its tolerance of the
-// reserved bytes.
+// TestHeaderRoundTrip pins the fixed header layout and the checksum over the
+// header's kind and key: the scheme and checksum bytes are written
+// deterministically, and a header whose checked bytes changed is unusable rather
+// than indexed under the changed key (go-cask#361).
 func TestHeaderRoundTrip(t *testing.T) {
 	key := indexKey{0x01, 0x02, 0x03}
 	buf := make([]byte, headerSize)
@@ -179,22 +182,48 @@ func TestHeaderRoundTrip(t *testing.T) {
 	if buf[8] != hashKindCustom {
 		t.Fatalf("kind byte = %d, want %d", buf[8], hashKindCustom)
 	}
-	if got := buf[9:16]; !bytes.Equal(got, make([]byte, 7)) {
-		t.Fatalf("reserved bytes = % x, want zeros", got)
+	if buf[9] != checksumSchemeCRC64 {
+		t.Fatalf("checksum scheme byte = %d, want %d", buf[9], checksumSchemeCRC64)
+	}
+	want := headerChecksum(hashKindCustom, key)
+	if got := buf[10:16]; !bytes.Equal(got, want[:]) {
+		t.Fatalf("checksum bytes = % x, want % x", got, want)
 	}
 	kind, gotKey, ok := decodeHeader(buf)
 	if !ok || kind != hashKindCustom || gotKey != key {
 		t.Fatalf("decodeHeader = (kind %d, key %v, ok %v), want the encoded header", kind, gotKey, ok)
 	}
-	// A reader MUST ignore the reserved bytes rather than reject them.
-	buf[9] = 0x7f
-	if _, _, ok := decodeHeader(buf); !ok {
-		t.Fatal("decodeHeader rejected a header with a used reserved byte")
+	// A reader MUST NOT accept changed checked bytes — a key byte, the kind or
+	// the checksum itself — because the key is the index.
+	mutated := bytes.Clone(buf)
+	mutated[20] ^= 0x01 // a byte of the 32-byte key
+	if _, _, ok := decodeHeader(mutated); ok {
+		t.Fatal("decodeHeader accepted a header whose key byte changed")
+	}
+	mutated = bytes.Clone(buf)
+	mutated[10] ^= 0x80 // a checksum byte
+	if _, _, ok := decodeHeader(mutated); ok {
+		t.Fatal("decodeHeader accepted a header whose checksum byte changed")
+	}
+	mutated = bytes.Clone(buf)
+	mutated[8] = hashKindDefault // the other kind this build knows
+	if _, _, ok := decodeHeader(mutated); ok {
+		t.Fatal("decodeHeader accepted a kind byte that changed under its checksum")
+	}
+	// A zero scheme is a file written before the checksum existed; any other
+	// unknown value is a scheme this build has no rule for. Both are unusable.
+	for _, scheme := range []byte{0, 0x7f} {
+		mutated = bytes.Clone(buf)
+		mutated[9] = scheme
+		if _, _, ok := decodeHeader(mutated); ok {
+			t.Fatalf("decodeHeader accepted checksum scheme %d", scheme)
+		}
 	}
 }
 
 // TestDecodeHeaderRejectsUnusableFiles covers every header a filter cannot index:
-// too short, no magic, and a kind this build does not know.
+// too short, no magic, a kind this build does not know, and a header written
+// before the checksum existed (its reserved bytes are zeros).
 func TestDecodeHeaderRejectsUnusableFiles(t *testing.T) {
 	short := make([]byte, headerSize-1)
 	copy(short, magic[:])
@@ -210,6 +239,16 @@ func TestDecodeHeaderRejectsUnusableFiles(t *testing.T) {
 			encodeHeader(buf, 9, indexKey{})
 			return buf
 		}()},
+		{"pre-checksum header", func() []byte {
+			// Exactly what this package wrote before go-cask#361: magic, kind and
+			// key present, the seven reserved bytes zero.
+			buf := make([]byte, headerSize)
+			copy(buf[0:8], magic[:])
+			buf[8] = hashKindDefault
+			key := indexKey{0x01}
+			copy(buf[16:headerSize], key[:])
+			return buf
+		}()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -217,6 +256,147 @@ func TestDecodeHeaderRejectsUnusableFiles(t *testing.T) {
 				t.Fatal("decodeHeader accepted a file this build cannot index")
 			}
 		})
+	}
+}
+
+// TestHeaderMutationSweepNeverReportsARecordedDigestAbsent is the regression
+// guard for go-cask#361. It flips one byte at a time across every byte of a
+// persisted header — magic, kind, checksum and key — reopens the file, and
+// requires the reopened filter either to still report the digest it recorded or
+// to say that it rebuilt the bitset. The third outcome is the bug: Contains
+// false with Rebuilt false, a changed index key quietly reindexing the bitset so
+// a stored digest becomes an authoritative absence.
+func TestHeaderMutationSweepNeverReportsARecordedDigestAbsent(t *testing.T) {
+	d := cas.NewDigest([]byte("recorded before the header was mutated"))
+	dir := t.TempDir()
+	for off := range headerSize {
+		for _, flip := range []byte{0x01, 0x80, 0xff} {
+			path := filepath.Join(dir, fmt.Sprintf("mutated-%02d-%02x.bin", off, flip))
+			f, err := New(path, 64, 0.01)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.Add(d)
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(raw) < headerSize {
+				t.Fatalf("filter file is %d bytes, want at least the %d-byte header", len(raw), headerSize)
+			}
+			raw[off] ^= flip
+			if err := os.WriteFile(path, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			reopened, err := New(path, 64, 0.01)
+			if err != nil {
+				t.Fatalf("reopen after flipping header byte %d (^%#x): %v", off, flip, err)
+			}
+			lost := !reopened.Contains(d) && !reopened.Rebuilt()
+			if err := reopened.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if lost {
+				t.Fatalf("header byte %d flipped with %#x silently lost a recorded digest: Contains = false and Rebuilt() = false", off, flip)
+			}
+		}
+	}
+}
+
+// TestFilterRebuiltReportsTheBitsetProvenance pins Rebuilt as the caller's
+// signal that a filter's negatives do not vouch for the store: a file with no
+// usable header (a brand-new one included) reports a rebuild, an intact header
+// does not, and a nil *Filter is not a panic. The flag survives Close, so a
+// caller can read it after the filter is flushed.
+func TestFilterRebuiltReportsTheBitsetProvenance(t *testing.T) {
+	var nilFilter *Filter
+	if nilFilter.Rebuilt() {
+		t.Fatal("a nil *Filter reported a rebuild")
+	}
+
+	path := filepath.Join(t.TempDir(), "provenance.bin")
+	f, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Rebuilt() {
+		t.Fatal("a filter opened over a brand-new file did not report that it started empty")
+	}
+	d := cas.NewDigest([]byte("provenance"))
+	f.Add(d)
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Rebuilt() {
+		t.Fatal("a closed filter stopped reporting the rebuild it performed")
+	}
+
+	reopened, err := New(path, 256, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Rebuilt() {
+		t.Fatal("a filter reopened over an intact header reported a rebuild")
+	}
+	if !reopened.Contains(d) {
+		t.Fatal("a filter reopened over an intact header lost a recorded digest")
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Rebuilt() {
+		t.Fatal("an intact filter reported a rebuild only after Close")
+	}
+}
+
+// TestFilterPersistentRebuildsAPreChecksumHeader covers the file this package
+// wrote before go-cask#361: magic and kind are present, the key is there, but
+// the seven reserved bytes are zeros, so nothing vouches for the key. The bitset
+// is rebuilt rather than indexed under a key no checksum attests to — a lost
+// hint, never a false absence — and the filter's own bits are the authority.
+func TestFilterPersistentRebuildsAPreChecksumHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pre-checksum.bin")
+	raw := make([]byte, headerSize+16)
+	copy(raw[0:8], magic[:])
+	raw[8] = hashKindDefault
+	key := indexKey{0xAA, 0xBB}
+	copy(raw[16:headerSize], key[:])
+	for i := headerSize; i < len(raw); i++ {
+		raw[i] = 0xff // the old file claimed every digest was present
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := New(path, 64, 0.01)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Rebuilt() {
+		t.Fatal("a pre-checksum header was trusted without a checksum")
+	}
+	if f.Contains(cas.NewDigest([]byte("anything"))) {
+		t.Fatal("the pre-checksum file's all-ones bitset was indexed instead of rebuilt")
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kind, key, ok := decodeHeader(written)
+	if !ok || kind != hashKindDefault {
+		t.Fatalf("rebuilt header = (kind %d, ok %v), want a usable default-kind header", kind, ok)
+	}
+	if key == (indexKey{}) {
+		t.Fatal("the rebuilt header carries no fresh index key")
 	}
 }
 

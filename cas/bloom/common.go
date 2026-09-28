@@ -12,10 +12,12 @@ import (
 // as 4e15 would otherwise ask for a multi-petabyte bitmap and the constructor
 // would panic with "len out of range" instead of reporting an error. At the
 // ceiling a standard or persistent bitmap occupies MaxBits/8 (512 MiB), and a
-// counting filter occupies MaxBits*4 because it stores one 32-bit counter per
-// bit. Callers that need a larger filter than MaxBits allows must shard the key
-// space across several filters (or relax the false-positive rate) rather than
-// raise the ceiling.
+// counting filter occupies at most MaxBits/2 (2 GiB): its counters are packed to
+// the configured 4, 8 or 16 bits, so it costs m*counterBits/8 bytes and
+// cas/bloom/counting reports its own ErrFilterTooLarge past that budget rather
+// than allocating it. Callers that need a larger filter than MaxBits allows must
+// shard the key space across several filters (or relax the false-positive rate)
+// rather than raise the ceiling.
 const MaxBits uint64 = 1 << 32
 
 // ValidateFalsePositiveRate ensures the configured Bloom false-positive rate is
