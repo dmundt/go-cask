@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -26,6 +27,82 @@ func WriteAll(ctx context.Context, w io.Writer, data []byte) error {
 		}
 	}
 	return nil
+}
+
+// sizeHint is implemented by readers that know how many bytes they can still
+// deliver: *bytes.Reader, *bytes.Buffer, *strings.Reader. It is a capability of
+// the reader, not a length declared inside the stream, so nothing untrusted is
+// trusted here.
+type sizeHint interface{ Len() int }
+
+// maxPrealloc bounds the one-shot buffer ReadWhole will allocate from a length
+// hint. A hint is metadata — a reader's own Len, an object's physical size —
+// and a stale or lying one must not turn one Put or one export record into an
+// unbounded allocation, so a longer object simply grows past the ceiling the
+// way an unhinted read does.
+const maxPrealloc = 64 << 20
+
+// ReadWhole reads r to EOF into one buffer, honoring ctx cancellation. It is
+// Reader's io.ReadAll with the doubling removed where the length is knowable
+// (go-cask#385).
+//
+// declared is the length the caller already knows r holds, or <= 0 when it
+// knows none: ReadWhole then uses r's own declaration when r has one (sizeHint
+// — what Store.Put hands a backend, a *bytes.Reader). Either length is only a
+// pre-allocation size, never a read limit: the read always runs to EOF, so a
+// stream holding more or fewer bytes than declared is neither truncated nor
+// trusted, and the returned slice is exactly what the stream delivered. The
+// pre-allocation is capped at maxPrealloc.
+//
+// Without a hint the read grows as io.ReadAll does — growth from what the
+// stream actually holds, never from a declared size. ReadPayload states the
+// same rule for a length that arrived in an untrusted header, and keeps its own
+// deliberate decision not to size anything from it.
+func ReadWhole(ctx context.Context, r io.Reader, declared int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	hint := declared
+	if hint <= 0 {
+		if sh, ok := r.(sizeHint); ok {
+			hint = int64(sh.Len())
+		}
+	}
+	if hint > maxPrealloc {
+		hint = maxPrealloc
+	}
+	rd := ContextReader{Ctx: ctx, R: r}
+	if hint <= 0 {
+		// Nothing to size from: grow exactly as io.ReadAll does, from what the
+		// stream delivers.
+		return io.ReadAll(rd)
+	}
+	buf := make([]byte, 0, hint)
+	for {
+		if len(buf) < cap(buf) {
+			n, err := rd.Read(buf[len(buf):cap(buf)])
+			buf = buf[:len(buf)+n]
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return buf, nil
+				}
+				return buf, err
+			}
+			continue
+		}
+		// The buffer is full: probe a single byte so a stream that ends exactly
+		// at its declared length costs no growth, while one that runs past the
+		// declaration falls back to append's growth.
+		var one [1]byte
+		n, err := rd.Read(one[:])
+		buf = append(buf, one[:n]...)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return buf, nil
+			}
+			return buf, err
+		}
+	}
 }
 
 // ReadAll fills data completely from r, honoring ctx between reads. A short

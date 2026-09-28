@@ -7,5 +7,5 @@
 // no `any` in the exported API).
 //
 // What does live here is the streaming plumbing every backend needs:
-// ContextReader, WriteAll, ReadAll, and ReadPayload.
+// ContextReader, WriteAll, ReadAll, ReadPayload and ReadWhole.
 package backend
