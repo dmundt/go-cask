@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `internal/build`
 description: Rule set for the build subtree — engine/policy split, where each new piece goes, README and versioning duties, fuzz coverage.
-version: v9
+version: v10
 ---
 
 # Agent instructions — `internal/build`
@@ -73,4 +73,5 @@ Fuzz targets beside the table tests: `coverage`, `versioning`, `lane`, `claim`, 
 `cas` targets; a failing input kept in `<package>/testdata/fuzz/` is committed → regression
 test. The set the gate runs is `internal/build/policy`'s, and its tests pin both directions:
 every target it names exists in that package, and no engine package carries a fuzz target the
-gate never smoke-fuzzes.
+gate never smoke-fuzzes. `board` parses forge and diff text and ships none: its reading is
+covered by fixtures, which a target would only reproduce.
