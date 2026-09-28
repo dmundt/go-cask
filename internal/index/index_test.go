@@ -122,6 +122,44 @@ func TestHeaderReportsEveryField(t *testing.T) {
 	if _, _, _, err := Header(ctx, failing, tagged); err == nil {
 		t.Fatal("Header with a failing Get must return an error")
 	}
+	// A header that opens but cannot be read is not "not an envelope": the
+	// walker's corrupt verdict carries the reader's own cause, and the caller
+	// must see the object as unreadable rather than as untyped (go-cask#357).
+	readErr := errors.New("device error")
+	broken := &readFailingSource{Backend: backend, readErr: readErr}
+	if _, _, _, err := Header(ctx, broken, tagged); !errors.Is(err, readErr) {
+		t.Fatalf("Header with a failing header read = %v, want the reader's error %v", err, readErr)
+	}
+}
+
+// failingReader is a stored object's reader that fails on every read: the shape
+// of a listed-but-unreadable object, where opening succeeds and the first header
+// read does not (go-cask#357).
+type failingReader struct {
+	err error
+}
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+func (r failingReader) Close() error { return nil }
+
+// readFailingSource serves every object through a reader that fails, so a test
+// can separate "could not be read" from "is not an envelope".
+type readFailingSource struct {
+	*backmem.Backend
+	readErr error
+}
+
+func (s *readFailingSource) Get(context.Context, cas.Digest) (io.ReadCloser, error) {
+	return failingReader{err: s.readErr}, nil
+}
+
+// Size and ModTime succeed, so a test isolates the header read: the object is
+// listed, statted and time-stamped, and only its bytes cannot be read.
+func (s *readFailingSource) Size(context.Context, cas.Digest) (int64, error) { return 6, nil }
+
+func (s *readFailingSource) ModTime(context.Context, cas.Digest) (time.Time, error) {
+	return time.Unix(42, 0), nil
 }
 
 // TestHeaderReadsOnlyTheHeader pins the cost the census depends on: the bytes
@@ -339,6 +377,34 @@ func TestBuildSnapshotRecordsMetadataErrors(t *testing.T) {
 				t.Fatalf("BuildSnapshot() = (%#v, %v), want one unreadable entry", snapshot, err)
 			}
 		})
+	}
+}
+
+// TestBuildSnapshotMarksAReadFailureUnreadable pins go-cask#357 at the index
+// level: an object the store lists but cannot read carries Unreadable and no
+// header fields, so the viewer's unreadable row marker is reachable for a real
+// store entry and the census never describes that object as raw bytes.
+func TestBuildSnapshotMarksAReadFailureUnreadable(t *testing.T) {
+	ctx := context.Background()
+	digest := sha256.Of([]byte("object"))
+	backend := backmem.New()
+	if err := backend.Put(ctx, digest, bytes.NewReader([]byte("object"))); err != nil {
+		t.Fatal(err)
+	}
+	source := &readFailingSource{Backend: backend, readErr: errors.New("device error")}
+	snapshot, err := BuildSnapshot(ctx, source)
+	if err != nil || len(snapshot.Entries) != 1 {
+		t.Fatalf("BuildSnapshot() = (%#v, %v), want one entry", snapshot, err)
+	}
+	entry := snapshot.Entries[0]
+	if !entry.Unreadable {
+		t.Fatal("a listed object whose header read failed is not marked unreadable")
+	}
+	if entry.Type != "" || entry.Version != 0 || entry.Codec != "" {
+		t.Fatalf("unreadable entry reports (%q, %d, %q), want no header fields", entry.Type, entry.Version, entry.Codec)
+	}
+	if len(snapshot.Types) != 0 || len(snapshot.Versions) != 0 || len(snapshot.Codecs) != 0 {
+		t.Fatalf("census = (%v, %v, %v), want an unreadable object on no axis", snapshot.Types, snapshot.Versions, snapshot.Codecs)
 	}
 }
 
