@@ -8,6 +8,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.7.0] - 2026-09-28
+
 ### Added
 
 - Envelope header census — `cas.PeekHeader` reads a frame's version, codec tag and type name in one
@@ -435,7 +437,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Initial public design and prototype APIs.
 
-[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.6.5...HEAD
+[Unreleased]: https://github.com/dmundt/go-cask/compare/v1.7.0...HEAD
+[v1.7.0]: https://github.com/dmundt/go-cask/compare/v1.6.5...v1.7.0
 [v1.6.5]: https://github.com/dmundt/go-cask/compare/v1.6.4...v1.6.5
 [v1.6.4]: https://github.com/dmundt/go-cask/compare/v1.6.3...v1.6.4
 [v1.6.3]: https://github.com/dmundt/go-cask/compare/v1.6.2...v1.6.3
