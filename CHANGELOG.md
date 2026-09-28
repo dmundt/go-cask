@@ -136,6 +136,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   seeds the viewer preview graph under the algorithm the viewer reads it with.
   Seeding was always sha256 before, so a viewer started with any other
   `-hash-algo` silently found no graph and showed no references.
+- `cas.PutStream` spools a raw stream while hashing it, deduplicates and stores it, so the CLI's `put` and the `examples/api` upload share one owner for the sequence instead of each hand-rolling it (go-cask#342).
 
 - `gitlike.Resolver` satisfies `cas/repo.Resolver`: its new `Resolve(ctx, d)`
   returns the concrete object, so `cas/repo.Walk` and `cas/repo.Reachable` run
@@ -359,6 +360,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
   filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
   now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
+- `cask stats` and a filtered `cask list` each walk the store once instead of twice: the census snapshot already carries the object count and byte total that `Store.Stats` produced (go-cask#372).
 
 ### Removed
 
@@ -573,6 +575,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   decode or a failed `Verify`, which reads as store corruption rather than as a
   rejected write. The ceiling now stores the bytes it was given, and every
   smaller cap behaves exactly as before.
+- `cask list` rejects a surplus operand with a usage error (exit 2) instead of ignoring it and printing the whole store (go-cask#366).
 
 ### Security
 
@@ -679,6 +682,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now bounded at `cbor.MaxDepth` (128 levels) and reported as the new
   `cbor.ErrTooDeep`, distinct from a truncation error; a payload at or below the
   limit decodes exactly as before.
+- `cask stats` and `cask meta` no longer print a stored envelope type name or codec identity tag verbatim: every header-derived string is rendered through one helper that replaces C0/C1 control characters, so an object authored by someone else can no longer rewrite the operator's terminal or forge a census line (go-cask#354).
+- A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune` and `cask web` report the directory they actually act on, so a link planted at the store path can no longer redirect a destructive sweep silently (go-cask#353).
 
 ## [v1.6.5] - 2026-09-22
 

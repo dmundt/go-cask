@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v26
+version: v27
 ---
 
 # Performance — go-cask
@@ -36,6 +36,7 @@ only (coding-guidelines §3). Related: cas-core, coding-guidelines, testing-stra
 
 - `Store.Put`: marshal the envelope once into one buffer → digest with the injected `Hasher` → stream to `raw.Put`. Never marshaled twice.
 - Hash-on-write surfaces (the CLI's `put`, `examples/api`'s upload): spool and hash in one pass through `io.MultiWriter`/`io.Copy` into `sha256.NewHasher()`.
+- `cas.PutStream` is the shared implementation of that pattern: it spools and hashes in library code, so the CLI and the example cannot drift. Because `cas.Hasher` exposes only a reader-based `Digest` (below), it writes the spool once and hashes the spool; a caller that already holds a streaming `hash.Hash` (`sha256.NewHasher`) still does it in one pass.
 - `Backend.Put(ctx, d, r)` MUST stream `r` without buffering; the digest `d` is the trusted address (`Verify` is the integrity check).
 - Recorded sidecar checksums cost one extra read per recorded `Put` (`cas/verify/sidecar`, operations §6): one streaming pass over what `Get` returns after the write publishes the object, plus one extra file and atomic rename per `Put`.
 - `cas.Hasher` exposes only a reader-based `Digest` — no incremental writer, and the sidecar may not add one to the core.

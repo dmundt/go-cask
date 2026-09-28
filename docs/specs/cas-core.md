@@ -2,7 +2,7 @@
 type: Specification
 title: CAS Core — go-cask
 description: The core library specification of go-cask (cas/, package cas) — layered architecture, every component with its complete contract, data flows, concurrency model, and the extension contract for adjacent extensions and client use.
-version: v85
+version: v86
 ---
 
 # CAS Core — go-cask
@@ -144,6 +144,8 @@ classDiagram
 Core overview: `Digest`, the byte interfaces `Hasher`/`Backend`, the typed `Object[T]`/`Validator`/`Codec[T]`/`Store[T]`/`Walker[T]` set, cache wrappers. `fs.Backend`/`backmem.Backend` implement `Backend`, `sha256.Hasher` implements `Hasher`; `Store[T]` owns `Backend`+`Codec[T]`+`Hasher` and enforces `Validator`; `Walker[T]` reads via `Store.Get`; `CachedStore[T]` wraps `Store[T]`, `lru.Cache[T]` extends it.
 
 Byte layer — addressing and storage:
+
+- `PutStream` is the byte layer's write helper: it spools `r` to a temporary file, digests the spooled bytes with the caller's `Hasher` (the core names no algorithm, §4.2), probes `Exists`, rewinds and `Put`s, returning the digest and whether the object was already present. It exists because the byte layer has no counterpart to `Store.Put`, which only frames a typed object. The input reader is read exactly once; the spool is closed and removed on every path.
 
 ```mermaid
 classDiagram
@@ -675,7 +677,7 @@ Contract for adjacent extensions (backends, codecs, caches) and clients.
 | `cas` — typed layer | `Object[T]`, `Validator`, `Codec[T]`, `CodecNamer` (the optional codec-identity interface), `Store[T]`, `New[T]`, `Walker[T]`, `NewWalker[T]`, `Envelope`, `EnvelopeFromBytes`, `EncodeEnvelope` (the writer `Store.Put` frames through, for a tool without a store), `EnvelopeType`, `PeekHeader` (version, codec and type in one pass, for a store census), `Header` (the one bounded header read: `(ctx, backend, digest)`, shared by `cas/repo.Registry.Resolve`, the gitlike resolver, `internal/index` and the viewer), `HeaderType` (its type-only form), `PeekType`, `PeekVersion`, `EnvelopeVersion` (the format version this build writes) |
 | `cas` — maintenance layer | `Verify`, `Verifier`, `NewVerifier`, `VerifyAll`, `Report`, `Sweep`, `SweepOptions`, `Reachable`, `RefLister`, `RefListerFunc`, `Node`, `NodeResolver`, `WalkDigests` (§4.9/§4.11), `Capabilities`, `CapabilitiesOf`, `Cleaner`, `Statter` (§4.11) |
 | `cas` — batch layer | `BatchGetter`, `GetMany` (§4.13) |
-| `cas` — byte layer | `Backend`, `Stats` |
+| `cas` — byte layer | `Backend`, `Stats`, `PutStream` (spool-and-hash a raw stream: `(ctx, backend, hasher, reader) -> (digest, deduplicated)`, the one owner the CLI's `put` and `examples/api`'s upload call) |
 | `cas/backend` | the stream helpers `WriteAll`, `ReadAll`, `ReadPayload` and the `ContextReader` adapter |
 | `cas/backend/fs` | `Backend` (its `Backend` methods plus the fs-native `Verify`/`GC`/`Prune`, the `Cleaner`/`Statter` methods `Clean`/`Size`/`ModTime`, and `BasePath` — the directory its objects live under, which a maintenance layer above it needs), `Option`, `New`, `WithFanOut`, `WithFanLevels`, `WithDirSync`, `DefaultFanOut`, `DefaultFanLevels`, `MaxFanDepth`, and the base pre-flight `ValidateBase`/`EnsureBase`/`CleanupTemp` plus the age-and-count form of the same sweep, `CleanTemp` (§4.4), and the write-path policy `ValidateDir`/`ValidateFile` with the `ErrUnsafeTarget` they report (§4.4) |
 | `cas/backend/mem` (`package memory`, imported as `backmem`) | `Backend` (its `Backend` methods plus `Snapshot`/`Restore`), `Option`, `New`, `WithMaxSize` (§4.5) |
