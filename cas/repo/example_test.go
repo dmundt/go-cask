@@ -3,7 +3,7 @@ package repo_test
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/dmundt/go-cask/cas"
 	backmem "github.com/dmundt/go-cask/cas/backend/mem"
@@ -78,7 +78,7 @@ func ExampleRegistry() {
 	}); err != nil {
 		panic(err)
 	}
-	sort.Strings(visited)
+	slices.Sort(visited)
 	fmt.Println("visited:", visited)
 
 	reachable, err := repo.Reachable(ctx, registry, []cas.Digest{root})
