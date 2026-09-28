@@ -1,5 +1,6 @@
-// Package deps holds two rules about what a package may depend on: a forbidden
-// transitive dependency, and a well-formed module graph.
+// Package deps holds the rules about a module's import structure: a forbidden
+// transitive dependency, a well-formed module graph, the dependency-layer matrix,
+// and the local package graph as a committed document.
 //
 // Both were once inline shell in a gate: a `go list -deps | grep` pair for a
 // dependency guard, and a `grep` for a well-formed module graph. A `grep` over

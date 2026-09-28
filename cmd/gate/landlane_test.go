@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 )
 
 // slotFor builds one worktree's view of the shared advisory slot: contenders get their
@@ -27,7 +27,7 @@ func slotFor(t *testing.T, root, name string, staleMinutes int) *landLaneSlot {
 		owner:        filepath.Join(dir, "owner"),
 		takeover:     filepath.Join(dir, "takeover"),
 		token:        filepath.Join(root, "worktrees", name, "dsh-land-lane-mine"),
-		who:          lane.Identity("clone-id", name, "main"),
+		who:          landing.Identity("clone-id", name, "main"),
 		staleMinutes: staleMinutes,
 		// The policy's own grace, so a fixture behaves like the real slot: a gone holder is
 		// not instantly evictable just because the test forgot the field.
@@ -155,7 +155,7 @@ func TestLandLaneRenewMovesTheDeadline(t *testing.T) {
 	}
 	// Age the slot as one that stopped being refreshed would look, then renew it: the
 	// deadline must move, which is the property that keeps a long landing alive.
-	if err := os.WriteFile(mine.owner, []byte(lane.Holder{
+	if err := os.WriteFile(mine.owner, []byte(landing.Holder{
 		PID: "1", Since: now() - 3600, Label: "325", Who: mine.who, Token: mine.mine(),
 	}.Fields()+"\n"), 0o644); err != nil {
 		t.Fatalf("aging the slot: %v", err)
@@ -228,9 +228,9 @@ func TestLandLaneStalenessIsIdleTime(t *testing.T) {
 		t.Errorf("the takeover did not name the holder it evicted: %q", errOut)
 	}
 
-	takeover := lane.ParseTakeover(readFileOrEmpty(usurper.takeover))
-	if takeover.Label != "325" || takeover.How != lane.Expired {
-		t.Errorf("the eviction record = %+v, want holder 325 and reason %q", takeover, lane.Expired)
+	takeover := landing.ParseTakeover(readFileOrEmpty(usurper.takeover))
+	if takeover.Label != "325" || takeover.How != landing.Expired {
+		t.Errorf("the eviction record = %+v, want holder 325 and reason %q", takeover, landing.Expired)
 	}
 
 	// The evicted holder is told what happened rather than left to guess: renew and
@@ -266,11 +266,11 @@ func TestLandLaneReleaseRefusesTheEvictedHolder(t *testing.T) {
 	if err := os.MkdirAll(evicted.dir, 0o755); err != nil {
 		t.Fatalf("creating the slot directory: %v", err)
 	}
-	record := lane.Holder{PID: "1", Since: now(), Label: "325", Who: holder.who, Token: "tok-holder"}
+	record := landing.Holder{PID: "1", Since: now(), Label: "325", Who: holder.who, Token: "tok-holder"}
 	if err := os.WriteFile(evicted.owner, []byte(record.Fields()+"\n"), 0o644); err != nil {
 		t.Fatalf("writing the slot: %v", err)
 	}
-	eviction := lane.Takeover{Holder: lane.Holder{PID: "9", Since: now(), Label: "324", Who: evicted.who, Token: lane.Forced}, How: lane.Forced}
+	eviction := landing.Takeover{Holder: landing.Holder{PID: "9", Since: now(), Label: "324", Who: evicted.who, Token: landing.Forced}, How: landing.Forced}
 	if err := os.WriteFile(evicted.takeover, []byte(eviction.Fields()+"\n"), 0o644); err != nil {
 		t.Fatalf("writing the eviction record: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestLandLaneRenewNeverOverwritesAClaim(t *testing.T) {
 	if !taken {
 		t.Fatal("takeAside failed; the fixture is not in the state the race needs")
 	}
-	acquirer := lane.Holder{
+	acquirer := landing.Holder{
 		PID: "4242", Since: now(), Label: "387", Who: "other#primary:wt-other#main", Token: "other-token",
 	}.Fields() + "\n"
 	file, err := os.OpenFile(mine.owner, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
@@ -407,7 +407,7 @@ func TestLandLaneRenewNeverOverwritesAClaim(t *testing.T) {
 	}
 
 	// The renewal publishes into the slot the acquirer now holds. It must lose.
-	renewed := lane.Holder{
+	renewed := landing.Holder{
 		PID: "1", Since: now(), Label: "387", Who: mine.who, Token: mine.mine(),
 	}.Fields() + "\n"
 	if err := mine.publish(renewed); !errors.Is(err, os.ErrExist) {
@@ -449,7 +449,7 @@ func TestLandLaneStatusCallsAGoneHolderEvictable(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
 		t.Fatalf("creating the slot directory: %v", err)
 	}
-	gone := lane.Holder{
+	gone := landing.Holder{
 		PID: "2", Since: now() - 120, Label: "386", Who: "other#primary:wt-other#main",
 		Token: "tok-other", Host: currentHost(), Start: "1234",
 	}.Fields() + "\n"
@@ -471,7 +471,7 @@ func TestLandLaneStatusCallsAGoneHolderEvictable(t *testing.T) {
 
 	// And inside the grace the machine has not finished noticing: the holder is still just
 	// someone else, which is exit 2.
-	fresh := lane.Holder{
+	fresh := landing.Holder{
 		PID: "2", Since: now() - 5, Label: "386", Who: "other#primary:wt-other#main",
 		Token: "tok-other", Host: currentHost(), Start: "1234",
 	}.Fields() + "\n"
@@ -503,7 +503,7 @@ func TestLandLaneAcquireTakeoverDeadTakesAGoneHoldersSlot(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
 		t.Fatalf("creating the slot directory: %v", err)
 	}
-	gone := lane.Holder{
+	gone := landing.Holder{
 		PID: "2", Since: now() - 120, Label: "386", Who: "other#primary:wt-other#main",
 		Token: "tok-other", Host: currentHost(), Start: "1234",
 	}.Fields() + "\n"
@@ -526,8 +526,8 @@ func TestLandLaneAcquireTakeoverDeadTakesAGoneHoldersSlot(t *testing.T) {
 		t.Fatalf("the slot is held by %+v, want this worktree", holder)
 	}
 	record := readFileOrEmpty(mine.takeover)
-	if !strings.Contains(record, lane.Dead) {
-		t.Errorf("the eviction record is %q, want it to say the holder was gone (%q)", record, lane.Dead)
+	if !strings.Contains(record, landing.Dead) {
+		t.Errorf("the eviction record is %q, want it to say the holder was gone (%q)", record, landing.Dead)
 	}
 }
 
@@ -572,7 +572,7 @@ func TestLandLaneWaitEndsOnItsDeadline(t *testing.T) {
 		t.Fatalf("creating the slot directory: %v", err)
 	}
 	// A record with no host is never judged dead, so this holder is simply live and fresh.
-	held := lane.Holder{
+	held := landing.Holder{
 		PID: "2", Since: now(), Label: "386", Who: "other#primary:wt-other#main", Token: "tok-other",
 	}.Fields() + "\n"
 	if err := os.WriteFile(mine.owner, []byte(held), 0o644); err != nil {
@@ -605,7 +605,7 @@ func TestLandLaneWaitTakesOverAnIdleHolder(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(mine.owner), 0o755); err != nil {
 		t.Fatalf("creating the slot directory: %v", err)
 	}
-	idle := lane.Holder{
+	idle := landing.Holder{
 		PID: "2", Since: now() - 6000, Label: "386", Who: "other#primary:wt-other#main", Token: "tok-other",
 	}.Fields() + "\n"
 	if err := os.WriteFile(mine.owner, []byte(idle), 0o644); err != nil {
@@ -689,7 +689,7 @@ func TestClaimForGateIsTheGatesOwnAcquisition(t *testing.T) {
 	// A holder idle past its window is taken over, and the eviction leaves its record:
 	// waiting out a run that nobody will ever end would hold the whole clone's queue. The
 	// same worktree acts, because an expired holder is nobody's live acquisition.
-	idle := lane.Holder{
+	idle := landing.Holder{
 		PID: "2", Since: now() - 6000, Label: "verify /old",
 		Who: other.who, Token: "tok-old",
 	}.Fields() + "\n"
@@ -704,8 +704,8 @@ func TestClaimForGateIsTheGatesOwnAcquisition(t *testing.T) {
 	if !claim.held {
 		t.Fatalf("an expired holder's slot was not taken: %+v", claim)
 	}
-	takeover := lane.ParseTakeover(readFileOrEmpty(expired.takeover))
-	if takeover.How != lane.Expired || takeover.Label != "verify /old" {
+	takeover := landing.ParseTakeover(readFileOrEmpty(expired.takeover))
+	if takeover.How != landing.Expired || takeover.Label != "verify /old" {
 		t.Errorf("the eviction record is %+v, want the holder it evicted and why", takeover)
 	}
 }

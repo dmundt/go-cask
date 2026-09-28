@@ -1,12 +1,12 @@
 package policy
 
-import "github.com/dmundt/go-cask/internal/build/changes"
+import "github.com/dmundt/go-cask/internal/build/scope"
 
 // WebsitePaths are the paths that require the published site to be built: the
 // website tree itself, and the configuration, dependency and workflow files that
 // decide what it is built from.
-func WebsitePaths() []changes.Pattern {
-	return []changes.Pattern{
+func WebsitePaths() []scope.Pattern {
+	return []scope.Pattern{
 		{Prefix: "website/"},
 		{Exact: "mkdocs.yml"},
 		{Exact: "requirements-docs.txt"},
@@ -23,9 +23,9 @@ func WebsitePaths() []changes.Pattern {
 // exactly one owner: the gate's scope decision and CI's scope job both classify
 // through ScopeRules below, so the two cannot drift apart on a pattern list kept in
 // sync only by a comment.
-func DocsPaths() []changes.Pattern {
+func DocsPaths() []scope.Pattern {
 	paths := WebsitePaths()
-	return append(paths, changes.Pattern{Suffix: ".md"}, changes.Pattern{Prefix: "docs/"})
+	return append(paths, scope.Pattern{Suffix: ".md"}, scope.Pattern{Prefix: "docs/"})
 }
 
 // ScopeRules are the change classifications the gate and CI ask for, in the order
@@ -40,17 +40,17 @@ func DocsPaths() []changes.Pattern {
 //   - security_changed additionally covers the CI configuration and the gate itself,
 //     because a weakened scan is a security change even when no Go file moved.
 //   - website_changed decides that the site is built with MkDocs.
-func ScopeRules() []changes.Rule {
-	return []changes.Rule{
+func ScopeRules() []scope.Rule {
+	return []scope.Rule{
 		{
 			Name:  "docs_only",
-			Mode:  changes.All,
+			Mode:  scope.All,
 			Paths: DocsPaths(),
 		},
 		{
 			Name: "go_changed",
-			Mode: changes.Any,
-			Paths: []changes.Pattern{
+			Mode: scope.Any,
+			Paths: []scope.Pattern{
 				{Suffix: ".go"},
 				{Exact: "go.mod"},
 				{Exact: "go.sum"},
@@ -58,8 +58,8 @@ func ScopeRules() []changes.Rule {
 		},
 		{
 			Name: "security_changed",
-			Mode: changes.Any,
-			Paths: []changes.Pattern{
+			Mode: scope.Any,
+			Paths: []scope.Pattern{
 				{Exact: ".github/workflows/ci.yml"},
 				// The gate is the thing the security scan protects: a change to it
 				// must be scanned even when it touches no Go file.
@@ -69,7 +69,7 @@ func ScopeRules() []changes.Rule {
 		},
 		{
 			Name:  "website_changed",
-			Mode:  changes.Any,
+			Mode:  scope.Any,
 			Paths: WebsitePaths(),
 		},
 	}

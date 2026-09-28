@@ -10,7 +10,7 @@ an exit status a gate step can act on.
 
 | Command | Decides |
 |---|---|
-| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/verify` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. The whole run holds the clone's local advisory slot (exit 3 when a live holder is still there after the bounded wait; `--slot=takeover` takes any holder's). `scripts/verify.sh` is this command's name for the gate |
+| `verify` | the gate: every step in order, with the scope, the concurrency and the escape hatches decided by `internal/build/scope` and go-cask's tables from `internal/build/policy`. It writes the gate stamp for a complete run and, for a clean tree, hands the `gate-receipt` command the receipt CI reuses — the check names come from `policy.Verify().Checks`, which is also the list the receipt's `suite` verb reports. The whole run holds the clone's local advisory slot (exit 3 when a live holder is still there after the bounded wait; `--slot=takeover` takes any holder's). `scripts/verify.sh` is this command's name for the gate |
 | `layer-matrix` | every package's imports against the layer table |
 | `coverage-tier` | that every `cas/` package carries a tier or a written exemption; `--list` prints the gate's measurement table |
 | `coverage-check` | the thresholds, reading one `threshold\|package\|measured` line per package from stdin — the gate collects the measurements, this decides |
@@ -24,8 +24,8 @@ an exit status a gate step can act on.
 | `bench-compare` | that a comparison chooses its baseline before capturing and never writes the reference; a missing `benchstat` keeps the documented exit status 2 |
 | `run-examples` | which example programs a runner executes, with which arguments and store, and which one it must never run |
 | `land-lane` | the local advisory slot: its `status`/`whoami`/`acquire`/`renew`/`release` verbs, its idle-time staleness rule and the takeover record an eviction leaves |
-| `pr-lane` | the server-side lane: its `claim`/`check`/`status`/`release`/`whoami` verbs, the ref that is the compare-and-swap, the open pull request that is the lease, and the claim window past which a claim with no pull request is taken over; the verdict is `internal/build/claim`'s |
-| `pre-push` | the mechanical landing rule a push must satisfy, and the advisory-slot note; the rules are `internal/build/gate`'s |
+| `pr-lane` | the server-side lane: its `claim`/`check`/`status`/`release`/`whoami` verbs, the ref that is the compare-and-swap, the open pull request that is the lease, and the claim window past which a claim with no pull request is taken over; the verdict is `internal/build/landing`'s |
+| `pre-push` | the mechanical landing rule a push must satisfy, and the advisory-slot note; the rules are `internal/build/landing`'s |
 | `worktree` | that a task worktree's `.git` link is relative and resolves to its own admin directory, that its registration is locked, and that `prune` refuses. `add` refuses (exit 3) when the fetch fails, so no worktree is based on a stale `origin/main`; `--allow-stale` accepts it deliberately, and the `worktree ready:` line names the full base commit |
 | `task-status` | which branches carry work no pull request tracks: one line per branch against the base ref, then the branches worth acting on. It reads git, one `gh pr list` and the worktree list; it reports and always exits 0 |
 | `board` | the coordinator's one view of many landings: every open issue with its lane claim, holder, worktree, the pull request behind it, whether its head is gated evidence, and the one next action. The claim is `pr-lane`'s protocol read once per lane; the evidence is the clone ledger and a receipt, both required (`internal/build/board`) |
@@ -80,7 +80,7 @@ test without a process.
 `verify` is the one command that orchestrates rather than decides: it runs the steps in
 order, streams their output, and writes the gate stamp. Which steps a scope runs, whether an
 escape hatch dropped one, and how many packages may be built at once are
-`internal/build/verify`'s — so the step list is the only thing here that can go stale, and a
+`internal/build/scope`'s — so the step list is the only thing here that can go stale, and a
 step is one entry in `gateSteps`.
 
 ## Testing

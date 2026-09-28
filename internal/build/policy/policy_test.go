@@ -8,9 +8,7 @@ import (
 	"testing"
 
 	"github.com/dmundt/go-cask/internal/build/coverage"
-	"github.com/dmundt/go-cask/internal/build/depgraph"
 	"github.com/dmundt/go-cask/internal/build/deps"
-	"github.com/dmundt/go-cask/internal/build/layers"
 	"github.com/dmundt/go-cask/internal/build/website"
 )
 
@@ -36,7 +34,7 @@ func repoRoot(t *testing.T) string {
 // `go list` otherwise stamps VCS metadata by shelling out to git, and these tests run in
 // the gate's own test step, where every lane shares one `.git` and those calls contend
 // (#462). The graph and the package list need no VCS metadata.
-func goList(t *testing.T) (string, []depgraph.Package) {
+func goList(t *testing.T) (string, []deps.Package) {
 	t.Helper()
 	root := repoRoot(t)
 
@@ -55,13 +53,13 @@ func goList(t *testing.T) (string, []depgraph.Package) {
 	if err != nil {
 		t.Fatalf("go list ./...: %v", err)
 	}
-	var packages []depgraph.Package
+	var packages []deps.Package
 	for _, line := range strings.Split(strings.TrimSuffix(string(rowsOut), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		path, imports, _ := strings.Cut(line, "|")
-		packages = append(packages, depgraph.Package{ImportPath: path, Imports: strings.Fields(imports)})
+		packages = append(packages, deps.Package{ImportPath: path, Imports: strings.Fields(imports)})
 	}
 	if len(packages) == 0 {
 		t.Fatal("go list ./... reported no packages, so the test would prove nothing")
@@ -104,7 +102,7 @@ func TestMatrixCoversEveryModuleTree(t *testing.T) {
 	trees := []string{"/cas", "/gitlike", "/internal", "/cmd", "/examples", "/benchmarks"}
 	for _, tree := range trees {
 		pkg := ModulePath + tree
-		if _, ok := layers.Owner(matrix, pkg); !ok {
+		if _, ok := deps.Owner(matrix, pkg); !ok {
 			t.Errorf("no arm claims %s: add one to Matrix so its imports are checked", pkg)
 		}
 	}
@@ -126,7 +124,7 @@ func TestMatrixArmsAreReached(t *testing.T) {
 		ModulePath + "/benchmarks":     "examples/, benchmarks/",
 	}
 	for pkg, wantLayer := range cases {
-		layer, ok := layers.Owner(matrix, pkg)
+		layer, ok := deps.Owner(matrix, pkg)
 		if !ok {
 			t.Errorf("no arm claims %s", pkg)
 			continue
@@ -338,12 +336,12 @@ func TestGraphDocRendersTheCommittedDocument(t *testing.T) {
 		t.Skipf("cannot read the committed document: %v", err)
 	}
 
-	version := depgraph.Version(string(committed))
+	version := deps.Version(string(committed))
 	if version == "" {
 		t.Fatalf("%s has no frontmatter version", GraphDocPath)
 	}
 	module, packages := goList(t)
-	rendered := depgraph.Document(GraphDoc(), depgraph.Derive(module, packages), version)
+	rendered := deps.Document(GraphDoc(), deps.Derive(module, packages), version)
 
 	if rendered == string(committed) {
 		return

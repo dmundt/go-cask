@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v29
+version: v30
 ---
 
 # Agent instructions — `scripts/`
@@ -31,16 +31,16 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   the shared logic.
 - **`verify.sh` stays forever: a shim, nothing else** — resolve the toolchain, exec
   `gate.sh verify`, the gate's name in every document, CI and the pre-push hook.
-- **The shim holds no rule.** Rules = Go packages, each with tests: `internal/build/{changes,gate,lane,claim,verify,worktree,toolchain,bench,examples,layers,coverage,docs,website,deps,depgraph,versioning,release}`
+- **The shim holds no rule.** Rules = Go packages, each with tests: `internal/build/{landing,scope,worktree,toolchain,bench,examples,deps,coverage,docs,website,versioning,release}`
   via `go run ./cmd/gate`; go-cask's answers `internal/build/policy`; step list
   `cmd/gate verify`. Neither shim nor step list MUST hold a rule as literal shell (pattern
   list, threshold table, `case` matrix, needle/haystack comparison) — reasoning in the test, not
   the source ([`../internal/build/AGENT.md`](../internal/build/AGENT.md)).
 - Classification shared by two helpers: one owns it, the other calls it. Reference — change-set
-  classification: rule `internal/build/changes`, patterns `internal/build/policy`; gate scope
+  classification: rule `internal/build/scope`, patterns `internal/build/policy`; gate scope
   decision and CI scope job both call `go run ./cmd/gate scope`.
 - Data plus logic → Go: `internal/build` owns the gate's decisions (`changes` classification,
-  `layers` matrix, `coverage` tiers, `docs`, `website`, `deps`, `depgraph`, `versioning`, `verify`,
+  `deps` matrix and graph, `coverage` tiers, `docs`, `website`, `versioning`, `landing`, `scope`,
   `release`); `verify.sh` reaches them via `go run ./cmd/gate`. Shell resolves the toolchain;
   the command orchestrates (steps in order, output streamed, stamp written); the package decides
   ([`README.md`](./README.md) "Parity with Go").
@@ -77,18 +77,18 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   `cmd/gate bench-compare`, rule `internal/build/bench`, pin `cmd/gate/bench_test.go`).
 - **LANE** = `go run ./cmd/gate pr-lane`: one open pull request = one lane; claim =
   server-side compare-and-swap on `refs/lane/<issue>`; freed by merging or closing the PR, then
-  `release`. Owner `internal/build/claim`; ref namespace, window, override variables, record file:
+  `release`. Owner `internal/build/landing`; ref namespace, window, override variables, record file:
   `internal/build/policy`'s `PRLane` table.
 - **Local ADVISORY slot** = `go run ./cmd/gate land-lane`: one slot in the shared git dir
   keeping two gate runs in one clone from overlapping; records and decisions
-  `internal/build/lane`; not a condition for pushing.
+  `internal/build/landing`; not a condition for pushing.
 - **`verify` holds that slot for its whole run**, so the record's pid lives as long as the
   run and no caller has to remember it: a second run waits (bounded by
   `LAND_LANE_WAIT_SECONDS`), says what it is waiting for, and refuses with exit 3 — never a
   red gate — when the holder is still there. A holder whose process is provably gone is
   taken over, and `--slot=takeover` takes any holder's slot. A step killed by a signal
   prints the signal, the concurrent `verify` count and the advice to hold the slot.
-- **Stamp** = `internal/build/gate`. `.githooks/pre-push` (shim over
+- **Stamp** = `internal/build/landing`. `.githooks/pre-push` (shim over
   `go run ./cmd/gate pre-push`) refuses a push whose HEAD holds no stamp for that exact
   commit — the one hard local rule; re-pushing an unchanged commit is free, and the hook never
   re-runs work the stamp covers. Owner:
@@ -112,7 +112,7 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   the Windows git, the one that pushes), so `.githooks/pre-push` publishes best-effort after its
   stamp check, not the WSL gate. No key → no publish, CI falls back.
 - Receipt = Go; this directory holds no rule: the gate calls `create`, the hook `publish`; format
-  and five verbs are `internal/build/receipt`'s; the shell test's cases are in
+  and five verbs are `internal/build/landing`'s; the shell test's cases are in
   `cmd/gate/gatereceipt_test.go`. `scripts/` keeps the launchers only.
 - Four load-bearing invariants:
 
@@ -120,8 +120,8 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
 |---|---|---|
 | 1 | Lane claim = atomic create on the REMOTE (`POST /git/refs` answers 422 when the ref exists), never check-then-write | `cmd/gate/prlane_test.go` |
 | 2 | Claim record = the annotated tag the ref points at (a ref carries no timestamp): names the claiming branch and worktree, dates the claim | `cmd/gate/prlane_test.go` |
-| 3 | Slot holder identity = portable token with no path (`D:/x/repo` and `/mnt/d/x/repo` never compare equal); `whoami` prints it, the hook reports the slot with it | `cmd/gate/landlane_test.go`, `cmd/gate/prepush_test.go`, `internal/build/gate` |
-| 4 | `$common/verify.ok` = a ledger, one line per verified commit, never a single slot | `cmd/gate/landlane_test.go`, `cmd/gate/prepush_test.go`, `internal/build/gate` |
+| 3 | Slot holder identity = portable token with no path (`D:/x/repo` and `/mnt/d/x/repo` never compare equal); `whoami` prints it, the hook reports the slot with it | `cmd/gate/landlane_test.go`, `cmd/gate/prepush_test.go`, `internal/build/landing` |
+| 4 | `$common/verify.ok` = a ledger, one line per verified commit, never a single slot | `cmd/gate/landlane_test.go`, `cmd/gate/prepush_test.go`, `internal/build/landing` |
 
 - Neither lane is a branch, and neither may become one: `refs/lane/<issue>` = a coordination ref,
   outside the branch namespace ([`docs/specs/branch-naming.md`](../docs/specs/branch-naming.md)
@@ -132,7 +132,7 @@ Automation wrappers only: verification, release notes, examples, benchmarks.
   outlasting `LAND_LANE_STALE_MINUTES` keeps the lane; renewing is never a side effect of asking
   for the slot. A takeover drops the slot only after recording the holder it evicts. Pins
   (`cmd/gate/landlane_test.go`): idle deadline, refusal of a second acquirer in one worktree,
-  both diagnostics. Owner: `internal/build/lane`.
+  both diagnostics. Owner: `internal/build/landing`.
 - `go run ./cmd/gate worktree add`: base every task worktree on the freshly fetched
   `origin/main` (`-b <branch> origin/main`), write the worktree's `.git` link in the relative form
   both toolchains resolve, lock the registration; a local `main` is no substitute. Exception:

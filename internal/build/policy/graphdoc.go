@@ -1,7 +1,7 @@
 package policy
 
 import (
-	"github.com/dmundt/go-cask/internal/build/depgraph"
+	"github.com/dmundt/go-cask/internal/build/deps"
 	"github.com/dmundt/go-cask/internal/build/website"
 	"strings"
 )
@@ -32,7 +32,7 @@ func Inventories() []website.Inventory {
 // The grouping mirrors the arms library-design.md §1.1 states,
 // resolved the way the bash `case` this replaced resolved them: the narrower tree is
 // tested first, and each layer excludes the narrower one it contains.
-func GraphDoc() depgraph.Doc {
+func GraphDoc() deps.Doc {
 	byteLayer := ownedBy("/cas/backend")
 	core := ownedBy("/cas")
 	// The helpers are the rest of the cas tree: under cas/, but neither the byte
@@ -45,12 +45,12 @@ func GraphDoc() depgraph.Doc {
 	// Everything the layers above did not claim is an application.
 	apps := notClaimedBy(byteLayer, core, reference, internal)
 
-	return depgraph.Doc{
+	return deps.Doc{
 		Title:           "Package Dependency Graph — go-cask",
-		Description:     "Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.",
-		Generator:       "internal/build/depgraph",
+		Description:     "Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/deps.",
+		Generator:       "internal/build/deps",
 		FrontmatterType: "Design Document",
-		Subgraphs: []depgraph.Subgraph{
+		Subgraphs: []deps.Subgraph{
 			{ID: "APPS", Title: "Applications - cmd/cask, examples, benchmarks", Claims: apps},
 			{ID: "REFERENCE", Title: "Reference library - gitlike", Claims: reference},
 			{ID: "INTERNAL", Title: "internal - not importable outside the module", Claims: internal},
@@ -73,7 +73,7 @@ edge points from the importing package to the package it imports, so the
 applications sit at the top and ` + "`cas`" + ` — which imports no local package at all —
 sits at the bottom.
 
-The diagram is generated from ` + "`go list`" + ` by ` + "`internal/build/depgraph`" + `; edit that
+The diagram is generated from ` + "`go list`" + ` by ` + "`internal/build/deps`" + `; edit that
 package, not this file. Only production imports are drawn: imports that appear
 solely in ` + "`_test.go`" + ` files are excluded and the standard library is not drawn, so
 this is the consumer-visible build graph. The local package and edge sets do not

@@ -9,8 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dmundt/go-cask/internal/build/gate"
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -61,7 +60,7 @@ func runPrePush(args []string, out, errOut io.Writer) error {
 	}
 
 	ledger := readFileOrEmpty(filepath.Join(commonDir, table.Ledger))
-	if !gate.Verified(ledger, head) {
+	if !landing.Verified(ledger, head) {
 		fmt.Fprintf(errOut, "pre-push: no green gate for %s.\n"+
 			"  Run the gate once for this commit, then push again:\n"+
 			"      %s                      # docs-only branches get the docs gate\n"+
@@ -73,7 +72,7 @@ func runPrePush(args []string, out, errOut io.Writer) error {
 	// The local slot is advisory. Asking about it must never fail the push, so a slot
 	// that cannot be resolved at all is a reason to say nothing.
 	if slot, err := resolveLandLane(*repo); err == nil {
-		if lane.SlotStatus(slot.read(), slot.who, slot.mine()) != lane.Mine {
+		if landing.SlotStatus(slot.read(), slot.who, slot.mine()) != landing.SlotMine {
 			fmt.Fprint(errOut, prePushAdvisory)
 		}
 	}

@@ -1,9 +1,9 @@
 ---
 type: Design Document
 title: Package Dependency Graph — go-cask
-description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v37
-generated: internal/build/depgraph
+description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/deps.
+version: v38
+generated: internal/build/deps
 ---
 
 # Package Dependency Graph — go-cask
@@ -13,7 +13,7 @@ edge points from the importing package to the package it imports, so the
 applications sit at the top and `cas` — which imports no local package at all —
 sits at the bottom.
 
-The diagram is generated from `go list` by `internal/build/depgraph`; edit that
+The diagram is generated from `go list` by `internal/build/deps`; edit that
 package, not this file. Only production imports are drawn: imports that appear
 solely in `_test.go` files are excluded and the standard library is not drawn, so
 this is the consumer-visible build graph. The local package and edge sets do not
@@ -39,22 +39,16 @@ flowchart TD
   subgraph INTERNAL["internal - not importable outside the module"]
     internal_build_bench["internal/build/bench"]
     internal_build_board["internal/build/board"]
-    internal_build_changes["internal/build/changes"]
-    internal_build_claim["internal/build/claim"]
     internal_build_coverage["internal/build/coverage"]
-    internal_build_depgraph["internal/build/depgraph"]
     internal_build_deps["internal/build/deps"]
     internal_build_docs["internal/build/docs"]
     internal_build_examples["internal/build/examples"]
-    internal_build_gate["internal/build/gate"]
-    internal_build_lane["internal/build/lane"]
-    internal_build_layers["internal/build/layers"]
+    internal_build_landing["internal/build/landing"]
     internal_build_policy["internal/build/policy"]
-    internal_build_receipt["internal/build/receipt"]
     internal_build_release["internal/build/release"]
+    internal_build_scope["internal/build/scope"]
     internal_build_taskstate["internal/build/taskstate"]
     internal_build_toolchain["internal/build/toolchain"]
-    internal_build_verify["internal/build/verify"]
     internal_build_versioning["internal/build/versioning"]
     internal_build_website["internal/build/website"]
     internal_build_worktree["internal/build/worktree"]
@@ -207,22 +201,16 @@ flowchart TD
   cmd_cask --> internal_web
   cmd_gate --> internal_build_bench
   cmd_gate --> internal_build_board
-  cmd_gate --> internal_build_changes
-  cmd_gate --> internal_build_claim
   cmd_gate --> internal_build_coverage
-  cmd_gate --> internal_build_depgraph
   cmd_gate --> internal_build_deps
   cmd_gate --> internal_build_docs
   cmd_gate --> internal_build_examples
-  cmd_gate --> internal_build_gate
-  cmd_gate --> internal_build_lane
-  cmd_gate --> internal_build_layers
+  cmd_gate --> internal_build_landing
   cmd_gate --> internal_build_policy
-  cmd_gate --> internal_build_receipt
   cmd_gate --> internal_build_release
+  cmd_gate --> internal_build_scope
   cmd_gate --> internal_build_taskstate
   cmd_gate --> internal_build_toolchain
-  cmd_gate --> internal_build_verify
   cmd_gate --> internal_build_versioning
   cmd_gate --> internal_build_website
   cmd_gate --> internal_build_worktree
@@ -259,14 +247,12 @@ flowchart TD
   gitlike --> cas
   gitlike --> cas_cache_lru
   gitlike --> cas_repo
-  internal_build_depgraph --> internal_build_docs
-  internal_build_policy --> internal_build_changes
+  internal_build_deps --> internal_build_docs
   internal_build_policy --> internal_build_coverage
-  internal_build_policy --> internal_build_depgraph
   internal_build_policy --> internal_build_deps
   internal_build_policy --> internal_build_docs
   internal_build_policy --> internal_build_examples
-  internal_build_policy --> internal_build_layers
+  internal_build_policy --> internal_build_scope
   internal_build_policy --> internal_build_website
   internal_build_versioning --> internal_build_docs
   internal_index --> cas
@@ -281,7 +267,7 @@ flowchart TD
   internal_web --> internal_index
 
   classDef leaf fill:#eef7ee,stroke:#4a7c59,color:#12321c
-  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_build_bench,internal_build_board,internal_build_changes,internal_build_claim,internal_build_coverage,internal_build_deps,internal_build_docs,internal_build_examples,internal_build_gate,internal_build_lane,internal_build_layers,internal_build_receipt,internal_build_release,internal_build_taskstate,internal_build_toolchain,internal_build_verify,internal_build_website,internal_build_worktree,internal_design leaf
+  class benchmarks,cas,cas_backend,cas_cache,cas_codec_json,examples_api_demo,internal_build_bench,internal_build_board,internal_build_coverage,internal_build_docs,internal_build_examples,internal_build_landing,internal_build_release,internal_build_scope,internal_build_taskstate,internal_build_toolchain,internal_build_website,internal_build_worktree,internal_design leaf
 ```
 
 ## Layers

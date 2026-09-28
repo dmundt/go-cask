@@ -9,8 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/gate"
-	"github.com/dmundt/go-cask/internal/build/lane"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
 
@@ -64,7 +63,7 @@ func TestPrePushRequiresAGreenStampForThisCommit(t *testing.T) {
 	// Another commit's entry, which is what a single-slot stamp used to look like from
 	// this branch's point of view.
 	other := strings.Repeat("b", 40)
-	if err := os.WriteFile(ledger, []byte(gate.Line(other, "docs", time.Unix(0, 0))+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(ledger, []byte(landing.Line(other, "docs", time.Unix(0, 0))+"\n"), 0o644); err != nil {
 		t.Fatalf("writing the ledger: %v", err)
 	}
 
@@ -82,7 +81,7 @@ func TestPrePushRequiresAGreenStampForThisCommit(t *testing.T) {
 
 	// The same ledger with this commit's entry authorises the push, and the other
 	// worktree's entry survives.
-	updated := gate.Append(readFileOrEmpty(ledger), head, "full", time.Unix(1, 0), policy.Gate().LedgerKeep)
+	updated := landing.Append(readFileOrEmpty(ledger), head, "full", time.Unix(1, 0), policy.Gate().LedgerKeep)
 	if err := os.WriteFile(ledger, []byte(updated), 0o644); err != nil {
 		t.Fatalf("writing the ledger: %v", err)
 	}
@@ -102,7 +101,7 @@ func TestPrePushRequiresAGreenStampForThisCommit(t *testing.T) {
 func TestPrePushReportsTheAdvisorySlotWithoutRefusing(t *testing.T) {
 	repo, head := hookRepo(t)
 	ledger := ledgerPath(t, repo)
-	if err := os.WriteFile(ledger, []byte(gate.Line(head, "full", time.Unix(0, 0))+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(ledger, []byte(landing.Line(head, "full", time.Unix(0, 0))+"\n"), 0o644); err != nil {
 		t.Fatalf("writing the ledger: %v", err)
 	}
 
@@ -165,7 +164,7 @@ func TestPrePushSeesTheSameSlotTheLaneReports(t *testing.T) {
 	if _, _, status := runSlot(t, mine, "acquire", "hook"); status != 0 {
 		t.Fatalf("acquire failed: %d", status)
 	}
-	if got := lane.SlotStatus(other.read(), other.who, other.mine()); got != lane.Other {
+	if got := landing.SlotStatus(other.read(), other.who, other.mine()); got != landing.SlotOther {
 		t.Errorf("another worktree sees status %v, want Other", got)
 	}
 }

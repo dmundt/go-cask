@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the gate launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/gate.
-version: v20
+version: v21
 ---
 
 # Scripts — go-cask
@@ -41,7 +41,7 @@ command.
 |---|---|---|---|
 | `toolchain.sh` | `gate.sh`, `verify.sh` | n/a — exemption | Nothing: a shell is required to find `go` before Go can run. 49 lines, sourced, POSIX `sh`. |
 | `gate.sh` | `.githooks/pre-push`, docs | n/a — exemption | Nothing: it exists to resolve the toolchain and pass through. 20 lines. |
-| `verify.sh` | CI, the pre-push message, the specification set | 100% | Nothing: it resolves the toolchain and starts `gate.sh verify`. The step list it held is `go run ./cmd/gate verify`; the decisions behind it are `internal/build/verify`'s, and go-cask's answer to each is `internal/build/policy`'s gate table. |
+| `verify.sh` | CI, the pre-push message, the specification set | 100% | Nothing: it resolves the toolchain and starts `gate.sh verify`. The step list it held is `go run ./cmd/gate verify`; the decisions behind it are `internal/build/scope`'s, and go-cask's answer to each is `internal/build/policy`'s gate table. |
 
 - Replaced scripts are deleted, not archived: rule = a package under
   [`internal/build`](../internal/build/README.md), cases = tests beside it, header = the command
@@ -56,29 +56,29 @@ Landing layer, two layers, both Go:
 
 | Layer | Command | Owner |
 |---|---|---|
-| LANE — one open pull request is one lane, claimed with a server-side compare-and-swap on `refs/lane/<NNN>` | `go run ./cmd/gate pr-lane` | `internal/build/claim` |
-| Local ADVISORY slot — one slot in the shared git dir, keeping two gate runs in one clone from overlapping | `go run ./cmd/gate land-lane` | `internal/build/lane` |
-| Gate stamp read by the pre-push hook (`.githooks/pre-push` = a shim over `go run ./cmd/gate pre-push`) | `go run ./cmd/gate pre-push` | `internal/build/gate` |
+| LANE — one open pull request is one lane, claimed with a server-side compare-and-swap on `refs/lane/<NNN>` | `go run ./cmd/gate pr-lane` | `internal/build/landing` |
+| Local ADVISORY slot — one slot in the shared git dir, keeping two gate runs in one clone from overlapping | `go run ./cmd/gate land-lane` | `internal/build/landing` |
+| Gate stamp read by the pre-push hook (`.githooks/pre-push` = a shim over `go run ./cmd/gate pre-push`) | `go run ./cmd/gate pre-push` | `internal/build/landing` |
 
 `verify.sh` also calls the non-shell build decisions — each a package with its own tests, reached
 through `go run ./cmd/gate`, one subcommand per decision:
 
 | Package | Owns |
 |---|---|
-| `internal/build/changes` | change-set classification, over `internal/build/policy`'s rules |
-| `internal/build/layers` | dependency-layer matrix |
+| `internal/build/scope` | change-set classification, over `internal/build/policy`'s rules |
+| `internal/build/deps` | dependency-layer matrix |
 | `internal/build/coverage` | coverage tiers and thresholds |
 | `internal/build/docs` | Markdown integrity rules |
 | `internal/build/website` | the site's Go fences, inventory tables and footer |
 | `internal/build/bench` | benchmark capture decisions |
 | `internal/build/examples` | example table |
 | `internal/build/toolchain` | pinned toolchain |
-| `internal/build/claim` | landing lane |
+| `internal/build/landing` | landing lane |
 | `internal/build/deps` | codec guards plus module-graph check |
 
 | Subcommand | Decides |
 |---|---|
-| `verify` | the gate: covered steps, their order, recordable or not. Scope, concurrency, escape hatches: `internal/build/verify`; entry points, variables, smoke-fuzz set: `internal/build/policy`; record: `internal/build/gate` |
+| `verify` | the gate: covered steps, their order, recordable or not. Scope, concurrency, escape hatches: `internal/build/scope`; entry points, variables, smoke-fuzz set: `internal/build/policy`; record: `internal/build/landing` |
 | `scope` | which of CI's jobs a change set can affect; whether the gate may run the documentation scope |
 | `layer-matrix` | every package's imports against AGENTS.md's layer table |
 | `coverage-tier` | every `cas/` package carries a tier or a written exemption; `--list` prints the gate's measurement table |
@@ -113,11 +113,11 @@ The gate executes them; it does not restate them.
 - Only the test step is worth dropping, and only both hatches drop it: coverage measurement and
   race suite are one run, so `VERIFY_SKIP_TESTS` alone still spends it.
 - No shell here owns a rule; no helper-behaviour step is left to drop. Receipt = the last one:
-  `internal/build/receipt`, `cmd/gate/gatereceipt_test.go`.
-- Test pins, reached through the race suite: `internal/build/depgraph` (committed graph,
+  `internal/build/landing`, `cmd/gate/gatereceipt_test.go`.
+- Test pins, reached through the race suite: `internal/build/deps` (committed graph,
   byte-for-byte), `internal/build/versioning` (version-field decision), `cmd/gate/bench_test.go`
   (benchmark helpers' file ownership), `cmd/gate/prlane_test.go` (pull-request lane against a
-  fake remote), `cmd/gate/landlane_test.go` with `internal/build/gate` (advisory slot, gate
+  fake remote), `cmd/gate/landlane_test.go` with `internal/build/landing` (advisory slot, gate
   stamp).
 - **One-command delegation is no violation;** the footer is the reference case:
   `website/macros.py --selftest` = one call whose whole rule (pinned rendered line, zone label,
@@ -128,7 +128,7 @@ The gate executes them; it does not restate them.
   here; leave a call with an owner.
 - Never duplicate a classification or decision list across sibling helper scripts; never
   re-implement in shell a rule a Go package owns. Gate and CI scope job both call
-  `go run ./cmd/gate scope` (documentation paths); the gate asks `internal/build/layers` and
+  `go run ./cmd/gate scope` (documentation paths); the gate asks `internal/build/deps` and
   `internal/build/coverage` through the same command. Shell keeps only the toolchain resolution;
   everything else, coverage measurement and fan-out included, is the command's.
 - Run `./scripts/verify.sh` before every commit or release prep pass.
@@ -146,7 +146,7 @@ The gate executes them; it does not restate them.
   run (without `--capture-only`) rewrites it, archiving the previous dump first.
   `go run ./cmd/gate bench-compare` captures for itself → comparing never replaces the
   reference; `cmd/gate/bench_test.go` (race suite) enforces the split.
-- `internal/build/depgraph` owns `docs/design/package-graph.md`, sole writer: the checking form
+- `internal/build/deps` owns `docs/design/package-graph.md`, sole writer: the checking form
   renders in memory and compares, so a stale graph is reported with no way to overwrite it;
   `--write` is the only mode that touches the file. Its test pins the render against the committed
   document.

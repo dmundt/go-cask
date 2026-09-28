@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
-	"github.com/dmundt/go-cask/internal/build/receipt"
 )
 
 // gateReceiptShared is one throwaway signing identity for this whole test binary.
@@ -443,7 +443,7 @@ func TestGateReceiptCreateWritesTheReceipt(t *testing.T) {
 	if payload == "" {
 		t.Fatal("create wrote no receipt file")
 	}
-	record, err := receipt.Parse(payload)
+	record, err := landing.Parse(payload)
 	if err != nil {
 		t.Fatalf("the receipt create wrote does not parse: %v\n%s", err, payload)
 	}
@@ -452,23 +452,23 @@ func TestGateReceiptCreateWritesTheReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hashing the change: %v", err)
 	}
-	want := receipt.Record{
+	want := landing.Record{
 		Commit:        f.head,
 		Tree:          f.headTree,
 		Base:          f.base,
 		Diff:          wantDiff,
-		Scope:         receipt.Full,
+		Scope:         landing.Full,
 		Checks:        []string{"gofmt", "go-test-race", "govulncheck", "coverage-tiers"},
 		CoverageTiers: "37",
 		Go:            runtime.Version(),
 		Runner:        gateReceiptRunner(),
 		Run:           record.Run,
 	}
-	if got := receipt.Render(record); got != receipt.Render(want) {
-		t.Errorf("create wrote\n%s\nwant\n%s", got, receipt.Render(want))
+	if got := landing.Render(record); got != landing.Render(want) {
+		t.Errorf("create wrote\n%s\nwant\n%s", got, landing.Render(want))
 	}
-	if !strings.HasPrefix(payload, receipt.Version+"\n") {
-		t.Errorf("the receipt is not marked as %s:\n%s", receipt.Version, payload)
+	if !strings.HasPrefix(payload, landing.Version+"\n") {
+		t.Errorf("the receipt is not marked as %s:\n%s", landing.Version, payload)
 	}
 
 	// Nothing may reach standard error on a success: the gate's step streams both, and a
@@ -488,7 +488,7 @@ func TestGateReceiptCreateDefaultsItsBaseToOriginMain(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("create with no --base = %d, want 0: %s", status, stderr)
 	}
-	record, err := receipt.Parse(f.receipt(f.head))
+	record, err := landing.Parse(f.receipt(f.head))
 	if err != nil {
 		t.Fatalf("the receipt does not parse: %v", err)
 	}
@@ -972,7 +972,7 @@ func TestGateReceiptShowPrintsTheLocalReceiptThenThePublishedOne(t *testing.T) {
 	if stdout != f.receipt(f.head) {
 		t.Errorf("show printed %q, want the local receipt file verbatim", stdout)
 	}
-	if _, err := receipt.Parse(stdout); err != nil {
+	if _, err := landing.Parse(stdout); err != nil {
 		t.Errorf("show printed something that does not parse: %v", err)
 	}
 	// The published source prints the commit's message, which has no trailing newline; the
@@ -998,7 +998,7 @@ func TestGateReceiptShowPrintsTheLocalReceiptThenThePublishedOne(t *testing.T) {
 	if !strings.Contains(stdout, "commit "+f.head) {
 		t.Errorf("the published receipt show printed does not name %s:\n%s", f.head, stdout)
 	}
-	if _, err := receipt.Parse(stdout); err != nil {
+	if _, err := landing.Parse(stdout); err != nil {
 		t.Errorf("show printed the published receipt but it does not parse: %v", err)
 	}
 
@@ -1032,7 +1032,7 @@ func TestGateReceiptSuitePrintsTheChecksAFullReceiptMustList(t *testing.T) {
 		}
 		// Every name it prints must be one the line-oriented format can carry, or the
 		// receipt CI is asked to require could never list it.
-		if err := receipt.CheckName(got[i]); err != nil {
+		if err := landing.CheckName(got[i]); err != nil {
 			t.Errorf("suite printed %q, which the receipt format cannot carry: %v", got[i], err)
 		}
 	}

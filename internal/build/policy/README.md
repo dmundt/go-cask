@@ -2,7 +2,7 @@
 type: Guide
 title: policy (build) — go-cask
 description: go-cask's answers for the build engine — layer matrix, coverage tiers, guards, inventories, footer contract, change rules, README frontmatter, instruction-file budgets, worktree table, landing lanes, gate table, package-graph prose.
-version: v10
+version: v11
 ---
 
 # policy
@@ -16,21 +16,21 @@ to what the gate enforces → change one file here; the engine keeps taking it a
 
 | Decision | Function | Consumed by |
 |---|---|---|
-| Layers; what each may import | `Matrix` | `layers.Check` |
+| Layers; what each may import | `Matrix` | `deps.Check` |
 | Package → coverage tier | `Coverage` | tier check + measurement loop |
 | Packages that must not reach the codec layer | `CodecGuards` | `deps.CheckCodecDeps` |
-| Which paths a change set consists of; which jobs it can affect | `ScopeRules`, `DocsPaths`, `WebsitePaths` | `changes.Classify`; the `scope` command, which the gate and CI both ask |
+| Which paths a change set consists of; which jobs it can affect | `ScopeRules`, `DocsPaths`, `WebsitePaths` | `scope.Classify`; the `scope` command, which the gate and CI both ask |
 | Frontmatter a package README under `internal/build` carries | `PackageReadme` | the build README check |
 | Byte ceiling per instruction file | `InstructionBudgets` | the `markdown-integrity` step; the tree walk is `documentation_test.go` |
 | Site pages promising an inventory table | `Inventories` | `website.CheckInventory` |
 | Published footer: base line, hook, guards | `SiteFooter` | `website.FooterFindings`, `website.CheckSourceGuards`, `website.CheckAbsentPaths` |
-| Package graph's title, prose, layer assignment | `GraphDoc` | `depgraph.Document` |
+| Package graph's title, prose, layer assignment | `GraphDoc` | `deps.Document` |
 | Where that document lives | `GraphDocPath` | the `dep-graph` command |
-| The gate's entry points and its verified-commit ledger | `Gate` | the `verify` and `pre-push` commands; `gate.Verified`, `gate.Append` |
+| The gate's entry points and its verified-commit ledger | `Gate` | the `verify` and `pre-push` commands; `landing.Verified`, `landing.Append` |
 | The gate's own layout: variables, escape hatches, cross-platform targets, smoke-fuzz set | `Verify` | the `verify` command |
 | The pinned static analyzer: name, package, version, config | `Linter` | the `lint` command, and the gate's `lint` step |
-| The local advisory slot: directory, records, idle window | `LandLane` | the `land-lane` command; `lane.Decide` |
-| The server-side lane: ref namespace, claim window, record file | `PRLane` | the `pr-lane` command; `claim.DecideLane` |
+| The local advisory slot: directory, records, idle window | `LandLane` | the `land-lane` command; `landing.Decide` |
+| The server-side lane: ref namespace, claim window, record file | `PRLane` | the `pr-lane` command; `landing.DecideLane` |
 | Task worktree location, base, lock text | `Worktrees` | the `worktree` command; `worktree.GitFile` |
 | Benchmark capture command and archive naming | `Benchmarks`, `BenchmarkArchiveName` | the `bench-baseline` and `bench-compare` commands |
 | Which example programs a runner executes | `Examples` | the `run-examples` command |

@@ -2,7 +2,7 @@
 type: Guide
 title: build — go-cask
 description: The gate's build decisions — engine checks, go-cask policy for them — plus layout, commands, and where a new check goes.
-version: v12
+version: v13
 ---
 
 # build
@@ -23,20 +23,14 @@ The gate's build decisions. One module, two parts:
 
 | Path | What it is |
 |---|---|
-| [`changes/`](./changes/README.md) | change-set classification: docs-only, Go, security-relevant, website |
-| [`gate/`](./gate/README.md) | gate stamp: verified-commit ledger the pre-push hook reads |
-| [`lane/`](./lane/README.md) | landing-lane records: advisory slot, identity, staleness |
-| [`claim/`](./claim/README.md) | server-side lane: coordination ref, issue/branch matching, the shared verdict |
-| [`verify/`](./verify/README.md) | gate run scope, package concurrency, whether an escape hatch dropped a step |
-| [`receipt/`](./receipt/README.md) | receipt format: parse, render, check-name rule, evidence identity, canonical changed-path list |
+| [`landing/`](./landing/README.md) | the landing machinery: server-side lane, local advisory slot, gate stamp, gate receipt |
+| [`scope/`](./scope/README.md) | change-set classification; gate run scope, package concurrency, escape hatches |
 | [`worktree/`](./worktree/README.md) | relative `.git` link a linked worktree needs; lock protecting it |
 | [`toolchain/`](./toolchain/README.md) | where an installed tool lands; whether it is the pinned release |
-| [`layers/`](./layers/README.md) | dependency-layer check: arm table + allowed imports |
 | [`coverage/`](./coverage/README.md) | coverage policy: tiers, thresholds, exemptions, measurement decision |
 | [`docs/`](./docs/README.md) | Markdown integrity: raw HTML, forbidden fences, dead links, mermaid balance, frontmatter, changelog structure |
 | [`website/`](./website/README.md) | published site: Go fences materialized + built, inventory tables vs tree, one-line footer |
-| [`deps/`](./deps/README.md) | forbidden transitive dependencies; well-formed module graph |
-| [`depgraph/`](./depgraph/README.md) | local package graph as committed Mermaid document |
+| [`deps/`](./deps/README.md) | import structure: forbidden dependencies, dependency-layer matrix, committed package graph |
 | [`versioning/`](./versioning/README.md) | frontmatter `version:` rule for changed files |
 | [`release/`](./release/README.md) | changelog sections → GitHub release notes; publish guards |
 | [`taskstate/`](./taskstate/README.md) | which branches carry work no pull request tracks |

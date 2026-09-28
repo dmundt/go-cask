@@ -9,7 +9,7 @@
 // The step list that ran them was the last rule in that script, and it is here too:
 // `verify` runs every step in order, streams its output, and writes the gate stamp. The
 // decisions behind it are not in this file — what a run covers, how many packages it builds
-// at once, and whether an escape hatch dropped a step are internal/build/verify's, and
+// at once, and whether an escape hatch dropped a step are internal/build/scope's, and
 // go-cask's answers are internal/build/policy's — so what is left is orchestration. The one
 // thing that stays in shell is resolving Go itself, because PATH can only be changed in the
 // caller's shell (scripts/toolchain.sh).
@@ -45,15 +45,13 @@ import (
 	"time"
 
 	"github.com/dmundt/go-cask/internal/build/bench"
-	"github.com/dmundt/go-cask/internal/build/changes"
 	"github.com/dmundt/go-cask/internal/build/coverage"
-	"github.com/dmundt/go-cask/internal/build/depgraph"
 	"github.com/dmundt/go-cask/internal/build/deps"
 	"github.com/dmundt/go-cask/internal/build/docs"
 	"github.com/dmundt/go-cask/internal/build/examples"
-	"github.com/dmundt/go-cask/internal/build/layers"
 	"github.com/dmundt/go-cask/internal/build/policy"
 	"github.com/dmundt/go-cask/internal/build/release"
+	"github.com/dmundt/go-cask/internal/build/scope"
 	"github.com/dmundt/go-cask/internal/build/toolchain"
 	"github.com/dmundt/go-cask/internal/build/versioning"
 	"github.com/dmundt/go-cask/internal/build/website"
@@ -887,17 +885,9 @@ func runDepGraph(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	// The two rules read the same `go list` shape; each declares its own type at
-	// the consumer side rather than importing the other's, so the conversion is
-	// explicit here.
-	graphPackages := make([]depgraph.Package, 0, len(packages))
-	for _, pkg := range packages {
-		graphPackages = append(graphPackages, depgraph.Package{
-			ImportPath: pkg.ImportPath,
-			Imports:    pkg.Imports,
-		})
-	}
-	graph := depgraph.Derive(module, graphPackages)
+	// One `go list` shape, one type: the layer check and the graph both read
+	// deps.Package, so there is nothing to convert between them.
+	graph := deps.Derive(module, packages)
 
 	docPath := filepath.Join(root, filepath.FromSlash(policy.GraphDocPath))
 	committed, readErr := os.ReadFile(docPath)
@@ -905,13 +895,13 @@ func runDepGraph(args []string, out, errOut io.Writer) error {
 
 	// A document without a readable version starts at v1, like every generated
 	// file; the current version is what the render compares against.
-	version := depgraph.Version(string(committed))
+	version := deps.Version(string(committed))
 	if version == "" {
 		version = "v1"
 	}
 
 	if !*write {
-		if exists && depgraph.Document(policy.GraphDoc(), graph, version) == string(committed) {
+		if exists && deps.Document(policy.GraphDoc(), graph, version) == string(committed) {
 			fmt.Fprintf(out, "dep-graph: %s is up to date\n", policy.GraphDocPath)
 			return nil
 		}
@@ -919,7 +909,7 @@ func runDepGraph(args []string, out, errOut io.Writer) error {
 			"  regenerate it with: go run ./cmd/gate dep-graph --write", policy.GraphDocPath)
 	}
 
-	if exists && depgraph.Document(policy.GraphDoc(), graph, version) == string(committed) {
+	if exists && deps.Document(policy.GraphDoc(), graph, version) == string(committed) {
 		fmt.Fprintf(out, "dep-graph: %s is up to date — nothing written\n", policy.GraphDocPath)
 		return nil
 	}
@@ -928,12 +918,12 @@ func runDepGraph(args []string, out, errOut io.Writer) error {
 	// artifact: a new document starts at v1, an existing one moves by one.
 	next := version
 	if exists {
-		next, err = depgraph.Bump(version)
+		next, err = deps.Bump(version)
 		if err != nil {
 			return fmt.Errorf("%s: %w", policy.GraphDocPath, err)
 		}
 	}
-	if err := os.WriteFile(docPath, []byte(depgraph.Document(policy.GraphDoc(), graph, next)), 0o644); err != nil {
+	if err := os.WriteFile(docPath, []byte(deps.Document(policy.GraphDoc(), graph, next)), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", policy.GraphDocPath, err)
 	}
 	fmt.Fprintf(out, "dep-graph: wrote %s\n", policy.GraphDocPath)
@@ -1415,7 +1405,7 @@ func runScope(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	results, err := changes.Classify(paths, policy.ScopeRules())
+	results, err := scope.Classify(paths, policy.ScopeRules())
 	if err != nil {
 		return err
 	}
@@ -1774,7 +1764,7 @@ func runLayerMatrix(args []string, out, errOut io.Writer) error {
 		return err
 	}
 
-	violations := layers.Check(module, policy.Matrix(), packages)
+	violations := deps.Check(module, policy.Matrix(), packages)
 	if len(violations) == 0 {
 		fmt.Fprintf(out, "layer matrix: %d packages checked, no violations\n", len(packages))
 		return nil
@@ -1889,7 +1879,7 @@ func modulePath() (string, error) {
 //
 // `go list`'s .Imports omits imports that appear solely in _test.go files, which
 // is the intended scope: a cas/** test may keep importing internal/test.
-func listPackages() ([]layers.Package, error) {
+func listPackages() ([]deps.Package, error) {
 	out, err := goList("-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
 	if err != nil {
 		return nil, err
@@ -1898,14 +1888,14 @@ func listPackages() ([]layers.Package, error) {
 }
 
 // parsePackages reads the "path|import import" shape that `go list -f` prints.
-func parsePackages(list string) ([]layers.Package, error) {
-	var packages []layers.Package
+func parsePackages(list string) ([]deps.Package, error) {
+	var packages []deps.Package
 	for _, line := range splitLines(list) {
 		path, imports, _ := strings.Cut(line, "|")
 		if path == "" {
 			return nil, fmt.Errorf("malformed go list line %q", line)
 		}
-		packages = append(packages, layers.Package{
+		packages = append(packages, deps.Package{
 			ImportPath: path,
 			Imports:    strings.Fields(imports),
 		})

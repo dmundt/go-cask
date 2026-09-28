@@ -16,10 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dmundt/go-cask/internal/build/changes"
-	"github.com/dmundt/go-cask/internal/build/gate"
+	"github.com/dmundt/go-cask/internal/build/landing"
 	"github.com/dmundt/go-cask/internal/build/policy"
-	"github.com/dmundt/go-cask/internal/build/verify"
+	"github.com/dmundt/go-cask/internal/build/scope"
 	"github.com/dmundt/go-cask/internal/build/worktree"
 )
 
@@ -75,7 +74,7 @@ type gateRun struct {
 	// root is the checkout the gate was started in.
 	root  string
 	jobs  int
-	scope verify.Scope
+	scope scope.Scope
 	// fast is the drop-everything switch, which turns on every escape hatch at once.
 	fast bool
 	// skipped is what the run dropped, in the order the steps reported it. A run with
@@ -99,9 +98,9 @@ type gateRun struct {
 // This is the step list scripts/verify.sh held in bash, moved here when the last rule in
 // it turned out to be the list itself. The decisions are not in this file: what a run
 // covers, how many packages it may build at once and whether an escape hatch dropped a
-// step are internal/build/verify's; the entry points, the variables and the
+// step are internal/build/scope's; the entry points, the variables and the
 // smoke-fuzz set are internal/build/policy's; the record it writes is
-// internal/build/gate's. What is left is orchestration — running the steps in order,
+// internal/build/landing's. What is left is orchestration — running the steps in order,
 // streaming their output, and reporting — which is the one thing that cannot live in the
 // engine, because the engine is pure functions over caller data and this reads the world.
 func runVerify(args []string, out, errOut io.Writer) error {
@@ -186,8 +185,8 @@ func verifySteps(out, errOut io.Writer) error {
 		return exitStatus(1)
 	}
 
-	run.fast = verify.Escape(run.env(table.FastEnv), false)
-	jobs, err := verify.Jobs(run.env(table.JobsEnv), table.JobsEnv, runtime.NumCPU())
+	run.fast = scope.Escape(run.env(table.FastEnv), false)
+	jobs, err := scope.Jobs(run.env(table.JobsEnv), table.JobsEnv, runtime.NumCPU())
 	if err != nil {
 		return usageError{err.Error()}
 	}
@@ -198,7 +197,7 @@ func verifySteps(out, errOut io.Writer) error {
 	}
 
 	// The scope decides which steps run, and the benchmark is the merge base with the
-	// remote's main. The classification is not repeated here: internal/build/changes
+	// remote's main. The classification is not repeated here: internal/build/scope
 	// owns the rule and internal/build/policy the pattern list, and continuous
 	// integration's scope job asks the same command, so the gate and CI cannot drift apart
 	// on a list kept in sync only by a comment.
@@ -219,13 +218,13 @@ func verifySteps(out, errOut io.Writer) error {
 			return err
 		}
 	}
-	scope, err := verify.Requested(run.env(table.ScopeEnv), table.ScopeEnv, docsOnly)
+	runScope, err := scope.Requested(run.env(table.ScopeEnv), table.ScopeEnv, docsOnly)
 	if err != nil {
 		return usageError{err.Error()}
 	}
-	run.scope = scope
-	fmt.Fprintf(out, "== scope: %s ==\n", scope)
-	if scope == verify.Docs {
+	run.scope = runScope
+	fmt.Fprintf(out, "== scope: %s ==\n", runScope)
+	if runScope == scope.Docs {
 		fmt.Fprintln(out, "documentation-only change: running the documentation gate ("+
 			table.ScopeEnv+"=full runs the whole gate)")
 	}
@@ -238,7 +237,7 @@ func verifySteps(out, errOut io.Writer) error {
 		}
 	}
 
-	for _, step := range stepsFor(table, scope) {
+	for _, step := range stepsFor(table, runScope) {
 		if step.Enabled != nil && !step.Enabled(run) {
 			continue
 		}
@@ -255,10 +254,10 @@ func verifySteps(out, errOut io.Writer) error {
 // and the documentation steps alone for the documentation scope. It is separate from the
 // run so the selection is a decision with a test rather than a branch inside a loop that
 // only a whole gate run could exercise.
-func stepsFor(table policy.VerifyTable, scope verify.Scope) []verifyStep {
+func stepsFor(table policy.VerifyTable, runScope scope.Scope) []verifyStep {
 	var steps []verifyStep
 	for _, step := range gateSteps(table) {
-		if scope == verify.Docs && !step.DocsScope {
+		if runScope == scope.Docs && !step.DocsScope {
 			continue
 		}
 		steps = append(steps, step)
@@ -330,7 +329,7 @@ func (r *gateRun) env(name string) string {
 // record. The comparison itself is the engine's, because a hatch that reads as set for
 // the report and unset for the record is how a half-run acquires a green stamp.
 func (r *gateRun) escape(label, env string) bool {
-	if !verify.Escape(r.env(env), r.fast) {
+	if !scope.Escape(r.env(env), r.fast) {
 		return false
 	}
 	r.skipped = append(r.skipped, label)
@@ -820,9 +819,13 @@ func stepFuzz(r *gateRun) error {
 }
 
 // fuzzTarget runs one smoke-fuzz target and returns the log it wrote.
+//
+// The pattern is anchored because `go test -fuzz` takes a regular expression: an unanchored
+// name also selects every target it prefixes, so two targets in one package would make the
+// run refuse to start rather than run the one the table named.
 func (r *gateRun) fuzzTarget(target policy.FuzzTarget, share int) (string, error) {
 	var log strings.Builder
-	err := r.commandInto(&log, r.root, nil, "go", "test", "-run=^$", "-fuzz="+target.Target,
+	err := r.commandInto(&log, r.root, nil, "go", "test", "-run=^$", "-fuzz=^"+target.Target+"$",
 		"-fuzztime="+verifyFuzzTime, "-parallel", strconv.Itoa(share), target.Package)
 	return log.String(), err
 }
@@ -1028,7 +1031,7 @@ func (r *gateRun) record() error {
 
 	table := policy.Gate()
 	path := filepath.Join(commonDir, table.Ledger)
-	updated := gate.Append(readFileOrEmpty(path), head, r.scope.String(), time.Now(), table.LedgerKeep)
+	updated := landing.Append(readFileOrEmpty(path), head, r.scope.String(), time.Now(), table.LedgerKeep)
 	if err := os.WriteFile(path+".tmp", []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("writing the gate ledger %s: %w", path, err)
 	}
@@ -1060,7 +1063,7 @@ func mergeBase(root string) (string, error) {
 
 // scopeRule asks one change-set rule for its verdict over the paths a change touched.
 func scopeRule(changed []string, name string) (bool, error) {
-	results, err := changes.Classify(changed, policy.ScopeRules())
+	results, err := scope.Classify(changed, policy.ScopeRules())
 	if err != nil {
 		return false, err
 	}
