@@ -2,33 +2,49 @@
 type: Design Document
 title: Object Descriptor + Sidecar Checksum — go-cask
 description: Non-normative design note for storing a small object descriptor and optional sidecar checksum outside the object bytes, without changing the digest model or the Backend contract.
-version: v4
+version: v5
 ---
 
 # Object Descriptor + Sidecar Checksum — go-cask
 
-Non-normative design sketch. Canonical rules remain in the spec set (`cas-core.md`, `operations.md`, `consistency.md`).
+Non-normative sketch and rationale for `cas/verify/sidecar`. Canonical rules:
+`cas-core.md`, `operations.md`, `consistency.md`.
 
 ## 0. Status: implemented, with differences
 
-The recorded-checksum path this note argued for is **shipped** as `cas/verify/sidecar`; the normative contract is `operations.md` §6, and this note is now its rationale. Where the sketch below differs from that contract, the contract wins. Differences, recorded rather than implied:
-
-- **Placement:** the sketch puts the descriptor at the `Store[T]` layer (§3.2). The shipped layer is one rung lower — a `cas.Backend` decorator that composes with `cas.New`, `gitlike.NewRepository` and `internal/store.Open` unchanged, so it works for byte-layer consumers and needs no store change.
-- **What is checksummed:** the sketch checksums the *logical payload* (`payload_checksum`); v1 checksums the **stored bytes** — exactly what `Backend.Get` returns — so it does not satisfy the "checksum independent of the raw object bytes" use case in §5. A logical-payload layer is a larger feature and stays deferred (operations §6.5).
-- **Field names and encoding:** the shipped record uses `checksum_algo`/`checksum`/`size` with bare lowercase-hex digests (`encoding.TextMarshaler`); the sketch proposed `payload_checksum`/`payload_size` with an algorithm prefix.
-- **`references`:** not in v1: only the typed layer knows `References()`, a byte-layer producer cannot derive it, and the object type stays the authoritative traversal source (the sketch says the same in §2.2).
-- **Read path:** the sketch validates the descriptor inside `Store.Get`. The shipped read path is explicit and separate — `Rec.Verifier(...).Verify` / `VerifyAll` — so a read never pays for a check it did not ask for; `Get` delegates untouched.
-- **Quarantine:** still not implemented (§3.3 says "quarantine + audit"): the shipped path reports a mismatch and never moves bytes (operations §6.3).
+- Recorded-checksum path **shipped** as `cas/verify/sidecar`.
+- Normative contract `operations.md` §6; this note is its rationale; the contract
+  wins on any difference.
+- **Placement:** sketch → `Store[T]` layer (§3.2); shipped → one rung lower, a
+  `cas.Backend` decorator; `cas.New`, `gitlike.NewRepository`,
+  `internal/store.Open` unchanged; serves byte-layer consumers, no store change.
+- **Checksummed:** sketch → *logical payload* (`payload_checksum`); v1 → **stored
+  bytes**, exactly what `Backend.Get` returns, so the §5 "independent of the raw
+  object bytes" case is unmet; logical-payload layer stays deferred
+  (`operations.md` §6.5).
+- **Fields:** shipped `checksum_algo`/`checksum`/`size` with bare lowercase-hex
+  digests (`encoding.TextMarshaler`); sketch `payload_checksum`/`payload_size`
+  with an algorithm prefix.
+- **`references`:** not in v1 — only the typed layer knows `References()`; the
+  object type stays the authoritative traversal source (sketch §2.2 agrees).
+- **Read path:** sketch → validate inside `Store.Get`; shipped → explicit,
+  separate `Rec.Verifier(...).Verify` / `VerifyAll`; a read never pays for an
+  unasked check; `Get` delegates untouched.
+- **Quarantine:** not implemented (§3.3 says "quarantine + audit"); the shipped
+  path reports a mismatch and never moves bytes (`operations.md` §6.3).
 
 ## 1. The constraint
 
-The object digest is already the checksum: the key is the digest of the exact bytes written to the backend, and a digest is not part of the object payload. The core contract: `Backend` stores `Digest -> bytes`, while `Store[T]` owns the typed envelope, codec, and validation rules.
-
-So a payload checksum must not be written into the object bytes themselves. Inject checksum metadata into the TLV payload and the payload changes, so the object's `Digest` changes too — a circular dependency, since the checksum is computed over bytes that include the checksum.
+- `Backend` stores `Digest -> bytes`; `Store[T]` owns typed envelope, codec,
+  validation.
+- Digest is already the checksum: key = digest of the exact bytes written; a
+  digest is not part of the object payload.
+- Checksum metadata in the TLV payload changes the payload, hence the `Digest` —
+  circular (the checksum covers bytes including the checksum).
 
 ## 2. The design
 
-Keep the object bytes canonical and store metadata in a separate sidecar descriptor.
+- Object bytes stay canonical; metadata lives in a separate sidecar descriptor.
 
 ### 2.1 Canonical object bytes
 
@@ -43,7 +59,9 @@ The digest is the only object identity key.
 
 ### 2.2 Sidecar descriptor
 
-The descriptor is a small JSON/YAML/CBOR record stored next to the object in a metadata namespace. The store owns the descriptor; the backend does not.
+- Small JSON/YAML/CBOR record beside the object, in a metadata namespace.
+- Store owns it; backend does not; keyed by the same digest as the object.
+- Field names follow the sketch; shipped record `operations.md` §6.2 (§0).
 
 Exact file layout:
 
@@ -51,8 +69,6 @@ Exact file layout:
 <base>/objects/<hex>          // current object bytes, one per digest
 <base>/.meta/<hex>.json       // sidecar descriptor for that object
 ```
-
-The descriptor is keyed by the same digest as the main object. Field names follow the sketch (the shipped record is `operations.md` §6.2; §0 lists the differences):
 
 ```json
 {
@@ -72,14 +88,16 @@ Rules:
 - `digest`: the canonical object key, the address of the backend blob.
 - `type`: the logical object type (`blob@1`, `tree@1`, `commit@1`, etc.).
 - `codec`: the serialization scheme used for the logical payload.
-- `payload_checksum`: the checksum of the logical payload before the object is wrapped or otherwise normalized; for a whole-object store it may equal `digest` exactly.
-- `references`: optional app-level reference list — metadata, not the authoritative reference graph; the type's `References()` method remains the authoritative traversal source.
-
-The important rule: the descriptor is side data, never part of the object hash input.
+- `payload_checksum`: logical-payload checksum before wrapping or other
+  normalization; may equal `digest` for a whole-object store.
+- `references`: optional app-level list — metadata, not the authoritative
+  reference graph; the type's `References()` method stays authoritative.
+- The descriptor is side data, never part of the object hash input.
 
 ## 3. Where it fits in the boundary
 
-This sits at the `Store[T]` layer, not in the `Backend` interface. (The shipped layer sits one rung lower, as a `cas.Backend` decorator — §0.)
+- Sketch layer: `Store[T]`, not the `Backend` interface; shipped one rung lower,
+  a `cas.Backend` decorator (§0).
 
 ### 3.1 Backend boundary
 
@@ -96,18 +114,15 @@ type Backend interface {
 }
 ```
 
-That is intentionally byte-only. It knows nothing about descriptors, envelopes, or object types.
+Byte-only: no descriptors, envelopes, or object types.
 
 ### 3.2 Store boundary
 
-`Store[T]` is the right insertion point because it already owns (the shipped decorator instead takes the caller's `Hasher`, because it sits below the store — §0):
-
-- `Codec[T]`
-- object validation
-- `Type()` / `References()` semantics
-- digest selection and verify-before-accept logic
-
-The descriptor creation stays in a `Store` or `manifest`-like wrapper above the backend.
+- `Store[T]` already owns `Codec[T]`, validation, `Type()`/`References()`, digest
+  selection, verify-before-accept.
+- Shipped decorator takes the caller's `Hasher`, sitting below the store (§0).
+- Descriptor creation lives in a `Store` or `manifest`-like wrapper above the
+  backend.
 
 ### 3.3 Read path
 
@@ -122,36 +137,36 @@ On a mismatch:
 
 - wrong `payload_checksum` → `ErrCorrupt`
 - missing object bytes → `ErrNotFound`
-- mismatch between descriptor and object bytes → quarantine + audit, never silently repair
+- descriptor/object mismatch → quarantine + audit, never silently repair
 
 ## 4. Why this is the correct placement
 
-This design preserves the repo's identity model:
-
-- the digest remains the content key
-- the object bytes remain canonical and hash-stable
-- the descriptor is auxiliary metadata, not part of the content identity
-- no backend write API changes
-- the metadata can be optional, per store or per object family
-
-It also keeps the boundary clean:
-
-- backend: bytes and durability
-- store: typed object semantics and validation
-- descriptor: metadata and auditability
-- sidecar checksum: optional verification of logical payloads; not a second identity key
+- Digest stays the content key; object bytes stay canonical and hash-stable.
+- Descriptor is auxiliary metadata, not content identity.
+- No backend write API changes; metadata optional per store or per object family.
+- Boundaries: backend = bytes/durability; store = typed semantics/validation;
+  descriptor = metadata/auditability; sidecar checksum = optional logical-payload
+  verification, not a second identity key.
 
 ## 5. When to use it
 
-Use this pattern when you need one of the following:
+Use for one of:
 
 - packaging metadata for a large or chunked object
 - app-level provenance or audit info for a content-addressed blob
-- a checksum independent of the raw object bytes for a logical payload layer — **not satisfied by v1**, which checksums the stored bytes (operations §6.2, and §0 above)
-- a future object store that needs a manifest without changing the core backend contract
+- a checksum independent of the raw object bytes for a logical payload layer —
+  **not satisfied by v1**, which checksums the stored bytes (`operations.md` §6.2,
+  §0)
+- a future object store needing a manifest without changing the core backend
+  contract
 
-Do not use it when the object is a small whole-object blob whose digest already covers the exact stored bytes: there the descriptor is unnecessary overhead and the raw digest is sufficient.
+Not for a small whole-object blob whose digest already covers the exact stored
+bytes: descriptor overhead, raw digest sufficient.
 
 ## 6. Recommended rule for this repo
 
-The repo should treat the descriptor as an optional metadata layer above `cas.Backend`, not as part of the core TLV object bytes: the object digest stays the source of truth, and the sidecar checksum is a convenience for integrity metadata and app-level verification, not a second canonical identity.
+- Descriptor = optional metadata layer above `cas.Backend`, not part of the core
+  TLV object bytes.
+- Object digest stays the source of truth.
+- Sidecar checksum = convenience for integrity metadata and app-level
+  verification, not a second canonical identity.

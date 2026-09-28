@@ -1,13 +1,13 @@
 # sidecar
 
-`sidecar` keeps an optional per-object checksum beside a store's bytes, so a cheap check can run over a store whose address is a strong hash. It is a `cas.Backend` decorator: the object's address stays the authoritative identity, the record never enters the hashed bytes, and deleting the record directory loses the cheap check, never an object.
+Optional per-object checksum beside a store's bytes, so a cheap check runs over a store whose address is a strong hash. A `cas.Backend` decorator: the address stays the authoritative identity, the record never enters the hashed bytes, and deleting the record directory loses the cheap check, never an object.
 
-It is the fifth extension shape (extensions §2.1) and the counterpart to [the checksum hashers](../README.md): those are `cas.Hasher` implementations for a store deliberately *addressed* by a checksum, while `sidecar` records a checksum *beside* objects addressed by something else. The normative contract is `operations.md` §6.
+It is the fifth extension shape (extensions §2.1) and the inverse of [the checksum hashers](../README.md): those implement `cas.Hasher` for a store deliberately *addressed* by a checksum, while `sidecar` records one *beside* objects addressed by something else. Normative contract: `operations.md` §6. `Get`, `Exists`, `List` and `Stats` delegate untouched, so the decorator composes with `cas.New`, `gitlike.NewRepository` and `internal/store.Open` unchanged.
 
 ## Layout
 
 ```text
-<base>/<fan-out>/<hex>        object bytes (the backend's own layout, unchanged)
+<base>/<fan-out>/<hex>        object bytes (the backend's own layout)
 <base>/.meta/<hex>.json       the record for that digest
 <base>/.meta/<hex>.<n>.tmp    atomic-write scratch, reclaimed by the backend's Clean
 ```
@@ -25,9 +25,7 @@ rec, _ := sidecar.New(backend,
 store := cas.New(rec, json.New[*Blob](), sha256.New()) // rec is a cas.Backend
 ```
 
-Records are written on `Put` and removed on `Delete`; `Get`, `Exists`, `List` and `Stats` delegate untouched, so the decorator composes with `cas.New`, `gitlike.NewRepository` and `internal/store.Open` unchanged.
-
-Validating and maintaining:
+Records are written on `Put` and removed on `Delete`. Validating and maintaining:
 
 ```go
 // One object: compares the stored bytes with the record, never with the address.
@@ -46,10 +44,10 @@ From the CLI, `cask verify --checksums [-checksum crc32|adler32|crc64] <hash>|--
 
 ## Errors
 
-- A record that is absent is `cas.ErrNotFound` (wrapped as `sidecar.ErrUnrecorded`): an unchecked object, never corruption — the lesson of the deleted `examples/files` `.crc32` sidecar (go-cask#196).
-- A record written by another checksum is `sidecar.ErrChecksumAlgorithm`, not corruption: crc32 and adler32 are both four bytes wide, so width alone cannot tell a reader change from damage.
-- A checksum or size disagreement is `cas.ErrCorrupt` (wrapped); a record that cannot be parsed, is the wrong version, or is larger than the read cap is `cas.ErrCorrupt` too, never a silent skip.
-- A record that cannot be read at all is reported rather than fatal in a full pass: `VerifyReport.Unreadable` names it and `VerifyAll` keeps checking the rest of the store, so one damaged record cannot report the whole store as unchecked. The single-object `Verify` reports the same condition as `cas.ErrCorrupt`.
+- Absent record: `cas.ErrNotFound` (wrapped as `sidecar.ErrUnrecorded`) — an unchecked object, never corruption; the lesson of the deleted `examples/files` `.crc32` sidecar (go-cask#196).
+- Record written by another checksum: `sidecar.ErrChecksumAlgorithm`, not corruption — crc32 and adler32 are both four bytes wide, so width alone cannot tell a reader change from damage.
+- Checksum or size disagreement: `cas.ErrCorrupt` (wrapped) — as is a record that cannot be parsed, is the wrong version, or exceeds the read cap, never a silent skip.
+- Record unreadable at all: reported, not fatal — `VerifyReport.Unreadable` names it and `VerifyAll` keeps checking the rest, so one damaged record cannot report the whole store unchecked. Single-object `Verify`: `cas.ErrCorrupt`.
 - The read cap bounds the writer too: a record that would exceed it is written without the optional `type`/`codec` fields, and one that still does not fit is refused with `sidecar.ErrRecordTooLarge`, publishing nothing. A writer never produces a record its own reader would refuse.
 - A `.json` name in `.meta` that is not a digest is not a record: `Keys`/`Reconcile` skip it and `Reconcile` reports it in `ReconcileReport.Foreign`, so one foreign file cannot abort a reconciliation.
 - A write whose reader is not drained to EOF fails loudly and writes no record: a checksum over partial bytes is worse than none.

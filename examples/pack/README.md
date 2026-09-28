@@ -1,12 +1,11 @@
 # Pack example
 
-This example shows the canonical helper layer for content chunking and sidecar metadata.
-
-The `cas/pack` package is intentionally small and reusable:
+Canonical helper layer for content chunking and sidecar metadata. `cas/pack`:
 
 - `pack.Split` breaks a payload into fixed-size chunks
 - `pack.Join` rebuilds the original bytes in order
-- `pack.SaveWith` and `pack.LoadWith` let callers persist typed data with their own codec, and take the caller's `context.Context` first
+- `pack.SaveWith` / `pack.LoadWith` persist typed data with the caller's own codec, and take
+  the caller's `context.Context` first
 
 ## What this example demonstrates
 
@@ -23,7 +22,7 @@ go run ./examples/pack save /tmp/demo-pack.json artifact alice "hello world"
 go run ./examples/pack load /tmp/demo-pack.json
 ```
 
-The output should show chunk counts and the manifest values that were saved and loaded back.
+Output shows chunk counts and the manifest values saved and loaded back.
 
 ## Typical flow
 
@@ -61,6 +60,5 @@ if err != nil {
 }
 ```
 
-## Package note
-
-This example keeps the `cas` core generic and hash-agnostic. `pack` sits above it as a helper for layout and metadata workflows rather than as a new serialization codec.
+`pack` keeps the `cas` core generic and hash-agnostic: a layout and metadata helper, not a new
+serialization codec.

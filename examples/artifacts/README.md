@@ -1,10 +1,15 @@
 # artifacts — content-addressable build artifact cache
 
-**What it demonstrates.** A build-artifact cache storing outputs under their content digest with the shipped gzip codec wrapper, bounded LRU caching with a monitor, named manifest refs, and mark-and-sweep GC from those refs — exercising the core's maintenance, pointer and caching machinery (examples spec §3.2). Acceptance: same bytes → same digest → `deduplicated: true`; the second `get` hits the cache; `gc` deletes only unreferenced artifacts; a manifest that cannot be decoded aborts `gc` without deleting the artifacts it references; the count `gc` prints is the sweep's own.
+**What it demonstrates.** A build-artifact cache storing outputs under their content digest
+with the shipped gzip codec wrapper, bounded LRU caching with a monitor, named manifest refs,
+and mark-and-sweep GC from those refs — the core's maintenance, pointer, and caching machinery
+(examples spec §3.2). Acceptance: same bytes → same digest → `deduplicated: true`; the second
+`get` hits the cache; `gc` deletes only unreferenced artifacts; an undecodable manifest aborts
+`gc` without deleting what it references; the count `gc` prints is the sweep's own.
 
 ## Store layout
 
-`-store` is the **example root**, and it owns two independent trees:
+`-store` is the **example root**, owning two independent trees:
 
 ```text
 <root>/
@@ -14,7 +19,12 @@
     .log/app        the ref's append-only reflog
 ```
 
-Refs MUST live outside the objects base (cas-core §4.4: one base belongs to exactly one store). `cas/refs` writes `<name>.tmp` temp files next to each ref, and `fs.Backend.Clean` reclaims every `*.tmp` file beneath its base — refs written inside `objects/` would lose their in-flight temp files to a cleanup. In the other direction, `List`/`Stats` report any digest-named file beneath the base, so a ref file that happened to look like a digest would be counted as an object and swept as garbage. Keeping `objects/` and `refs/` siblings makes both trees unambiguous.
+Refs MUST live outside the objects base (cas-core §4.4: one base belongs to exactly one
+store). `cas/refs` writes `<name>.tmp` temp files beside each ref and `fs.Backend.Clean`
+reclaims every `*.tmp` beneath its base, so a ref inside `objects/` could lose an in-flight
+temp file; conversely `List`/`Stats` count any digest-named file beneath the base, so a ref
+that looked like a digest would be swept as garbage. Sibling `objects/` and `refs/` trees keep
+both unambiguous.
 
 ## `cas` core parts used
 
@@ -35,19 +45,43 @@ Refs MUST live outside the objects base (cas-core §4.4: one base belongs to exa
 
 ## What it extends
 
-- **`cas/codec/gzip`** — the codec-composition seam is the call site (`gzipcodec.New(jsoncodec.New[T]())`, cas-core §7.2, §4.6), not a bespoke wrapper: the shipped wrapper names itself (`gzip+json`), so the envelope records the wire format and a codec change reads as `ErrCodecMismatch` instead of a decode failure, and it bounds decompression (`cas/codec/gzip.MaxDecodedBytes`). Output stays deterministic — the same value encodes to the same bytes, hence the same digest (dedup preserved). The hash algorithm is the client's (`sha256.New()` at `cas.New`), injected rather than registered — the core names no algorithm and has no registry (cas-core §4.2).
-- **`Artifact` / `Manifest`** — the example's own `Object[T]` types (`Manifest.Artifacts` is a `[]cas.Digest`), serialized via the gzip codec into the core's self-describing TLV envelope.
-- **Named refs (`cas/refs`)** — the example used to find a manifest by listing and decoding *every* object in the store. Names are now pointers in the core's refs store: `put` reads the name's previous digest and moves the ref, `get <name>` follows it, and `gc` roots its mark phase at `refs.Roots()`. The refs store also keeps each name's reflog (`refs.Log`/`Previous`), so the previous manifest of a target is recoverable, not just garbage.
-- **The GC contract (`cas.Reachable` + `cas.Sweep`)** — the reachable set is expanded by the core walk from the ref roots and deleted by the core sweep, which returns the digests actually removed. The example's own contribution is the resolve policy: a stored type that is not `manifest@1` is a leaf (an artifact), and anything else — an unreadable header, an undecodable `manifest@1`, a missing digest — aborts before the sweep starts. A manifest that exists but cannot be decoded still references its artifacts, so guessing "not a manifest" would delete them.
+- **`cas/codec/gzip`** — composition at the call site
+  (`gzipcodec.New(jsoncodec.New[T]())`, cas-core §7.2, §4.6), not in a bespoke wrapper: the
+  wrapper names itself (`gzip+json`), so a codec change reads as `ErrCodecMismatch` rather than
+  a decode failure, and decompression is bounded (`cas/codec/gzip.MaxDecodedBytes`). Output is
+  deterministic — same value, same bytes, same digest (dedup preserved). The caller injects
+  the hash (`sha256.New()` at `cas.New`); the core names no algorithm and has no registry
+  (cas-core §4.2).
+- **`Artifact` / `Manifest`** — the example's own `Object[T]` types (`Manifest.Artifacts` is a
+  `[]cas.Digest`), serialized by the gzip codec into the core's self-describing TLV envelope.
+- **Named refs (`cas/refs`)** — names are pointers in the core's refs store: `put` reads the
+  name's previous digest and moves the ref, `get <name>` follows it, `gc` roots its mark phase
+  at `refs.Roots()`; each name keeps a reflog (`refs.Log`/`Previous`), so a target's previous
+  manifest is recoverable, not just garbage.
+- **The GC contract (`cas.Reachable` + `cas.Sweep`)** — the core walk expands the reachable
+  set from the ref roots, the core sweep deletes it and returns the digests actually removed.
+  The example's own contribution is the resolve policy: a stored type that is not `manifest@1`
+  is a leaf (an artifact); anything else — unreadable header, undecodable `manifest@1`, missing
+  digest — aborts before the sweep starts, because an undecodable manifest still references its
+  artifacts.
 - **`cas` and `gitlike` are untouched.**
 
 ## Code walkthrough
 
-- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact digests as `[]cas.Digest`, which render as one lowercase-hex string each and validate on decode, with no JSON code here), serialized via the shipped gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
-  - `newApp <root>` — `fs.New(<root>/objects)` for the objects base, `refs.Open(<root>/refs)` for the name pointers; the layout rationale above lives in its doc comment;
-  - `put <name> <file>` — reads the name's ref first (one small file, no store-wide scan), `PutDedup`s the artifact and the manifest, `refs.Set(name, manifestDigest)`, then deletes the manifest it replaced — so the artifact that manifest referenced becomes garbage;
-  - `get <name|hash>` — a stored ref name is read through the refs store and names the manifest whose single artifact is served; anything else must be a digest. Both go through the `lru.Cache`, with `CacheMonitor` printing snapshots;
-  - `gc` — `refs.Roots()` → `cas.Reachable` over a `cas.RefListerFunc` (`manifests.Type` says leaf or manifest; a manifest is decoded, and any failure aborts) → `cas.Sweep`, whose deleted-digest count is printed;
+- `main.go` — the `Object[T]` types `Artifact` (leaf) and `Manifest` (references artifact
+  digests as `[]cas.Digest`, one lowercase-hex string each, validated on decode, no JSON here),
+  serialized by the shipped gzip codec into the core TLV envelope (`Store.Put`); plus the CLI:
+  - `newApp <root>` — `fs.New(<root>/objects)`, `refs.Open(<root>/refs)`; the layout rationale
+    above lives in its doc comment;
+  - `put <name> <file>` — reads the name's ref first (one small file, no store-wide scan),
+    `PutDedup`s the artifact and the manifest, `refs.Set(name, manifestDigest)`, then deletes
+    the manifest it replaced, so the artifact that manifest referenced becomes garbage;
+  - `get <name|hash>` — a stored ref name resolves through the refs store to the manifest whose
+    single artifact is served; anything else must be a digest. Both go through the `lru.Cache`,
+    with `CacheMonitor` printing snapshots;
+  - `gc` — `refs.Roots()` → `cas.Reachable` over a `cas.RefListerFunc` (`manifests.Type` says
+    leaf or manifest; a manifest is decoded, any failure aborts) → `cas.Sweep`, whose
+    deleted-digest count is printed;
   - `stats` / `monitor`.
 
 ```mermaid
@@ -76,4 +110,7 @@ go run ./examples/artifacts -store ./store stats
 go test ./examples/artifacts/...
 ```
 
-`put` prints the artifact digest in bare hex (`cas.Digest.String`, e.g. `9f86d081…`) plus `deduplicated: true/false`; `gc` prints the number of objects it deleted (`gc: deleted <n> unreachable objects`), and exits 1 with `error: …` — deleting nothing — if a manifest cannot be read.
+`put` prints the artifact digest in bare hex (`cas.Digest.String`, e.g. `9f86d081…`) plus
+`deduplicated: true/false`; `gc` prints the objects it deleted
+(`gc: deleted <n> unreachable objects`) and exits 1 with `error: …` — deleting nothing — if a
+manifest cannot be read.

@@ -2,49 +2,55 @@
 type: Specification
 title: API Design — go-cask
 description: Shared conventions for every HTTP endpoint in go-cask — naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, and OpenAPI documentation (in separate embedded .yaml files) — applied to the viewer surface and to example HTTP surfaces.
-version: v14
+version: v16
 ---
 
 # API Design — go-cask
 
-Common conventions for every HTTP endpoint: the viewer is the product's only HTTP surface (`/viewer/*`, HTML; routes in `viewer-design.md`), and `examples/api` demonstrates a JSON surface. A new endpoint MUST follow these conventions unless its own spec overrides them. Related: viewer-security, performance, library-design, coding-guidelines.
+- Shared conventions for every HTTP endpoint; a new endpoint MUST follow them unless its spec overrides.
+- Related: viewer-security, performance, library-design, coding-guidelines.
 
 ## 1. Scope
 
-Applies to the viewer (`/viewer/*`, `text/html`) and any example HTTP surface (`examples/api`, JSON/octet-stream): naming, methods, status codes, errors, authn/authz, rate limiting, validation, pagination, streaming, versioning, OpenAPI docs.
+- Viewer (`/viewer/*`, `text/html`, routes in `viewer-design.md`) = product's only shipped HTTP surface; `examples/api` (JSON/octet-stream) = example surface.
 
 ## 2. Surfaces, one style
 
 | Surface | Prefix | Content types | Auth | Consumers |
 |---|---|---|---|---|
 | Viewer (product) | `/viewer/` | `text/html` (pages + fragments) | session cookie | browser only |
-| Example JSON (`examples/api`) | app-chosen (pattern `/api/cas/v1/`) | `application/json`, `application/octet-stream` | bearer token | demo/tests |
+| Example JSON (`examples/api`) | app-chosen (`/api/cas/v1/` pattern) | `application/json`, `application/octet-stream` | bearer token | demo/tests |
 
-- A route's prefix decides its contract; never mix prefixes or content types. The same grammar (naming, errors, codes, middleware) applies to all — only content type and auth differ. The viewer is the only shipped surface.
+- Prefix decides the contract; never mix prefixes or types.
+- Same grammar (naming, errors, codes, middleware); only type and auth differ.
 
 ## 3. Naming and URL conventions
 
-- Plural resource nouns for collections (`/objects`, `/stats`).
-- Sub-resources by nesting: `/objects/{hash}/meta|raw|verify` (one level).
-- Actions are POST sub-resources (`/verify`, `/gc`) — never GET with side effects, never bare verbs at top level.
-- Path segments lowercase, hyphen-separated when multi-word. Query params short/lowercase (`q`, `limit`, `offset`), documented defaults/bounds.
-- Hash params always named `{hash}`, accepted as printable `sha256:hexdigest` or bare lowercase hex and parsed with the client's `sha256.Parse` (malformed → 400). The core's `Digest` carries no algorithm name.
+- Collections: plural resource nouns (`/objects`, `/stats`).
+- Sub-resources nested one level: `/objects/{hash}/meta|raw|verify`.
+- Actions = POST sub-resources (`/verify`, `/gc`); never GET side effects, never bare top-level verbs.
+- Path segments lowercase, hyphenated when multi-word.
+- Query params short/lowercase (`q`, `limit`, `offset`); defaults/bounds documented.
+- Hash params always `{hash}`: `sha256:hexdigest` or bare lowercase hex, parsed with `sha256.Parse`; malformed → 400.
+- Core `Digest` names no algorithm.
 
 ## 4. Methods and semantics
 
 | Method | Use | Body | Success |
 |---|---|---|---|
 | GET | read; MUST be side-effect free | — | 200 |
-| POST | create (server-computed identity) or action | yes | 201 (create) / 200 (action) |
+| POST | create (server-computed) or action | yes | 201 (create) / 200 (action) |
 | DELETE | delete; idempotent (missing = no-op) | — | 204 |
 
-- No `PUT` in the example v1 — objects are immutable (changed object = new hash); creates use POST with server-computed hash. Side-effecting actions (`verify`, `gc`, login) are POST; `verify` is read-only in effect but POST because it runs a role-gated check. `PUT`/`PATCH` are reserved for a future mutable resource (full-replace semantics if added).
+- No `PUT` in the example v1 — objects immutable (change = new hash); creates = POST, server-computed hash.
+- Side-effecting actions (`verify`, `gc`, login) = POST; `verify` read-only in effect, POST because role-gated.
+- `PUT`/`PATCH` reserved for a future mutable resource (full replace).
 
 ## 5. Status codes
 
 | Status | Viewer | JSON surface |
 |---|---|---|
-| 200 | HTML page/fragment | JSON body / octet-stream |
+| 200 | HTML page/fragment | JSON / octet-stream |
 | 201 | — | created (`POST /objects`) |
 | 204 | — | deleted / verified OK |
 | 303 | login redirect | — |
@@ -52,86 +58,92 @@ Applies to the viewer (`/viewer/*`, `text/html`) and any example HTTP surface (`
 | 401 | **empty body** | `{"error":"unauthorized"}` |
 | 403 | **empty body** | `{"error":"forbidden"}` |
 | 404 | minimal error page | `{"error":"not found"}` |
-| 413 | minimal error page (an oversized request body) | — |
+| 413 | minimal error page (oversized body) | — |
 | 429 | **empty body** + `Retry-After` | `{"error":"rate limited"}` + `Retry-After` |
 
-- 401/403 never disclose whether the target exists (all surfaces). A successful mutation with no useful body → 204; a create → 201 + the hash. 429 comes from the shared rate-limit middleware before any handler.
-- `Retry-After` is required on every 429, in whole seconds: it reports the delay the limiter is actually enforcing — the shared rate-limit middleware's window on a JSON surface, the viewer's login-throttle block on `/viewer/login` (viewer-security §5). A caller told how long to wait does not retry into the same refusal; a value that drifted from the enforced wait would be worse than none.
-- A rejected authentication attempt carries no body on any surface, and its status does not soften because a browser form sent it: `POST /viewer/login` with a bad token answers `401` (empty), exactly like a missing or expired session. The login page states the human-readable reason for a caller who returns to it (viewer-design §3), so the refusal never has to describe the token or the account.
-- 403 also answers a token-bearing login that is not same-origin (`POST /viewer/login`, `GET /viewer/?token=`): the credential is refused before any session exists, with an empty body, so the response never reveals whether the token was valid (viewer-security §5.1).
-- 413 answers a request body over the surface's bound, decided before the body is parsed: the viewer's bound is one setting for every route (viewer-security §13, defaults §4), not a per-endpoint decision.
+- 401/403 never disclose internals or target existence (all surfaces).
+- Create → 201 + hash; mutation with no useful body → 204.
+- 429 = shared rate-limit middleware, pre-handler.
+- `Retry-After` on every 429, whole seconds = enforced delay: middleware window (JSON), login block on `/viewer/login` (viewer-security §5).
+- Rejected auth: empty body on any surface, browser form included — `POST /viewer/login` bad token → `401`, like a missing/expired session.
+- Login page states the reason to a returning caller (viewer-design §3); the refusal never names token/account.
+- Non-same-origin token login → 403, empty body, before any session; token validity never revealed (viewer-security §5.1; URLs §7).
 
 ## 6. Error contract
 
-- JSON surfaces: every error is `{"error": "<concise message>"}` — no stack traces, internal paths, secrets, or object bytes.
-- Viewer: minimal HTML pages/fragments; 401/403 empty bodies. Every body is the viewer's own prose: a failure an operator sees is classified against the `cas` sentinel errors and explained, never rendered as the underlying Go error — a wrapped backend or interpreter message carries whatever the failing layer put in it (an absolute path, a syscall name) and belongs in the audit line, not the response (viewer-design §3).
-- Messages actionable but never disclose internals/existence in 401/403.
-- Sentinel errors → statuses (per-surface): `ErrNotFound`→404, `ErrDigestMismatch`→409/500, `ErrInvalidDigest`→400. Exception: `verify` is a query returning `{"valid":true/false}` on 200, not an error; `ErrDigestMismatch` maps to the error status only on mutation paths.
+- JSON surfaces: every error is `{"error": "<concise message>"}` — actionable, no stack traces, internal paths, secrets, object bytes.
+- Viewer error text = own prose: failures classified against the `cas` sentinels; the Go error goes to the audit line, not the response (viewer-design §3).
+- Sentinels → statuses (per surface): `ErrNotFound`→404, `ErrDigestMismatch`→409/500, `ErrInvalidDigest`→400.
+- Exception: `verify` returns `{"valid":true/false}` on 200, not an error; `ErrDigestMismatch` → error status only on mutation paths.
 
 ## 7. Authn/authz
 
-- Viewer: session cookie (always `HttpOnly`, `SameSite=Strict`, and `Secure`);
-  the startup token is accepted **only** by `POST /viewer/login` and the
-  token-bearing `GET /viewer/?token=` deep link, both of which MUST be same-origin
-  (viewer-security §5.1); every other endpoint requires a valid session.
-- Example JSON surfaces: `Authorization: Bearer <token>`, configured per-role tokens.
-- Roles (all surfaces): `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance). Those destructive actions exist on a JSON surface such as `examples/api` (§12), not the viewer: the viewer exposes verify only, so `admin` there reaches nothing `operator` does not (viewer-security §8, consistency §9).
-- CSRF: every viewer mutation is POST + server-validated CSRF token, carried in the request body or the `X-CSRF-Token` header; a `?_csrf=` query value is never accepted (viewer-security §5).
-- Audit: every mutation audit-logged; tokens/secrets never logged.
-- Rate limiting: IP-based middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt); the viewer login throttle is fixed at 5 failures/IP/min with backoff (viewer-security), its 429 carrying the remaining block as `Retry-After`.
-- Caching: a response reflecting a session is not cacheable. The viewer sends `Cache-Control: no-store` on every response and names `Cookie` in `Vary`, so a proxy between browser and viewer cannot retain a page or answer a later caller with one rendered for another session (viewer-security §10).
+- Viewer: session cookie, always `HttpOnly`, `SameSite=Strict`, `Secure`.
+- Startup token **only** via `POST /viewer/login` or `GET /viewer/?token=`; both MUST be same-origin (viewer-security §5.1).
+- Other endpoints require a valid session.
+- JSON surfaces: `Authorization: Bearer <token>`, tokens per role.
+- Roles: `viewer` (reads) → `operator` (+store, verify) → `admin` (+delete, GC, maintenance).
+- Destructive actions live on a JSON surface (`examples/api`, §12), not the viewer; `admin` there reaches nothing `operator` does (viewer-security §8, consistency §9).
+- CSRF: viewer mutation = POST + server-validated token in the request body or the `X-CSRF-Token` header; `?_csrf=` never accepted [URLs leak via logs, proxies, `Referer`] (viewer-security §5).
+- Audit: every mutation logged; tokens/secrets never logged.
+- Session-reflecting responses not cacheable; viewer sends `Cache-Control: no-store` always, names `Cookie` in `Vary` (viewer-security §10).
 
 ## 8. Middleware pipeline (shared)
 
-Fixed order: **rate limit → auth → CSRF → handler**. The viewer enforces it with session auth + CSRF on mutations (plus login throttle); a JSON surface uses bearer auth and no CSRF. Rate-limit config applies to JSON surfaces (2 req/s, burst 20, loopback exempt, `trusted_proxies` only for `X-Forwarded-For`).
+- Fixed order: **rate limit → auth → CSRF → handler**.
+- Viewer: session auth + CSRF on mutations + login throttle. JSON surface: bearer auth, no CSRF.
+- IP middleware MAY wrap a JSON surface before auth (`examples/api`: 2 req/s per IP, burst 20, 429 + `Retry-After` + `X-RateLimit-*`, loopback exempt).
+- Viewer login throttle: fixed 5 failures/IP/min with backoff (viewer-security); 429 carries the remaining block as `Retry-After`.
+- Rate-limit config: `trusted_proxies` only for `X-Forwarded-For`.
 
 ## 9. Validation
 
-- Every `{hash}`: `sha256.Parse` first (it accepts `sha256:hexdigest` and bare hex) → 400 on malformed.
-- Query params (JSON surfaces, `examples/api`): reject out-of-range with 400 (never silently clamp); `limit` bounded (1–1000), `offset` ≥ 0. The viewer's HTML object list is the documented exception, following `viewer-design` §5: its own allowed limits (25/50/100/250) and clamping rather than a 400, because a hypermedia page must still render.
-- Request bodies: strict decoding; reject unknown JSON fields (`json.Decoder.DisallowUnknownFields` where sensible). A surface bounds the body it parses and refuses a larger one `413` before reading it, so an oversized or multipart body is never buffered in memory or spooled to a temp file; the viewer's bound is 4 KiB in one middleware every route inherits (viewer-security §13, defaults §4), and a surface that parses a body states its own bound rather than accepting an unbounded one.
-- Credentials ride in the documented carrier only: a login token must be presented same-origin (viewer-security §5.1), and the viewer's CSRF token comes from the POST body or the `X-CSRF-Token` header — a query value is never accepted, because URLs are captured by logs, bookmarks, proxies, and `Referer` chains.
-- Never trust client input — header, query, and body all validated (viewer-security).
+- `{hash}`: `sha256.Parse` first (`sha256:hexdigest` or bare hex) → 400 on malformed.
+- JSON query params (`examples/api`): out-of-range → 400, never clamped; `limit` 1–1000, `offset` ≥ 0.
+- Viewer HTML object list exception (following `viewer-design` §5): limits 25/50/100/250, clamping not 400.
+- Request bodies: strict decoding; unknown JSON fields rejected (`json.Decoder.DisallowUnknownFields` where sensible).
+- A surface refuses a body over its bound with `413` before reading it; oversized or multipart bodies never buffered or spooled.
+- Viewer bound 4 KiB, one middleware every route inherits (viewer-security §13, defaults §4); a body-parsing surface states its own bound.
+- Never trust client input — header, query, body validated (viewer-security).
 
 ## 10. Pagination and filtering
 
-- Cursor-free offset pagination: `?limit=<1..max>&offset=<0..>`, documented defaults.
-- Envelope `{"total": <int>, "<items>": [...]}` (`<items>` = plural resource name); `total` semantics documented per endpoint.
-- Filters are query params (`q` for the viewer's hash/type search); filters change only the set, never the item shape.
-- The viewer renders HTML rather than an envelope. Its object browser uses
-  `limit`/`offset` plus filter and sort query state; its allowed limits,
-  defaults, HTML fragment, and invalid-query behavior are defined by
-  `viewer-design.md` §5. The table, count, and pager are one response so they
-  cannot disagree.
+- Offset pagination, no cursor: `?limit=<1..max>&offset=<0..>`, documented defaults.
+- Envelope `{"total": <int>, "<items>": [...]}` (`<items>` = plural resource name); `total` semantics per endpoint.
+- Filters = query params (`q` = viewer hash/type search); change the set, never item shape.
+- Viewer renders HTML, not an envelope.
+- Viewer object browser: `limit`/`offset` + filter/sort state; limits, defaults, fragment, invalid-query behavior per `viewer-design.md` §5.
+- Table, count, pager = one response, so they cannot disagree.
 
 ## 11. Streaming and binary payloads
 
 - Binary bodies `application/octet-stream` — **never base64 in JSON**.
-- Binary metadata in `X-CAS-*` headers (`X-CAS-Algorithm`, `X-CAS-Size`); no `X-CAS-Type` (the byte layer has no envelope type) — `meta` may sniff it best-effort from the envelope.
+- Binary metadata in `X-CAS-*` (`X-CAS-Algorithm`, `X-CAS-Size`); no `X-CAS-Type` — `meta` sniffs it best-effort.
 - Large payloads stream (`io.Reader`/`io.ReadCloser`); handlers never buffer whole objects (performance P-05).
 
 ## 12. Versioning
 
-- A JSON surface MAY carry its major in the URL prefix (`/api/cas/v1`): a breaking change requires a new major; additive changes are allowed within a major.
-- The viewer is unversioned — htmx fragments evolve with the UI.
-- Versioning is in the URL, never headers.
+- A JSON surface MAY carry its major in the URL prefix (`/api/cas/v1`): breaking change = new major; additive within.
+- Viewer unversioned — htmx fragments evolve with the UI.
+- Version in the URL, never headers.
 
 ## 13. Documentation and OpenAPI
 
-- A JSON surface's endpoints MUST be documented in an OpenAPI document it serves (`examples/api` serves `/api/cas/v1/openapi.yaml`).
-- OpenAPI MUST live in separate files — an `openapi.yaml` next to the serving code, embedded via `//go:embed` + `embed.FS`; never an inline Go string (the doc is data and must stay diffable/lintable natively).
-- Docs MUST match implemented routes exactly; CI regenerates/compares on route changes. The HTML viewer needs no OpenAPI (hypermedia surface per `viewer-design.md`).
+- Endpoints MUST be documented in the OpenAPI document the surface serves (`examples/api`: `/api/cas/v1/openapi.yaml`).
+- OpenAPI MUST live in separate files — `openapi.yaml` beside the serving code, embedded via `//go:embed` + `embed.FS`; never an inline Go string.
+- Docs MUST match implemented routes exactly; CI regenerates/compares on route change.
+- HTML viewer needs no OpenAPI (hypermedia, `viewer-design.md`).
 
 ## 14. Designing a new endpoint
 
-1. Pick the surface — browser-facing (HTML/htmx) → `/viewer/`; programmatic (JSON) → an example surface; never both on one prefix.
-2. Model the resource — plural noun path, nesting, action as POST sub-resource.
-3. Define the contract — method, body, response shape/content type, statuses (200/201/204 + 400/401/403/404/429).
-4. Define errors — JSON `{"error":…}` or minimal HTML; 401/403 never disclose existence.
-5. Apply middleware — rate limit, auth, CSRF (viewer mutations), role check; audit-log mutations.
-6. Validate — parse the `{hash}` with the client's `sha256.Parse`, strict query/body.
-7. Document — add to the surface's OpenAPI.
-8. Test — `httptest` for status/roles/429/streaming; fuzz complex input.
+1. Surface — HTML/htmx → `/viewer/`; JSON → example surface; never mixed (§2).
+2. Resource — plural noun path, nesting, POST action sub-resource (§3).
+3. Contract — method, body, response shape/type, statuses (200/201/204 + 400/401/403/404/429).
+4. Errors — JSON `{"error":…}` or minimal HTML; 401/403 disclose no existence (§6).
+5. Middleware — rate limit, auth, CSRF, role check; audit-log mutations (§7, §8).
+6. Validate — `{hash}` via `sha256.Parse`; strict query/body (§9).
+7. Document — the surface's OpenAPI (§13).
+8. Test — `httptest`: status, roles, 429, streaming; fuzz input.
 
 ## 15. Checklist
 

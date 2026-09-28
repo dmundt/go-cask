@@ -1,18 +1,28 @@
 # pack — canonical chunk + manifest helper layer
 
-Package `pack` groups the lightweight, app-level helpers that operate on packed payloads: fixed-size chunk splitting and a manifest for metadata, written with the codec the caller names. It is intentionally a small, reusable layer above the core `cas` store rather than a new hash, codec, or object model.
+Package `pack` — lightweight, app-level helpers over packed payloads: fixed-size chunk splitting
+and a manifest for metadata, written with the codec the caller names. A small, reusable layer above
+the core `cas` store — not a new hash, codec, or object model, and not a storage backend: for
+append-only stored objects see [../backend/packfs](../backend/packfs/README.md).
 
-The project’s canonical distinction is: `cas/backend/fs` is the filesystem backend, `cas/backend/packfs` is the storage backend with a private pack index format, and `cas/pack` is the optional helper used by apps and examples, not by backend internals.
+The core stays hash-agnostic and codec-agnostic. `cas/backend/fs` is the filesystem backend,
+`cas/backend/packfs` the storage backend with a private pack index format; `cas/pack` is the
+optional helper apps and examples use, never backend internals.
 
 ## Policy
 
-- The core `cas` package remains hash-agnostic and codec-agnostic.
-- The codec is always the caller's, and the package imports none: every read and write names the codec at the call site (`SaveWith`/`LoadWith`, `EncodeWith`/`DecodeWith`, or `New` for a typed `Store[T]`). Nothing here substitutes one for a nil codec — a nil codec is `pack.ErrNilCodec`, because the codec decides what is written on disk.
-- Every manifest read or write takes a `context.Context` first and reports `context.Canceled` instead of touching the filesystem.
-- A manifest write is atomic: a temp file in the target directory, fsynced, then renamed, so a crash mid-write leaves the previous manifest intact instead of a truncated file that no longer decodes.
-- `pack` is the canonical helper layer for chunking and manifest metadata, not a replacement for the typed `Store[T]` abstraction.
-- The layer is designed for streaming or staged payload workflows where data is partitioned and annotated without changing the underlying content-addressed identity rules.
-- This is a helper package, not a storage backend. For append-only stored objects, see [../backend/packfs](../backend/packfs/README.md).
+- The codec is always the caller's, and the package imports none: every read and write names the
+  codec at the call site (`SaveWith`/`LoadWith`, `EncodeWith`/`DecodeWith`, or `New` for a typed
+  `Store[T]`). Nothing here substitutes one for a nil codec — a nil codec is `pack.ErrNilCodec`,
+  because the codec decides what is written on disk.
+- Every manifest read or write takes a `context.Context` first and reports `context.Canceled`
+  instead of touching the filesystem.
+- A manifest write is atomic: a temp file in the target directory, fsynced, then renamed, so a
+  crash mid-write leaves the previous manifest intact instead of a truncated file that no longer
+  decodes.
+- The layer serves streaming or staged payload workflows that partition and annotate data without
+  changing the underlying content-addressed identity rules. It is not a replacement for the typed
+  `Store[T]` abstraction.
 
 ## Helper vs backend
 
@@ -52,7 +62,3 @@ if err != nil {
 fmt.Println(loaded["kind"], loaded["owner"])
 // artifact team-a
 ```
-
-A caller that wants another format passes its own codec to `SaveWith`/`LoadWith` (or builds a `Store[T]` with `New`); a caller that already holds encoded bytes uses `EncodeWith`/`DecodeWith`.
-
-Use this package when a workflow needs both payload segmentation and a small metadata sidecar while keeping the content-addressed core unchanged.
