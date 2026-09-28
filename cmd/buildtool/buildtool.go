@@ -116,8 +116,8 @@ commands:
   module-graph         check that go list -m reports this module as the main one
   version-fields       report versioned files whose frontmatter version: did not
                        move with the change (docs/AGENT.md); --base <rev> required,
-                       --all compares every tracked Markdown file, --changed the
-                       files the change against --base touched
+                       --all compares every tracked Markdown file the change against
+                       --base touched, --changed the files the change touched
   dep-graph            render the package dependency graph and compare it with
                        docs/design/package-graph.md; --write rewrites that document
                        and is the only mode that touches it
@@ -938,11 +938,16 @@ func exitStatus(code int) error { return statusError{code: code} }
 // runVersionFields reports the versioned files whose frontmatter `version:` did
 // not move. It prints one path per line and fails when it found any, so a caller's
 // `$(...)` sees only the paths.
+//
+// Every mode judges only files the change against --base touched, because that is the
+// rule the package states: a file that carries a version moved it *when it changed*. A
+// versioned file nobody touched cannot have failed to move its version, so reporting one
+// is a false finding (go-cask#496).
 func runVersionFields(args []string, out, errOut io.Writer) error {
 	flags := flag.NewFlagSet("version-fields", flag.ContinueOnError)
 	flags.SetOutput(errOut)
 	base := flags.String("base", "", "revision to compare the versions against (required)")
-	all := flags.Bool("all", false, "compare every tracked versioned file, not just the paths given")
+	all := flags.Bool("all", false, "compare every tracked Markdown file the change against --base touched, not just the paths given")
 	changed := flags.Bool("changed", false, "compare every versioned file the change against --base touched, instead of the paths given")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -960,19 +965,28 @@ func runVersionFields(args []string, out, errOut io.Writer) error {
 	}
 
 	paths := flags.Args()
-	if *all {
-		tracked, err := markdownFiles()
-		if err != nil {
-			return err
-		}
-		paths = tracked
-	}
-	if *changed {
+	if *all || *changed {
+		// The change set is the same one --changed has always computed, so the two modes
+		// cannot disagree about what the change touched.
 		touched, err := changedPaths(root, *base, "")
 		if err != nil {
 			return err
 		}
-		paths = append(paths, touched...)
+		switch {
+		case *all:
+			// --all is the tracked Markdown set restricted to that change set: the files
+			// the rule can judge, minus the ones the change never touched. It replaces the
+			// paths given, as its help says, and it is the narrower of the two flags — the
+			// set it asks about is a subset of --changed's, so asking for both judges that
+			// subset rather than a union no caller has ever meant.
+			marked, err := markdownFiles(root)
+			if err != nil {
+				return err
+			}
+			paths = intersectPaths(marked, touched)
+		default:
+			paths = append(paths, touched...)
+		}
 	}
 	if len(paths) == 0 {
 		return nil
@@ -1624,7 +1638,7 @@ func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := markdownFiles()
+	files, err := markdownFiles(root)
 	if err != nil {
 		return err
 	}
@@ -1668,12 +1682,34 @@ func runMarkdownIntegrity(args []string, out, errOut io.Writer) error {
 
 // markdownFiles lists the tracked Markdown files, as Git reports them, which is
 // the same set the gate's other documentation steps walk.
-func markdownFiles() ([]string, error) {
-	output, err := gitOutput("ls-files", "*.md")
+//
+// The listing is taken with its working directory at the repository root, so it answers
+// for the whole repository however the caller was invoked. Run from a subdirectory it
+// used to answer with that directory's files alone — an empty list, exit 0, for every
+// consumer (go-cask#495).
+func markdownFiles(root string) ([]string, error) {
+	output, err := gitOutputIn(root, "ls-files", "*.md")
 	if err != nil {
 		return nil, err
 	}
 	return splitLines(output), nil
+}
+
+// intersectPaths returns the paths of the first set that the second one also names, in the
+// first set's order. It is how a mode that starts from every tracked file keeps only the
+// files a change touched.
+func intersectPaths(paths, kept []string) []string {
+	inKept := make(map[string]bool, len(kept))
+	for _, path := range kept {
+		inKept[path] = true
+	}
+	both := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if inKept[path] {
+			both = append(both, path)
+		}
+	}
+	return both
 }
 
 // repoRoot resolves the repository root from Git, so a link that starts with "/"

@@ -7,8 +7,8 @@ version: v47
 
 # Viewer Design — go-cask
 
-Embedded technical browser UI in `internal/web/` — dense, desktop-first object browser for developers
-and operators.
+Embedded technical browser UI in `internal/web/` — generous, low-contrast, desktop-first object
+browser for developers and operators.
 
 - Defines: screens, visual system, template composition, hypermedia interactions.
 - Read with `viewer-security.md`, `frontend-architecture.md`, `coding-guidelines.md`, `api-design.md`.
@@ -35,36 +35,49 @@ and operators.
 
 ## 2. Visual system
 
-- MUST use a flat VS Code-style workbench hierarchy through `internal/web/viewer.css` — near-white
-  panel/header, dark foreground, muted metadata, hairline borders, one blue accent (`#007acc`), system
-  body font, monospace hashes/numbers/bytes.
+- MUST use a flat, low-contrast hierarchy through `internal/web/viewer.css` — white surface, one
+  quiet panel fill, dark foreground, one muted metadata grey, 1px hairlines instead of tinted
+  surfaces, one blue accent (`#007acc`), system body font, monospace hashes/numbers/bytes.
 - Panels MUST NOT use shadows, gradients, elevation, card-like decoration.
 - `viewer.css` only viewer stylesheet (coding-guidelines §4).
-- Colors, font stack, spacing, radii, status-tag colors, row hover/selection tints, focus indicators
-  MUST follow [`go-cask-object-browser.design.json`](../design/go-cask-object-browser.design.json).
+- The token tables below own the viewer's colours, fonts, spacing, radii and status colours;
+  `docs/design/` is non-normative and a conflict resolves to this file (`docs/design/AGENT.md`,
+  Precedence). The vendored mockup and its JSON are reference artifacts, never the token source.
 - CSS appearance only; every control, value, state label, focusable target MUST remain semantic HTML.
-- New gray values: component-specific contrast justification.
-- 26px buttons, 28px inputs/selects, 0–2px radii; inspector metadata an 88px label column plus an 8px
-  value gap; active tab a 1px blue bottom indicator only.
-- Hover subtle, non-animated apart from short background/border transitions; selection muted blue, no
-  text inversion.
+- New gray values: component-specific contrast justification. Text MUST NOT read lighter than
+  `--viewer-muted` (`#666666`) [already the AA floor].
+- Row height, bar height, control heights and every gutter MUST come from the spacing scale, and
+  every control's type from the control scale — no ad-hoc pixel.
+- One radius token for controls and bordered panels; a square surface stays square, and the status
+  pill keeps its own 2px pill geometry [a control that borrowed it would read as a state].
+- Inspector metadata an 88px label column plus an 8px value gap; active tab a 1px blue bottom
+  indicator only.
+- Hover subtle, non-animated apart from short background/border transitions; selection a translucent
+  accent tint, no text inversion.
 - Monospace stack: hashes, identifiers, algorithm values, hexadecimal content, byte views.
 - Interactive controls MUST size from the three-step control type scale, never the body font:
-  `--viewer-control` 28px form controls, `--viewer-control-sm` compact 22–28px, `--viewer-control-xs`
-  icon-sized.
-- Status pills: faint outline from their own text colour (`currentColor`), one hue per state;
-  transparent at rest, visible only through the state fill.
+  `--viewer-control` 14px form controls, `--viewer-control-sm` 14px compact controls (reset, pager),
+  `--viewer-control-xs` 12px icon-sized glyphs.
+- Status pills: one hue per state behind a translucent white 1px ring whatever the fill; transparent
+  at rest, visible only through the state fill.
 - Control font reset MUST stay at zero specificity (`:where(.viewer-shell) button, …`) [specificity
   would override the declared size].
 
+| Scale | Steps |
+|---|---|
+| Spacing | `--viewer-space-1` 4px, `-2` 8px, `-3` 12px, `-4` 16px, `-6` 24px |
+| Type | `--viewer-ui` 14px body, `--viewer-mono-size` 13px mono data, `--viewer-label` 12px labels |
+| Heights | `--viewer-bar` 48px, `--viewer-row` 36px, `--viewer-control-height` 32px, `--viewer-icon-control` 28px |
+| Radius | `--viewer-radius` 6px controls and bordered panels; status pills 2px |
+
 | Token/metric | Contract |
 |---|---|
-| Top bar | 36px; `CA` mark, `go-cask` wordmark, build version as secondary text |
-| Filter bar | 36px; search, type, size, integrity filters plus reset |
+| Top bar | 48px; `CA` mark, `go-cask` wordmark, build version as secondary text |
+| Filter bar | 48px; search, type, size, integrity filters plus reset |
 | Main workspace | flexible object-list column plus 440px inspector column; inspector resizes natively through CSS |
 | Inspector bounds | 280px–560px visual range; fixed 440px default |
-| Object table | fixed 26px dense mono rows; sticky 12px/600 muted header; content-sized digest/size/inbound/integrity/references/written columns; type fills remaining width |
-| Controls | one 28px height across form controls, actions, pager; compact bordered pager/action controls; icon-sized history arrows stay 22px |
+| Object table | 36px mono rows, 8px/12px cell padding and a 16px outer gutter from the spacing scale; sticky 12px/600 muted header; content-sized digest/size/inbound/integrity/references/written columns; type fills remaining width |
+| Controls | one 32px height across form controls, actions, pager, verify; icon-sized history arrows 28px |
 | Narrow view | at ≤900px document scrolls; list precedes full-width inspector; filters scroll horizontally |
 
 | Neutral surface | Value |
@@ -74,8 +87,8 @@ and operators.
 | Workspace/disabled surface | `#f8f8f8` |
 | Divider/disabled border | `#e5e5e5` |
 | Control border | `#c8c8c8` |
-| Secondary control border/scrollbar hover | `#999999` |
-| Pressed state | `#dddddd` |
+| Metadata, secondary border, scrollbar hover | `#666666` |
+| Accent and its hover/selection/pressed tints | `#007acc`; `rgba(0, 122, 204, 0.05/0.1/0.18)` |
 
 ## 3. Pages and visible data
 

@@ -508,8 +508,10 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 	row := objectRow{
 		hash: h,
 		// An unreadable object keeps an empty Type so a type filter can never
-		// match it — the type is unknown, not blank — while the cell still says
-		// what happened.
+		// match it — the type is unknown, not blank — while Unreadable carries
+		// the failure to the type cell's own marker. Since go-cask#357 that flag
+		// is reachable from a real fs entry: an object the store lists but
+		// cannot read is unreadable, not untyped.
 		Type:              entry.Type,
 		Version:           entry.Version,
 		VersionLabel:      versionLabel(entry.Version),
@@ -833,6 +835,14 @@ func (s *Server) referenceRows(ctx context.Context, state objectBrowserState, di
 // objectPageSizes lists the offered page sizes. A URL may still request any
 // size up to maxObjectLimit, which limitOptions surfaces as an extra choice so
 // the control never misreports the page it is showing.
+//
+// Re-checked against the generous 36px row (viewer-design §2, go-cask#334): a
+// 25-row page no longer fits one 900px viewport under the 48px bars. The sizes
+// stay as they are because the table is its own scroll region, and because both
+// knobs that would move them are owned elsewhere: defaultObjectLimit lives in
+// browser.go and the pair is a documented default (defaults.md §4 "Object-list
+// pagination"). Changing the default is a defaults decision, not a stylesheet
+// one.
 var objectPageSizes = []int{25, 50, 100, maxObjectLimit}
 
 // statusOptions renders the integrity filter's choices. Integrity states are

@@ -163,6 +163,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
+  36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
+  height, bar height, control heights and every gutter drawn from one spacing and type scale;
+  hover, selection and focus are translucencies of the single accent rather than five more blues,
+  and the second metadata grey (`#777777`) collapses onto `#666666`. Distinct colour literals drop
+  from 33 to 21, and the status pills — six fills, six text colours and the translucent ring — are
+  unchanged. A listed object whose bytes cannot be read now says `unreadable` in the type cell
+  instead of rendering as untyped (go-cask#334, go-cask#357).
 - `cask web` mints its startup admin token at 128 bits (16 bytes as four dash-separated groups of
   eight hex characters) instead of 48, and validates a supplied one (`-token-file`,
   `CASK_VIEWER_TOKEN`): a regular file read under a 4 KiB bound, at least 16 characters from
