@@ -34,8 +34,9 @@ type objectRow struct {
 	// Version is the envelope frame version, 0 when the bytes carry no walkable
 	// header.
 	Version byte
-	// VersionLabel is what the version cell shows: the frame version, or the
-	// viewer's "not read" marker when there is no header to read.
+	// VersionLabel is what the version cell shows: the frame version marked as
+	// one (`v2`), or the viewer's "not read" marker when there is no header to
+	// read. It is display-only; the filter carries the decimal form.
 	VersionLabel string
 	// Codec is what the codec cell and the codec filter read: the identity tag,
 	// the explicit "unspecified" for a frame that carries none, or the "not
@@ -479,11 +480,12 @@ func filterValueError(state objectBrowserState, typeFound bool, versions, codecs
 }
 
 // versionFilterValues lists the frame versions the store holds, rendered the way
-// the version cell and the version filter read them.
+// the version filter carries them — the decimal form, never the marked form the
+// cells show, so the option value and the query value stay the same string.
 func versionFilterValues(snapshot *index.Snapshot) []string {
 	values := make([]string, 0, len(snapshot.Versions))
 	for _, version := range snapshot.Versions {
-		values = append(values, versionLabel(version))
+		values = append(values, versionFilterValue(version))
 	}
 	return values
 }
@@ -537,14 +539,30 @@ func (s *Server) objectRowFromMeta(id string, entry index.Entry, hasVerification
 // never reads as a version or a codec the store does not have (viewer-design §3).
 const notReadLabel = "—"
 
-// versionLabel renders a frame version for the table, the inspector and the
-// version filter: the number, or the not-read marker when there is no header
-// (version 0).
-func versionLabel(version byte) string {
+// versionFilterValue renders a frame version the way the version filter carries
+// it: the frame's leading byte, as its decimal form (viewer-design §3). The
+// option value, the URL and the 400-rejection of a value the store does not hold
+// all read this string, so it is `2` for the version 2 frame and never the
+// marked form the cells show. Version 0 has no header to read and keeps the
+// not-read marker, exactly as the cells do.
+func versionFilterValue(version byte) string {
 	if version == 0 {
 		return notReadLabel
 	}
 	return strconv.Itoa(int(version))
+}
+
+// versionLabel renders a frame version for the table cell and the inspector's
+// Identity row: the filter value, marked as a version (`v1`, `v2`, `v42`) so the
+// cell reads as a version at a glance. The marker is display-only —
+// versionFilterValue stays the filter's own string, so `?version=2` still names
+// the version 2 frame. Version 0 keeps the not-read marker: `v0` would assert a
+// frame that does not exist (viewer-design §3).
+func versionLabel(version byte) string {
+	if version == 0 {
+		return notReadLabel
+	}
+	return "v" + versionFilterValue(version)
 }
 
 // codecCell renders a codec for the table, the inspector and the codec filter.
