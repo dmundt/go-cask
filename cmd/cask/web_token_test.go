@@ -229,6 +229,15 @@ func TestRunWebPinsLoopbackBindings(t *testing.T) {
 	} {
 		t.Run(tc.bind, func(t *testing.T) {
 			if tc.ipv6 {
+				if runtime.GOOS == "windows" {
+					// The probe and the run both open an IPv6 listener, which is
+					// reported to raise the interactive firewall prompt a
+					// non-loopback bind does, so this row cannot run unattended
+					// there (#440). Its spelling stays pinned on every platform
+					// by the bind table in TestVersionAndWebHelpers, which never
+					// binds, and the row still runs on the gate's Linux.
+					t.Skip("an IPv6 listener raises an interactive Windows firewall prompt, so this row cannot run unattended (go-cask#440)")
+				}
 				// A host with no IPv6 loopback cannot listen on [::1]; the
 				// spelling itself stays pinned by the bind table in
 				// TestVersionAndWebHelpers either way.
@@ -715,7 +724,22 @@ func TestRunWebShowTokenControlsTheDisplay(t *testing.T) {
 // #260: even with -show-token asking for the hint, a bind the notice may not
 // print a link for displays no token, and the run logs why — never the token
 // (viewer-security §9, §11).
+//
+// Observing a non-loopback notice on the real path needs a real non-loopback
+// listener, and on Windows opening one raises the interactive firewall prompt a
+// freshly built test binary asks for, so the test cannot run unattended there
+// (#440). The rule is not left to it: noticeOrigin answers "" for a non-loopback
+// address (TestNoticeOrigin), announceLogin prints the location notice and no
+// link for that answer (TestAnnounceLoginNonLoopbackPrintsNoLink), and the launch
+// that would carry the token is refused for it (TestBrowserLaunchAllowed) — all
+// without a socket, on every platform. The skip therefore leaves unpinned on
+// Windows only the wiring between them (runWeb handing noticeOrigin's answer to
+// announceLogin), and it loses nothing where the gate runs: the race suite is
+// Linux.
 func TestRunWebNonLoopbackNeverShowsTheToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a non-loopback bind raises an interactive Windows firewall prompt, so this test cannot run unattended (go-cask#440)")
+	}
 	stdout, stderr, logged := runWebNoticeOn(t, "0.0.0.0:0", "-allow-insecure-bind", "-show-token")
 	if strings.Contains(stdout, "?token=") {
 		t.Fatalf("a non-loopback run displayed the login link: %q", stdout)
