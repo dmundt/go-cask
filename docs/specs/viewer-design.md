@@ -2,7 +2,7 @@
 type: Specification
 title: Viewer Design — go-cask
 description: Design of the embedded technical viewer — a styled, server-rendered master-detail object browser composed from Go templates, scoped CSS, and htmx-only interaction.
-version: v44
+version: v45
 ---
 
 # Viewer Design — go-cask
@@ -94,7 +94,7 @@ and operators.
   Unserved paths — object-delete and GC routes included — reply on the session, not the path: 401
   without one, 404 with.
 - **Layout:** top bar, filter bar, table/pager master column, inspector detail column.
-- **Table columns:** digest, type, envelope frame version, codec, IEC-formatted size, optional
+- **Table columns:** digest, type, envelope version, codec, IEC-formatted size, optional
   inbound-reference count, integrity status, optional truthful backend metadata. MUST NOT fabricate
   reference counts, object age, incoming/outgoing references, stored verification state.
 - `not verified` holds until an on-demand result exists in the current server session.
@@ -236,8 +236,9 @@ and operators.
 
 ```text
 /viewer/objects?q=<text>&type=<type>&size=<bucket>&status=<state>
-  &sort=<hash|type|size|inbound|status|reach|written>&dir=<asc|desc>&limit=<1..250>
-  &offset=<non-negative>&selected=<digest>&tab=<metadata|references|bytes|actions>
+  &sort=<hash|type|version|codec|size|inbound|status|reach|written>&dir=<asc|desc>
+  &limit=<1..250>&offset=<non-negative>&selected=<digest>
+  &tab=<metadata|references|bytes>&nav=<ref|trail|stay>
 ```
 
 - Defaults: hash ascending, `limit=25`, `offset=0`, no filters, metadata panel.

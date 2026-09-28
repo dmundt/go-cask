@@ -163,6 +163,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The viewer names a frame's version **Envelope** rather than "Envelope version" or
+  "Version" — in the object table's column header, in the inspector's Identity block, and
+  in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
+  `version` filter and the `?version=` query value stay decimal, so every existing URL and
+  filter selection keeps working.
 - The build engine is no longer a separate Go module. `internal/build/core` is flattened
   into `internal/build`, so `go build ./...`, `go vet ./...`, `go test -race ./...`,
   `gofmt -l .` and `go mod tidy` reach every engine package with no step of the gate's own:
