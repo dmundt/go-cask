@@ -392,16 +392,22 @@ func (r *gateRun) output(dir, name string, args ...string) (string, string, erro
 // gate locks rather than fails: there is nothing to decide and nothing to remember. The
 // quiet form reports only the worktrees it had to lock, so a run that changed nothing says
 // nothing.
+//
+// A worktree git registers that cannot be locked — a registration whose admin directory is
+// gone — is reported in the run's own output rather than made fatal: nothing is wrong with
+// the tree the gate was asked to verify, and a lane cannot act on a name it never sees
+// (go-cask#508).
 func (r *gateRun) lockWorktrees() error {
-	var locked bytes.Buffer
-	if err := runWorktree([]string{"lock", "--quiet"}, &locked, r.errOut); err != nil {
+	var locked, refused bytes.Buffer
+	if err := runWorktree([]string{"lock", "--quiet"}, &locked, &refused); err != nil {
 		return err
 	}
-	if strings.TrimSpace(locked.String()) == "" {
+	report := strings.TrimSpace(locked.String() + refused.String())
+	if report == "" {
 		return nil
 	}
 	r.section("worktree locks")
-	fmt.Fprint(r.out, locked.String())
+	fmt.Fprintln(r.out, report)
 	return nil
 }
 
