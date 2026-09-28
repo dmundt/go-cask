@@ -95,7 +95,7 @@ func TestPackfsSizeRejectsStaleRecordAndPersistFailure(t *testing.T) {
 	backend.index[string(d)] = packRecord{Pack: filepath.Join(backend.packDir, "missing.pack"), Offset: 0, Size: 7}
 	backend.mu.Unlock()
 	persistErr := errors.New("persist failed")
-	backend.op.writeFile = func(string, []byte, os.FileMode) error { return persistErr }
+	backend.op.createTemp = func(string, string) (*os.File, error) { return nil, persistErr }
 	if _, err := backend.Size(ctx, d); !errors.Is(err, persistErr) {
 		t.Fatalf("Size(prune not persisted) = %v, want the persist failure", err)
 	}
@@ -347,14 +347,11 @@ func TestOpsFallBackToTheRealFilesystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createTempDo(zero ops) = %v, want the real CreateTemp", err)
 	}
-	if err := op.writeFileDo(file.Name(), []byte("data"), 0o644); err != nil {
-		t.Fatalf("writeFileDo(zero ops) = %v, want the real WriteFile", err)
+	if _, err := file.Write([]byte("data")); err != nil {
+		t.Fatalf("writing through the createTempDo(zero ops) handle = %v, want a real write", err)
 	}
 	if data, err := op.readFileDo(file.Name()); err != nil || string(data) != "data" {
 		t.Fatalf("readFileDo(zero ops) = (%q, %v), want real contents", data, err)
-	}
-	if err := op.writeFileDo(file.Name(), []byte("rewritten"), 0o644); err != nil {
-		t.Fatalf("writeFileDo(zero ops, existing file) = %v, want the real WriteFile", err)
 	}
 	// Release the handle before renaming: Windows refuses to rename a file that
 	// is still open, which says nothing about the real ops fallback.
@@ -764,7 +761,7 @@ func TestPackfsExistsReportsPersistFailure(t *testing.T) {
 	backend.index[string(d)] = packRecord{Pack: filepath.Join(backend.packDir, "missing.pack"), Offset: 0, Size: 1}
 	backend.mu.Unlock()
 	persistErr := errors.New("persist failed")
-	backend.op.writeFile = func(string, []byte, os.FileMode) error { return persistErr }
+	backend.op.createTemp = func(string, string) (*os.File, error) { return nil, persistErr }
 
 	if _, err := backend.Exists(ctx, d); !errors.Is(err, persistErr) {
 		t.Fatalf("Exists(prune not persisted) = %v, want the persist failure", err)
@@ -786,7 +783,7 @@ func TestPackfsDeleteReportsPersistFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistErr := errors.New("persist failed")
-	backend.op.writeFile = func(string, []byte, os.FileMode) error { return persistErr }
+	backend.op.createTemp = func(string, string) (*os.File, error) { return nil, persistErr }
 
 	if err := backend.Delete(ctx, d); !errors.Is(err, persistErr) {
 		t.Fatalf("Delete(persist failure) = %v, want the persist failure", err)
@@ -996,7 +993,7 @@ func TestPackfsGetManyReportsPersistFailureWhenPruning(t *testing.T) {
 	backend.index[string(d)] = packRecord{Pack: filepath.Join(backend.packDir, "missing.pack"), Offset: 0, Size: 1}
 	backend.mu.Unlock()
 	persistErr := errors.New("persist failed")
-	backend.op.writeFile = func(string, []byte, os.FileMode) error { return persistErr }
+	backend.op.createTemp = func(string, string) (*os.File, error) { return nil, persistErr }
 
 	if err := backend.GetMany(ctx, []cas.Digest{d}, func(cas.Digest, io.ReadCloser) error { return nil }); !errors.Is(err, persistErr) {
 		t.Fatalf("GetMany(prune not persisted) = %v, want the persist failure", err)
@@ -1208,7 +1205,7 @@ func TestPackfsDeleteReportsIndexPersistFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistErr := errors.New("persist failed")
-	backend.op.writeFile = func(string, []byte, os.FileMode) error { return persistErr }
+	backend.op.createTemp = func(string, string) (*os.File, error) { return nil, persistErr }
 
 	if err := backend.Delete(ctx, d); !errors.Is(err, persistErr) {
 		t.Fatalf("Delete(persist failure) = %v, want the persist failure", err)
