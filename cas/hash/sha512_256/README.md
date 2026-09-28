@@ -1,20 +1,16 @@
 # sha512_256 — fast secure alternative
 
-Package `sha512_256` provides a supported alternative `cas.Hasher` implementation using the Go standard library's SHA-512/256 digest.
+Standard-library `crypto/sha512`-backed `cas.Hasher` for the generic `cas` core. Supported
+alternative to the default `SHA-256`; the core stays hash-agnostic, and the caller injects the
+hasher when building a store.
 
-It keeps the same design as the SHA-256 package: the core remains hash-agnostic, and the caller injects the hash algorithm. This is a good fast secure option when a workload wants the same 256-bit security level with a different implementation profile.
-
-## Policy
-
-- `SHA-256` remains the default recommendation for new durable CAS data.
-- `SHA-512/256` is a supported fast secure alternative.
-- `MD5` and `SHA-1` remain legacy or compatibility-only choices and should not be used for new content-addressed data.
-
-## Typical use
+SHA-512/256: 32-byte output at the same 256-bit security level as `SHA-256`, with a different
+implementation profile — the fast secure option when that profile matters. Distinct from
+full-width [`SHA-512`](../sha512/README.md) (64-byte digest). `SHA-256` remains the default
+recommendation for new durable CAS data; keep MD5 and SHA-1 to migration or compatibility only,
+never new content-addressed data.
 
 ```go
 h := sha512_256.New()
 store := cas.New(backend, codec, h)
 ```
-
-Use this when you want a modern, fast secure option with 256-bit output and a standard-library implementation.
