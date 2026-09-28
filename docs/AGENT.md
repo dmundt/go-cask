@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
 description: Meta-guide for docs/ — OKF format, naming, versioning, trimming, the instruction-file budget, the maintenance checklist. Governs docs/index.md, docs/specs/, docs/design/ and any later subdirectory; the benchmark guide lives at benchmarks/README.md; root AGENTS.md is the agent entry point before it.
-version: v24
+version: v25
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -76,7 +76,7 @@ specify.
 
 - **Every instruction file has a byte ceiling**, in `internal/build/policy`'s
   `InstructionBudgets` table: `internal/build/docs` measures each file against it and
-  `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just
+  `go run ./cmd/gate markdown-integrity` fails above it. Each number is a ratchet set just
   above the file's size when the ceiling was added — room for a rule or two, none to grow into a
   specification. Raising one is a deliberate policy change in the change that needs it, never the
   fix for a failure.

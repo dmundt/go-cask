@@ -2,7 +2,7 @@
 type: Guide
 title: claim (build engine) — go-cask
 description: Server-side landing-lane records — reading a coordination ref, matching an issue to a branch, and the verdict shared by check and claim.
-version: v2
+version: v3
 ---
 
 # claim
@@ -12,7 +12,7 @@ coordination ref (`refs/lane/<NNN>`). The local advisory slot stays different �
 gate runs inside one clone ([`../lane`](../lane/README.md)).
 
 Owns the reading and the decision, never the calls: no `gh`, git, path or ref namespace; the
-caller supplies the ref prefix and a populated `LaneInput`, `cmd/buildtool` makes the calls.
+caller supplies the ref prefix and a populated `LaneInput`, `cmd/gate` makes the calls.
 
 ## The ref names an issue
 

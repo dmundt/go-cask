@@ -68,14 +68,14 @@ func TestVerifyEntryPointRunsTheGate(t *testing.T) {
 		t.Fatalf("read %s: %v", Gate().Verify, err)
 	}
 	shim := string(content)
-	if !strings.Contains(shim, "buildtool.sh") || !strings.Contains(shim, "verify") {
+	if !strings.Contains(shim, "gate.sh") || !strings.Contains(shim, "verify") {
 		t.Errorf("%s does not start the gate's verify command:\n%s", Gate().Verify, shim)
 	}
 	// The step list is not shell any more: a rule written back into the entry point is the
 	// regression this pins, because a rule in shell is covered by no test of its own.
 	for _, forbidden := range []string{"go test", "go vet", "gofmt", "coverage"} {
 		if strings.Contains(shim, forbidden) {
-			t.Errorf("%s holds the step %q; the gate's steps live in cmd/buildtool verify", Gate().Verify, forbidden)
+			t.Errorf("%s holds the step %q; the gate's steps live in cmd/gate verify", Gate().Verify, forbidden)
 		}
 	}
 }

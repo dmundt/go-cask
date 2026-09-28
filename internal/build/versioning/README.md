@@ -2,7 +2,7 @@
 type: Guide
 title: versioning (build engine) — go-cask
 description: Version-field rule — a changed versioned file must move its frontmatter version.
-version: v4
+version: v5
 ---
 
 # versioning
@@ -48,7 +48,7 @@ for _, path := range versioning.Unbumped(results) {
 
 Named for the **rule**, not the field it reads; reading the field is `docs`'s job. The
 decision does not depend on the field being called `version:` or the file being Markdown.
-`cmd/buildtool version-fields` reads Git + the working tree for the two values — one is a
+`cmd/gate version-fields` reads Git + the working tree for the two values — one is a
 rule, the other says what it reads.
 
 ## Testing

@@ -2,7 +2,7 @@
 type: Guide
 title: build — go-cask
 description: The gate's build decisions — engine checks, go-cask policy for them — plus layout, commands, and where a new check goes.
-version: v11
+version: v12
 ---
 
 # build
@@ -15,9 +15,9 @@ The gate's build decisions. One module, two parts:
   matrix, coverage tiers, codec guards, inventory tables, footer contract, change-set
   classification, package-graph prose.
 
-`cmd/buildtool` wires engine + go-cask tables → gate step = one
-`go run ./cmd/buildtool <command>` call. Command list, exit-status contract:
-[`cmd/buildtool/README.md`](../../cmd/buildtool/README.md).
+`cmd/gate` wires engine + go-cask tables → gate step = one
+`go run ./cmd/gate <command>` call. Command list, exit-status contract:
+[`cmd/gate/README.md`](../../cmd/gate/README.md).
 
 ## Layout
 
@@ -56,31 +56,31 @@ path or prose. → A check is testable without a repository.
 Each prints findings; non-zero exit when the rule fails → gate step = call + status check.
 
 ```bash
-go run ./cmd/buildtool verify               # the gate: every step, in order
-go run ./cmd/buildtool layer-matrix         # imports against the layer table
-go run ./cmd/buildtool coverage-tier        # every cas/ package carries a tier
-go run ./cmd/buildtool coverage-tier --list # the gate's measurement table
-go run ./cmd/buildtool coverage-check       # thresholds, one line per package on stdin
-go run ./cmd/buildtool markdown-integrity   # every tracked .md
-go run ./cmd/buildtool website-examples     # the site's Go fences and inventory tables
-go run ./cmd/buildtool website-footer       # the site's one-line footer and its self-test
-go run ./cmd/buildtool codec-guards         # gitlike and cas/pack stay codec-free
-go run ./cmd/buildtool module-graph         # go list -m names this module
-go run ./cmd/buildtool dep-graph            # the committed graph is current
-go run ./cmd/buildtool dep-graph --write    # rewrite it (the only writing mode)
-go run ./cmd/buildtool version-fields --base <rev> [paths...]
-go run ./cmd/buildtool release --tag <tag> [--from <prev>] [--publish]
+go run ./cmd/gate verify               # the gate: every step, in order
+go run ./cmd/gate layer-matrix         # imports against the layer table
+go run ./cmd/gate coverage-tier        # every cas/ package carries a tier
+go run ./cmd/gate coverage-tier --list # the gate's measurement table
+go run ./cmd/gate coverage-check       # thresholds, one line per package on stdin
+go run ./cmd/gate markdown-integrity   # every tracked .md
+go run ./cmd/gate website-examples     # the site's Go fences and inventory tables
+go run ./cmd/gate website-footer       # the site's one-line footer and its self-test
+go run ./cmd/gate codec-guards         # gitlike and cas/pack stay codec-free
+go run ./cmd/gate module-graph         # go list -m names this module
+go run ./cmd/gate dep-graph            # the committed graph is current
+go run ./cmd/gate dep-graph --write    # rewrite it (the only writing mode)
+go run ./cmd/gate version-fields --base <rev> [paths...]
+go run ./cmd/gate release --tag <tag> [--from <prev>] [--publish]
 ```
 
 ## Adding a check
 
 1. Rule → its own package here: pure function over caller data; ships no table, path, prose.
 2. go-cask's answer → `policy/`.
-3. `buildtool` subcommand: reads repository (`go list`, file list, git call), calls the rule.
-4. From the gate's step list in `cmd/buildtool verify` (one command per step, no rule of its
+3. `gate` subcommand: reads repository (`go list`, file list, git call), calls the rule.
+4. From the gate's step list in `cmd/gate verify` (one command per step, no rule of its
    own); `scripts/verify.sh` is the entry point that starts it.
 5. Table test beside the rule; reads real repository state → also one in `policy/` vs tree.
-6. New package? `go run ./cmd/buildtool dep-graph --write`. The gate pins the committed graph
+6. New package? `go run ./cmd/gate dep-graph --write`. The gate pins the committed graph
    byte-for-byte, so a package added without this fails
    `TestGraphDocRendersTheCommittedDocument` — and only after a whole gate run.
 

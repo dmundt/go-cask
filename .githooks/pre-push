@@ -7,7 +7,7 @@
 #      (`refs/lane/<issue>`), so this hook only REPORTS the local advisory slot.
 #      Holding it is no longer a condition for pushing.
 #
-# Both rules live in `cmd/buildtool pre-push`, where they have tests. The hook only starts
+# Both rules live in `cmd/gate pre-push`, where they have tests. The hook only starts
 # the build tool from the checkout that holds it, through the same entry point every other
 # caller uses, and names the repository being pushed so the tool reads that repository's
 # ledger rather than its own — which also means the hook resolves Go the way the gate does,
@@ -18,4 +18,4 @@ set -eu
 
 pushed=$(git rev-parse --show-toplevel)
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-exec sh "$root/scripts/buildtool.sh" pre-push --repo "$pushed" --remote "${1:-origin}"
+exec sh "$root/scripts/gate.sh" pre-push --repo "$pushed" --remote "${1:-origin}"

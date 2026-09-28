@@ -2,7 +2,7 @@
 type: Design Document
 title: Package Dependency Graph — go-cask
 description: Generated dependency graph of every package in the go-cask module, derived from go list and owned by internal/build/depgraph.
-version: v36
+version: v37
 generated: internal/build/depgraph
 ---
 
@@ -23,8 +23,8 @@ vary with `GOOS` or `GOARCH`, so the file is reproducible on any host.
 flowchart TD
   subgraph APPS["Applications - cmd/cask, examples, benchmarks"]
     benchmarks["benchmarks"]
-    cmd_buildtool["cmd/buildtool"]
     cmd_cask["cmd/cask"]
+    cmd_gate["cmd/gate"]
     examples_api_demo["examples/api/demo"]
     examples_api_server["examples/api/server"]
     examples_artifacts["examples/artifacts"]
@@ -192,27 +192,6 @@ flowchart TD
   cas_verify_crc64 --> cas
   cas_verify_crc64 --> cas_hash
   cas_verify_sidecar --> cas
-  cmd_buildtool --> internal_build_bench
-  cmd_buildtool --> internal_build_board
-  cmd_buildtool --> internal_build_changes
-  cmd_buildtool --> internal_build_claim
-  cmd_buildtool --> internal_build_coverage
-  cmd_buildtool --> internal_build_depgraph
-  cmd_buildtool --> internal_build_deps
-  cmd_buildtool --> internal_build_docs
-  cmd_buildtool --> internal_build_examples
-  cmd_buildtool --> internal_build_gate
-  cmd_buildtool --> internal_build_lane
-  cmd_buildtool --> internal_build_layers
-  cmd_buildtool --> internal_build_policy
-  cmd_buildtool --> internal_build_receipt
-  cmd_buildtool --> internal_build_release
-  cmd_buildtool --> internal_build_taskstate
-  cmd_buildtool --> internal_build_toolchain
-  cmd_buildtool --> internal_build_verify
-  cmd_buildtool --> internal_build_versioning
-  cmd_buildtool --> internal_build_website
-  cmd_buildtool --> internal_build_worktree
   cmd_cask --> cas
   cmd_cask --> cas_codec_json
   cmd_cask --> cas_hash
@@ -226,6 +205,27 @@ flowchart TD
   cmd_cask --> internal_index
   cmd_cask --> internal_store
   cmd_cask --> internal_web
+  cmd_gate --> internal_build_bench
+  cmd_gate --> internal_build_board
+  cmd_gate --> internal_build_changes
+  cmd_gate --> internal_build_claim
+  cmd_gate --> internal_build_coverage
+  cmd_gate --> internal_build_depgraph
+  cmd_gate --> internal_build_deps
+  cmd_gate --> internal_build_docs
+  cmd_gate --> internal_build_examples
+  cmd_gate --> internal_build_gate
+  cmd_gate --> internal_build_lane
+  cmd_gate --> internal_build_layers
+  cmd_gate --> internal_build_policy
+  cmd_gate --> internal_build_receipt
+  cmd_gate --> internal_build_release
+  cmd_gate --> internal_build_taskstate
+  cmd_gate --> internal_build_toolchain
+  cmd_gate --> internal_build_verify
+  cmd_gate --> internal_build_versioning
+  cmd_gate --> internal_build_website
+  cmd_gate --> internal_build_worktree
   examples_api_server --> cas
   examples_api_server --> cas_backend_fs
   examples_api_server --> cas_hash_sha256
@@ -300,8 +300,8 @@ Packages that import no local package are drawn as leaves.
 ## Regenerating
 
 ```bash
-go run ./cmd/buildtool dep-graph --write   # rewrite this file from go list
-go run ./cmd/buildtool dep-graph           # report staleness; writes nothing
+go run ./cmd/gate dep-graph --write   # rewrite this file from go list
+go run ./cmd/gate dep-graph           # report staleness; writes nothing
 ```
 
 `scripts/verify.sh` runs the checking form, so a change that adds, removes or

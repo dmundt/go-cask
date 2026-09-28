@@ -64,7 +64,7 @@ func productionGateReceiptDeps() gateReceiptDeps {
 
 // gateReceiptUsage is the command's own help, in the helper's shape: the verbs first, then
 // what each one takes.
-const gateReceiptUsage = `usage: buildtool gate-receipt <command>
+const gateReceiptUsage = `usage: gate gate-receipt <command>
 
   create  --scope docs|full [--sha SHA] [--base SHA] [--checks "a b c"]
           [--coverage-tiers N]        write the receipt for a green gate run
@@ -807,7 +807,7 @@ func gateReceiptSignatureLine(output string) string {
 // what it classifies.
 func gateReceiptDocsOnly(root, base, sha string) (bool, error) {
 	fields := strings.Fields(os.Getenv(gateScopeCmdEnv))
-	name, prefix := "go", []string{"run", "./cmd/buildtool", "scope"}
+	name, prefix := "go", []string{"run", "./cmd/gate", "scope"}
 	if len(fields) > 0 {
 		name, prefix = fields[0], fields[1:]
 	}

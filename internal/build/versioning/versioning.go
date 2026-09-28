@@ -13,7 +13,7 @@
 // lives in its frontmatter.
 //
 // The command that reads Git and the working tree to produce those two values is
-// cmd/buildtool's `version-fields` subcommand.
+// cmd/gate's `version-fields` subcommand.
 package versioning
 
 import (

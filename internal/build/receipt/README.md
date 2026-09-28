@@ -2,7 +2,7 @@
 type: Guide
 title: receipt (build engine) — go-cask
 description: The gate receipt's format — parse, render, check-name rule, evidence identity, and the canonical changed-path list both sides hash.
-version: v3
+version: v4
 ---
 
 # receipt
@@ -11,7 +11,7 @@ The gate receipt: the record of what a green gate run covered, made portable so 
 that run instead of repeating the suite.
 
 This package owns the **record**, not the transport — reading a ref, signing a commit object
-and pushing it are git's, in `cmd/buildtool gate-receipt`. Nothing here runs a program or
+and pushing it are git's, in `cmd/gate gate-receipt`. Nothing here runs a program or
 names a repository.
 
 ## The format is the contract

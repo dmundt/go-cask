@@ -63,7 +63,7 @@ func runWorktree(args []string, out, errOut io.Writer) error {
 }
 
 // worktreeUsage is the command's own help, which is also its usage error.
-const worktreeUsage = "usage: buildtool worktree [add [--allow-stale] <name> [<branch>] | " +
+const worktreeUsage = "usage: gate worktree [add [--allow-stale] <name> [<branch>] | " +
 	"remove <name> [--force] | lock [<name>...] | prune | list]"
 
 // worktreeCommand is the command with its context injected.
@@ -117,7 +117,7 @@ func worktreeAdd(args []string, out, errOut io.Writer, context *worktreeContext)
 		positional = append(positional, arg)
 	}
 	if len(positional) == 0 {
-		return usageError{"usage: buildtool worktree add [--allow-stale] <name> [<branch>]"}
+		return usageError{"usage: gate worktree add [--allow-stale] <name> [<branch>]"}
 	}
 	if len(positional) > 2 {
 		return usageError{fmt.Sprintf("unexpected extra argument: %s", positional[2])}
@@ -222,12 +222,12 @@ func worktreeAdd(args []string, out, errOut io.Writer, context *worktreeContext)
 func worktreeRemove(args []string, out, errOut io.Writer, context *worktreeContext) error {
 	table := policy.Worktrees()
 	if len(args) == 0 {
-		return usageError{"usage: buildtool worktree remove <name> [--force]"}
+		return usageError{"usage: gate worktree remove <name> [--force]"}
 	}
 	name := args[0]
 	force := len(args) > 1 && args[1] == "--force"
 	if len(args) > 2 || (len(args) > 1 && !force) {
-		return usageError{"usage: buildtool worktree remove <name> [--force]"}
+		return usageError{"usage: gate worktree remove <name> [--force]"}
 	}
 	gitName := table.Prefix + name
 	admin := worktree.Admin(context.common, gitName)

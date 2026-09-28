@@ -12,7 +12,7 @@
 // tested directly. The gate itself runs `go test -race -cover` once over the
 // module and reads the profile that run writes (Policy.Measure): one pass answers
 // for the suite and for every tier, and that is orchestration, which lives in
-// cmd/buildtool beside the rest of the step list.
+// cmd/gate beside the rest of the step list.
 //
 // The tier thresholds are the gate's contract with docs/specs/testing-strategy.md
 // §5 — the table documents the tier, the threshold enforces it. Editing a number

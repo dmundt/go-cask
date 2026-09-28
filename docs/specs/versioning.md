@@ -2,7 +2,7 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, release notes, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v22
+version: v23
 ---
 
 # Versioning — go-cask
@@ -81,7 +81,7 @@ versions — different, §6).
 | Ignore | What the changelog ignored |
 | Ending | A `Full Changelog:` link to the tag comparison |
 | Older notes | Correct published notes still carrying temporary or trivial material |
-| Tool | Render with `go run ./cmd/buildtool release`, not by hand (`scripts/AGENT.md`, "Releasing") |
+| Tool | Render with `go run ./cmd/gate release`, not by hand (`scripts/AGENT.md`, "Releasing") |
 
 ## 5. Release process
 

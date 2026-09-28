@@ -32,7 +32,7 @@ func repoRoot(t *testing.T) string {
 // package's own directory would list one package and a test built on it would
 // compare an almost-empty graph against the committed document.
 //
-// Every call here passes -buildvcs=false, as cmd/buildtool's goList helper does:
+// Every call here passes -buildvcs=false, as cmd/gate's goList helper does:
 // `go list` otherwise stamps VCS metadata by shelling out to git, and these tests run in
 // the gate's own test step, where every lane shares one `.git` and those calls contend
 // (#462). The graph and the package list need no VCS metadata.

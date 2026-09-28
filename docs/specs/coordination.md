@@ -2,7 +2,7 @@
 type: Specification
 title: Coordination — go-cask
 description: The coordinator role for many landings at once — the board it reads, waves and their serialization points, the advisory slot that serializes gate runs inside one clone, the evidence that proves a landing, and the stale claims a finished lane leaves behind.
-version: v3
+version: v4
 ---
 
 # Coordination — go-cask
@@ -24,7 +24,7 @@ version: v3
 
 | Source | Question it answers |
 |---|---|
-| `go run ./cmd/buildtool pr-lane status` | every claimed lane, its age, and the pull request behind it |
+| `go run ./cmd/gate pr-lane status` | every claimed lane, its age, and the pull request behind it |
 | `git worktree list` | which task trees exist, on which branch, at which HEAD |
 | `gh pr list --state open --json number,headRefName,mergeable,mergeStateStatus,isDraft,autoMergeRequest` | which pull requests can land, which conflict, which are drafts that cannot |
 | `gh issue list --state open` | what is actually outstanding |
@@ -40,7 +40,7 @@ version: v3
 - The ledger's name in the policy table is `policy.Gate().Ledger`.
 - A lane reporting "gated green" is a claim; only the ledger is evidence.
 - `refs/gate/<sha>` on `origin` is the published form of that fact, and the one CI reads.
-- **`git worktree list` is the authority for a removal**, not the removal's own message: `buildtool worktree remove` computes its path from policy, so a worktree created outside that parent is unregistered while its directory survives (go-cask#461).
+- **`git worktree list` is the authority for a removal**, not the removal's own message: `gate worktree remove` computes its path from policy, so a worktree created outside that parent is unregistered while its directory survives (go-cask#461).
 - **`gh pr view` is the authority for whether a pull request can land.** A claim with a pull request is a lease; a *draft* with no auto-merge is a lease that cannot be exercised, because GitHub refuses to arm auto-merge on a draft. Mark it ready and arm it, or do not count it as progress.
 
 ## 4. Waves
@@ -54,7 +54,7 @@ version: v3
 
 ## 5. Gate throughput — the advisory slot is required when lanes share a clone
 
-- **When more than one lane in one clone needs a gate run, each run MUST hold the local advisory slot:** `go run ./cmd/buildtool land-lane acquire`, `renew` while it runs, `release` when it ends.
+- **When more than one lane in one clone needs a gate run, each run MUST hold the local advisory slot:** `go run ./cmd/gate land-lane acquire`, `renew` while it runs, `release` when it ends.
 - `status` exits 0 yours, 1 free, 2 someone else.
 - The slot stays advisory to the push and never a condition for it (`landing.md` §3). It serializes *runs*, and only inside one clone.
 - **Why it is a rule:** measured on this repository on 2026-09-27, about ten lanes in one clone ran **thirteen concurrent `verify.sh` invocations** against one WSL VM; every run slowed and the contention surfaced as failures with nothing wrong in the tree — `go list ... ./...: error obtaining VCS status: exit status 128` in the package-graph step (go-cask#462), and a receipt fuzz target failing on a latent defect no lane had touched (go-cask#452).

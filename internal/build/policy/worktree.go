@@ -39,7 +39,7 @@ func Worktrees() WorktreeTable {
 		Prefix:   "wt-",
 		Base:     "origin/main",
 		LockFile: "locked",
-		LockMessage: "locked by go run ./cmd/buildtool worktree — the .git link is " +
+		LockMessage: "locked by go run ./cmd/gate worktree — the .git link is " +
 			"toolchain-relative; never run git worktree prune\n",
 		PruneRefusal: "worktree: refusing to prune.\n" +
 			"\n" +
@@ -53,8 +53,8 @@ func Worktrees() WorktreeTable {
 			"and it does hold: prune skips a locked worktree from either toolchain, while an\n" +
 			"identical unlocked one is deleted.\n" +
 			"\n" +
-			"  go run ./cmd/buildtool worktree lock [<name>...]   # one, several, or all\n" +
-			"  go run ./cmd/buildtool worktree list               # what is registered, and locked\n" +
-			"  go run ./cmd/buildtool worktree remove <name>      # remove exactly one, on purpose\n",
+			"  go run ./cmd/gate worktree lock [<name>...]   # one, several, or all\n" +
+			"  go run ./cmd/gate worktree list               # what is registered, and locked\n" +
+			"  go run ./cmd/gate worktree remove <name>      # remove exactly one, on purpose\n",
 	}
 }

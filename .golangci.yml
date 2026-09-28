@@ -151,22 +151,22 @@ linters:
           - errcheck
 
       # Three write-path closes outside go-cask#489's five, in files this change must not
-      # carry: the lane record's append (cmd/buildtool/prlane.go) and the slot record's
-      # published claim (cmd/buildtool/landlane.go, where the close beside the write's own
+      # carry: the lane record's append (cmd/gate/prlane.go) and the slot record's
+      # published claim (cmd/gate/landlane.go, where the close beside the write's own
       # error return is the one ignored). Each wants an issue of its own.
-      - path: 'cmd/buildtool/prlane\.go'
+      - path: 'cmd/gate/prlane\.go'
         text: 'file\.Close'
         linters:
           - errcheck
-      - path: 'cmd/buildtool/landlane\.go'
+      - path: 'cmd/gate/landlane\.go'
         text: 'file\.Close'
         linters:
           - errcheck
 
       # Removals whose failure is already reported by the step that follows them: the gate's
-      # scratch cleanup (cmd/buildtool/verify.go) and the CLI's lock-file release
+      # scratch cleanup (cmd/gate/verify.go) and the CLI's lock-file release
       # (cmd/cask/lock.go).
-      - path: 'cmd/buildtool/verify\.go'
+      - path: 'cmd/gate/verify\.go'
         text: 'os\.Remove'
         linters:
           - errcheck

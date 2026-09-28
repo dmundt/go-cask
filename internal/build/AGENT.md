@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `internal/build`
 description: Rule set for the build subtree — engine/policy split, where each new piece goes, README and versioning duties, fuzz coverage.
-version: v10
+version: v11
 ---
 
 # Agent instructions — `internal/build`
@@ -41,8 +41,8 @@ gate's step list — say so where it is added.
 | Unit test | `<name>/_test.go` | table-driven; no repository |
 | go-cask table | `policy/` | matrix, tiers, guards, inventories, prose |
 | Test against real tree | `policy/` | only if the rule reads real repository state |
-| Entry point | `cmd/buildtool` | reads the repository, calls the rule, prints the verdict |
-| Gate step | `cmd/buildtool verify`'s step list | one command per step; no rule of its own. `scripts/verify.sh` is the gate's name and starts it |
+| Entry point | `cmd/gate` | reads the repository, calls the rule, prints the verdict |
+| Gate step | `cmd/gate verify`'s step list | one command per step; no rule of its own. `scripts/verify.sh` is the gate's name and starts it |
 
 ## Deliberate limits
 

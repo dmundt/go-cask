@@ -163,7 +163,7 @@ func (f *fakeCoord) gitRaw(args ...string) (string, error) {
 	case strings.HasPrefix(joined, "rev-parse --path-format=absolute --git-common-dir"):
 		return "", errors.New("this stub keeps no clone")
 	case joined == "rev-parse --abbrev-ref HEAD":
-		return "chore/438-buildtool-board\n", nil
+		return "chore/438-gate-board\n", nil
 	case joined == "rev-parse --show-toplevel":
 		return "/src/wt-438\n", nil
 	case joined == "worktree list --porcelain":
@@ -240,13 +240,13 @@ func seedBoard(f *fakeCoord) {
 	  {"number": 440, "title": "collisions", "url": "https://example.invalid/440", "labels": []}
 	]`
 	f.pulls = `[
-	  {"number": 470, "title": "the board", "headRefName": "chore/438-buildtool-board",
+	  {"number": 470, "title": "the board", "headRefName": "chore/438-gate-board",
 	   "headRefOid": "aaaa1111bbbb2222cccc3333dddd4444eeee5555", "isDraft": false,
 	   "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
 	   "autoMergeRequest": {"enabledAt": "2026-09-28T09:00:00Z"}}
 	]`
 	f.refs = "refs/lane/438 tag0001\n"
-	f.tags["tag0001"] = "branch=chore/438-buildtool-board worktree=wt-438"
+	f.tags["tag0001"] = "branch=chore/438-gate-board worktree=wt-438"
 	f.times["tag0001"] = "2026-09-28T11:30:00Z"
 	f.worktrees = `worktree D:/src/go-cask
 HEAD e25e7ef4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -254,7 +254,7 @@ branch refs/heads/main
 
 worktree D:/src/go-cask/.worktrees/wt-438
 HEAD aaaa1111bbbb2222cccc3333dddd4444eeee5555
-branch refs/heads/chore/438-buildtool-board
+branch refs/heads/chore/438-gate-board
 `
 }
 
@@ -316,7 +316,7 @@ func TestCollisionsFindsTheWave(t *testing.T) {
 	f.mergeBase = "734d7170aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	f.worktrees = `worktree D:/src/wt-438
 HEAD aaaa
-branch refs/heads/chore/438-buildtool-board
+branch refs/heads/chore/438-gate-board
 
 worktree D:/src/wt-490
 HEAD bbbb
@@ -334,7 +334,7 @@ branch refs/heads/chore/490-collisions
 	for _, want := range []string{
 		"serialization points",
 		"!! CHANGELOG.md",
-		"chore/438-buildtool-board chore/490-collisions",
+		"chore/438-gate-board chore/490-collisions",
 		"internal/build/policy/policy.go", // listed even untouched
 		"file overlaps (0)",               // the only shared file is a serialization point
 	} {
@@ -383,10 +383,10 @@ func TestCollisionsReportsNoMergeBase(t *testing.T) {
 // verify-landing case departs from by changing one reading.
 func seedLanding(f *fakeCoord) {
 	const head = "aaaa1111bbbb2222cccc3333dddd4444eeee5555"
-	f.tags["tag0001"] = "branch=chore/438-buildtool-board worktree=wt-438"
+	f.tags["tag0001"] = "branch=chore/438-gate-board worktree=wt-438"
 	f.refs = "refs/lane/438 tag0001\n"
 	f.pullsByNumber["511"] = fmt.Sprintf(`{
-	  "number": 511, "state": "MERGED", "headRefName": "chore/438-buildtool-board",
+	  "number": 511, "state": "MERGED", "headRefName": "chore/438-gate-board",
 	  "headRefOid": %q, "body": "Closes #438\n", "mergeStateStatus": "CLEAN",
 	  "mergeCommit": {"oid": "e25e7ef4e33a247bec43bcee844fda5ec8c2bdc6"}
 	}`, head)
@@ -494,7 +494,7 @@ func TestVerifyLandingFailsLineByLine(t *testing.T) {
 		{
 			name: "the worktree survives",
 			change: func(f *fakeCoord) {
-				f.worktrees = "worktree D:/src/go-cask/.worktrees/wt-438\nHEAD aaaa\nbranch refs/heads/chore/438-buildtool-board\n"
+				f.worktrees = "worktree D:/src/go-cask/.worktrees/wt-438\nHEAD aaaa\nbranch refs/heads/chore/438-gate-board\n"
 			},
 			wantLine: "the lane was released and its worktree is gone",
 			evidence: "a worktree still holds the lane",
@@ -714,7 +714,7 @@ func TestIssueOfBranchAndCandidates(t *testing.T) {
 		branch string
 		want   int
 	}{
-		{branch: "chore/438-buildtool-board", want: 438},
+		{branch: "chore/438-gate-board", want: 438},
 		{branch: "fix/348-viewer-security-session", want: 348},
 		{branch: "perf/372-cas-core-pipeline", want: 372},
 		{branch: "main", want: 0},

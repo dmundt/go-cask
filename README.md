@@ -48,7 +48,7 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - [gitlike/](gitlike/) — shared reference object-model library (package `gitlike`): a copyable template for typed object graphs (`Blob`/`Tree`/`Commit`/`Tag`, `Repository`, `Resolver`, `WalkGraph`).
 - [examples/](examples/) — runnable example programs showing how to use the core and the reference model (per [docs/specs/examples.md](docs/specs/examples.md)).
 - [benchmarks/](benchmarks/) — benchmark suite and operator docs; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/AGENT.md](benchmarks/AGENT.md).
-- [cmd/](cmd/) — command-line entry points: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md), plus `buildtool`, the gate's developer tool for the build decisions above.
+- [cmd/](cmd/) — command-line entry points: `cask` store operations and the embedded viewer (`cask web`), documented in [cmd/cask/README.md](cmd/cask/README.md), plus `gate`, the gate's developer tool for the build decisions above.
 - [docs/index.md](docs/index.md) — the rule file index: read it first, then the spec it maps your path to.
 - [docs/specs/](docs/specs/) — the normative specification set (23 files: 21 specs + `AGENT.md` + `index.md`); start at [docs/specs/AGENT.md](docs/specs/AGENT.md).
 - [docs/design/](docs/design/) — non-normative design/background material: briefs, audits, mockups and implementation plans ([docs/design/index.md](docs/design/index.md)).

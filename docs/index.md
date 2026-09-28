@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v59
+version: v60
 ---
 
 # go-cask Rules Index
@@ -31,7 +31,7 @@ version: v59
 | any package under `cas/**` (coverage tier) | [`testing-strategy.md`](specs/testing-strategy.md) §5 |
 | `cas/bloom/`, `cas/bloom/counting/`, `cas/bloom/standard/`, `cas/bloom/persistent/` | [`performance.md`](specs/performance.md) + [`consistency.md`](specs/consistency.md) + [`cas/bloom/README.md`](../cas/bloom/README.md) + [`coding-guidelines.md`](specs/coding-guidelines.md) §3 |
 | `cmd/cask/` | [`cli.md`](specs/cli.md) + [`cmd/cask/README.md`](../cmd/cask/README.md) |
-| `cmd/buildtool/` | [`cmd/buildtool/README.md`](../cmd/buildtool/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
+| `cmd/gate/` | [`cmd/gate/README.md`](../cmd/gate/README.md) + [`internal/build/README.md`](../internal/build/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
 | `internal/web/` (wiring, middleware, config) | [`backend-architecture.md`](specs/backend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (templates, htmx) | [`frontend-architecture.md`](specs/frontend-architecture.md) + [`internal/web/README.md`](../internal/web/README.md) |
 | `internal/web/` (sessions, CSRF, roles, audit) | [`viewer-security.md`](specs/viewer-security.md) + [`internal/web/README.md`](../internal/web/README.md) |

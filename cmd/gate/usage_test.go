@@ -24,14 +24,14 @@ var helpSpellings = map[string]bool{"-h": true, "--help": true, "help": true}
 func dispatchedCommands(t *testing.T) map[string]bool {
 	t.Helper()
 
-	content, err := os.ReadFile("buildtool.go")
+	content, err := os.ReadFile("main.go")
 	if err != nil {
-		t.Fatalf("read buildtool.go: %v", err)
+		t.Fatalf("read main.go: %v", err)
 	}
 	source := string(content)
 	start := strings.Index(source, "func run(args []string")
 	if start < 0 {
-		t.Fatal("buildtool.go no longer declares run(args []string, out, errOut io.Writer)")
+		t.Fatal("main.go no longer declares run(args []string, out, errOut io.Writer)")
 	}
 	// The function ends at the next top-level declaration, which is the whole switch.
 	body := source[start+1:]

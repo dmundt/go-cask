@@ -30,8 +30,8 @@ func TestSecurityPinLivesOnlyHere(t *testing.T) {
 	t.Parallel()
 
 	workflow := readRepoFile(t, repoRoot(t), ciWorkflowPath)
-	if !strings.Contains(workflow, "buildtool security") {
-		t.Errorf("%s does not run the scanner through `go run ./cmd/buildtool security`", ciWorkflowPath)
+	if !strings.Contains(workflow, "gate security") {
+		t.Errorf("%s does not run the scanner through `go run ./cmd/gate security`", ciWorkflowPath)
 	}
 	if strings.Contains(workflow, Scanner().Version) {
 		t.Errorf("%s restates the pinned scanner version %s; the pin lives in internal/build/policy",

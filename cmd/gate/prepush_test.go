@@ -142,7 +142,7 @@ func TestPrePushHookIsAShim(t *testing.T) {
 	if hook == "" {
 		t.Skipf("%s is not present in this checkout", policy.Gate().PrePush)
 	}
-	for _, want := range []string{"buildtool pre-push", "--repo"} {
+	for _, want := range []string{"gate pre-push", "--repo"} {
 		if !strings.Contains(hook, want) {
 			t.Errorf("%s does not carry %q, so the hook is not the shim the rules live behind",
 				policy.Gate().PrePush, want)

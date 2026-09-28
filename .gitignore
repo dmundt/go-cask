@@ -7,7 +7,7 @@
 .gocache/
 .gopath/
 
-# Task worktrees (`go run ./cmd/buildtool worktree add`)
+# Task worktrees (`go run ./cmd/gate worktree add`)
 .worktrees/
 
 # Session scratch (`docs/specs/landing.md` §2): intermediate only, deleted when the

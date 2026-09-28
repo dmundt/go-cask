@@ -6,7 +6,7 @@ import "strings"
 // smoke-fuzz set it runs.
 //
 // It is go-cask's answer, not the engine's: another repository would name different
-// variables and a different fuzz set. The gate reads it through `cmd/buildtool verify`,
+// variables and a different fuzz set. The gate reads it through `cmd/gate verify`,
 // which is where the step list itself lives.
 type VerifyTable struct {
 	// JobsEnv carries how many packages may be built and tested at once.

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Website Authoring Guide
 description: The authoring guide for the published site under website/ — developer-facing content, the MkDocs Material build, complete compiling Go blocks, the package inventory tables, visual direction, build validation and the revision-derived footer.
-version: v6
+version: v7
 ---
 
 # Website Authoring Guide
@@ -48,7 +48,7 @@ generated `site/` directory is never committed and MUST stay ignored.
 - Every Go block MUST be a complete unit: it declares its own `package` clause
   and its own imports, and it compiles and vets on its own. There are no
   compiled fragments and no generated context stubs. The gate's `website examples`
-  step (`go run ./cmd/buildtool verify`, and its namesake subcommand on its own) extracts
+  step (`go run ./cmd/gate verify`, and its namesake subcommand on its own) extracts
   every `go` fence under `website/`,
   writes each one into its own package directory inside the module, and runs
   `go build` and `go vet` over the whole set, so a non-compiling or
@@ -123,7 +123,7 @@ cannot be read as one.
 `python3 website/macros.py --selftest` pins the rendered line, the `©` year, the
 `Updated` label outside the link, the omitted fragment and the fact that the
 revision is not visible text, for fixed inputs, and the gate's
-`go run ./cmd/buildtool website-footer` step runs it; `internal/build/website` holds
+`go run ./cmd/gate website-footer` step runs it; `internal/build/website` holds
 the footer's rules (`FooterLine`, `FooterFindings`, the source guards) and
 `internal/build/policy`'s `SiteFooter` pins go-cask's line, the deleted override and
 the absent plumbing, so the same text is checked from Go without MkDocs — including
@@ -142,7 +142,7 @@ auto-merge only after signature verification and required checks pass.
 
 Website changes take the same landing lane as code
 ([`docs/specs/landing.md`](../docs/specs/landing.md) §5): claim the
-lane with `go run ./cmd/buildtool pr-lane claim <issue>` and hold it for the whole landing,
+lane with `go run ./cmd/gate pr-lane claim <issue>` and hold it for the whole landing,
 and start the next revision of an artifact only after the previous one has
 merged. The lane is the open pull request; push early and open it as a draft so
 other sessions can see the landing before its decision is final.

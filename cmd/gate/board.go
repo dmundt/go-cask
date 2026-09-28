@@ -25,9 +25,9 @@ import (
 
 // The three verbs' own help, each also its usage error.
 const (
-	boardUsage         = "usage: buildtool board [--json]"
-	collisionsUsage    = "usage: buildtool collisions [--json]"
-	verifyLandingUsage = "usage: buildtool verify-landing <issue|pr> [--json]"
+	boardUsage         = "usage: gate board [--json]"
+	collisionsUsage    = "usage: gate collisions [--json]"
+	verifyLandingUsage = "usage: gate verify-landing <issue|pr> [--json]"
 )
 
 // runBoard prints the coordinator's board: every open issue with the lane that claims it, who
@@ -112,7 +112,7 @@ func readJSONFlag(args []string, verb string) (bool, error) {
 		case "--json":
 			asJSON = true
 		default:
-			return false, usageError{fmt.Sprintf("unknown argument %q (buildtool %s takes --json alone)", arg, verb)}
+			return false, usageError{fmt.Sprintf("unknown argument %q (gate %s takes --json alone)", arg, verb)}
 		}
 	}
 	return asJSON, nil
@@ -223,7 +223,7 @@ func issueOfBranch(branch string) int {
 }
 
 // issueCandidates lists the digit runs a branch name carries. A branch names its issue as one
-// of them (`chore/438-buildtool-board`), and which one it is is `claim`'s rule to decide.
+// of them (`chore/438-gate-board`), and which one it is is `claim`'s rule to decide.
 func issueCandidates(branch string) []string {
 	var candidates []string
 	current := strings.Builder{}

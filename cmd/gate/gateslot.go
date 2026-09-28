@@ -260,9 +260,9 @@ func gateSlotRefusal(holder *lane.Holder) error {
 		"verify: the %s slot is held by %s (pid %s, idle %dm) and the bounded wait ended.\n"+
 			"  No step ran, so this is NOT a verdict on the tree.\n"+
 			"  Wait for that run, or queue for the slot before gating:\n"+
-			"      go run ./cmd/buildtool land-lane status\n"+
-			"      go run ./cmd/buildtool land-lane wait <label>   # queue for it\n"+
-			"      go run ./cmd/buildtool verify --slot=takeover   # the holder's run is gone",
+			"      go run ./cmd/gate land-lane status\n"+
+			"      go run ./cmd/gate land-lane wait <label>   # queue for it\n"+
+			"      go run ./cmd/gate verify --slot=takeover   # the holder's run is gone",
 		gateSlotName, gateHolderText(holder), holder.PID, holder.IdleMinutes(now()))}
 }
 
@@ -292,7 +292,7 @@ func slotWaitSeconds() int {
 func gateRunLabel() string {
 	root, err := repoRoot()
 	if err != nil {
-		return "buildtool verify"
+		return "gate verify"
 	}
 	label := "verify " + filepath.ToSlash(root)
 	if head, err := gitOutputIn(root, "rev-parse", "--short", "HEAD"); err == nil {
@@ -307,7 +307,7 @@ func gateRunLabel() string {
 // enough to trip the machine's memory limit, and the kernel kills the biggest child — ends
 // with no output past the step's heading: exit 15, no ledger entry, no receipt, and nothing
 // for the lane to read. These functions make that failure legible instead: which signal
-// killed the step, how many concurrent `buildtool verify` processes this host can see, and
+// killed the step, how many concurrent `gate verify` processes this host can see, and
 // what to do about it.
 
 // killedStep and its per-platform half live in signals.go, signals_unix.go and
@@ -319,13 +319,13 @@ func gateRunLabel() string {
 // the slot — where the lane is already reading.
 func gateStepKilledReport(errOut io.Writer, step, signal string) {
 	fmt.Fprintf(errOut, "verify: the %s step was killed by %s — no verdict was produced for it.\n", step, signal)
-	fmt.Fprintf(errOut, "  concurrent `buildtool verify` processes visible on this host: %d\n", gateVerifyProcessesFunc())
+	fmt.Fprintf(errOut, "  concurrent `gate verify` processes visible on this host: %d\n", gateVerifyProcessesFunc())
 	fmt.Fprintln(errOut, "  A second gate run in one clone is enough to trip the machine's memory limit, and")
 	fmt.Fprintln(errOut, "  the kernel kills the step that is holding the most memory. Nothing is wrong with")
 	fmt.Fprintln(errOut, "  the tree: hold the slot and re-run. The gate takes the slot for a whole run now,")
 	fmt.Fprintln(errOut, "  so a second run waits for the first instead of running beside it:")
-	fmt.Fprintln(errOut, "      go run ./cmd/buildtool land-lane status")
-	fmt.Fprintln(errOut, "      go run ./cmd/buildtool land-lane wait <label>")
+	fmt.Fprintln(errOut, "      go run ./cmd/gate land-lane status")
+	fmt.Fprintln(errOut, "      go run ./cmd/gate land-lane wait <label>")
 }
 
 // gateVerifyProcessesFunc counts the concurrent gate runs. It is a variable so a test can
@@ -333,7 +333,7 @@ func gateStepKilledReport(errOut io.Writer, step, signal string) {
 // described without one.
 var gateVerifyProcessesFunc = gateVerifyProcesses
 
-// gateVerifyProcesses counts the `buildtool verify` processes this host can see — this one
+// gateVerifyProcesses counts the `gate verify` processes this host can see — this one
 // included. It reads /proc, the only cheap process listing available here, and reads it
 // directly rather than through `ps` so a diagnosis cannot fail on a machine that has no
 // such tool: a host with no /proc reports 0, which the report states as the count it could
@@ -362,13 +362,13 @@ func gateVerifyProcesses() int {
 	return count
 }
 
-// isVerifyCommand reports whether one process's argv is a gate run: a buildtool binary or
+// isVerifyCommand reports whether one process's argv is a gate run: a gate binary or
 // `go run` invocation whose next argument is `verify`. Both separators are read, because the
 // listing may be a Windows process table read from a POSIX shell, or the other way round.
 func isVerifyCommand(argv []string) bool {
 	for index, arg := range argv {
 		base := strings.ToLower(path.Base(strings.ReplaceAll(arg, `\`, "/")))
-		if base != "buildtool" && base != "buildtool.exe" {
+		if base != "gate" && base != "gate.exe" {
 			continue
 		}
 		return index+1 < len(argv) && argv[index+1] == "verify"

@@ -258,12 +258,12 @@ The coordinator role is defined by its contract landing (see #437).
 
 ## Commands
 
-- ` + "`buildtool board`" + ` - one view of every open issue with its lane state
+- ` + "`gate board`" + ` - one view of every open issue with its lane state
 
 ## Home
 
 ` + "`internal/build/core/board`" + ` (the engine module: stdlib only, tested) plus thin
-` + "`cmd/buildtool`" + ` verbs and the ` + "`docs/index.md`" + ` rows.
+` + "`cmd/gate`" + ` verbs and the ` + "`docs/index.md`" + ` rows.
 
 ## Depends on
 
@@ -276,7 +276,7 @@ The contract landing.
 func TestScopeIn(t *testing.T) {
 	scope := ScopeIn(issueBody)
 	joined := strings.Join(scope, ",")
-	for _, want := range []string{"internal/build/core/board", "cmd/buildtool", "docs/index.md"} {
+	for _, want := range []string{"internal/build/core/board", "cmd/gate", "docs/index.md"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("scope = %v, want %q among the declared paths", scope, want)
 		}
@@ -289,8 +289,8 @@ func TestScopeIn(t *testing.T) {
 		}
 	}
 
-	listed := ScopeIn("## Home\n\n- `internal/build/board/`\n- `cmd/buildtool/board.go`\n\n## Other\n\nprose\n")
-	if strings.Join(listed, ",") != "internal/build/board,cmd/buildtool/board.go" {
+	listed := ScopeIn("## Home\n\n- `internal/build/board/`\n- `cmd/gate/board.go`\n\n## Other\n\nprose\n")
+	if strings.Join(listed, ",") != "internal/build/board,cmd/gate/board.go" {
 		t.Errorf("scoped list = %v, want the two listed paths", listed)
 	}
 

@@ -2,7 +2,7 @@
 type: Guide
 title: board — go-cask
 description: The coordinator's three readings — the board over open issues and lanes, the file-overlap matrix in flight, and the six checks that prove a landing.
-version: v1
+version: v2
 ---
 
 # board
@@ -35,7 +35,7 @@ func BoardOf(issues []Issue, lanes map[int]*Lane, pulls map[int]*PullRequest, wh
 func NextAction(row Row) Action
 ```
 
-`cmd/buildtool board` runs the `gh` and `git` calls and renders the table; the forge listings
+`cmd/gate board` runs the `gh` and `git` calls and renders the table; the forge listings
 are parsed here (`ParseIssues`, `ParsePullRequests`, `ParseWorktrees`, `ParseDiff`) so the
 decision is covered by a fixture test rather than by a live remote.
 

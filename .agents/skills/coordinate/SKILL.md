@@ -15,7 +15,7 @@ Passes in order; each names the artifact it produces. Contract: [`docs/specs/coo
 
 ## Pass 1 — Read the board
 
-1. `go run ./cmd/buildtool pr-lane status` — every claim, its age, its PR.
+1. `go run ./cmd/gate pr-lane status` — every claim, its age, its PR.
 2. `git worktree list` — task trees, branch, HEAD.
 3. `gh pr list --state open --json number,headRefName,mergeable,mergeStateStatus,isDraft,autoMergeRequest`.
 4. `gh issue list --state open`.
@@ -44,7 +44,7 @@ Artifact: the wave, one lane per issue, with the files each lane owns.
 
 ## Pass 5 — Serialize the gate
 
-More than one lane in this clone needing a gate run: hold the advisory slot — `go run ./cmd/buildtool land-lane acquire`, `renew` while running, `release` when done (`status`: 0 yours, 1 free, 2 someone else). Concurrent runs in one clone slow every run and manufacture failures that are not in any tree: `go list ...: error obtaining VCS status: exit status 128` is contention, not a regression — a run that could not take the slot says so, never reports contention as red.
+More than one lane in this clone needing a gate run: hold the advisory slot — `go run ./cmd/gate land-lane acquire`, `renew` while running, `release` when done (`status`: 0 yours, 1 free, 2 someone else). Concurrent runs in one clone slow every run and manufacture failures that are not in any tree: `go list ...: error obtaining VCS status: exit status 128` is contention, not a regression — a run that could not take the slot says so, never reports contention as red.
 
 Artifact: gate runs that do not overlap.
 

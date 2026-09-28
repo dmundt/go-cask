@@ -592,7 +592,7 @@ func TestGateStepKilledNamesTheSignal(t *testing.T) {
 	gateStepKilledReport(&report, "test -race + coverage gate", "SIGKILL")
 	for _, want := range []string{
 		"the test -race + coverage gate step was killed by SIGKILL",
-		"concurrent `buildtool verify` processes visible on this host: 2",
+		"concurrent `gate verify` processes visible on this host: 2",
 		"land-lane wait",
 		"Nothing is wrong with",
 	} {
@@ -629,18 +629,18 @@ func TestKilledStepErrorIsSilentForAnOrdinaryFailure(t *testing.T) {
 }
 
 // TestIsVerifyCommandReadsAProcessArgv pins the counting rule the diagnosis reports with:
-// only a buildtool invocation whose next argument is `verify` is a concurrent gate run, so
+// only a gate invocation whose next argument is `verify` is a concurrent gate run, so
 // the number a lane reads counts runs rather than every Go process on the host.
 func TestIsVerifyCommandReadsAProcessArgv(t *testing.T) {
 	for _, tc := range []struct {
 		argv []string
 		want bool
 	}{
-		{argv: []string{"/tmp/go-build1/b001/exe/buildtool", "verify"}, want: true},
-		{argv: []string{"go", "run", "./cmd/buildtool", "verify"}, want: true},
-		{argv: []string{`C:\Users\x\buildtool.exe`, "verify"}, want: true},
-		{argv: []string{"/tmp/go-build1/b001/exe/buildtool", "lint"}, want: false},
-		{argv: []string{"go", "run", "./cmd/buildtool"}, want: false},
+		{argv: []string{"/tmp/go-build1/b001/exe/gate", "verify"}, want: true},
+		{argv: []string{"go", "run", "./cmd/gate", "verify"}, want: true},
+		{argv: []string{`C:\Users\x\gate.exe`, "verify"}, want: true},
+		{argv: []string{"/tmp/go-build1/b001/exe/gate", "lint"}, want: false},
+		{argv: []string{"go", "run", "./cmd/gate"}, want: false},
 		{argv: []string{"/usr/bin/ps", "-ef"}, want: false},
 		{argv: nil, want: false},
 	} {
