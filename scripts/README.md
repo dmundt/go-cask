@@ -2,7 +2,7 @@
 type: Guide
 title: Scripts — go-cask
 description: The repo's entry points — the buildtool launcher, the toolchain resolution it shares with the hooks, and the gate — with every rule they run living in Go under internal/build and cmd/buildtool.
-version: v17
+version: v18
 ---
 
 # Scripts — go-cask
@@ -154,8 +154,9 @@ The gate executes them; it does not restate them.
   with the subcommand that completes it; `--list` names them plus the manual `api` example. Table:
   `internal/build/policy`; selection rule: `internal/build/examples`.
 - `api` = a manual two-process pair, so no runner runs it: start the blocking server with
-  `go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080`, then the demo client with
-  `go run ./examples/api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md` in a
+  `go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080 -tokens "viewer=v_tok,operator=o_tok,admin=a_tok"`,
+  then the demo client with
+  `go run ./examples/api/demo -api http://127.0.0.1:8080 -token o_tok -file ./README.md` in a
   second terminal ([`examples/api/README.md`](../examples/api/README.md)).
 - `go run ./cmd/buildtool security` installs the pinned `govulncheck`. Pin:
   `internal/build/policy`; override: `GOVULNCHECK_VERSION`; update the table deliberately.

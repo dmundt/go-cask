@@ -7,6 +7,10 @@ info:
     and deduplicated. The core names no hash algorithm; this server digests with
     sha256 and reports it as the constant "algorithm": "sha256".
     All endpoints are rate-limited per caller IP.
+    Every request body is bounded and refused with 413 before it is read:
+    the maximum object body is 64 MiB (-max-size), and the /gc reachable
+    set is bounded to 8 MiB. Connection lifetimes are set server-side
+    (read 60s, write 300s, idle 120s).
   version: 1.0.0
 servers:
   - url: /api/cas/v1
@@ -14,7 +18,10 @@ paths:
   /objects:
     post:
       summary: Store an object
-      description: Computes the sha256 digest of the body; deduplicates.
+      description: >
+        Computes the sha256 digest of the body; deduplicates. The body is
+        bounded to the maximum object size (64 MiB by default, the server's
+        -max-size); a larger body is refused with 413 before it is read.
       responses:
         '201':
           description: Stored (deduplicated: true when it already existed)
@@ -26,6 +33,10 @@ paths:
                   hash: { type: string }
                   deduplicated: { type: boolean }
         '400': { description: Empty body }
+        '413':
+          description: >
+            Body over the maximum object size; nothing is stored and no
+            upload spool is left behind. application/json: {"error": ...}
         '429': { description: Rate limited }
     get:
       summary: List objects
@@ -121,6 +132,9 @@ paths:
   /gc:
     post:
       summary: Run mark-and-sweep garbage collection (admin)
+      description: >
+        The reachable set is bounded to 8 MiB (roughly 100 000 digests); a
+        larger body is refused with 413 before it is decoded.
       requestBody:
         required: true
         content:
@@ -138,6 +152,11 @@ paths:
                 type: object
                 properties:
                   deleted: { type: integer }
+        '400': { description: Malformed reachable set }
+        '413':
+          description: >
+            Reachable set over the body bound; the set is never decoded and
+            the store is untouched. application/json: {"error": ...}
   /openapi.yaml:
     get:
       summary: This OpenAPI document
