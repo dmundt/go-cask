@@ -10,6 +10,11 @@
 # Task worktrees (`go run ./cmd/buildtool worktree add`)
 .worktrees/
 
+# Session scratch (`docs/specs/landing.md` §2): intermediate only, deleted when the
+# work it served is done — never storage. `.gocache/` and `.worktrees/` above are the
+# toolchain's; this one is the session's.
+.scratch/
+
 # Local store / test artifacts
 /objects/
 *.tmp
