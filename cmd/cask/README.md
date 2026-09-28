@@ -192,11 +192,15 @@ re-deriving every ordinal's digest with its own hasher, so seeding with one algo
 reading with another finds no graph and shows no references. Every eight-object block includes
 a `Root` entry, orphans with inbound edges, and a `Detached` entry, so all four states are
 visible; every eighth object carries tampered bytes that do not hash to their own address, so
-`verify` genuinely fails for it. Seeded objects are current-format envelopes with the `preview`
-codec tag (the payload is a synthetic byte pattern no shipped codec produced), framed through
-the core's own writer so their digests match what the store would have written. An ordinary
-store stays reference-free until an embedding host supplies its own indexes (`web.Config`,
-[`internal/web/README.md`](../../internal/web/README.md)).
+`verify` genuinely fails for it. Seeded objects are current-format envelopes carrying the tag of
+the codec that encoded their deterministic JSON payload (`json`, `cas/codec/json`), framed
+through the core's own writer so their digests match what the store would have written: the
+viewer's Codec column, its `codec` filter and `cask list -codec json` report a format the bytes
+really are, and a reader holding that codec decodes a seeded payload. Every seeded address changed
+with go-cask#333 — the payload and the tag live inside the frame — so a store seeded before it
+holds none of the digests the viewer re-derives: re-run `seed-preview` on a demo store that
+predates the change. An ordinary store stays reference-free until an embedding host supplies its
+own indexes (`web.Config`, [`internal/web/README.md`](../../internal/web/README.md)).
 
 ### Deployment
 
