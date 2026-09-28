@@ -178,13 +178,20 @@ func worktreeAdd(args []string, out, errOut io.Writer, context *worktreeContext)
 // `git worktree prune`: that is repository-wide and would delete the worktrees whose reverse
 // link holds the other toolchain's path form.
 //
+// The path is the one git reports for the registration, never one computed from policy: a
+// worktree may live anywhere — another session's tooling, an older base directory — and a
+// policy path names a worktree only when the command created it there. Computing the path
+// removed the registration of a worktree that lived elsewhere, reported success over a
+// directory that survived, and left no way back through `git worktree remove` because the
+// registration was gone (go-cask#461).
+//
 // A destructive verb reports success only on evidence, and this one has two ways to report a
-// removal that did not happen. A name that is registered nowhere is refused before anything is
-// touched, and the filesystem is read back after the removal so a half that survived it is
-// named rather than papered over. The guard is not defensive tidiness: `os.RemoveAll` returns
-// nil for a path that is not there, so without it an unknown name — the `wt-` prefix is the
-// command's to add, so a caller who passes it gets `wt-wt-…` — printed `worktree removed` and
-// exited 0 having done nothing (go-cask#395).
+// removal that did not happen. A name git registers nowhere is refused before anything is
+// touched, and the filesystem is read back at the resolved path after the removal so a half
+// that survived it is named rather than papered over. The guard is not defensive tidiness:
+// `os.RemoveAll` returns nil for a path that is not there, so without it an unknown name —
+// the `wt-` prefix is the command's to add, so a caller who passes it gets `wt-wt-…` —
+// printed `worktree removed` and exited 0 having done nothing (go-cask#395).
 func worktreeRemove(args []string, out, errOut io.Writer, context *worktreeContext) error {
 	table := policy.Worktrees()
 	if len(args) == 0 {
@@ -196,20 +203,26 @@ func worktreeRemove(args []string, out, errOut io.Writer, context *worktreeConte
 		return usageError{"usage: buildtool worktree remove <name> [--force]"}
 	}
 	gitName := table.Prefix + name
-	dir := filepath.Join(context.parent, gitName)
 	admin := worktree.Admin(context.common, gitName)
 
-	// Either half alone is a state worth clearing — a checkout whose registration survived, or
-	// a registration whose checkout was deleted by hand — but neither of them existing is the
-	// command being asked to remove nothing.
-	dirExists := worktreeDirExists(dir)
-	adminExists := worktreeDirExists(admin)
-	if !dirExists && !adminExists {
-		return statusError{code: 3, message: fmt.Sprintf(
-			"worktree: no such worktree: %s (looked for %s)", gitName, dir)}
+	dir, registered, err := registeredWorktreePath(context.primary, context.common, gitName)
+	if err != nil {
+		return err
+	}
+	if !registered {
+		// Nothing git registers under this name names no worktree, so there is no path that
+		// is this verb's to remove. `os.RemoveAll` would report success over the policy
+		// path anyway, and that is how a worktree living elsewhere was orphaned. A
+		// directory that happens to sit at the policy path is named so it can be removed
+		// deliberately rather than by accident.
+		message := fmt.Sprintf("worktree: no such worktree: %s (git registers no worktree by that name)", gitName)
+		if stray := filepath.Join(context.parent, gitName); worktreeDirExists(stray) {
+			message += fmt.Sprintf("; an unregistered directory is at %s", stray)
+		}
+		return statusError{code: 3, message: message}
 	}
 
-	if dirExists && !force {
+	if worktreeDirExists(dir) && !force {
 		status, err := gitOutputIn(dir, "status", "--porcelain")
 		if err == nil && strings.TrimSpace(status) != "" {
 			return statusError{code: 3, message: fmt.Sprintf(
@@ -241,6 +254,42 @@ func worktreeRemove(args []string, out, errOut io.Writer, context *worktreeConte
 	}
 	fmt.Fprintf(out, "worktree removed: %s\n", gitName)
 	return nil
+}
+
+// registeredWorktreePath returns the path git reports for the worktree registered under a
+// name, and whether git registers that name at all.
+//
+// The listing is the authority on the path — it is what git's own `worktree remove` acts on —
+// and the name is matched two ways. The registration's `gitdir` record names the worktree it
+// belongs to, which is exact and survives a directory renamed away from the registration's
+// own name; the reported path's base name is the match git itself uses when it creates the
+// admin directory. The primary checkout is never a candidate: it is listed first, it is not a
+// linked worktree, and a name that merely matches its directory must not resolve to the
+// repository itself. A path git does not report is never returned, so a stale record cannot
+// point the removal at something git does not consider a worktree.
+func registeredWorktreePath(primary, commonDir, gitName string) (string, bool, error) {
+	listing, err := gitOutputIn(primary, "worktree", "list", "--porcelain")
+	if err != nil {
+		return "", false, err
+	}
+	entries := parseWorktrees(listing)
+
+	recorded := ""
+	if raw, err := os.ReadFile(filepath.Join(worktree.Admin(commonDir, gitName), "gitdir")); err == nil {
+		recorded = strings.TrimSpace(string(raw))
+	}
+	for _, entry := range entries {
+		if worktree.SamePath(entry.Path, primary) {
+			continue
+		}
+		if recorded != "" && worktree.SamePath(filepath.Join(entry.Path, ".git"), recorded) {
+			return entry.Path, true, nil
+		}
+		if filepath.Base(filepath.Clean(entry.Path)) == gitName {
+			return entry.Path, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 // worktreeDirExists reports whether a path names a directory that is there, which is the

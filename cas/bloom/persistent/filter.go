@@ -19,7 +19,12 @@ import (
 // digest there, and bloom.Guard turns a negative into an authoritative absence
 // (#254). A caller-supplied Config.Hash must be deterministic for the same
 // reason; the header records which kind wrote the file, and a file written under
-// the other kind is rebuilt rather than trusted.
+// the other kind is rebuilt rather than trusted. The header also carries a
+// checksum over the kind and the key, so a file whose key changed under it —
+// bit rot, or a restored copy — is rebuilt instead of silently reindexed, which
+// would report every recorded digest absent (#361). Rebuilt reports whether that
+// rebuild happened, so a caller can decline to back a bloom.Guard with a filter
+// whose hints it did not just write and verify.
 //
 // The backing strategy is platform dependent and reported by IsMapped: when the
 // platform can memory map the file, the bitset is a live shared view of it;
@@ -34,17 +39,18 @@ import (
 // closed filter never touches released memory. Close itself is idempotent and
 // may be called again at any time.
 type Filter struct {
-	mu     sync.RWMutex
-	file   *os.File
-	raw    []byte
-	data   []byte
-	k      int
-	m      uint64
-	hash   bloom.IndexHash
-	mapped bool
-	closed bool
-	path   string
-	driver mmapDriver
+	mu      sync.RWMutex
+	file    *os.File
+	raw     []byte
+	data    []byte
+	k       int
+	m       uint64
+	hash    bloom.IndexHash
+	mapped  bool
+	rebuilt bool
+	closed  bool
+	path    string
+	driver  mmapDriver
 }
 
 // Config configures a persistent Bloom filter.
@@ -64,14 +70,16 @@ func New(path string, expectedItems uint64, falsePositiveRate float64) (*Filter,
 
 // NewFilter creates a persistent Bloom filter from a config and path.
 //
-// An existing file whose header names the same index-hash kind is reused: its
-// bits are preserved, and it is grown with Truncate when it is shorter than the
-// configured size. A file with no usable header — one written before the header
-// existed, a truncated one, or one written under the other index-hash kind — is
-// rebuilt empty with a fresh index key, because its bits cannot be indexed the
-// way this filter reads them. The hint set is a cache, so an unusable file costs
-// a rebuild rather than a wrong answer; callers that want a clean filter for the
-// same shape must remove the file first or call Reset.
+// An existing file whose header names the same index-hash kind and passes its
+// kind||key checksum is reused: its bits are preserved, and it is grown with
+// Truncate when it is shorter than the configured size. A file with no usable
+// header — one written before the header existed, one written before the header
+// checksum existed, a truncated one, one written under the other index-hash kind,
+// or one whose key does not match its checksum — is rebuilt empty with a fresh
+// index key, because its bits cannot be indexed the way this filter reads them.
+// The hint set is a cache, so an unusable file costs a rebuild rather than a
+// wrong answer; Rebuilt reports that it happened. Callers that want a clean
+// filter for the same shape must remove the file first or call Reset.
 func NewFilter(cfg Config, path string) (*Filter, error) {
 	return newFilter(cfg, path, defaultMmapDriver())
 }
@@ -134,10 +142,11 @@ func newFilter(cfg Config, path string, driver mmapDriver) (*Filter, error) {
 }
 
 // initIndexHash resolves the filter's index hash and makes the header describe
-// it. A header that is missing, unreadable, or names the other index-hash kind
-// makes the stored bits unusable under this filter's indexing, so the file is
-// rebuilt empty with a fresh key: the hint set is a cache, and rebuilding it is
-// always safer than answering from bits indexed another way (#254).
+// it. A header that is missing, unreadable, names the other index-hash kind, or
+// fails its kind||key checksum makes the stored bits unusable under this
+// filter's indexing, so the file is rebuilt empty with a fresh key: the hint set
+// is a cache, and rebuilding it is always safer than answering from bits indexed
+// another way (#254, #361). Rebuilt records that this happened.
 func (f *Filter) initIndexHash(custom bloom.IndexHash) error {
 	kind := hashKindDefault
 	if custom != nil {
@@ -152,6 +161,7 @@ func (f *Filter) initIndexHash(custom bloom.IndexHash) error {
 		key = fresh
 		encodeHeader(f.raw[:headerSize], kind, key)
 		clear(f.data)
+		f.rebuilt = true
 	}
 	if custom != nil {
 		f.hash = custom
@@ -159,6 +169,27 @@ func (f *Filter) initIndexHash(custom bloom.IndexHash) error {
 	}
 	f.hash = keyedIndexHash(key)
 	return nil
+}
+
+// Rebuilt reports whether opening the file discarded its stored bits and started
+// from an empty bitset. It is true when the header was missing, too short to
+// hold one, written before the header checksum existed, written under another
+// index-hash kind, or failed its kind||key checksum — and it is true for a file
+// this call just created, which had no usable header to preserve either.
+//
+// It is the caller's signal that the filter's negatives do not vouch for the
+// store: a rebuilt filter reports false for everything until it is populated
+// again, so a bloom.Guard backed by one would call a stored object absent until
+// something re-adds it. A caller that must trust a negative either repopulates
+// the filter after a rebuild or declines to use it. Rebuilt reports false on a
+// nil *Filter and stays readable after Close.
+func (f *Filter) Rebuilt() bool {
+	if f == nil {
+		return false
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.rebuilt
 }
 
 // IsMapped reports whether the bitset is a live memory-mapped view of the

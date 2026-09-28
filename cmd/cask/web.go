@@ -314,7 +314,11 @@ func runWeb(ctx context.Context, mf modeFlags, args []string) int {
 	}
 	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("cask web listening (viewer)", "addr", listener.Addr(), "store", a.store)
+		// The store logged is the resolved one the viewer actually reads
+		// (backend.BasePath): -store, or the ./objects default, is resolved
+		// once at the opening seam, so a symlinked store is named by its target
+		// instead of being followed silently (cli.md §1, §2).
+		slog.Info("cask web listening (viewer)", "addr", listener.Addr(), "store", backend.BasePath())
 		if err := httpSrv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("serve", "err", err)
 			serverErr <- err
@@ -379,21 +383,27 @@ func loginURL(baseURL, token string) string {
 // first, then CASK_VIEWER_TOKEN — is used as given and is never displayed, so
 // an unattended deployment never needs the token printed; only a token
 // generated here may be shown, and only when the operator asks for it or the
-// notice's stream is an interactive terminal (viewer-security §5.1, §11). A
-// returned error names the flag or the file, not the token.
+// notice's stream is an interactive terminal (viewer-security §5.1, §11).
+//
+// A supplied token must pass the supply contract below: a regular file whose
+// bounded contents are a token of the documented width and character set. Every
+// error names the flag or the file, never the token value.
 func resolveStartupToken(a webArgs) (string, bool, error) {
 	if a.tokenFile != "" {
-		b, err := os.ReadFile(a.tokenFile)
+		source := "-token-file " + a.tokenFile
+		token, err := readStartupTokenFile(a.tokenFile)
 		if err != nil {
-			return "", false, fmt.Errorf("read -token-file: %w", err)
+			return "", false, err
 		}
-		token := strings.TrimSpace(string(b))
-		if token == "" {
-			return "", false, fmt.Errorf("-token-file %s holds no token", a.tokenFile)
+		if err := validateStartupToken(source, token); err != nil {
+			return "", false, err
 		}
 		return token, false, nil
 	}
 	if token := strings.TrimSpace(os.Getenv(viewerTokenEnv)); token != "" {
+		if err := validateStartupToken(viewerTokenEnv, token); err != nil {
+			return "", false, err
+		}
 		return token, false, nil
 	}
 	token, err := randomToken()
@@ -401,6 +411,97 @@ func resolveStartupToken(a webArgs) (string, bool, error) {
 		return "", false, fmt.Errorf("generate startup token: %w", err)
 	}
 	return token, true, nil
+}
+
+// The supplied startup token's contract (viewer-security §5, defaults §4).
+// A token an operator supplies is read or transcribed by hand and may be
+// sat in a secret store for years, so it has a floor, a closed character set,
+// and a file channel that cannot stall startup:
+//
+//   - the file must be a regular file, checked with os.Lstat *before* it is
+//     opened: a directory, device or FIFO is refused, and refusing a FIFO
+//     before the open is what keeps `-token-file /dev/zero` from blocking
+//     startup forever (a symlink is refused too — it is not a regular file);
+//   - the read is bounded, so a huge or endless file cannot be pulled into
+//     memory before the token is even trimmed;
+//   - the trimmed value must be at least minStartupTokenLen characters from
+//     startupTokenCharset. The closed set is the URL-unreserved ASCII set
+//     (RFC 3986 §2.3), which is also what stays data — never quoting, escaping
+//     or a shell metacharacter — on a command line, in a URL, and in a secret
+//     store (viewer-security §11).
+//
+// The floor applies to supplied tokens only: the token this binary generates is
+// the 128-bit form below, which clears the floor on its own (randomToken).
+const (
+	// maxStartupTokenBytes bounds the -token-file read. It is the viewer's own
+	// request-body ceiling (viewer-security §13): a token file has no reason to
+	// be larger, and this keeps startup from being the one unbounded read.
+	maxStartupTokenBytes = 4 << 10
+	// minStartupTokenLen is the shortest accepted supplied token, in characters
+	// (the charset is ASCII, so characters and bytes agree).
+	minStartupTokenLen = 16
+	// startupTokenCharset names the accepted characters in the errors, so a
+	// rejected operator learns the rule without seeing any part of the token.
+	startupTokenCharset = "A-Z a-z 0-9 - . _ ~"
+)
+
+// readStartupTokenFile reads a supplied startup token from path under the
+// supply contract above. The error names the file and never any content read
+// from it.
+func readStartupTokenFile(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("read -token-file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("-token-file %s is not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("read -token-file: %w", err)
+	}
+	defer f.Close()
+	// One byte past the bound is read on purpose: it is what distinguishes a
+	// file exactly at the bound from one over it.
+	b, err := io.ReadAll(io.LimitReader(f, maxStartupTokenBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read -token-file: %w", err)
+	}
+	if len(b) > maxStartupTokenBytes {
+		return "", fmt.Errorf("-token-file %s holds more than %d bytes", path, maxStartupTokenBytes)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// validateStartupToken enforces the width and character-set rules on a supplied
+// token, naming source — the flag with its file, or the environment variable —
+// in every error. The token value itself never reaches an error message
+// (viewer-security §11).
+func validateStartupToken(source, token string) error {
+	if token == "" {
+		return fmt.Errorf("%s holds no token", source)
+	}
+	if len(token) < minStartupTokenLen {
+		return fmt.Errorf("%s holds a token shorter than %d characters", source, minStartupTokenLen)
+	}
+	for _, r := range token {
+		if !startupTokenRune(r) {
+			return fmt.Errorf("%s holds a token outside the accepted character set (%s)", source, startupTokenCharset)
+		}
+	}
+	return nil
+}
+
+// startupTokenRune reports whether r is an accepted supplied-token character.
+func startupTokenRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	case r == '-', r == '.', r == '_', r == '~':
+		return true
+	default:
+		return false
+	}
 }
 
 // noticeOrigin returns the login deep link's origin for the startup notice, or
@@ -588,15 +689,23 @@ func openBrowser(url string) {
 	}()
 }
 
-// randomToken returns 6 cryptographically random bytes as uppercase
+// randomToken returns 16 cryptographically random bytes as uppercase
 // dash-separated hex groups (viewer-security §5.1: startup token). A failure of
 // the system random source is returned so the caller can report it and exit 1;
 // a helper never panics (cli.md §3).
+//
+// The width is 128 bits in four eight-character groups (35 characters), the
+// same order as every other secret the viewer mints, and it is still
+// hand-transcribable — four groups a human reads off a terminal once
+// (defaults §4). The surrounding controls are unchanged and independent of the
+// width: the token is never logged, is displayed only for a loopback bind, is
+// regenerated on every restart, and the login throttle admits 5 failures per
+// caller address per minute with backoff (viewer-security §5, §5.1, §9, §11).
 func randomToken() (string, error) {
-	b := make([]byte, 6)
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("read startup token: %w", err)
 	}
 	s := strings.ToUpper(hex.EncodeToString(b))
-	return s[0:4] + "-" + s[4:8] + "-" + s[8:12], nil
+	return s[0:8] + "-" + s[8:16] + "-" + s[16:24] + "-" + s[24:32], nil
 }

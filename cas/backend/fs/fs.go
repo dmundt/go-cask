@@ -204,6 +204,11 @@ func pathToDigest(rel string) (cas.Digest, error) {
 // implementation cas/backend/fs, cas/pack and cas/refs share. This method keeps
 // the backend's own decisions: the object's mode, the idempotent-rename rule
 // below, and the operator-facing error text for the phase that failed.
+//
+// A symbolic link anywhere between the base and the object, or a non-directory
+// where a fan-out directory belongs, is refused with ErrUnsafeTarget instead of
+// being followed: a write that lands outside the base is out of the
+// one-base-one-store contract (cas-core §4.4).
 func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -214,7 +219,15 @@ func (s *Backend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err := atomicfile.Publish(ctx, s.digestPath(d), r, atomicfile.Options{
+	path := s.digestPath(d)
+	// The digest is hex by construction, so the path itself needs no sanitizing
+	// — but a link planted inside the base is not a caller string, and both the
+	// fan-out directory and the object path would be followed by MkdirAll and
+	// by every later read. Refuse it before creating anything (cas-core §4.4).
+	if err := ValidateFile(s.base, path); err != nil {
+		return err
+	}
+	err := atomicfile.Publish(ctx, path, r, atomicfile.Options{
 		Mode:    0o644,
 		SyncDir: s.dirSync,
 		// The content address makes the object already stored, so an existing

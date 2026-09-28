@@ -13,7 +13,14 @@
 // negative as authoritative (header.go, go-cask#254). A caller-supplied
 // Config.Hash must be deterministic for the same reason, and the header records
 // which kind wrote the file, so a file written under the other kind is rebuilt
-// rather than trusted.
+// rather than trusted. The header also carries a checksum over the kind and the
+// key, so a file whose key changed under it — bit rot, or a copy restored from
+// somewhere else — is rebuilt instead of silently reindexed under a key nothing
+// vouches for, which would report every recorded digest absent (go-cask#361).
+// Filter.Rebuilt reports that a rebuild happened, so a caller can decline to
+// trust the filter's negatives. Before backing a bloom.Guard with a filter it
+// did not just write and verify, a caller MUST repopulate it after a rebuild or
+// not use it.
 //
 // How the file is used is platform dependent and reported by Filter.IsMapped: on
 // platforms with memory mapping the bitset is a live shared view of the file,

@@ -163,6 +163,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
+  36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
+  height, bar height, control heights and every gutter drawn from one spacing and type scale;
+  hover, selection and focus are translucencies of the single accent rather than five more blues,
+  and the second metadata grey (`#777777`) collapses onto `#666666`. Distinct colour literals drop
+  from 33 to 21, and the status pills — six fills, six text colours and the translucent ring — are
+  unchanged. A listed object whose bytes cannot be read now says `unreadable` in the type cell
+  instead of rendering as untyped (go-cask#334, go-cask#357).
+- `-store` is resolved once when the store is opened, so a symbolic link in the path is followed
+  deliberately instead of silently. `clean`, `gc` and `prune` print the resolved base they acted on
+  (`clean: store <dir>`) and `cask web` logs it; the maintenance lock is taken in the resolved store.
+  An intentional symlinked store keeps working (go-cask#353).
+- `cask web` mints its startup admin token at 128 bits (16 bytes as four dash-separated groups of
+  eight hex characters) instead of 48, and validates a supplied one (`-token-file`,
+  `CASK_VIEWER_TOKEN`): a regular file read under a 4 KiB bound, at least 16 characters from
+  `A-Z a-z 0-9 - . _ ~`, with a rejection naming the flag, file or variable and never the value.
+  A session also retains at most 50 000 verification results; past the bound a dropped object reads
+  `Unverified` again instead of a stale verdict.
 - The viewer names a frame's version **Envelope** rather than "Envelope version" or
   "Version" — in the object table's column header, in the inspector's Identity block, and
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
@@ -352,6 +370,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `cas/bloom/counting`'s `CounterBits` now selects the counter width it
+  documents. The counters are packed (`m*CounterBits/8` bytes — two 4-bit per
+  byte, one 8-bit per byte, one little-endian 16-bit per two bytes) instead of one
+  `uint32` per bit, which made the knob inert and a `CounterBits: 4` filter cost
+  exactly what `16` cost while the ceiling was a 16 GiB `make`. A 4-bit filter now
+  costs a quarter of what it did; the counter array is capped at the new
+  `counting.MaxCounterBytes = bloom.MaxBits/2` (2 GiB) and a shape past it is the
+  new `ErrFilterTooLarge` instead of an attempted allocation, matching
+  `common.go`'s corrected ceiling comment. No API removed; every width keeps its
+  saturation semantics.
 - `cas/codec/cbor` no longer decodes an integer it cannot represent. CBOR major
   type 0 carries an **unsigned** argument while the value model decodes to
   `int64`, and the argument was converted with `int64(length)` unchecked, so
@@ -548,6 +576,34 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- The backend write path no longer follows a symbolic link planted inside a store base. `fs.Backend.Put`
+  refuses a link on the way to an object (or a non-directory where a fan-out directory belongs),
+  `packfs` refuses one at `<base>/packs`, `<base>/loose` or `<base>/packs/current.pack` before it
+  appends — an append through a link is a write primitive, not only a redirection — and a pack index
+  record behind a symlinked subdirectory is invalid instead of served. Each refusal is the named
+  `fs.ErrUnsafeTarget` and leaves the link's target byte-identical (go-cask#352).
+- The pack index scratch file is no longer the fixed `index.json.tmp`: every rewrite creates an
+  exclusive, random `index-*.tmp` in the pack directory and writes through the handle it returns, so
+  two writers cannot interleave into one manifest and a link planted at the old name cannot receive
+  the truncating write (go-cask#352).
+- `cas/bloom/persistent` now checksums the index key in its file header. The key
+  is what the default index hash is derived from, and `decodeHeader` copied it
+  unchecked, so one flipped bit — bit rot, or a filter file restored from a backup
+  or a shared directory — reindexed the whole bitset: every recorded digest
+  reported **absent**, and `bloom.Guard` turns that miss into an authoritative
+  "not present" while the object is on disk. The seven header bytes the format
+  reserved (and documented as ignored) now carry a checksum scheme byte plus a
+  six-byte CRC-64/ECMA over `kind || key`; a header whose scheme or checksum does
+  not verify is rebuilt, never indexed. The new `Filter.Rebuilt()` reports that a
+  reopen discarded the stored bits (missing, truncated, foreign-kind,
+  failed-checksum, or a file the call just created), so a caller can decline to
+  trust the filter's negatives. **On-disk layout change:** a file written by an
+  earlier build has zero reserved bytes and is rebuilt on first open — a lost hint
+  set, never a wrong answer — then rewritten in the new format.
+- The viewer's login token is read from the `POST /viewer/login` form body only: `?token=<token>` in
+  the request's query string no longer authenticates. The documented `GET /viewer/?token=` deep link
+  is unchanged. URLs reach access logs, browser history, proxies and `Referer` chains, so a
+  credential in one is a credential leaked.
 - An authenticated viewer session can no longer monopolize the server by
   refreshing: the two routes whose work is proportional to the *store* rather
   than to the request are bounded. `POST /viewer/objects/verify` runs one sweep

@@ -6,6 +6,7 @@ package index
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
 	"time"
 
@@ -67,14 +68,66 @@ func EnvelopeType(data []byte) string {
 // Best-effort on purpose: a store legitimately holds raw, un-enveloped objects
 // (`cask put` writes the file's own bytes), and cas.Header reports anything that
 // is not a usable header as cas.ErrCorrupt — which would relabel every raw
-// object as damaged. Damaged bytes therefore read here as "no header", while a
-// non-nil error means the object could not be read at all.
+// object as damaged. Structural damage therefore reads here as "no header".
+//
+// A header that could not be *read* is not that case. cas.Header's walker wraps
+// a read failure's cause under the same sentinel (cas.peekError), so the corrupt
+// verdict that carries a foreign cause is returned as an error and the object is
+// reported unreadable rather than untyped (Entry.Unreadable, viewer-design §3;
+// go-cask#357). A non-nil error therefore always means the object could not be
+// read at all, and a caller can never mistake a listed-but-unreadable object for
+// an un-enveloped one.
 func Header(ctx context.Context, backend cas.Backend, d cas.Digest) (version byte, codec, typeName string, err error) {
 	version, codec, typeName, err = cas.Header(ctx, backend, d)
-	if err != nil && errors.Is(err, cas.ErrCorrupt) {
+	switch {
+	case err == nil:
+		return version, codec, typeName, nil
+	case unreadable(err):
+		return 0, "", "", err
+	default:
 		return 0, "", "", nil // not an envelope header; not damage either
 	}
-	return version, codec, typeName, err
+}
+
+// unreadable reports whether a cas.Header error says the object could not be
+// read, as opposed to "these bytes are not a usable envelope header".
+//
+// Both arrive as cas.ErrCorrupt when the header walker refuses the bytes, and
+// the backend's own error arrives untouched, so the two are told apart on the
+// error chain: cas.peekError keeps a read failure's cause beneath the sentinel
+// and wraps only the sentinel for a structural failure (an unsupported version,
+// a length beyond the buffer, an empty type name). A tree whose every error is
+// the sentinel or an end-of-stream marker is a verdict on the bytes; a foreign
+// error anywhere in it is a read that failed.
+func unreadable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if !errors.Is(err, cas.ErrCorrupt) {
+		return true // the backend's own open, close or read error
+	}
+	return !onlyCorrupt(err)
+}
+
+// onlyCorrupt reports whether every error in err's unwrap tree is cas.ErrCorrupt
+// or an end-of-stream marker. It walks both unwrap shapes, because Go's fmt
+// yields a multi-error wrapper for a format string with two %w verbs.
+func onlyCorrupt(err error) bool {
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, cas.ErrCorrupt) && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return false
+	}
+	if multi, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, inner := range multi.Unwrap() {
+			if !onlyCorrupt(inner) {
+				return false
+			}
+		}
+		return true
+	}
+	return onlyCorrupt(errors.Unwrap(err))
 }
 
 // HeaderType is Header's type-only convenience, kept for the callers that report
@@ -187,6 +240,10 @@ func BuildSnapshot(ctx context.Context, source metadataSource) (*Snapshot, error
 			return nil, err
 		}
 		e := Entry{Digest: d}
+		// A header the store could not read marks the entry unreadable; bytes
+		// that are simply not an envelope do not (Header's own split), which is
+		// what makes the viewer's unreadable row marker reachable for a listed
+		// object whose bytes cannot be opened (go-cask#357).
 		version, codec, typ, err := Header(ctx, source, d)
 		if err != nil {
 			e.Unreadable = true

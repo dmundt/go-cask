@@ -22,16 +22,7 @@ func TestRunWebUsesTheDefaultStore(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv(viewerTokenEnv, "")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-time.After(150 * time.Millisecond)
-		cancel()
-	}()
-	var code int
-	stdout, _ := captureStreams(t, func() {
-		code = runWeb(ctx, modeFlags{}, []string{"-bind", "127.0.0.1:0", "-no-open", "-show-token"})
-	})
-	cancel()
+	stdout, _, code := runWebOn(t, "", "-bind", "127.0.0.1:0", "-no-open", "-show-token")
 
 	if code != 0 {
 		t.Fatalf("runWeb without -store exit = %d, want 0 (stdout %q)", code, stdout)
@@ -114,17 +105,7 @@ func TestWebUsageRendersTheTokenDisplayFlag(t *testing.T) {
 // (cli.md §2, viewer-security §5).
 func TestRunWebIgnoresRoleTokenEntriesThatGrantNothing(t *testing.T) {
 	logs := installRecorder(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-time.After(150 * time.Millisecond)
-		cancel()
-	}()
-	var code int
-	stdout, _ := captureStreams(t, func() {
-		code = runWeb(ctx, modeFlags{store: t.TempDir()},
-			[]string{"-bind", "127.0.0.1:0", "-no-open", "-show-token", "-tokens", "admin=tok,novalue,empty="})
-	})
-	cancel()
+	stdout, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-show-token", "-tokens", "admin=tok,novalue,empty=")
 	if code != 0 {
 		t.Fatalf("runWeb with droppable -tokens entries exit = %d, want 0 (log %q)", code, logs.String())
 	}
@@ -187,17 +168,7 @@ func TestRunWebOpensTheBrowserOnALoginBind(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // no browser helper can be found here
 	logs := installRecorder(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-time.After(150 * time.Millisecond)
-		cancel()
-	}()
-	var code int
-	stdout, _ := captureStreams(t, func() {
-		code = runWeb(ctx, modeFlags{store: t.TempDir()},
-			[]string{"-bind", "127.0.0.1:0", "-show-token"})
-	})
-	cancel()
+	stdout, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-show-token")
 
 	if code != 0 {
 		t.Fatalf("runWeb launching a missing browser exit = %d, want 0 (a browser is best-effort)", code)

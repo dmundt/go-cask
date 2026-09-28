@@ -284,6 +284,49 @@ func TestCSRFQueryValueRejected(t *testing.T) {
 	}
 }
 
+// TestLoginTokenQueryValueRejected pins #346 at the HTTP surface: the login
+// POST reads the startup token from its body only, so the token in the query
+// string authenticates nothing — a URL-borne credential is captured by access
+// logs, bookmarks, proxies, and Referer chains (viewer-security §5, §5.1;
+// api-design §9). The `GET /viewer/?token=` deep link is the one documented
+// URL carrier of the token and is unaffected.
+func TestLoginTokenQueryValueRejected(t *testing.T) {
+	ts, srv := newTestServer(t)
+
+	// The login response itself is what carries the session cookie, so the 303
+	// must not be followed.
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Transport: ts.Client().Transport, Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	// `POST /viewer/login?token=<valid>`: refused, no cookie, no session.
+	resp := postFormAsBrowser(t, c, ts.URL+"/viewer/login?token="+url.QueryEscape(testStartupToken), url.Values{})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("login with ?token= = %d, want 401", resp.StatusCode)
+	}
+	if len(resp.Cookies()) != 0 {
+		t.Fatalf("login with ?token= set cookies: %v", resp.Cookies())
+	}
+	if got := sessionCount(srv); got != 0 {
+		t.Fatalf("login with ?token= created %d sessions, want 0", got)
+	}
+
+	// The same token in the form body is the documented carrier.
+	resp = postFormAsBrowser(t, c, ts.URL+"/viewer/login", url.Values{"token": {testStartupToken}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("login with the token in the body = %d, want 303", resp.StatusCode)
+	}
+	if len(resp.Cookies()) != 1 {
+		t.Fatalf("login with the token in the body set %d cookies, want the session cookie", len(resp.Cookies()))
+	}
+	if got := sessionCount(srv); got != 1 {
+		t.Fatalf("session count after an accepted login = %d, want 1", got)
+	}
+}
+
 func TestLoginThrottle(t *testing.T) {
 	ts, _ := newTestServer(t)
 	for range 5 {

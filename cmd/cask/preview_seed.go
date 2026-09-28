@@ -113,8 +113,9 @@ func opSeedPreview(ctx context.Context, t *store.Store, args []string) error {
 func seedPreview(ctx context.Context, backend cas.Backend, hasher cas.Hasher, count int) (int, int, error) {
 	added, deduplicated := 0, 0
 	digests := make([]cas.Digest, 0, count)
+	var builder previewBuilder
 	for ordinal := range count {
-		object, err := previewObjectFor(ordinal, digests, hasher)
+		object, err := builder.objectFor(ordinal, digests, hasher)
 		if err != nil {
 			return 0, 0, fmt.Errorf("build preview object %d: %w", ordinal, err)
 		}
@@ -165,9 +166,41 @@ type previewObject struct {
 	data       []byte
 }
 
+// previewObjectFor builds one preview object with a payload buffer of its own,
+// for a caller that needs a single ordinal. A caller that builds a run of them —
+// seeding and the viewer's startup walk both do — threads one previewBuilder
+// through the run instead, so the payload is filled into one reusable buffer.
 func previewObjectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
+	var builder previewBuilder
+	return builder.objectFor(ordinal, digests, hasher)
+}
+
+// previewBuilder builds a run of preview objects, reusing one payload buffer
+// across them.
+//
+// An ordinal's payload is only ever read to be framed: cas.EncodeEnvelope copies
+// it into the frame it returns, and only that frame outlives the ordinal (is
+// hashed, written or indexed). Allocating the payload per ordinal therefore
+// materializes every ordinal's bytes twice — the payload and the frame holding
+// its copy — which for the viewer's documented bound (maxPreviewCount ordinals,
+// whose payloads grow with the ordinal) is the largest single allocation burst
+// in `cask web` startup (go-cask#374). One buffer, refilled per ordinal, pays for
+// the payload once; the frame is then the ordinal's only other allocation, and
+// the digests are byte-identical because the framed bytes are (the payload
+// content is the same bytes.Repeat pattern previewEnvelope always produced).
+//
+// A builder is not safe for concurrent use: it owns the buffer it refills.
+type previewBuilder struct {
+	payload []byte
+}
+
+// objectFor returns ordinal's preview object, refilling the builder's payload
+// buffer. The returned object's data is the freshly framed envelope, which the
+// caller owns; the payload buffer stays the builder's and is overwritten by the
+// next call.
+func (b *previewBuilder) objectFor(ordinal int, digests []cas.Digest, hasher cas.Hasher) (previewObject, error) {
 	references := previewObjectReferences(ordinal, digests)
-	data, err := previewEnvelope(
+	data, err := b.previewEnvelope(
 		previewObjectType(ordinal),
 		ordinal,
 		previewObjectSize(ordinal),
@@ -227,19 +260,40 @@ func previewRootOrdinal(ordinal int) bool {
 // where the bytes came from.
 const previewCodecTag = "preview"
 
-func previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
+// previewEnvelope fills the builder's payload buffer with this ordinal's
+// synthetic payload — the repeated byte the payload has always carried, with the
+// ordinal's header copied over its start — and frames it with the core's writer.
+func (b *previewBuilder) previewEnvelope(typ string, ordinal, payloadSize int, references []cas.Digest) ([]byte, error) {
 	referenceText := ""
 	for _, reference := range references {
 		referenceText += " " + reference.String()
 	}
 	header := fmt.Sprintf("preview object %03d: %s refs:%s", ordinal, typ, referenceText)
-	payload := bytes.Repeat([]byte{byte(ordinal)}, max(payloadSize, len(header)))
-	copy(payload, header)
+	size := max(payloadSize, len(header))
+	if cap(b.payload) < size {
+		b.payload = make([]byte, size)
+	}
+	b.payload = b.payload[:size]
+	repeatByte(b.payload, byte(ordinal))
+	copy(b.payload, header)
 	// The frame comes from the core's writer, not from a local copy of the
 	// layout: the digest of these bytes must equal the digest of the bytes the
 	// store would write, or the preview graph the viewer rebuilds points at
 	// objects that do not exist (go-cask#187).
-	return cas.EncodeEnvelope(previewCodecTag, typ, payload)
+	return cas.EncodeEnvelope(previewCodecTag, typ, b.payload)
+}
+
+// repeatByte fills buf with b, doubling the part already written, so a whole
+// buffer costs O(log len(buf)) copies — bytes.Repeat's own strategy, without the
+// allocation it makes for every call (go-cask#374).
+func repeatByte(buf []byte, b byte) {
+	if len(buf) == 0 {
+		return
+	}
+	buf[0] = b
+	for n := 1; n < len(buf); n *= 2 {
+		copy(buf[n:], buf[:n])
+	}
 }
 
 type previewReferenceIndex struct {
@@ -288,8 +342,11 @@ func previewReferences(ctx context.Context, backend cas.Backend, hasher cas.Hash
 	}
 	digests := make([]cas.Digest, 0, maxPreviewCount)
 	missingInBlock := 0
+	// One payload buffer for the whole walk: every ordinal's payload is framed
+	// into a fresh envelope and only the frame outlives the ordinal (go-cask#374).
+	var builder previewBuilder
 	for ordinal := range maxPreviewCount {
-		object, err := previewObjectFor(ordinal, digests, hasher)
+		object, err := builder.objectFor(ordinal, digests, hasher)
 		if err != nil {
 			return nil, fmt.Errorf("build preview object %d: %w", ordinal, err)
 		}

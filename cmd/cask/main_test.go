@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dmundt/go-cask/cas"
 	fs "github.com/dmundt/go-cask/cas/backend/fs"
@@ -750,8 +749,24 @@ func TestVersionAndWebHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("randomToken() error = %v", err)
 		}
-		if len(tok) != 14 || strings.Count(tok, "-") != 2 || tok != strings.ToUpper(tok) {
-			t.Fatalf("randomToken() = %q, want 3 uppercase hex groups separated by dashes", tok)
+		// 16 bytes of entropy, rendered as 4 dash-separated groups of 8
+		// uppercase hex characters (defaults §4).
+		if len(tok) != 35 || tok != strings.ToUpper(tok) {
+			t.Fatalf("randomToken() = %q, want 128 bits as 4 uppercase hex groups", tok)
+		}
+		groups := strings.Split(tok, "-")
+		if len(groups) != 4 {
+			t.Fatalf("randomToken() = %q, want 4 dash-separated groups", tok)
+		}
+		for _, g := range groups {
+			if len(g) != 8 {
+				t.Fatalf("randomToken() group %q, want 8 hex characters", g)
+			}
+			for _, r := range g {
+				if (r < '0' || r > '9') && (r < 'A' || r > 'F') {
+					t.Fatalf("randomToken() = %q carries %q, want uppercase hex", tok, r)
+				}
+			}
 		}
 	})
 
@@ -776,12 +791,7 @@ func TestVersionAndWebHelpers(t *testing.T) {
 	})
 
 	t.Run("runWeb", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			<-time.After(150 * time.Millisecond)
-			cancel()
-		}()
-		if code := runWeb(ctx, modeFlags{store: t.TempDir()}, []string{"-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"}); code != 0 {
+		if _, _, code := runWebOn(t, t.TempDir(), "-bind", "127.0.0.1:0", "-no-open", "-allow-insecure-bind"); code != 0 {
 			t.Fatalf("runWeb exit = %d, want 0", code)
 		}
 	})

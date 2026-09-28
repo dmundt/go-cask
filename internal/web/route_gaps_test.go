@@ -358,6 +358,35 @@ func TestVerifyAllRecordsAnUnreadableObject(t *testing.T) {
 	}
 }
 
+// TestObjectTableMarksAnUnreadableObject pins the row only the POSIX fixture can
+// produce: an object the store lists but cannot read renders the viewer's own
+// "unreadable" marker in the type cell instead of an empty one, which would read
+// as an untyped object (go-cask#357, viewer-design §3). The fixture skips on
+// Windows, where that shape does not exist.
+func TestObjectTableMarksAnUnreadableObject(t *testing.T) {
+	ctx := context.Background()
+	task := newRouteTask(t, Config{StartupToken: testStartupToken})
+	good := test.TLVEnvelope("blob@1", []byte("sound"))
+	if err := task.srv.store.Put(ctx, sha256.Of(good), bytes.NewReader(good)); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := mustParse(t, "sha256:"+strings.Repeat("ab", 32))
+	symlinkObjectFixture(t, task.base, unreadable)
+
+	admin := login(t, task.ts, testStartupToken)
+	page := getBody(t, admin, task.ts.URL+"/viewer/objects")
+	// Both objects are listed: the walk enumerates the unreadable one.
+	if !strings.Contains(page, "of 2") {
+		t.Fatalf("the unreadable object is not listed: %.600q", page)
+	}
+	if !strings.Contains(page, `<span class="viewer-unreadable">unreadable</span>`) {
+		t.Fatalf("the listed-but-unreadable object renders as untyped: %.800q", page)
+	}
+	if !strings.Contains(page, "blob@1") {
+		t.Fatalf("the readable object lost its type: %.800q", page)
+	}
+}
+
 // TestVerifyAllRecordsAMissingObject pins the same non-corrupt classification
 // for an object that is gone: the per-object action reports the viewer's
 // "Missing" prose, never corrupted content, because an absent object was never
