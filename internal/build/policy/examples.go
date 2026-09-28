@@ -25,8 +25,8 @@ func Examples() []examples.Example {
 		{
 			Name: "api",
 			Manual: []string{
-				"go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080",
-				"go run ./examples/api/demo -api http://127.0.0.1:8080 -token operator -file ./README.md",
+				"go run ./examples/api/server -store ./objects -bind 127.0.0.1:8080 -tokens \"viewer=v_tok,operator=o_tok,admin=a_tok\"",
+				"go run ./examples/api/demo -api http://127.0.0.1:8080 -token o_tok -file ./README.md",
 			},
 		},
 	}

@@ -29,7 +29,7 @@ func TestObjectSizeAbsentIsZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, nil, DefaultRateLimit())
+	srv := New(backend, nil, DefaultRateLimit(), 0)
 
 	present := sha256.Of([]byte("physically present"))
 	if err := backend.Put(ctx, present, strings.NewReader("physically present")); err != nil {
@@ -72,6 +72,13 @@ func TestCallerIP(t *testing.T) {
 			remoteAddr:     "10.0.0.1:443",
 			trustedProxies: map[string]bool{"10.0.0.1": true},
 			want:           "10.0.0.1",
+		},
+		{
+			name:           "untrusted peer is not believed",
+			remoteAddr:     "203.0.113.7:443",
+			xff:            "198.51.100.9",
+			trustedProxies: map[string]bool{"10.0.0.1": true},
+			want:           "203.0.113.7",
 		},
 		{
 			name:       "unparseable RemoteAddr is returned verbatim",
@@ -202,7 +209,7 @@ func TestGCRemovesEverythingWithEmptyReachableSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}
@@ -229,7 +236,7 @@ func TestGCRejectsMalformedBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}
@@ -265,7 +272,7 @@ func TestGCRejectsMalformedDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}
@@ -304,7 +311,7 @@ func TestOpenAPIWritesEmbeddedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"viewer-tok": "viewer"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"viewer-tok": "viewer"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	c := &testClient{base: ts.URL, token: "viewer-tok", hc: ts.Client()}
@@ -529,7 +536,7 @@ func TestDeleteAbsentObjectIsNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"admin-tok": "admin"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	admin := &testClient{base: ts.URL, token: "admin-tok", hc: ts.Client()}
@@ -559,7 +566,7 @@ func TestObjectMetaRawObjectIsUntyped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(backend, map[string]string{"viewer-tok": "viewer"}, DefaultRateLimit())
+	srv := New(backend, map[string]string{"viewer-tok": "viewer"}, DefaultRateLimit(), 0)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 

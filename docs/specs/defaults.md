@@ -70,6 +70,9 @@ version: v52
 | Viewer prefix | `/viewer/` (HTML, unversioned) | api-design §2 |
 | Example JSON prefix | `/api/cas/v1/` in `examples/api` | api-design §12 |
 | Example JSON rate limit | 2 req/s per IP, burst 20; loopback exempt; 429 + `Retry-After` + `X-RateLimit-*` | api-design §8 |
+| Example JSON body bound | objects `64 MiB` (`-max-size`), `/gc` reachable set `8 MiB`; over the bound → `413` before reading | api-design §9 |
+| Example JSON connection lifetimes | `ReadHeaderTimeout` 10 s, `ReadTimeout` 60 s, `WriteTimeout` 5 min, `IdleTimeout` 2 min | api-design §9 |
+| Example JSON credentials | none shipped: `-tokens` has no default and the server refuses to start without it; no role name is a token | api-design §7 |
 | Example list pagination | `limit=100` (1–1000), `offset=0` (≥0); `{total, objects}` envelope | api-design §10 |
 | Error body (JSON) | `{"error": "<message>"}` | api-design §6 |
 | Binary payloads | `application/octet-stream` + `X-CAS-Algorithm/Size` headers | api-design §11 |

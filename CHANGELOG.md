@@ -168,6 +168,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
   `version` filter and the `?version=` query value stay decimal, so every existing URL and
   filter selection keeps working.
+- The example JSON surface (`examples/api`) is bounded and credentialed like a real one:
+  request bodies are refused with `413` before they are read (objects 64 MiB by default,
+  `-max-size`; `/gc` 8 MiB), the server sets `ReadTimeout` 60 s, `WriteTimeout` 5 min and
+  `IdleTimeout` 2 min alongside `ReadHeaderTimeout`, `-tokens` has no default and the server
+  refuses to start without it (the shipped `viewer=viewer,operator=operator,admin=admin`
+  credentials are gone), `-trusted-proxy <host>` (repeatable) makes the documented
+  `X-Forwarded-For` path real, and the demo client counts a download instead of buffering it.
 - The build engine is no longer a separate Go module. `internal/build/core` is flattened
   into `internal/build`, so `go build ./...`, `go vet ./...`, `go test -race ./...`,
   `gofmt -l .` and `go mod tidy` reach every engine package with no step of the gate's own:

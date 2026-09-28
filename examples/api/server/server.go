@@ -19,6 +19,19 @@ import (
 	sha256 "github.com/dmundt/go-cask/cas/hash/sha256"
 )
 
+// Body bounds: the example refuses a body over its bound with 413 before it
+// reads (api-design §9), so one request cannot fill the spool or the heap.
+const (
+	// DefaultMaxObjectBytes bounds an uploaded object's body (64 MiB) when the
+	// caller sets no other bound.
+	DefaultMaxObjectBytes int64 = 64 << 20
+	// gcMaxBodyBytes bounds the GC request body (8 MiB). A digest is 64 hex
+	// characters and the JSON framing adds a few more, so the bound still admits
+	// tens of thousands of reachable entries while keeping the decoded set far
+	// below the object bound.
+	gcMaxBodyBytes int64 = 8 << 20
+)
+
 // server is the CAS API server: routes over an fs.Backend with bearer-token
 // role auth and IP-based rate limiting.
 type server struct {
@@ -26,6 +39,62 @@ type server struct {
 	tokens         map[string]string // token → role
 	rl             *rateLimiter
 	trustedProxies map[string]bool
+	maxObjectBytes int64
+}
+
+// validateTokens parses the -tokens flag value (comma-separated role=token
+// pairs) into the token → role map requireRole consults. Absent, empty or
+// malformed pairs are an error: the example ships no credential of its own, so
+// a role without a supplied token has no way to authenticate (api-design §7;
+// viewer-security §11).
+func validateTokens(flagValue string) (map[string]string, error) {
+	tokens := map[string]string{}
+	for pair := range strings.SplitSeq(flagValue, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		role, tok, ok := strings.Cut(pair, "=")
+		role, tok = strings.TrimSpace(role), strings.TrimSpace(tok)
+		if !ok || role == "" || tok == "" {
+			return nil, fmt.Errorf("malformed pair %q: want role=token", pair)
+		}
+		tokens[tok] = role
+	}
+	if len(tokens) == 0 {
+		return nil, errors.New(`no tokens supplied: pass -tokens "viewer=<tok>,operator=<tok>,admin=<tok>"`)
+	}
+	return tokens, nil
+}
+
+// New creates a server over backend with per-role tokens ("token" → role) and
+// the given rate-limit config; maxObjectBytes bounds an uploaded body (0 uses
+// DefaultMaxObjectBytes). The backend store MUST be an FSBackend (the example
+// serves a filesystem store; GC/Verify/Stats are FS operations).
+func New(backend *fs.Backend, tokens map[string]string, rlCfg RateLimitConfig, maxObjectBytes int64) *server {
+	if maxObjectBytes <= 0 {
+		maxObjectBytes = DefaultMaxObjectBytes
+	}
+	return &server{
+		backend:        backend,
+		tokens:         tokens,
+		rl:             newRateLimiter(rlCfg),
+		trustedProxies: map[string]bool{},
+		maxObjectBytes: maxObjectBytes,
+	}
+}
+
+// WithTrustedProxies seeds the proxy hosts whose X-Forwarded-For header names
+// the caller (the -trusted-proxy flag in main). Without one, callerIP answers
+// with the socket peer, so every request behind an unconfigured proxy shares a
+// single rate-limit bucket (api-design §8).
+func (s *server) WithTrustedProxies(hosts ...string) *server {
+	for _, h := range hosts {
+		if h = strings.TrimSpace(h); h != "" {
+			s.trustedProxies[h] = true
+		}
+	}
+	return s
 }
 
 // objectSize reports the stored size of h from the backend's physical metadata
@@ -38,18 +107,6 @@ func (s *server) objectSize(ctx context.Context, h cas.Digest) int64 {
 		return 0 // absent or unreadable: the caller renders no size
 	}
 	return size
-}
-
-// New creates a server over backend with per-role tokens ("token" → role) and
-// the given rate-limit config. The backend store MUST be an FSBackend (the
-// example serves a filesystem store; GC/Verify/Stats are FS operations).
-func New(backend *fs.Backend, tokens map[string]string, rlCfg RateLimitConfig) *server {
-	return &server{
-		backend:        backend,
-		tokens:         tokens,
-		rl:             newRateLimiter(rlCfg),
-		trustedProxies: map[string]bool{},
-	}
 }
 
 // Handler returns the fully wired http.Handler: rate limit → auth → routes.
@@ -137,8 +194,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // Store backend bytes — the digest is computed while streaming
 // the body to a temp spool (memory-bounded), then the spool streams into
-// the store. Identical bytes → identical digest → deduplicated.
+// the store. Identical bytes → identical digest → deduplicated. The body is
+// bounded before it is read (413), so an oversized upload is neither spooled
+// nor stored.
 func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxObjectBytes)
 	hasher := sha256.NewHasher()
 	spool, err := os.CreateTemp("", "cask-upload-*")
 	if err != nil {
@@ -149,7 +209,16 @@ func (s *server) postObject(w http.ResponseWriter, r *http.Request) {
 	defer spool.Close()
 
 	size, err := spoolAndHash(spool, hasher, r.Body)
-	if err != nil || size == 0 {
+	if err != nil {
+		if isBodyTooLarge(err) {
+			writeJSON(w, http.StatusRequestEntityTooLarge,
+				map[string]string{"error": "object exceeds the maximum body size"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
+		return
+	}
+	if size == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "empty body"})
 		return
 	}
@@ -320,14 +389,21 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Mark-and-sweep from the reachable set (admin).
+// Mark-and-sweep from the reachable set (admin). The request body is bounded
+// before it is decoded (413), so the decoded set cannot grow past the bound.
 func (s *server) gc(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reachable []string `json:"reachable"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, gcMaxBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&body); err != nil {
+		if isBodyTooLarge(err) {
+			writeJSON(w, http.StatusRequestEntityTooLarge,
+				map[string]string{"error": "reachable set exceeds the maximum body size"})
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reachable set"})
 		return
 	}
@@ -381,6 +457,14 @@ func parseDigestParam(w http.ResponseWriter, r *http.Request) (cas.Digest, bool)
 		return nil, false
 	}
 	return h, true
+}
+
+// isBodyTooLarge reports whether a read/decode failure is the body bound
+// (http.MaxBytesReader) rather than a malformed or empty body: the two answers
+// differ (413 vs 400, api-design §5/§9).
+func isBodyTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
 }
 
 func parseBounded(backend string, def, lo, hi int) (int, error) {
