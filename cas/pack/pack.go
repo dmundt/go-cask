@@ -13,10 +13,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/dmundt/go-cask/cas"
+	"github.com/dmundt/go-cask/cas/internal/atomicfile"
 )
 
 // Codec is the shared codec contract used by the pack layer.
@@ -136,10 +136,19 @@ func LoadWith[T any](ctx context.Context, path string, codec Codec[T]) (T, error
 // SaveWith writes a manifest file with the supplied codec.
 //
 // The write is atomic — a temp file in the target directory, fsynced, then
-// renamed — so a crash or a full disk mid-write leaves the previous manifest
-// intact instead of a truncated file that no longer decodes. The context is
-// checked before the directory is created, before the temp file is written and
-// before the rename.
+// renamed over the destination, with the destination directory fsynced too —
+// so a crash or a full disk mid-write leaves the previous manifest intact
+// instead of a truncated file that no longer decodes, and the rename itself
+// survives a crash. The context is checked before the directory is created,
+// before the temp file is written and before the rename.
+//
+// The sequence is atomicfile.Publish (go-cask#339), the one publish
+// cas/backend/fs, cas/refs and this package share. This package used to
+// hand-roll it and skip the parent-directory fsync, which made a manifest
+// rename the one publish a crash could lose; taking the shared publish takes
+// its durability rule. The error names the manifest and the phase that failed
+// ("pack: write manifest /x/meta.json: create temp file: open …: is a
+// directory"), so no per-phase mapping is kept here.
 func SaveWith[T any](ctx context.Context, path string, v T, codec Codec[T]) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -151,83 +160,11 @@ func SaveWith[T any](ctx context.Context, path string, v T, codec Codec[T]) erro
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(ctx, path, b, defaultFileOps())
-}
-
-// tempFile is the write side of the temp file writeFileAtomic publishes: the
-// surface it uses, so a test can make any single step fail. An *os.File
-// satisfies it.
-type tempFile interface {
-	Name() string
-	Write(p []byte) (int, error)
-	Chmod(mode os.FileMode) error
-	Sync() error
-	Close() error
-}
-
-// fileOps is the filesystem seam of writeFileAtomic. Production always uses
-// defaultFileOps; a test injects a failure per branch, the same way
-// cas/bloom/persistent injects its mmap driver rather than leaving the error
-// paths to a real disk that will not fail on demand.
-type fileOps struct {
-	createTemp func(dir, pattern string) (tempFile, error)
-	remove     func(name string) error
-	rename     func(oldpath, newpath string) error
-}
-
-// defaultFileOps returns the real filesystem operations.
-func defaultFileOps() fileOps {
-	return fileOps{
-		createTemp: func(dir, pattern string) (tempFile, error) { return os.CreateTemp(dir, pattern) },
-		remove:     os.Remove,
-		rename:     os.Rename,
-	}
-}
-
-// writeFileAtomic publishes data at path through a temp file in the same
-// directory, so the rename that makes it visible is the only step a reader can
-// observe. Every failure removes the temp file: a half-written manifest is never
-// published and never left behind as scratch.
-func writeFileAtomic(ctx context.Context, path string, data []byte, ops fileOps) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("pack: create manifest directory: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	f, err := ops.createTemp(dir, filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("pack: create manifest temp: %w", err)
-	}
-	tmp := f.Name()
-	discard := func() {
-		_ = f.Close()
-		_ = ops.remove(tmp)
-	}
-	if _, err := f.Write(data); err != nil {
-		discard()
-		return fmt.Errorf("pack: write manifest: %w", err)
-	}
-	if err := f.Chmod(0o644); err != nil {
-		discard()
-		return fmt.Errorf("pack: set manifest permissions: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		discard()
-		return fmt.Errorf("pack: sync manifest: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		_ = ops.remove(tmp)
-		return fmt.Errorf("pack: close manifest: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		_ = ops.remove(tmp)
-		return err
-	}
-	if err := ops.rename(tmp, path); err != nil {
-		_ = ops.remove(tmp)
-		return fmt.Errorf("pack: publish manifest: %w", err)
+	if err := atomicfile.Publish(ctx, path, bytes.NewReader(b), atomicfile.Options{
+		Mode:    0o644,
+		SyncDir: true,
+	}); err != nil {
+		return fmt.Errorf("pack: write manifest %s: %w", path, err)
 	}
 	return nil
 }

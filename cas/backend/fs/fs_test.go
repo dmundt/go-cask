@@ -217,11 +217,11 @@ func TestFSPolicyAndSyncParentDirErrors(t *testing.T) {
 		t.Fatal("CleanupTemp should remove stale *.tmp files")
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("syncParentDir is a no-op on Windows")
+		t.Skip("the parent-directory fsync is a no-op on Windows")
 	}
-	if err := syncParentDir(filepath.Join(t.TempDir(), "missing", "file")); err == nil {
-		t.Fatal("syncParentDir(missing dir) should error")
-	}
+	// The parent-directory fsync (and its open failure) is
+	// atomicfile.SyncParentDir since go-cask#339; this backend reaches it
+	// through atomicfile.Publish, whose own tests cover both.
 }
 
 func TestFSListIgnoresRootStray(t *testing.T) {
@@ -573,7 +573,7 @@ func TestCleanTmpRemoval(t *testing.T) {
 }
 
 // TestCleanRemovesTempFallbacks covers the collision-fallback temp names
-// createTempExcl produces ("<hex>.tmp.<n>"): matching only the exact ".tmp"
+// atomicfile.Publish produces ("<hex>.tmp.<n>"): matching only the exact ".tmp"
 // suffix left crash leftovers with fallback names unreclaimable.
 func TestCleanRemovesTempFallbacks(t *testing.T) {
 	s := mustFS(t)
@@ -839,7 +839,7 @@ func TestStats(t *testing.T) {
 
 // TestWithDirSync builds a backend with WithDirSync and confirms Put succeeds
 // (exercising the s.dirSync branch in Put on non-Windows and a nil return on
-// Windows where syncParentDir is a no-op).
+// Windows, where atomicfile.SyncParentDir is a no-op).
 func TestWithDirSync(t *testing.T) {
 	s := mustFS(t, WithDirSync())
 	if !s.dirSync {
@@ -1053,39 +1053,6 @@ func TestListReturnsAllDigests(t *testing.T) {
 	}
 }
 
-// TestCreateTempExclCollision verifies that when <path>.tmp already exists,
-// createTempExcl falls back to <path>.tmp.1.
-func TestCreateTempExclCollision(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "obj")
-	base := path + ".tmp"
-	if err := os.WriteFile(base, []byte("occupied"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	f, tmp, err := createTempExcl(path)
-	if err != nil {
-		t.Fatalf("createTempExcl after collision: %v", err)
-	}
-	defer func() {
-		f.Close()
-		os.Remove(tmp)
-	}()
-	if tmp != base+".1" {
-		t.Fatalf("createTempExcl returned %q, want %q", tmp, base+".1")
-	}
-}
-
-// TestCreateTempExclNoParent verifies createTempExcl returns an error (not an
-// IsExist collision path) when the enclosing directory does not exist.
-func TestCreateTempExclNoParent(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "no-such-dir", "obj")
-	if f, tmp, err := createTempExcl(p); err == nil {
-		f.Close()
-		os.Remove(tmp)
-		t.Fatalf("createTempExcl in missing dir succeeded (tmp=%q)", tmp)
-	}
-}
-
 // TestDigestPathDepthBound pins the layout invariant that makes the chunking in
 // digestPath total: FanOut × FanLevels never exceeds the digest width
 // (MaxFanDepth), so a configured layout covers the digest exactly and cannot
@@ -1190,34 +1157,11 @@ func TestVerifyReadOnDirectory(t *testing.T) {
 	}
 }
 
-// TestPutCreateTempExhausted fills every temp-file candidate name for an
-// object and confirms Put surfaces the createTempExcl exhaustion error instead
-// of hanging or looping past the bound.
-func TestPutCreateTempExhausted(t *testing.T) {
-	s := mustFS(t)
-	ctx := context.Background()
-	content := []byte("temp namespace exhausted")
-	h := digestOf(content)
-	dir := filepath.Dir(s.digestPath(h))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// Pre-create <path>.tmp and <path>.tmp.1 .. <path>.tmp.9999 so every
-	// candidate name in createTempExcl's retry loop already exists.
-	base := s.digestPath(h) + ".tmp"
-	for i := range 10000 {
-		name := base
-		if i > 0 {
-			name = fmt.Sprintf("%s.%d", base, i)
-		}
-		if err := os.WriteFile(name, nil, 0o644); err != nil {
-			t.Fatalf("precreate %q: %v", name, err)
-		}
-	}
-	if err := s.Put(ctx, h, strings.NewReader(string(content))); err == nil {
-		t.Fatal("Put must error when the temp-file namespace is exhausted")
-	}
-}
+// TestPutCreateTempExhausted filled every temp-file candidate name for an
+// object to pin Put's exhaustion error. The temp namespace, its 10000-candidate
+// bound and that error now belong to atomicfile.Publish (go-cask#339), whose own
+// TestCreateTempExhausted fills the same namespace; this backend only maps the
+// failed phase onto its operator-facing message (putError).
 
 // cancelAfterNErr wraps a context and reports cancellation from its nth Err
 // call on, so the mid-walk cancellation checks in Clean and CleanupTemp are
