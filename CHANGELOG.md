@@ -10,798 +10,309 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- The coordinator's mechanical work is three commands. `go run ./cmd/buildtool board`
-  prints every open issue with its lane claim, holder, worktree, the pull request behind
-  it, whether its head is gated evidence — the clone ledger *and* a receipt, both — and
-  the one next action. `collisions` computes the file overlap between the lanes in flight
-  from each worktree's diff against its merge base, and reports the serialization points
-  a wave may only touch once apart from ordinary overlap. `verify-landing <issue|pr>` runs
-  the six landing checks, each read from its own authority (`gh`, the merged file list,
-  `git verify-commit`, `refs/gate/<sha>`, `git worktree list`), so a landing is proven
-  rather than reported.
-- The gate runs a pinned static analyzer. `go run ./cmd/buildtool lint` installs
-  `golangci-lint` at the release `internal/build/policy` pins when the binary on `PATH` is
-  not that release, and runs it over the module against a committed `.golangci.yml`:
-  `depguard` (mirroring the layer matrix and the codec guards, which keep their own checks),
-  `errorlint`, `ineffassign`, `staticcheck`'s correctness checks and `unused`.
-  `GOLANGCI_LINT_VERSION` overrides the pin for one run; `VERIFY_SKIP_LINT` drops the gate's
-  `lint` step.
-- Every `AGENT.md` in the repository now carries the same frontmatter —
-  `type`, `title` (identical to its H1), one-line `description` and a `version`
-  that moves on a material change — so a reader of a package-local guide can
-  tell how current it is. The seven guides that carried none (`cas/`,
-  `cas/codec/`, `cas/verify/`, `benchmarks/`, `benchmarks/data/`, `website/`,
-  `.github/`) gain it at `v1`; the rest are bumped. `docs/AGENT.md` §1.1 and
-  `docs/specs/AGENT.md` §3 state the rule.
-- The envelope **header census** is answerable without decoding a payload:
-  `cas.PeekHeader` returns a frame's version, codec tag and type name in one
-  pass over those fields. `cask list` gains `-type`/`-codec` filters and reports
-  `type`/`version`/`codec` in its `-json` objects, `cask meta` reports the frame
-  version and the codec, and `cask stats -json` gains a per-type, per-version and
-  per-codec census (each axis sums to the object count minus the objects that
-  carry no header — `unreadable` and `headerless`, the raw objects `put` writes).
-  The viewer's object table and inspector report the same three values from the
-  same read, the filter bar gains `version` and `codec` axes, and the URL
-  contract carries them. A frame without a codec tag reads `unspecified`
-  everywhere — never a blank — while bytes with no envelope header invent
-  nothing. Every read is header-only: the census costs no more for a gigabyte
-  object than for an empty one.
-- `cas.EncodeEnvelope(codec, typeName, payload)` exports the envelope writer
-  `Store.Put` frames through, for a tool that must produce stored bytes without a
-  store. `cask seed-preview` is that tool — it derives each preview object's
-  digest from the frame it is about to write — and it hand-rolled a **version 1**
-  layout, so a seeded store mixed formats with everything `cask put` writes and
-  carried no codec identity. Seeded objects are now format-version 2 frames
-  tagged `json` (`cask seed-preview -hash-algo sha512` too). Migration: their
-  addresses change, so an already-seeded store keeps its old v1 objects beside
-  the new ones and the preview reference graph only sees the new set — re-run
-  `cask seed-preview`, then `cask gc` the old objects if they are unwanted.
-- `cas/verify/sidecar` records an optional per-object checksum beside a store's
-  bytes, so a cheap check (`crc32`, `adler32` or `crc64`) can run over a store
-  whose identity is a strong hash: the record lives at
-  `<base>/.meta/<hex>.json`, the object's address is untouched, and a record is
-  never part of the hashed bytes. `cask verify --checksums [--checksum <algo>]`
-  reads the records, and `cask gc`/`cask prune` reconcile them after a sweep. An
-  object with no record is reported as unchecked, never as corrupt.
-- `cas.CapabilitiesOf` reports which optional maintenance operations a backend
-  supports (`Cleaner`, `Statter`), and the new `cas.VerifyAll`/`cas.Sweep`
-  functions give every backend — including `packfs`, which has no
-  backend-native GC of its own — a working integrity-check and
-  mark-and-sweep reclamation path using only the minimal `Backend` interface.
-  `fs.Backend`'s existing `Verify`/`GC`/`Prune` remain the faster,
-  backend-native path where available.
-- `cas/repo` promotes gitlike's example-only `Codecs`/`Repository`/`Resolver`/
-  `WalkGraph` pattern into a supported package: a `Registry` resolves a
-  `cas.Digest` to its typed object across however many caller-registered
-  types, `Walk` visits every reachable object exactly once regardless of type
-  and reports an unregistered type to the caller instead of aborting,
-  `Reachable` is the cross-type root-set builder `Backend.GC`/`Backend.Prune`
-  require for a multi-type object graph, and `LookupStore[T]` hands back the
-  `*cas.Store[T]` registered under a type name — typed rather than `any`, so a
-  lookup returns an `*UnknownTypeError` for a name nothing registered (or an
-  error naming both types for a name registered under another `T`) instead of a
-  nil store or a caller-side type assertion.
-- `cas/refs` adds named, mutable pointers to a `cas.Digest` ("refs"): atomic
-  `Set`/`Delete`, `Get`/`List`/`Resolve` (with ambiguous-prefix detection),
-  an append-only reflog per name (`Log`/`Previous`), and `Roots` — the ready
-  root set for `cas.Reachable` and `Backend.GC`/`Backend.Prune`. `ValidateName`
-  rejects any name that is unsafe as a cross-platform path component (Win32
-  reserved characters/device names, a trailing space or `.`, backslash, and
-  control characters), verified by a fuzz test exercising real `Set`/`Get`
-  round-trips.
-- `cas.Reachable` computes the transitively-closed reachable set from a list
-  of root digests, using a caller-supplied `cas.RefLister` to expand
-  each object's references. This is the documented, correct way to build the
-  set `Backend.GC`/`Backend.Prune` require before calling them.
-- `cas.EnvelopeType` returns an object's versioned type name from its envelope
-  header alone, so callers that only need to know what an object is (the viewer
-  index, `gitlike` resolution) read a bounded prefix instead of buffering the
-  whole object.
-- `cas.PeekType` and `Store.Type` report an object's versioned type name from the
-  envelope header on a stream: the payload is neither read nor allocated,
-  whatever its size, so enumerating a store by type is `List` plus `Type`
-  instead of a decode per object.
-- `cas.EnvelopeVersion` is the envelope format version the current build writes,
-  and `cas.PeekVersion`/`Store.Version` report a stored frame's version from its
-  leading byte alone — one byte, whatever the payload size, returned **verbatim
-  even when this build does not know that version**. A store holding objects of
-  more than one envelope layout is therefore navigable without string-matching an
-  error: compare the byte with `cas.EnvelopeVersion` to tell "written by a newer
-  format" from "damaged bytes".
-- `cas.CodecNamer` lets a codec declare the wire format it produces (`json`,
-  `gzip+json`, `""` for none), and `cas.ErrCodecMismatch` reports reading an
-  object that was written with a different codec. The store resolves the tag
-  once at construction, writes it into every envelope, and compares it before
-  decoding, so changing a codec is reported as a format change instead of a
-  decode failure and no longer requires hand-bumping every type's major version.
-- `gob.NewRaw[T]()` builds a gob codec with no inner codec; `gob.New[T](next)`
-  now takes the inner codec explicitly.
-- `cas/backend` shares `WriteAll`, `ReadAll` and `ReadPayload` between backend
-  implementations; `ReadPayload` sizes its buffer from the bytes that are
-  actually present rather than from a declared header length.
-- `flate`, `gzip` and `zlib` expose `MaxDecodedBytes` and `ErrDecodedTooLarge`,
-  and `bloom/persistent.Filter` exposes `IsMapped` (Windows never memory-maps).
-- `lru.Cache.CachedStore()` reaches the wrapped lazy-loading store for observers
-  (metrics, key lookups) without touching the cache's recency bookkeeping.
-- `cas.GetMany` streams a batch of digests in one call, and the optional
-  `cas.BatchGetter` interface lets a backend serve that batch its own way:
-  `packfs` now groups the requested objects by pack file and opens each pack
-  once per batch instead of once per object. `GetMany` closes every reader it
-  hands to the callback after the callback returns, and falls back to a
-  sequential `Get` loop for backends that do not batch. The `Backend`/`Store`
-  docs and cas-core §4.13 record the contract and the prefetch recipe for the
-  typed or parallel path (`lru.Cache`/`prefetch.SmartCache`, sized from
-  `Stats`, fed by `Reachable`).
-- `cask -backend fs|packfs` (default `fs`) selects the storage backend for every
-  store subcommand, so `verify`, `gc`, `prune` and `clean` maintain a packed
-  store as well as a loose one: a backend without a native implementation runs
-  through the portable `cas.VerifyAll`/`cas.Sweep`/`cas.Cleaner` layer, and an
-  operation a backend cannot perform fails with an error naming the operation
-  and the backend (`cas.ErrUnsupported`) instead of reporting success. Every
-  command closes the store it opened, so a writer releases the backend's
-  resources; `cask web` requires the `fs` backend and refuses `packfs` the same
-  way.
-- `cask seed-preview -hash-algo sha256|sha512|sha512_256` (default `sha256`)
-  seeds the viewer preview graph under the algorithm the viewer reads it with.
-  Seeding was always sha256 before, so a viewer started with any other
-  `-hash-algo` silently found no graph and showed no references.
-- `cas.PutStream` spools a raw stream while hashing it, deduplicates and stores it, so the CLI's `put` and the `examples/api` upload share one owner for the sequence instead of each hand-rolling it (go-cask#342).
-
-- `gitlike.Resolver` satisfies `cas/repo.Resolver`: its new `Resolve(ctx, d)`
-  returns the concrete object, so `cas/repo.Walk` and `cas/repo.Reachable` run
-  over a gitlike repository — a gitlike root set now expands with the supported
-  cross-type walk instead of a hand-written traversal. `WalkGraph` keeps its
-  signature and stricter unknown-type behaviour and is now an adapter over
-  `cas/repo.Walk`. `Repository.Close`/`CachedRepository.Close` release the shared
-  backend (packfs flushes its active pack there), `CachedRepository.GetTag`
-  completes the cached getters, and `(*ResolvedObject).References()` reports the
-  union's outgoing references so callers stop re-deriving them.
-- `fs.CleanTemp(ctx, root, olderThan) (int, error)` exports the temp-file sweep
-  `fs.Backend.Clean` runs — the `<name>.tmp`/`<name>.tmp.<n>` convention with an
-  age threshold and a removed count — for a caller that owns a second tree
-  following the same convention. `fs.CleanupTemp` is that sweep with the age
-  fixed at 0, so the exported helpers and `Backend.Clean` cannot drift apart.
-- Go is now the recorded build language. Build logic is Go — `internal/build/core`
-  for the engine and a `cmd/buildtool` subcommand for the entry point — no new
-  `.sh` is created, and Python is not used for build logic; the shell launchers
-  stay only because a launcher must exist before Go can run. `website/macros.py`
-  is the one recorded exception: an MkDocs plugin hook, which is the website
-  toolchain rather than repo build tooling. The rule is `scripts/AGENT.md`, "the
-  build language is Go", and the reason is the testability the rule above it
-  gives: a rule written in a script is covered by no test and drags whichever
-  interpreter the operator happens to have into the build.
-- `Store[T].GetReader(ctx, digest) (io.ReadCloser, error)` streams a stored object's raw bytes to the caller, who closes the reader: the same guards and the same backend `Get` as `Store.GetRaw`, without buffering the object. `GetRaw` keeps its contract (the whole envelope as bytes) and is now one `readThenClose` over the new accessor, so a tooling path that only needs a prefix, a hash or a copy to another store no longer pays `io.ReadAll`'s doubling — the allocation `performance.md` §4 forbids (go-cask#381).
-- `cas.PhysicalStatter` is the optional capability a backend implements to report an object's size and modification time from **one** physical read: `Stat(ctx, digest) (size int64, modTime time.Time, err error)`, alongside `cas.Statter`'s two separate calls. `fs.Backend` and `packfs.Backend` implement it, and `index.BuildSnapshot` asks it when its source has it — one stat per object instead of two — falling back to `Size` + `ModTime` for every backend that does not, whose snapshot is unchanged (go-cask#373).
+- Envelope header census — `cas.PeekHeader` reads a frame's version, codec tag and type name in one
+  pass; `cask list -type`/`-codec` and `-json` objects carry `type`/`version`/`codec`; `cask meta` and
+  `cask stats -json` report them per type, version and codec, and the viewer's filters and URLs too.
+- Census facts — each axis sums to the object count minus `unreadable` and `headerless` (the raw
+  objects `put` writes); a frame with no codec tag reads `unspecified`, never blank; every read is
+  header-only.
+- `cas.EncodeEnvelope(codec, typeName, payload)` — the envelope writer `Store.Put` frames through,
+  for producing stored bytes without a store.
+- `cask seed-preview` — format-version 2 frames tagged `json`, from deterministic JSON payloads
+  encoded by `cas/codec/json`; `cask get` round-trips a seeded object and `cask list -codec`,
+  `cask meta`, `cask stats` and the viewer report the format really there.
+- **`cask seed-preview` — breaking:** every seeded address changes (payload and tag live inside the
+  frame). Migration: re-run `cask seed-preview`; old v1 objects stay beside the new ones and the
+  viewer finds no graph in the old set — `cask gc` them.
+- `cask seed-preview -hash-algo sha256|sha512|sha512_256` (default `sha256`) — seeds the preview
+  graph under the algorithm the viewer reads it with.
+- `cas/verify/sidecar` — an optional per-object checksum record at `<base>/.meta/<hex>.json`
+  (`crc32`, `adler32`, `crc64`); the address is untouched, the record is never hashed.
+- `cask verify --checksums [--checksum <algo>]` reads the records; `cask gc`/`cask prune` reconcile
+  them; an object with no record is unchecked, never corrupt.
+- `cas.CapabilitiesOf` — the optional maintenance operations a backend supports (`Cleaner`,
+  `Statter`).
+- `cas.VerifyAll`/`cas.Sweep` — integrity check and mark-and-sweep reclamation for every backend,
+  including `packfs`, which has no native GC; `fs.Backend.Verify`/`GC`/`Prune` stay the faster path.
+- `cas/repo` — `Registry` maps a `cas.Digest` to its typed object; `Walk` visits each reachable
+  object once; `Reachable` builds the cross-type root set; `LookupStore[T]` returns the typed store
+  registered under a name (`*UnknownTypeError`, not a nil store).
+- `cas/refs` — named mutable `cas.Digest` pointers: atomic `Set`/`Delete`, `Get`/`List`/`Resolve`
+  with ambiguous-prefix detection, a reflog per name (`Log`/`Previous`), `Roots`, and `ValidateName`.
+- `cas.Reachable` — the transitively-closed reachable set from root digests, via a `cas.RefLister`.
+- `cas.CodecNamer` — a codec declares its wire tag (`json`, `gzip+json`, `""` for none).
+- `cas.ErrCodecMismatch` — reading an object written with a different codec: the tag is written into
+  every envelope and compared before decoding.
+- Stored envelope version 2, adding a codec identity to every frame —
+  `[version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`; version 1
+  objects (no codec field) still load and read as codec unspecified, and writers converge on version 2.
+- `gob.NewRaw[T]()` — a gob codec with no inner codec; `gob.New[T](next)` takes the inner codec.
+- `flate`, `gzip` and `zlib` export `MaxDecodedBytes` and `ErrDecodedTooLarge`;
+  `bloom/persistent.Filter` exports `IsMapped` (false on Windows).
+- `lru.Cache.CachedStore()` — the wrapped store, without touching recency bookkeeping.
+- `cas.GetMany` — a digest batch in one call, with the optional `cas.BatchGetter` backend interface
+  (`packfs` opens each pack once); a non-batching backend falls back to sequential `Get`.
+- `Store[T].GetReader(ctx, digest) (io.ReadCloser, error)` — raw bytes streamed to the caller, who
+  closes the reader; same guards and backend `Get` as `Store.GetRaw`, without buffering.
+- `cas.PhysicalStatter` — `Stat` returns an object's size and modification time from one physical
+  read, beside `cas.Statter`'s two calls; `fs` and `packfs` implement it.
+- `cas.PutStream` — spools a raw stream while hashing it, then deduplicates and stores it (the CLI
+  `put` and the `examples/api` upload).
+- `gitlike.Resolver` satisfies `cas/repo.Resolver` (`Resolve(ctx, d)`), so `cas/repo.Walk` and
+  `cas/repo.Reachable` run over a gitlike repository; `Repository.Close` releases the backend.
+- `fs.CleanTemp(ctx, root, olderThan) (int, error)` — the temp-file sweep behind `fs.Backend.Clean`
+  (`<name>.tmp`/`<name>.tmp.<n>`), returning the removed count; `fs.CleanupTemp` fixes the age at 0.
 
 ### Changed
 
-- `cask seed-preview` tags the objects it seeds with the codec that actually
-  produced their payload. Seeded frames carried a `preview` codec tag over a
-  synthetic byte pattern no codec produced, so every surface that trusts the tag
-  — the store's codec-mismatch check, `cask list -codec`, `cask meta`, the
-  `cask stats` codec census, and the viewer's Codec column, `codec` filter and
-  inspector — named a format nothing in the tree implemented and no reader could
-  decode. Seeded payloads are now deterministic JSON documents encoded by
-  `cas/codec/json` and framed with that codec's own `json` tag, so the same
-  codec reads them back (`cask get` on a seeded object now round-trips) and the
-  demo store shows the format it reports. Every seeded address changes — the
-  payload and the tag live inside the frame — so re-run `cask seed-preview` on a
-  demo store seeded before this change: the viewer re-derives the graph's
-  digests and finds no graph in the old one.
-- The object browser is generous and low-contrast instead of a 26px VS Code-scale workbench:
-  36px mono rows, 32px controls, 48px bars, 14px body type and one 6px control radius, with row
-  height, bar height, control heights and every gutter drawn from one spacing and type scale;
-  hover, selection and focus are translucencies of the single accent rather than five more blues,
-  and the second metadata grey (`#777777`) collapses onto `#666666`. Distinct colour literals drop
-  from 33 to 21, and the status pills — six fills, six text colours and the translucent ring — are
-  unchanged. A listed object whose bytes cannot be read now says `unreadable` in the type cell
-  instead of rendering as untyped (go-cask#334, go-cask#357).
-- `-store` is resolved once when the store is opened, so a symbolic link in the path is followed
-  deliberately instead of silently. `clean`, `gc` and `prune` print the resolved base they acted on
-  (`clean: store <dir>`) and `cask web` logs it; the maintenance lock is taken in the resolved store.
-  An intentional symlinked store keeps working (go-cask#353).
-- `cask web` mints its startup admin token at 128 bits (16 bytes as four dash-separated groups of
-  eight hex characters) instead of 48, and validates a supplied one (`-token-file`,
-  `CASK_VIEWER_TOKEN`): a regular file read under a 4 KiB bound, at least 16 characters from
-  `A-Z a-z 0-9 - . _ ~`, with a rejection naming the flag, file or variable and never the value.
-  A session also retains at most 50 000 verification results; past the bound a dropped object reads
-  `Unverified` again instead of a stale verdict.
-- The viewer names a frame's version **Envelope** rather than "Envelope version" or
-  "Version" — in the object table's column header, in the inspector's Identity block, and
-  in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
-  `version` filter and the `?version=` query value stay decimal, so every existing URL and
-  filter selection keeps working.
-- The example JSON surface (`examples/api`) is bounded and credentialed like a real one:
-  request bodies are refused with `413` before they are read (objects 64 MiB by default,
-  `-max-size`; `/gc` 8 MiB), the server sets `ReadTimeout` 60 s, `WriteTimeout` 5 min and
-  `IdleTimeout` 2 min alongside `ReadHeaderTimeout`, `-tokens` has no default and the server
-  refuses to start without it (the shipped `viewer=viewer,operator=operator,admin=admin`
-  credentials are gone), `-trusted-proxy <host>` (repeatable) makes the documented
-  `X-Forwarded-For` path real, and the demo client counts a download instead of buffering it.
-- The build engine is no longer a separate Go module. `internal/build/core` is flattened
-  into `internal/build`, so `go build ./...`, `go vet ./...`, `go test -race ./...`,
-  `gofmt -l .` and `go mod tidy` reach every engine package with no step of the gate's own:
-  `policy.Verify()` loses `EngineDir`, the gate loses its `build engine module` step, and a
-  smoke-fuzz target no longer has to say which module it lives in. Nothing the library, the
-  CLI, the viewer or the on-disk format does changes.
-- The repository's verification gate is Go. `./scripts/verify.sh` keeps its name and its
-  verdict — it resolves the toolchain and runs `go run ./cmd/buildtool verify` — and every
-  step it used to hold in bash runs from there: formatting, module drift, build, vet, the
-  static analyzer, the layer matrix, the codec guards, the security scan, the
-  coverage tiers, the race suite and the fuzz smoke, followed by the documentation steps.
-  `VERIFY_SCOPE`, `VERIFY_JOBS` and the `VERIFY_SKIP_*` options are unchanged, and so is
-  the rule that a run which skipped a step writes no gate stamp. Two fixes came with the
-  move: the formatting step no longer walks every linked worktree under `.worktrees`, where
-  another session's unformatted file could fail this session's gate, and the step list
-  itself is now covered by tests instead of only by a whole gate run. The receipt CI reuses
-  is Go as well — `go run ./cmd/buildtool gate-receipt`, the last rule that was still shell,
-  with its behaviour cases as Go tests beside it — and it marks each check under the name
-  that command's `suite` verb requires, so a renamed step costs a full CI run instead of a
-  missed check. The gate also cross-builds and vets windows/amd64, darwin/amd64, darwin/arm64,
-  linux/amd64 and linux/arm64 locally, so the failures the platform matrix would find are
-  found before the push.
-- The platform matrix compiles the platforms it used to run, on Linux only. Every
-  target — `windows/amd64`, `darwin/amd64`, `darwin/arm64`, `linux/amd64` and
-  `linux/arm64` — is cross-built and vetted on one Linux runner, so no Windows and
-  no macOS runner is used, and no non-Linux binary is executed anywhere in CI.
-  What that buys is
-  stated rather than implied: those platforms are proven to compile and to pass
-  `go vet`, which type-checks their platform-tagged files and their tests, while
-  their runtime behaviour is no longer exercised by any run — Linux remains the
-  only platform whose tests execute.
-- Landing is coordinated through the pull request instead of a lock file inside
-  one clone. `go run ./cmd/buildtool pr-lane claim <issue>` claims a lane for an
-  issue with a server-side
-  compare-and-swap on the coordination ref `refs/lane/<issue>` — an atomic create
-  that succeeds exactly once, so two sessions cannot both claim one lane — and
-  `status` lists every lane on the remote with the pull request behind it, which
-  makes a landing in another clone, another machine or another person visible.
-  A lane with an open pull request is held; a claim that has no pull request yet
-  is honoured for 90 minutes (`PR_LANE_STALE_MINUTES`) and then taken over, so an
-  abandoned lane is reclaimed without a `--force` takeover and nobody has to judge
-  whether a holder is dead. `go run ./cmd/buildtool land-lane` keeps its single
-  slot but is
-  now advisory, and `.githooks/pre-push` refuses only a commit that has no green
-  gate stamp.
-- `cask web` pins its listener to an explicit numeric loopback address instead of
-  handing `-bind` to the host resolver. `-bind localhost:8080` now listens on
-  `127.0.0.1:8080` and prints that origin, rather than whichever of `127.0.0.1`
-  and `[::1]` the machine's hosts file preferred; `127.0.0.1` and `[::1]` are
-  unchanged. `-bind :8080` (every interface) is now refused like `0.0.0.0:8080`
-  unless `-allow-insecure-bind` is set, and the refusal and override messages
-  name the host firewall prompt that a bind beyond loopback triggers.
-- `packfs.Clean` sweeps its `<base>/packs` directory through `fs.CleanTemp`
-  instead of its own scratch-name predicate, so both trees under a packed base
-  use one convention. A name outside it (`notes.tmp.old`, `name.tmp.extra`) is no
-  longer deleted from `packs/`; everything packfs itself writes — the
-  `.put-*.tmp` spool files and the `index.json.tmp` rename scratch — is still
-  reclaimed, as is every `<hex>.tmp`/`<hex>.tmp.<n>` loose leftover.
-- The three compression wrappers keep their names and their `MaxDecodedBytes`,
-  but `flate.ErrDecodedTooLarge`, `gzip.ErrDecodedTooLarge` and
-  `zlib.ErrDecodedTooLarge` are now one value behind three names, produced by one
-  bounded body (`cas/codec/internal/bounded`): `errors.Is(err,
-  gzip.ErrDecodedTooLarge)` holds for a payload a caller read through `flate` or
-  `zlib` too, and the ceiling is defined in one place instead of three.
-- The `cas/pack` manifest helpers take the caller's `codec` and
-  `context.Context` and name neither format themselves: the package no longer
-  imports a codec at all, a nil codec is `pack.ErrNilCodec` instead of a silent
-  switch to JSON, and every call site says what it writes.
-  `Save`/`Load`/`Encode`/`Decode` become `SaveWith`/`LoadWith`/`EncodeWith`/
-  `DecodeWith` (the codec is the last argument) and `Store` is built with
-  `pack.New(path, codec) (*Store[T], error)`. Migration: pass a context and a
-  codec — go-cask's own callers use `jsoncodec.New[pack.Data]()`. `cas/pack` is a
-  helper layer outside the frozen surface (cas-core §7.1), so the break ships in
-  `v1`.
-- The user-facing documentation reads leaner without losing a rule: the README
-  and the normative specs under `docs/` (including `docs/specs/cas-core.md`)
-  state the same contracts, defaults, sentinel errors and measured numbers in
-  shorter prose, and the README's table of contents matches its sections again.
-  Every code fence, table row, heading and inline identifier is unchanged.
-
-- The viewer's one-time login hint is printed to **stdout** — the stream that
-  carries command output, not the error stream a supervisor or a log shipper
-  retains — and `cask web -show-token` displays it in any run: a bare
-  `-show-token` forces the hint without a terminal, `-show-token=false` never
-  shows it, and an absent flag keeps the interactive-terminal heuristic, so an
-  operator under a supervisor can ask for the hint while an unattended
-  deployment keeps using `-token-file`/`CASK_VIEWER_TOKEN`. A non-loopback bind
-  no longer prints a `http://` login link that could not hold a session (the
-  cookie is always `Secure`): the notice names the bind and the `https://`
-  expectation instead.
-
-- gitlike resolves an object's type from the **versioned** envelope name
-  (`cas.EnvelopeType` on a bounded header prefix), so an object stored as
-  `blob@2` is reported as an unknown type instead of being decoded through the
-  `@1` model; an absent major version still reads as `@1`.
-
-- The `artifacts` example stores through the shipped `cas/codec/gzip` wrapper
-  (`gzip.New(json.New[T]())`) instead of a bespoke gzip codec, so its objects
-  record the codec identity (`gzip+json`) and bound decompression. The envelope
-  of newly written artifacts therefore carries the tag, which changes their
-  digests — an existing example store keeps reading (v1/v2 objects both load)
-  but only new writes get the identity.
-
-- The `files` and `artifacts` examples keep their named pointers outside the
-  object store: the example root now holds `objects/` (the `fs` base) and
-  `refs/` (`cas/refs`, with an atomic write and a reflog per name), and
-  `-store` names that root. Refs previously lived beside the objects as plain
-  files written in place; they move because a ref inside a store base is
-  reported by `List`/`Stats` (digest-named files) and swept by `Clean`
-  (`*.tmp`), which is cas-core §4.4's one-base-one-store rule. An existing
-  example store needs its objects moved under `objects/` (each README says so).
-
-- The stored envelope is version 2 —
-  `[version u8][uvarint codecLen][codec][uvarint typeLen][type][uvarint payloadLen][payload]`
-  — so every object records the codec identity that wrote it. Version 1 objects
-  (no codec field) still load and read as "codec unspecified", and an object
-  whose codec declares no tag is read unchanged. Because the stored bytes
-  changed, the same value now hashes to a new address: re-storing it under
-  version 2 writes a second object instead of deduplicating against its
-  version 1 copy, and stores converge as objects are rewritten.
-- `fs.Backend.Prune` now takes an already-expanded `reachable map[string]bool`,
-  matching `fs.Backend.GC`, instead of a bare `roots []cas.Digest` slice.
-  Previously `Prune` treated the given roots as the complete reachable set and
-  never followed their references, so an object referenced only by a root
-  (and not passed explicitly) was silently deleted — the opposite of what its
-  documentation claimed. Callers that have a typed object graph to expand
-  should build the set with `cas.Reachable` (or an equivalent typed walk)
-  before calling `Prune`; the `cask` CLI's `prune`/`gc` subcommands do this
-  internally, but still require every digest that must survive to be listed
-  in `<roots...>` since the CLI has no typed model to expand it with.
-- Backend options are typed per backend (`fs.Option`, `mem.Option`,
-  `packfs.Option`). The shared `backend.Option` accepted any configuration
-  struct, so an option built for one backend compiled against another and
-  silently did nothing; that is now a compile error.
-- `bloom.NewGuard` reports nil arguments as an error instead of panicking, and
-  the advisory filter contract is the exported `bloom.Filter`.
-- `bloom.Parameters` returns an error and refuses a filter larger than the
-  documented ceiling instead of panicking inside `make`.
-- `bloom.Guard.Exists` rejects an absent digest with `cas.ErrInvalidDigest`, like
-  the concrete backends, instead of reporting it as absent.
-- `bloom/persistent.Filter.Close` is idempotent, and using a closed filter is a
-  safe no-op (`Contains` reports false) rather than touching unmapped memory.
-- `memory.CachedStore.Preload` and `Warmup` report every failure joined with
-  `errors.Join`, and `OnNew` may now be installed at any time.
-- `lru.Cache` no longer embeds `memory.CachedStore`: it exposes the methods it
-  owns rather than the wrapped type's entire method set, and reaches the wrapped
-  store only through `CachedStore()`.
-- `fs.New` and `packfs.New` validate the store directory before creating
-  anything: a base that is empty or whitespace, `.`, the filesystem root, a
-  volume root (`C:`), or a parent-traversal path (`..`, `../store`) is rejected,
-  where it previously opened a backend that owned the caller's whole working
-  directory or drive. A nested directory is still a valid base — only the caller
-  can tell whether it already belongs to another store — so
-  `fs.New(filepath.Join(root, name))` and `packfs`'s own loose sub-store are
-  unaffected.
-- `gitlike.NewPreloader` and `fs.EnsureBase`/`fs.CleanupTemp` take a
-  `context.Context`, so background preloading and large temporary-file sweeps
-  honour the caller's cancellation.
-- The library baseline is the documented Go 1.24 again: `go.mod` declares
-  `go 1.24.0`, which required pinning the approved `golang.org/x/sys` dependency
-  to the last release that does not itself require a newer toolchain.
-- The viewer's zero-inbound reachable reference state is renamed from `Head`
-  to `Root`, to avoid colliding with Git's HEAD concept in a store that already
-  uses Git-like terminology (Blob/Tree/Commit/Tag) elsewhere: the `reach=head`
-  filter value, the `Head` pill, and the `objectRow.Head`/`HasHead` fields are
-  now `reach=root`, `Root`, and `objectRow.Root`/`HasRoot`.
-- `cask stats` and a filtered `cask list` each walk the store once instead of twice: the census snapshot already carries the object count and byte total that `Store.Stats` produced (go-cask#372).
+- `cask -backend fs|packfs` (default `fs`) — the storage backend for every store subcommand, so
+  `verify`, `gc`, `prune` and `clean` maintain a packed store too; `cask web` requires `fs`; every
+  command closes its store.
+- `cas.ErrUnsupported` — an operation a backend cannot perform, naming the operation and the backend.
+- `-store` is resolved once when the store is opened; `clean`, `gc` and `prune` print the
+  resolved base (`clean: store <dir>`), `cask web` logs it, and the maintenance lock is taken there.
+- `cask web` startup admin token — 128 bits (16 bytes, four dash-separated groups of eight hex
+  characters); a supplied token (`-token-file`, `CASK_VIEWER_TOKEN`) must be a regular file within
+  4 KiB and at least 16 characters from `A-Z a-z 0-9 - . _ ~`; a rejection never echoes the value.
+- Viewer sessions retain at most 50 000 verification results — past the bound a dropped object reads
+  `Unverified`, not a stale verdict.
+- Viewer frame-version label — `Envelope` in the object table column header and the inspector, value
+  `vN` (`v1`, `v2`); the `version` filter and `?version=` stay decimal.
+- `cask web -bind` — a numeric loopback: `localhost:8080` listens on `127.0.0.1:8080` and prints
+  that origin; `:8080` is refused like `0.0.0.0:8080` unless `-allow-insecure-bind` is set.
+- `cask web` login hint prints to stdout; `-show-token` forces it, `-show-token=false` never shows
+  it, an absent flag keeps the interactive heuristic.
+- `examples/api` — bodies refused with `413` before they are read (objects 64 MiB by default, `-max-size`;
+  `/gc` 8 MiB); `ReadTimeout` 60 s, `WriteTimeout` 5 min, `IdleTimeout` 2 min; `-tokens` has no
+  default; `-store` names the root, `-trusted-proxy` enables `X-Forwarded-For`.
+- `packfs.Clean` sweeps `<base>/packs` through `fs.CleanTemp` — a name outside the convention
+  (`notes.tmp.old`, `name.tmp.extra`) is not deleted from `packs/`; `.put-*.tmp`, `index.json.tmp` and
+  every `<hex>.tmp`/`<hex>.tmp.<n>` still are.
+- `flate.ErrDecodedTooLarge`, `gzip.ErrDecodedTooLarge` and `zlib.ErrDecodedTooLarge` are one value
+  behind three names: `errors.Is(err, gzip.ErrDecodedTooLarge)` holds for `flate` and `zlib` too.
+- **`cas/pack` — breaking:** helpers take a `codec` and `context.Context`; `Save`/`Load`/`Encode`/`Decode`
+  become `SaveWith`/`LoadWith`/`EncodeWith`/`DecodeWith` (codec last) and `pack.New(path, codec)`; a nil
+  codec is `pack.ErrNilCodec`. Migration: pass a context and a codec.
+- gitlike resolves a type from the **versioned** envelope name (`cas.EnvelopeType`, header prefix):
+  `blob@2` is an unknown type; an absent major version still reads `@1`.
+- `examples/artifacts` stores through `gzip.New(json.New[T]())`: new objects record the `gzip+json`
+  codec identity, so their digests change; existing stores keep reading.
+- `examples/files` and `examples/artifacts` keep named pointers outside the object store: the root
+  holds `objects/` (the `fs` base) and `refs/` (`cas/refs`). Migration: move existing objects there.
+- `fs.Backend.Prune` takes an already-expanded `reachable map[string]bool`, matching `fs.Backend.GC`;
+  the `cask` CLI still requires every digest that must survive in `<roots...>`.
+- Backend options are typed per backend (`fs.Option`, `mem.Option`, `packfs.Option`); an option
+  built for another backend is a compile error.
+- `bloom.NewGuard` reports nil arguments as an error; the advisory filter contract is the exported
+  `bloom.Filter`.
+- `bloom.Parameters` returns an error for a filter past the documented ceiling.
+- `bloom.Guard.Exists` rejects an absent digest with `cas.ErrInvalidDigest`.
+- `bloom/persistent.Filter.Close` is idempotent; a closed filter's `Contains` reports false.
+- `memory.CachedStore.Preload` and `Warmup` report every failure joined with `errors.Join`; `OnNew`
+  may be installed at any time.
+- `lru.Cache` no longer embeds `memory.CachedStore`; the wrapped store is reached through
+  `CachedStore()`.
+- `fs.New` and `packfs.New` reject an empty or whitespace base, `.`, the filesystem root, a volume
+  root (`C:`) or a parent-traversal path (`..`, `../store`); a nested directory is still valid.
+- `gitlike.NewPreloader`, `fs.EnsureBase` and `fs.CleanupTemp` take a `context.Context`.
+- Library baseline — Go 1.24.0.
+- Viewer reachable state `Head` is renamed `Root` (`reach=root`, the `Root` pill, `objectRow.Root`).
+- `cask stats` and a filtered `cask list` walk the store once, not twice.
 
 ### Removed
 
-- `bloom.Indices` — a bit-position helper with no caller outside the package's
-  own tests (the three filters compute their positions inline, without the
-  allocation the helper's slice return forced). `bloom.Parameters` and
-  `bloom.ResolveIndexHash` are unchanged; `cas/bloom` is a helper layer outside
-  the frozen surface (cas-core §7.1), so the removal ships in `v1`.
+- `bloom.Indices` removed, with `bloom.Parameters` and `bloom.ResolveIndexHash` unchanged;
+  `cas/bloom` is outside the frozen surface (cas-core §7.1), so the removal ships in `v1`.
 
 ### Fixed
 
-- `cas/bloom/counting`'s `CounterBits` now selects the counter width it
-  documents. The counters are packed (`m*CounterBits/8` bytes — two 4-bit per
-  byte, one 8-bit per byte, one little-endian 16-bit per two bytes) instead of one
-  `uint32` per bit, which made the knob inert and a `CounterBits: 4` filter cost
-  exactly what `16` cost while the ceiling was a 16 GiB `make`. A 4-bit filter now
-  costs a quarter of what it did; the counter array is capped at the new
-  `counting.MaxCounterBytes = bloom.MaxBits/2` (2 GiB) and a shape past it is the
-  new `ErrFilterTooLarge` instead of an attempted allocation, matching
-  `common.go`'s corrected ceiling comment. No API removed; every width keeps its
-  saturation semantics.
-- `cas/codec/cbor` no longer decodes an integer it cannot represent. CBOR major
-  type 0 carries an **unsigned** argument while the value model decodes to
-  `int64`, and the argument was converted with `int64(length)` unchecked, so
-  `Encode(uint64(1<<63))` — which the encoder writes, because it encodes a
-  `uint64` as major type 0 — came back as `-9223372036854775808` instead of
-  failing: a manifest field a producer wrote as a large unsigned quantity
-  returned with a different sign after a storage round trip, and the two distinct
-  wire values `uint64` max and `-1` both decoded to `int64(-1)`, so a downstream
-  `size < 0`-style check was reasoning about a sign the decoder chose. An
-  argument above `MaxInt64` is now the new `cbor.ErrIntegerRange` for major type
-  0 and for major type 1 (whose value is `-1-argument`); `MaxInt64` and
-  `MinInt64` still decode, and no decoded value changes meaning.
-- The gate receipt's reader no longer carries a field value containing a bare
-  carriage return. `Parse` reads a CRLF as one line ending, so a value whose CR
-  it kept came back shorter — or empty — the next time the receipt was rendered
-  and read: the record a verification compares was not the record the run wrote,
-  and the fuzzer that pins the round trip could rediscover the input and fail a
-  lane's gate through no fault of that lane. A line whose value carries a CR is
-  ignored, as a check name that cannot ride in the format already was.
-- `cask put` and `cask get` honor the `--` end-of-flags marker. It is forwarded
-  to the flag parser instead of being dropped, so a file whose name begins with
-  a dash — `cask put -- -json`, `cask put -- -data.bin` — is stored as data
-  rather than consumed as a flag or rejected as an undefined one, and nothing
-  after the marker is parsed as a flag.
-- `cas/verify/sidecar` reports **every** way a record can be unusable as
-  `cas.ErrCorrupt`. The open and read failures returned a bare I/O error while
-  the oversized and wrong-digest arms wrapped the sentinel, so
-  `errors.Is(err, cas.ErrCorrupt)` was false for a record that could not be
-  read — contradicting what `Backend.Load` and `Verifier.Verify` document, and
-  making `cask verify --checksums <hash>` report an unreadable record as a
-  generic error instead of the damaged-record line it prints for the other two
-  arms. A record is derived metadata whose only source of truth is the store's
-  own bytes, so one that exists and cannot be trusted is damage; the underlying
-  I/O error stays on the chain.
-- `cas/codec/cbor` decodes CBOR **half-precision** floats (major 7, additional
-  information 25) correctly. The 16-bit payload is IEEE 754 half precision — 1
-  sign bit, 5 exponent bits, 10 mantissa bits — and was being reinterpreted as
-  the low half of a float32, so every half float read back as the wrong number
-  (`f9 3e 00`, the half for 1.5, decoded to 2.2e-41) and a half infinity or NaN
-  could not be produced at all. Subnormals, signed zeros, infinities and NaN are
-  now expanded from their own layout. This codec never writes float16, so only
-  objects written by another CBOR encoder were affected — and only the value
-  read back: an object's address covers its stored bytes, so no digest changes.
-- `cas/verify/sidecar` can no longer produce a record its own reader refuses, and
-  one unusable record no longer disables the checksum sweep. A record that would
-  exceed the read cap is written without its optional `type`/`codec` fields, and
-  one that still does not fit is refused with the new
-  `sidecar.ErrRecordTooLarge`, publishing nothing; a damaged record already in a
-  store is reported in the new `VerifyReport.Unreadable` list while `VerifyAll`
-  keeps checking every other object. `cask verify --checksums --all` prints
-  `RECORD UNREADABLE <hash>: …` on stderr, counts it in its summary and exits 1
-  instead of failing with nothing checked. `Keys`/`Reconcile` skip a `.json` name
-  in `.meta` that is not a record and report it in `ReconcileReport.Foreign`, so
-  one foreign file can no longer abort `cask gc`/`cask prune` reconciliation.
-- `cask web -backend packfs` fails with an actionable message — the operation,
-  the backend, and the remedy (open a loose store with `-backend fs` or `-store`
-  pointing at a loose store directory) — instead of a bare "unsupported
-  operation". The limitation is now stated where the flags are documented
-  (`cli.md` §1/§2), in the viewer's own spec (`viewer-design.md` §1) and in
-  `backend-architecture.md`: the viewer reads each object's size and modification
-  time from its own file, and a packed object has none (its loose copy and its
-  pack record answer those two questions differently). Every other subcommand
-  keeps working over both backends.
-- `cask verify` takes the `-hash-algo` the viewer and `seed-preview` already
-  accept, so a store addressed by `sha512` or `sha512_256` can be verified
-  instead of failing every object on digest width before a byte is read:
-  `cask verify -hash-algo sha512 <hash>`, `--all` and `--checksums` all use it,
-  and an unknown name is a usage error. The other local subcommands
-  (`put`/`get`/`list`/`meta`/`stats`/`gc`/`prune`/`clean`) still speak the
-  client constant `sha256`, and `cli.md` now says so.
-- `cas/codec/cbor`'s `New` no longer silently ignores its inner codec when the
-  caller also passes conversion functions: `encode`/`decode` already produce the
-  stored bytes, so the inner codec could never run, and the combination is now
-  reported by `Encode`/`Decode` instead of changing what a caller thought they
-  had composed. The documentation states what the parameter does —
-  `New(next, nil, nil)` delegates and reports the inner codec's identity tag,
-  `New(nil, encode, decode)` owns the CBOR conversion and reports `cbor` — and
-  points at `cas/codec/binary` for a byte-level layer over another codec.
-- A `cas/pack` manifest write is atomic — a temp file in the target directory,
-  fsynced, then renamed — instead of one `os.WriteFile`, so a crash or a full
-  disk mid-write leaves the previous manifest intact rather than a truncated
-  file that no longer decodes. It is the publish path every other writer in the
-  repository already used.
-- The portable sweep (`cas.Sweep` — the path `cask -backend packfs gc|prune`
-  takes, since the packfile backend has no native sweep) no longer fails halfway
-  on a stray digest-named file that its store's layout cannot address: `List`
-  reports any lowercase-hex file name, while only the backend knows which names
-  it can address, so the sweep asks before it deletes and skips the rest. It
-  previously returned `ErrInvalidDigest` after part of the store had already
-  been reclaimed, and kept failing until the file was found by hand; a dry run
-  now reports the same set a real run reclaims, matching `fs.GC`/`fs.Prune`.
-- A persistent Bloom filter (`cas/bloom/persistent`) keeps its hint set across
-  processes: the file now carries an index key, and the default Bloom index hash
-  is derived from it instead of from a seed drawn per process. A filter reopened
-  by the next process previously reported every digest it had recorded as
-  absent, and `bloom.Guard` turns a negative into an authoritative absence — so
-  a warm cache answered "object missing" for objects that are stored. A file
-  written before the header existed, or under a different index hash, is rebuilt
-  empty instead of trusted, and `bloom.DefaultIndexHash` is documented as
-  process-local and unusable for bits that outlive the process.
-- The viewer's login throttle is proxy-aware: `cask web -trusted-proxy
-  <ip|cidr,...>` names the reverse proxies whose forwarded client address
-  (`X-Forwarded-For`, or RFC 7239 `Forwarded`) the throttle may believe, so
-  clients behind a proxy get a bucket each instead of sharing the proxy's and
-  letting five failed logins lock every operator out for up to 30 minutes.
-  With no trusted proxy configured — still the default — a forwarded header is
-  ignored and the direct peer address keys the throttle, so a spoofed header
-  can neither evade the throttle nor block another client; a malformed
-  `-trusted-proxy` entry fails startup rather than silently trusting nothing.
-- The viewer classifies a verification outcome the way `cask verify --all`
-  does: only a digest mismatch is `corrupt`, so an object that is missing or
-  unreadable is reported as unverified (with `Missing`/`Unreadable` prose)
-  instead of as corrupted content. The result badge follows the same state
-  instead of always rendering the corrupt style.
-- The `files` example no longer writes a `*.crc32` sidecar beside every object.
-  Those files were invisible to `List` but unreclaimable, and a missing sidecar
-  made `audit` report an intact object (one written by `cask put` or a snapshot
-  import) as `corrupt`; integrity is now the core's `Verify`/`VerifyAll`.
-- The `artifacts` example resolves its GC roots from the manifests' named refs
-  and expands them with `cas.Reachable`, so a manifest that cannot be decoded
-  aborts the sweep instead of having its artifacts deleted as unreachable, and
-  `gc` reports the number of objects it actually removed.
-- `seed-preview` no longer truncates the preview graph at the first missing
-  object: a swept (Detached) object drops only its own edges, so the blocks
-  after it keep their roots and the viewer stops showing their reachable
-  objects as orphaned.
-- The `api` example reports an object's size from the backend's physical
-  metadata (`cas.Statter`) instead of a process-local index, so `list`/`meta`
-  no longer report `size: 0` for objects the running process did not write
-  itself (after a restart or a snapshot import).
-- The viewer's single-object verify reports a failed reader close instead of
-  discarding it, so a close error cannot pass as a clean verification.
-- The viewer's object browser returns 500 when the store-wide metadata snapshot
-  fails instead of panicking on a nil row slice.
-- Malformed CBOR payloads (oversized or overflowing declared lengths) return an
-  error rather than panicking or attempting an impossible allocation.
-- Snapshot restore derives its payload buffer from the bytes actually present,
-  so a crafted archive header can no longer demand an enormous allocation.
-- `gitlike` resolution reads only the envelope header and reports a failed
-  close; a large blob is no longer buffered twice just to learn its type.
-- Cache prefetching is bounded in concurrency, visits each digest at most
-  once, and no longer inherits a request-scoped caller context's
-  cancellation — its own `prefetchTimeout` is the only thing that can cut it
-  short, so a prefetch launched from a handler is no longer killed the
-  instant the handler returns.
-- `flate`, `gzip` and `zlib` stop inflating at `MaxDecodedBytes` (1 GiB) and
-  return `ErrDecodedTooLarge`, so a small stored payload can no longer expand
-  without limit.
-- `fs.ValidateBase` rejects parent-traversal roots (`..`), which previously let
-  `CleanupTemp` delete temporary files outside the store.
-- The example HTTP surface's GC handler no longer races on its in-memory size
-  index and no longer panics when collecting stats fails.
-- CLI runtime store failures exit with code 1 instead of being reported as usage
-  errors (exit code 2).
-- `Store.Close` is idempotent, tolerates a nil receiver or a store with no
-  backend, and returns the backend's close error to every caller instead of
-  reporting a different result per call.
-- `fs.Backend.Stats` no longer fails when an object vanishes mid-walk — a
-  concurrent `Delete` — so a report gathered while objects are being removed
-  returns what was there instead of an `lstat` error; `List` already tolerated
-  the same race.
-- The `packfs` pack index survives a restart again: manifest keys were raw
-  digest bytes, and `encoding/json` replaces invalid UTF-8 in a map key with
-  U+FFFD, so reopening a packed store came back with corrupted keys — `List`
-  reported phantom digests and `Stats` counted every object twice. The index is
-  keyed by the digest's hex form now, and an index written by an older build is
-  dropped on load (the loose tree still holds every object).
-- A damaged stored object is no longer reported as an unknown type. A truncated
-  or otherwise unreadable envelope is now `cas.ErrCorrupt` from every reader
-  (`Store.Get`, `EnvelopeFromBytes`/`EnvelopeType`, `PeekType`,
-  `cas/repo.Registry.Resolve`), which is what `Store.Type`/`PeekType` already
-  reported for those bytes; `cas.ErrUnknownType` now means only that an intact
-  object names a type the caller does not handle. Consumers that skip an object
-  with `errors.Is(err, cas.ErrUnknownType)` — "not my type, leave it alone" —
-  can no longer mistake an unreadable object for one they simply do not decode,
-  which in a maintenance path such as a GC sweep meant treating a damaged
-  manifest as a leaf and deleting the objects it referenced.
-- `go run ./cmd/buildtool worktree remove` no longer reports a removal it did not
-  perform: a name that is registered nowhere is refused with the diagnostic that
-  names it and the path that was checked, and a worktree whose checkout is gone
-  but whose registration survived is still cleared. A caller that scripts the
-  removal can tell "nothing to remove" from "removed" by the exit status instead
-  of by reading the message, which used to print `worktree removed` and exit 0
-  having done nothing.
-- `mem.WithMaxSize(math.MaxInt64)` — the obvious spelling of "no practical
-  limit" — no longer stores an **empty** object and reports success. The
-  remaining budget is the int64 ceiling both on an empty backend and on a
-  re-Put of an existing key, and the one-byte overflow probe computed from it
-  wrapped to `MinInt64`, so the read returned nothing and zero bytes were
-  stored under the caller's digest; the loss surfaced only later as an empty
-  decode or a failed `Verify`, which reads as store corruption rather than as a
-  rejected write. The ceiling now stores the bytes it was given, and every
-  smaller cap behaves exactly as before.
-- `cask list` rejects a surplus operand with a usage error (exit 2) instead of ignoring it and printing the whole store (go-cask#366).
-- `cas/codec/cbor` returns an owned byte string: a decoded `[]byte` field is a copy of its own bytes instead of a sub-slice of the object buffer it was decoded from, so a retained value no longer pins a whole object and no longer changes when that buffer is reused (go-cask#382). Decoded values themselves are unchanged.
-- `cas/backend/packfs` retries a transiently refused index publication — the Windows "access is denied"/"being used by another process" window `fs.Put` already tolerates — so the index rewrite a packed `Put` performs can no longer fail on a momentary collision (go-cask#369). The on-disk index format is unchanged; `BenchmarkPackIndexRewrite` records the per-`Put` cost at 10, 1 000 and 10 000 index entries.
+- `cas/bloom/counting`'s `CounterBits` packs its counters and selects the width it documents, capped at
+  `counting.MaxCounterBytes = bloom.MaxBits/2` (2 GiB), past which comes `ErrFilterTooLarge`.
+- `cas/codec/cbor` returns `cbor.ErrIntegerRange` for an argument above `MaxInt64` on major type 0 and 1;
+  `MaxInt64` and `MinInt64` still decode.
+- `cask put` and `cask get` honor the `--` end-of-flags marker: `cask put -- -json` stores a
+  dash-named file as data.
+- `cas/verify/sidecar` reports every unusable record as `cas.ErrCorrupt`, so `errors.Is(err,
+  cas.ErrCorrupt)` holds for an unreadable record too; the I/O error stays on the chain.
+- `cas/verify/sidecar` cannot write a record its own reader refuses: one past the read cap drops its
+  optional `type`/`codec` fields, and one that still does not fit is `sidecar.ErrRecordTooLarge`.
+- `cas/verify/sidecar` reports a damaged record in `VerifyReport.Unreadable` while `VerifyAll` checks the
+  rest; `cask verify --checksums --all` prints `RECORD UNREADABLE <hash>: ...` on stderr and exits 1.
+- `cas/verify/sidecar` `Keys`/`Reconcile` report a foreign `.json` name in `.meta` in
+  `ReconcileReport.Foreign`, so it cannot abort `cask gc`/`cask prune` reconciliation.
+- `cas/codec/cbor` decodes half-precision floats (major 7, additional information 25) as IEEE 754
+  half precision, subnormals, signed zeros, infinities and NaN included; no digest changes.
+- `cask web -backend packfs` fails with the operation, the backend and the remedy (a loose store via
+  `-backend fs` or `-store`).
+- `cask verify` takes `-hash-algo` (`sha256|sha512|sha512_256`): `cask verify -hash-algo sha512 <hash>`,
+  `--all` and `--checksums` all use it, and an unknown name is a usage error. The other local
+  subcommands still speak `sha256`.
+- `cas/codec/cbor`'s `New` reports an inner codec combined with `encode`/`decode` conversion functions
+  instead of ignoring it: `New(next, nil, nil)` delegates, `New(nil, encode, decode)` owns the CBOR conversion.
+- A `cas/pack` manifest write is atomic (temp file, fsync, rename), so a crash or a full disk leaves
+  the previous manifest intact.
+- The portable sweep (`cas.Sweep`, the `cask -backend packfs gc|prune` path) asks the backend which
+  digest-named files it can address and skips the rest instead of failing with `ErrInvalidDigest` after a
+  partial reclaim; a dry run reclaims the same set as a real run.
+- `cas/bloom/persistent` keeps its hint set across processes: the file's index key derives the default
+  Bloom index hash; an older file, or one under another index hash, is rebuilt empty.
+- The viewer's login throttle is proxy-aware: `cask web -trusted-proxy <ip|cidr,...>` names the proxies
+  whose forwarded client address (`X-Forwarded-For`, RFC 7239 `Forwarded`) it believes, so clients behind
+  a proxy get a bucket each; with none configured — the default — the direct peer keys the throttle,
+  where five failed logins lock everyone out for 30 minutes.
+- The viewer classifies verification like `cask verify --all`: only a digest mismatch is `corrupt`;
+  a missing or unreadable object is unverified (`Missing`/`Unreadable`).
+- `examples/files` writes no `*.crc32` sidecar beside an object; integrity is the core's
+  `Verify`/`VerifyAll`.
+- `seed-preview` drops only a swept (Detached) object's own edges, so later blocks keep their roots
+  and the viewer does not show their reachable objects as orphaned.
+- `examples/api` reports an object's size from the backend's physical metadata (`cas.Statter`), so
+  `list`/`meta` no longer report `size: 0` for objects the running process did not write.
+- Snapshot restore derives its payload buffer from the bytes actually present, so a crafted archive
+  header cannot demand an enormous allocation.
+- Cache prefetching is bounded in concurrency, visits each digest once, and is cut short only by its own
+  `prefetchTimeout`.
+- `flate`, `gzip` and `zlib` stop inflating at `MaxDecodedBytes` (1 GiB) and return
+  `ErrDecodedTooLarge`.
+- `fs.ValidateBase` rejects parent-traversal roots (`..`), which let `CleanupTemp` delete files
+  outside the store.
+- CLI runtime store failures exit 1; usage errors exit 2.
+- `cask list` rejects a surplus operand with a usage error (exit 2) instead of printing the store.
+- `Store.Close` is idempotent, tolerates a nil receiver and a store with no backend, and returns the
+  backend's close error to every caller.
+- `fs.Backend.Stats` returns what was there when an object vanishes mid-walk (a concurrent `Delete`),
+  instead of an `lstat` error.
+- The `packfs` pack index survives a restart: manifest keys are hex, so a packed store reopens with its
+  real digests; an index written by an older build is dropped on load (the loose tree keeps every object).
+- A truncated or otherwise unreadable envelope is `cas.ErrCorrupt` from every reader (`Store.Get`,
+  `EnvelopeFromBytes`/`EnvelopeType`, `PeekType`, `cas/repo.Registry.Resolve`); `cas.ErrUnknownType` means only
+  an intact object naming an unhandled type.
+- `mem.WithMaxSize(math.MaxInt64)` stores the bytes it was given and reports success; every smaller
+  cap is unchanged.
+- `cas/codec/cbor` returns an owned byte string: a decoded `[]byte` field is a copy, not a sub-slice
+  of the object buffer.
+- `cas/backend/packfs` retries a transiently refused index publication; the on-disk index format is
+  unchanged.
+- `gitlike` resolution reads only the envelope header and reports a failed close.
+- The viewer's single-object verify reports a failed reader close.
+- The viewer's object browser returns 500 when the store-wide metadata snapshot fails.
+- Malformed CBOR payloads (oversized or overflowing declared lengths) return an error.
+- The `examples/api` GC handler does not race on its in-memory size index and does not panic when
+  collecting stats fails.
 
 ### Security
 
-- The backend write path no longer follows a symbolic link planted inside a store base. `fs.Backend.Put`
-  refuses a link on the way to an object (or a non-directory where a fan-out directory belongs),
-  `packfs` refuses one at `<base>/packs`, `<base>/loose` or `<base>/packs/current.pack` before it
-  appends — an append through a link is a write primitive, not only a redirection — and a pack index
-  record behind a symlinked subdirectory is invalid instead of served. Each refusal is the named
-  `fs.ErrUnsafeTarget` and leaves the link's target byte-identical (go-cask#352).
-- The pack index scratch file is no longer the fixed `index.json.tmp`: every rewrite creates an
-  exclusive, random `index-*.tmp` in the pack directory and writes through the handle it returns, so
-  two writers cannot interleave into one manifest and a link planted at the old name cannot receive
-  the truncating write (go-cask#352).
-- `cas/bloom/persistent` now checksums the index key in its file header. The key
-  is what the default index hash is derived from, and `decodeHeader` copied it
-  unchecked, so one flipped bit — bit rot, or a filter file restored from a backup
-  or a shared directory — reindexed the whole bitset: every recorded digest
-  reported **absent**, and `bloom.Guard` turns that miss into an authoritative
-  "not present" while the object is on disk. The seven header bytes the format
-  reserved (and documented as ignored) now carry a checksum scheme byte plus a
-  six-byte CRC-64/ECMA over `kind || key`; a header whose scheme or checksum does
-  not verify is rebuilt, never indexed. The new `Filter.Rebuilt()` reports that a
-  reopen discarded the stored bits (missing, truncated, foreign-kind,
-  failed-checksum, or a file the call just created), so a caller can decline to
-  trust the filter's negatives. **On-disk layout change:** a file written by an
-  earlier build has zero reserved bytes and is rebuilt on first open — a lost hint
-  set, never a wrong answer — then rewritten in the new format.
-- The viewer's login token is read from the `POST /viewer/login` form body only: `?token=<token>` in
-  the request's query string no longer authenticates. The documented `GET /viewer/?token=` deep link
-  is unchanged. URLs reach access logs, browser history, proxies and `Referer` chains, so a
-  credential in one is a credential leaked.
-- An authenticated viewer session can no longer monopolize the server by
-  refreshing: the two routes whose work is proportional to the *store* rather
-  than to the request are bounded. `POST /viewer/objects/verify` runs one sweep
-  at a time, and one session may start three and then one per 5 seconds; past
-  that it answers `429` with `Retry-After` and a fragment saying how long to
-  wait, instead of queueing behind the running sweep. The object browser's
-  metadata rebuild shares the same budget, and a refused rebuild serves the last
-  published snapshot (stale by at most the cooldown, never wrong) so a page
-  always renders. Refusals are audit-logged like a throttled login. Measured on
-  a 500-object synthetic store, a burst of 8 concurrent verify-all requests costs
-  45 ms before and 17 ms after, with 7.8 of the 8 answered immediately.
-- A viewer bound to a non-loopback address no longer displays its generated
-  startup token, whatever `-show-token` asks for: the one-time hint is permitted
-  only for a loopback bind, so that run prints the bind and the `https://`
-  expectation instead and logs the reason without the token. The browser launch
-  that carries the token deep link is skipped for a non-loopback bind and when
-  `-show-token=false` suppresses the display, so the admin credential can no
-  longer reach another process's argument vector either.
-- The login deep link `cask web` opens and prints percent-encodes its token, and
-  the Windows launch no longer goes through `cmd /c start`: it opens the URL
-  through `rundll32.exe url.dll,FileProtocolHandler`, which takes it as a plain
-  argument. An operator-supplied token holding a URL reserved character (`&`,
-  `#`, `%`, a space) now logs in instead of arriving truncated, and a token
-  holding a `cmd.exe` metacharacter can no longer become a second command. The
-  launch still happens only for a loopback bind and only when the display is not
-  suppressed with `-show-token=false`.
-- The viewer's HTTP responses are hygienic: a throttled login answers `429` with
-  the `Retry-After` delay it is actually enforcing, a rejected token is answered
-  `401` with no body — the reason appears on the login page, never in the
-  refusal — every response is `Cache-Control: no-store` and names `Cookie` in
-  `Vary` so a proxy between the browser and the viewer cannot serve one
-  session's page to another, and a verification failure renders only the
-  viewer's own prose: the underlying error, which can name the store's
-  filesystem paths, now goes to the audit line instead of the operator's screen.
-
-- The viewer's startup token is no longer written to the process log: `cask web`
-  emitted it with `slog.Warn("viewer startup token", "admin_token", …)`, so
-  under systemd/journald, Docker, or a log shipper the admin credential was
-  retained and indexed for readers who are not operators. No log level carries
-  the token now. An interactive `cask web` still shows the one-time login deep
-  link on its terminal; an unattended deployment supplies the token instead with
-  the new `-token-file <path>` flag or the `CASK_VIEWER_TOKEN` environment
-  variable, and a generated token that cannot be shown is reported as such
-  without its value (cli.md §4, viewer-security §5.1, §9, §11).
-
-- The viewer mints a session only from a request it can attribute to its own
-  origin: a token-bearing login (the `POST /viewer/login` form and the
-  `?token=` deep link) is refused with 403 when the browser reports a
-  cross-site or same-site relation, so a cross-site image, link, or navigation
-  can no longer pin a victim's browser into the presenter's session. The
-  documented token URL, a same-origin form, and a same-origin link still sign
-  in. The CSRF token is accepted from the request body or the `X-CSRF-Token`
-  header only, so a `?csrf=` query value no longer validates and the token can
-  no longer be captured through access logs, bookmarks, proxies, or `Referer`
-  chains.
-
-- The viewer bounds what an unauthenticated caller can make it hold. Every
-  request body is capped (4 KiB) in one middleware all routes inherit, and a
-  larger body — including a `multipart/form-data` one, which the standard
-  library would otherwise keep in memory and spill to temp files — is refused
-  `413` before it is parsed, so no oversized login mints a session. The viewer's
-  HTTP server now carries `ReadTimeout`, `WriteTimeout` and `IdleTimeout` beside
-  `ReadHeaderTimeout`, so a client that completes the header phase can no longer
-  hold the connection and its goroutine open by dribbling or stalling a body.
-
-- `cas/codec/cbor` can no longer be made to terminate the process by a stored
-  payload. Its decoder bounded neither its recursion nor the stack, so a payload
-  of nested single-element arrays — under 2 MiB, and a legitimate `Put` because a
-  store addresses whatever bytes it is handed — exhausted the goroutine stack and
-  aborted the process with `fatal error: stack overflow`. That is a runtime
-  abort, not a panic, so a caller's `recover()` could not catch it and one
-  hostile object took down the whole program instead of one request. Nesting is
-  now bounded at `cbor.MaxDepth` (128 levels) and reported as the new
-  `cbor.ErrTooDeep`, distinct from a truncation error; a payload at or below the
-  limit decodes exactly as before.
-- `cask stats` and `cask meta` no longer print a stored envelope type name or codec identity tag verbatim: every header-derived string is rendered through one helper that replaces C0/C1 control characters, so an object authored by someone else can no longer rewrite the operator's terminal or forge a census line (go-cask#354).
-- A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune` and `cask web` report the directory they actually act on, so a link planted at the store path can no longer redirect a destructive sweep silently (go-cask#353).
-- `cas/codec/gob` documents the bound on decode recursion: it follows the destination type, so a payload cannot invent nesting, and the one payload-only path is capped by the standard library at 10 000 levels. A **recursive** destination type must not be decoded from untrusted bytes — a crafted, type-compatible chain of non-nil pointers exhausts the stack — and gob cannot impose a ceiling on a depth the caller's type defines (go-cask#453).
+- The backend write path refuses a symbolic link planted inside a store base: `fs.Backend.Put` on the
+  way to an object, `packfs` at `<base>/packs`, `<base>/loose` or `<base>/packs/current.pack`; each
+  refusal is `fs.ErrUnsafeTarget` and leaves the link's target untouched.
+- The pack index scratch file is an exclusive random `index-*.tmp` per rewrite, not the fixed
+  `index.json.tmp`.
+- `cas/bloom/persistent` checksums the index key in its file header: the seven reserved bytes carry
+  a checksum scheme byte plus a six-byte CRC-64/ECMA over `kind || key`, and a header whose scheme or
+  checksum does not verify is rebuilt, never indexed.
+- `Filter.Rebuilt()` reports that a reopen discarded the stored bits (missing, truncated,
+  foreign-kind, failed-checksum, or a file the call just created).
+- **On-disk layout change:** a `cas/bloom/persistent` file from an earlier build has zero reserved
+  bytes and is rebuilt on first open — a lost hint set, never a wrong answer — then rewritten.
+- The viewer's login token is read from the `POST /viewer/login` form body only; `?token=` no longer
+  authenticates; the `GET /viewer/?token=` deep link is unchanged.
+- An authenticated viewer session cannot monopolize the server: `POST /viewer/objects/verify` runs one
+  sweep at a time, a session may start three and then one per 5 seconds, and past that it answers `429`
+  with `Retry-After`.
+- A viewer bound to a non-loopback address never displays its generated startup token or a `http://`
+  login link, whatever `-show-token` asks for; it prints the bind and the `https://` expectation.
+- The login deep link percent-encodes its token, and the Windows launch opens the URL through
+  `rundll32.exe url.dll,FileProtocolHandler`; a token holding `&`, `#`, `%` or a space now logs in.
+- The viewer's HTTP responses: a throttled login answers `429` with the enforced `Retry-After`, a
+  rejected token `401` with no body, and every response `Cache-Control: no-store` and `Vary: Cookie`.
+- `cask web` writes no startup token to the process log at any level; an unattended deployment supplies
+  it with `-token-file <path>` or `CASK_VIEWER_TOKEN`.
+- A token-bearing login (`POST /viewer/login`, the `?token=` deep link) is refused with `403` on a
+  cross-site or same-site relation; the CSRF token comes from the body or `X-CSRF-Token` only.
+- Every viewer request body is capped at 4 KiB in one middleware all routes inherit — a larger body,
+  `multipart/form-data` included, is refused `413` before it is parsed.
+- `cas/codec/cbor` bounds decode nesting at `cbor.MaxDepth` (128 levels) and reports
+  `cbor.ErrTooDeep`, distinct from a truncation error; nested single-element arrays could exhaust the
+  stack and abort the process with `fatal error: stack overflow`.
+- `cask stats` and `cask meta` replace C0/C1 control characters in every header-derived string, so a
+  stored object cannot rewrite the operator's terminal or forge a census line.
+- A symbolic link at `-store` is resolved once when the store is opened, and `clean`, `gc`, `prune`
+  and `cask web` report the directory they act on, so a planted link cannot redirect a sweep.
+- `cas/codec/gob` documents the bound on decode recursion: the one payload-only path is capped by the
+  standard library at 10 000 levels, so a **recursive** destination type must not be decoded from
+  untrusted bytes.
 
 ## [v1.6.5] - 2026-09-22
 
 ### Added
 
-- Viewer reference state now identifies **Head** objects: reachable objects
-  with no inbound references (the entry point of a reachable subtree), shown
-  with a distinct blue pill and `reach=head` filter.
+- Viewer reference state **Head**: reachable objects with no inbound references (the entry point of
+  a reachable subtree), a blue pill, `reach=head` filter.
 
 ### Changed
 
-- Viewer status pills now carry a translucent light border, so a pill never
-  blends into a same-colored row background (hover or selection).
+- Viewer status pills carry a translucent light border.
 
 ### Fixed
 
-- The deterministic preview graph's Detached classification now matches its
-  actual structure: only the last object in each eight-object block is truly
-  detached (no later sibling references it back); the two ordinals previously
-  misclassified as Detached are orphaned-with-inbound instead. The block's
-  root ordinal is now also a Head candidate.
+- Preview graph Detached classification: only the last object in each eight-object block is
+  detached; the two ordinals misclassified as Detached are orphaned-with-inbound; a block's root
+  ordinal is also a Head candidate.
 
 ## [v1.6.4] - 2026-09-22
 
 ### Added
 
-- Viewer reference state now identifies **Detached** objects: orphaned objects
-  with no inbound references, shown with a distinct violet pill and filter.
+- Viewer reference state **Detached**: orphaned objects with no inbound references, a violet pill and
+  filter.
 
 ### Changed
 
-- Viewer status pills use semibold weight and darker per-state text colors
-  for improved contrast against their tinted backgrounds.
-- Viewer type scale increased roughly 10% (UI text, labels, monospace data,
-  brand text, and search icon) for improved legibility.
+- Viewer status pills: semibold weight, darker per-state text colours.
+- Viewer type scale up roughly 10%.
 
 ### Fixed
 
-- Opening the viewer on an empty store no longer fails while preview graph
-  metadata is unavailable.
-- Pack storage now supports digest widths beyond SHA-256 and rejects truncated
-  payload records instead of returning zero-padded data.
-- In-memory snapshot restore now rejects trailing data.
+- Opening the viewer on an empty store no longer fails while preview graph metadata is unavailable.
+- Pack storage supports digest widths beyond SHA-256 and rejects truncated payload records.
+- In-memory snapshot restore rejects trailing data.
 - Pack manifests reject unsafe file locations and malformed record bounds.
 - Long filesystem maintenance scans respond promptly to context cancellation.
 - Typed reads and integrity verification report backend close failures.
 - Snapshot imports avoid attacker-controlled up-front map allocation.
-- CLI maintenance commands reject negative retention ages, `verify` rejects
-  extra operands, and viewer startup errors return documented exit codes.
+- CLI maintenance commands reject negative retention ages; `verify` rejects extra operands; viewer
+  startup errors return documented exit codes.
 
 ## [v1.6.3] - 2026-09-22
 
 ### Changed
 
-- Viewer object-list rendering now scales with visible rows for the default
-  hash-ordered view, avoiding per-object formatting and sorting work for
-  large stores.
-- Added opt-in viewer scale benchmarks for 100 through 100,000 stored objects.
+- Viewer object-list rendering scales with visible rows for the default hash-ordered view.
 
 ## [v1.6.2] - 2026-09-22
 
 ### Changed
 
-- Refined the embedded viewer into a denser VS Code-style workbench with flat
-  docked panels, compact type and table rhythm, quieter inspector/status
-  presentation, and consistent interactive states.
+- Viewer: denser VS Code-style workbench with flat docked panels and compact type and table rhythm.
 
 ## [v1.6.1] - 2026-09-22
 
 ### Changed
 
-- Viewer object browsing reuses bounded metadata snapshots, reducing repeated
-  filesystem scans during filtering, sorting, pagination, and htmx refreshes.
-- Viewer verification reports the mismatched digest from its existing hash pass
-  instead of reading corrupt objects a second time.
+- Viewer object browsing reuses bounded metadata snapshots, reducing repeated filesystem scans.
+- Viewer verification reports the mismatched digest from its existing hash pass.
 
 ## [v1.6.0] - 2026-09-22
 
 ### Added
 
-- `cask web` accepts `-hash-algo sha256|sha512|sha512_256`; the selected
-  algorithm is shown in object metadata.
+- `cask web` accepts `-hash-algo sha256|sha512|sha512_256`; the selected algorithm is shown in object
+  metadata.
 
 ### Changed
 
-- Viewer digest parsing and verification use the configured `cas.Hasher`
-  instead of assuming SHA-256.
-- Viewer object routes use `/dump` for the HTML byte dump and `/verify` for
-  bulk verification.
-- Added a subtle gray separator between the object table and inspector,
-  matching the viewer's existing border system.
+- Viewer digest parsing and verification use the configured `cas.Hasher`.
+- Viewer object routes: `/dump` for the HTML byte dump, `/verify` for bulk verification.
 
 ## [v1.5.0] - 2026-09-21
 
@@ -814,30 +325,27 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Viewer object browsing, filtering, sorting, reachability, references, and
-  inspection were consolidated into one object-browser workspace.
-- Viewer metadata reads are cached for immutable objects.
-- Viewer controls and inspector layout were tightened for consistent sizing
-  and keyboard-accessible navigation.
+- Viewer object browsing, filtering, sorting, reachability, references and inspection consolidated
+  into one object-browser workspace.
+- Viewer metadata reads cached for immutable objects.
 
 ### Removed
 
-- Viewer dashboard, garbage-collection page, delete action, and custom
-  JavaScript. Destructive maintenance remains a CLI operation.
+- Viewer dashboard, garbage-collection page, delete action, and custom JavaScript; destructive
+  maintenance remains a CLI operation.
 
 ## [v1.4.6] - 2026-09-18
 
 ### Changed
 
-- Refined the published documentation site navigation, search, and responsive
-  layout.
+- Published documentation site: refined navigation, search and responsive layout.
 
 ## [v1.4.5] - 2026-09-17
 
 ### Fixed
 
 - Hardened verification and release automation.
-- Improved pack storage recovery and documentation.
+- Improved pack storage recovery.
 
 ## [v1.4.4] - 2026-09-16
 
@@ -881,34 +389,31 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Core storage is hash-algorithm agnostic through client-injected hashers.
-- Git-like repositories receive codecs explicitly and enforce object
-  invariants independently of serialization.
+- Git-like repositories receive codecs explicitly and enforce object invariants independently of
+  serialization.
 
 ## [v1.2.0] - 2026-09-10
 
 ### Added
 
-- Typed object stores, codecs, caching, graph traversal, and filesystem
-  storage capabilities.
+- Typed object stores, codecs, caching, graph traversal, and filesystem storage capabilities.
 
 ## [v1.1.0] - 2026-09-09
 
 ### Added
 
-- Initial Git-like object model and repository APIs on top of the generic CAS
-  core.
+- Initial Git-like object model and repository APIs on top of the generic CAS core.
 
 ## [v1.0.0] - 2026-09-09
 
 ### Added
 
-- First stable release of the generic, content-addressable storage core,
-  filesystem backend, typed object layer, and Git-like reference model.
+- First stable release of the generic, content-addressable storage core, filesystem backend, typed
+  object layer, and Git-like reference model.
 
 ## [v0.3.0] - 2026-09-09
 
-- Stabilized the core object, codec, backend, and repository APIs ahead of
-  the 1.0 release.
+- Stabilized the core object, codec, backend, and repository APIs ahead of the 1.0 release.
 
 ## [v0.2.0] - 2026-09-09
 
