@@ -24,7 +24,7 @@ func TestCollideSeparatesSerializationPoints(t *testing.T) {
 	lanes := []Files{
 		{Issue: "438", Name: "chore/438", Changed: Ranges{
 			"CHANGELOG.md":                    {{30, 33}},
-			"cmd/buildtool/buildtool.go":      {{205, 210}},
+			"cmd/gate/main.go":                {{205, 210}},
 			"internal/build/board/board.go":   {{1, 120}},
 			"docs/index.md":                   {{42, 42}},
 			"internal/build/policy/policy.go": {{120, 121}},
@@ -87,12 +87,12 @@ func TestCollideOrdinaryOverlaps(t *testing.T) {
 	lanes := []Files{
 		{Issue: "438", Name: "chore/438", Changed: Ranges{
 			"internal/build/board/board.go": {{1, 60}},
-			"cmd/buildtool/board.go":        {{1, 20}},
+			"cmd/gate/board.go":             {{1, 20}},
 			"assets/logo.png":               nil,
 		}},
 		{Issue: "440", Name: "chore/440", Changed: Ranges{
 			"internal/build/board/board.go": {{40, 120}},
-			"cmd/buildtool/board.go":        {{30, 40}},
+			"cmd/gate/board.go":             {{30, 40}},
 			"assets/logo.png":               nil,
 		}},
 	}
@@ -120,7 +120,7 @@ func TestCollideOrdinaryOverlaps(t *testing.T) {
 		t.Errorf("board.go lines = %v, want the intersection 40-60", colliding.Lines)
 	}
 
-	disjoint := byFile["cmd/buildtool/board.go"]
+	disjoint := byFile["cmd/gate/board.go"]
 	if len(disjoint.Lines) != 0 {
 		t.Errorf("command board.go lines = %v, want a shared file with no line collision", disjoint.Lines)
 	}

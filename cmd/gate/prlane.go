@@ -83,7 +83,7 @@ func runPRLane(args []string, out, errOut io.Writer) error {
 }
 
 // prLaneUsage is the command's own help, which is also its usage error.
-const prLaneUsage = "usage: buildtool pr-lane [claim <issue> | check <issue> | status [<issue>] [--json] | " +
+const prLaneUsage = "usage: gate pr-lane [claim <issue> | check <issue> | status [<issue>] [--json] | " +
 	"release <issue> [--force] | whoami]"
 
 // prLane is the command with its collaborators injected.
@@ -505,7 +505,7 @@ func prLaneClaim(args []string, out, errOut io.Writer, deps prLaneDeps) error {
 			return fmt.Errorf("lane #%s was claimed %s minutes ago by %s and has no pull request yet — it is inside the %d-minute claim window; wait, or release it if that session is gone",
 				issue, ageText(verdict, "some"), claimerText(verdict), window)
 		case claim.Unreadable:
-			return fmt.Errorf("lane #%s exists but its claim record cannot be read — release it deliberately with 'go run ./cmd/buildtool pr-lane release %s' if it is abandoned", issue, issue)
+			return fmt.Errorf("lane #%s exists but its claim record cannot be read — release it deliberately with 'go run ./cmd/gate pr-lane release %s' if it is abandoned", issue, issue)
 		}
 		if attempt == 1 {
 			fmt.Fprintf(errOut, "pr-lane: lane #%s is stale (%s, %s minutes old, no pull request) — taking it over\n",

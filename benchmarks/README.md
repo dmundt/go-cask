@@ -2,7 +2,7 @@
 type: Guide
 title: Benchmarks — go-cask
 description: How to run and read the go-cask benchmark suites; the package-local benchmark files are split by subsystem, while the shared support file holds the common benchmark matrix and helpers.
-version: v17
+version: v18
 ---
 
 # Benchmarks — go-cask
@@ -57,7 +57,7 @@ Run from the repo root. Benchmarks run only with `-bench`; `-run=^$` skips unit 
 Refresh the reference dump for a machine or branch:
 
 ```bash
-go run ./cmd/buildtool bench-baseline
+go run ./cmd/gate bench-baseline
 ```
 
 Runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1`; writes the capture to `benchmarks/data/archive/baseline-<UTC-stamp>.txt` (or the first-argument path). Only a deliberate run **without** `--capture-only` refreshes the committed reference `benchmarks/data/baseline.txt`, archiving the previous canonical dump under `benchmarks/data/archive/` first; `--capture-only` leaves the reference untouched. `-h`/`--help` prints usage, an unknown option exits 2. One machine's raw `go test` output (currently a Windows amd64 `i7-13800H` run, 2026-09): a comparison point, **not** a threshold, **not** a gate.
@@ -65,12 +65,12 @@ Runs `go test ./benchmarks -run=^$ -bench=. -benchmem -count=1`; writes the capt
 Compare a fresh run against it:
 
 ```bash
-go run ./cmd/buildtool bench-compare
+go run ./cmd/gate bench-compare
 ```
 
 Picks the baseline **before** capturing — the committed `benchmarks/data/baseline.txt`, else the newest file in `benchmarks/data/archive/` — then captures into `benchmarks/data/current.txt` by default and never writes the canonical reference itself, so a comparison cannot overwrite what it compares against. Pass a baseline path, or a baseline and a current path, to compare other files. Exits 1 when no baseline exists or when baseline and current resolve to the same file; warns when the two captures are byte-identical; exits 2 with the manual `diff -u` hint when `benchstat` is absent. Nothing is scheduled: a maintainer refreshes the reference by hand, on demand, on a quiet machine. The capture uses `-count=1`, so treat `benchstat` output as a coarse smoke comparison and use `-count=5` or more (§5) for a real conclusion.
 
-An ordinary Go test (`go test ./cmd/buildtool/`) asserts the commands' ownership split, driving them through injected collaborators and running no real benchmark; the gate covers it in its race suite.
+An ordinary Go test (`go test ./cmd/gate/`) asserts the commands' ownership split, driving them through injected collaborators and running no real benchmark; the gate covers it in its race suite.
 
 ## 3. Regular perf suite
 

@@ -34,7 +34,7 @@ const (
   The worktree's .git file holds an absolute path from the other toolchain, so
   git walks up to the primary checkout and the gate would test the WRONG tree.
   Fix it with the relative form, then re-run:
-      go run ./cmd/buildtool worktree remove <name> && go run ./cmd/buildtool worktree add <name> <branch>
+      go run ./cmd/gate worktree remove <name> && go run ./cmd/gate worktree add <name> <branch>
   (scripts/AGENT.md documents the same fix for a worktree created from WSL.)
 `
 	// verifyNoCompiler refuses to start the race and coverage steps, which cannot run
@@ -161,7 +161,7 @@ func verifySteps(out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	// The gate has to run in the checkout git resolves. `buildtool.sh` starts the tool from
+	// The gate has to run in the checkout git resolves. `gate.sh` starts the tool from
 	// the checkout that holds the script, so a mismatch means git walked up to a different
 	// tree; see checkTree.
 	started, err := os.Getwd()
@@ -270,7 +270,7 @@ func stepsFor(table policy.VerifyTable, scope verify.Scope) []verifyStep {
 // the gate can silently verify the wrong tree.
 //
 // A linked worktree whose `.git` link records the other toolchain's absolute path is
-// unresolvable here, so git walks up to the primary checkout: `buildtool.sh` started the
+// unresolvable here, so git walks up to the primary checkout: `gate.sh` started the
 // tool in the worktree, git reports the primary, and a gate that trusted the answer would
 // verify a tree nobody asked about. That link is what distinguishes the case from a caller
 // who simply started the tool in a subdirectory, which is its own, plainer refusal.
@@ -742,7 +742,7 @@ func coverageTargets(r *gateRun) ([]string, error) {
 // dropped its own scratch file into the tree it gates would be one more thing standing
 // between a commit and the receipt that names it.
 func tempProfile() (string, error) {
-	file, err := os.CreateTemp("", "buildtool-coverage-*.out")
+	file, err := os.CreateTemp("", "gate-coverage-*.out")
 	if err != nil {
 		return "", fmt.Errorf("creating the coverage profile: %w", err)
 	}
@@ -892,7 +892,7 @@ func fanOut(width, count int, run func(index int)) {
 	wg.Wait()
 }
 
-// envWithAll lives beside envWith in buildtool.go: one environment filter, two shapes, so
+// envWithAll lives beside envWith in main.go: one environment filter, two shapes, so
 // the cross-platform step's three variables and the scanner install's one cannot drift.
 
 // verifyFuzzTime is how long each smoke-fuzz target runs. It is a smoke, not a campaign:
@@ -986,7 +986,7 @@ func (r *gateRun) receipt() error {
 	if err := gateReceiptCommand(r.root, args, r.out, r.out, productionGateReceiptDeps()); err != nil {
 		return err
 	}
-	fmt.Fprintln(r.out, "publish it for CI with `go run ./cmd/buildtool gate-receipt publish` (the pre-push hook does this)")
+	fmt.Fprintln(r.out, "publish it for CI with `go run ./cmd/gate gate-receipt publish` (the pre-push hook does this)")
 	return nil
 }
 

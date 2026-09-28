@@ -265,7 +265,7 @@ func landLane(args []string, out, errOut io.Writer, slot *landLaneSlot) error {
 }
 
 // landLaneUsage is the command's own help, which is also its usage error.
-const landLaneUsage = "usage: buildtool land-lane [status | whoami | acquire [--force] [--takeover-dead] <label> | wait [--watch] <label> [<seconds>] | renew | release]"
+const landLaneUsage = "usage: gate land-lane [status | whoami | acquire [--force] [--takeover-dead] <label> | wait [--watch] <label> [<seconds>] | renew | release]"
 
 // landLaneStatus reports the slot and returns the status the caller reads: 0 when this
 // worktree holds it, 1 when it is free, 2 when someone else does. The verdict is on
@@ -504,7 +504,7 @@ func landLaneAcquire(args []string, slot *landLaneSlot, out, errOut io.Writer) e
 		label = args[0]
 	}
 	if label == "" {
-		return usageError{"usage: buildtool land-lane acquire [--force] [--takeover-dead] <label>"}
+		return usageError{"usage: gate land-lane acquire [--force] [--takeover-dead] <label>"}
 	}
 	if len(args) > 1 {
 		return usageError{fmt.Sprintf("unexpected extra argument: %s", args[1])}
@@ -546,7 +546,7 @@ func landLaneWait(args []string, slot *landLaneSlot, out, errOut io.Writer) erro
 		return usageError{fmt.Sprintf("unexpected extra argument: %s", args[0])}
 	}
 	if label == "" && !watch {
-		return usageError{"usage: buildtool land-lane wait [--watch] <label> [<seconds>]"}
+		return usageError{"usage: gate land-lane wait [--watch] <label> [<seconds>]"}
 	}
 
 	deadline := time.Now().Add(time.Duration(seconds) * time.Second)

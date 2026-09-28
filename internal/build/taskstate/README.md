@@ -2,7 +2,7 @@
 type: Guide
 title: taskstate — build core
 description: Which branches carry work no pull request tracks — the record the report is built from, and the two findings worth acting on.
-version: v3
+version: v4
 ---
 
 # taskstate
@@ -41,7 +41,7 @@ func Findings(branches []Branch) []Finding
 ```
 
 `internal/build/policy` carries go-cask's answers (the base ref, the listing limit); the command
-`cmd/buildtool task-status` runs the git and forge calls and renders the table.
+`cmd/gate task-status` runs the git and forge calls and renders the table.
 
 ## Testing
 

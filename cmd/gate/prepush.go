@@ -19,9 +19,9 @@ import (
 // server, which every clone and the operator can see, and a per-clone file must not be
 // able to stop a landing the server would have serialized anyway.
 const prePushAdvisory = "pre-push: note — this worktree does not hold the local advisory slot.\n" +
-	"  Not required: the lane is the pull request, and 'buildtool pr-lane status'\n" +
+	"  Not required: the lane is the pull request, and 'gate pr-lane status'\n" +
 	"  shows it. The local slot only keeps two gate runs in one clone from\n" +
-	"  overlapping, so a busy clone may still want it (buildtool land-lane acquire).\n"
+	"  overlapping, so a busy clone may still want it (gate land-lane acquire).\n"
 
 // prePushNoReceipt is the note a push gets when the gate receipt could not be published.
 // Like the advisory it is a note and never a refusal: CI falls back to running the whole
@@ -29,7 +29,7 @@ const prePushAdvisory = "pre-push: note — this worktree does not hold the loca
 // at all — the WSL shell next to a Windows signing key is that case on this host.
 const prePushNoReceipt = "pre-push: note — the gate receipt was not published for this commit, so CI will run\n" +
 	"  the whole gate again. Publish it from the toolchain that signs your commits:\n" +
-	"      go run ./cmd/buildtool gate-receipt publish\n" +
+	"      go run ./cmd/gate gate-receipt publish\n" +
 	"  (it needs gpg.format and user.signingkey; see scripts/AGENT.md)\n"
 
 // runPrePush applies the mechanical landing rules a push must satisfy.

@@ -9,7 +9,7 @@
 # CGO_ENABLED and defines nothing a caller relies on.
 #
 # It ships no rule of its own: which toolchain a checkout is worked by is the host's
-# business, and every decision the build tool makes lives in cmd/buildtool.
+# business, and every decision the build tool makes lives in cmd/gate.
 
 if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then
   if command -v powershell.exe >/dev/null 2>&1; then

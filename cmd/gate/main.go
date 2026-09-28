@@ -1,4 +1,4 @@
-// Command buildtool holds the repository's build decisions and runs its gate.
+// Command gate holds the repository's build decisions and runs its gate.
 //
 // scripts/verify.sh enforced several rules with inline bash: a `case` whose arms
 // were the dependency-layer matrix, and a comm(1) comparison for the coverage
@@ -21,9 +21,9 @@
 //
 // Usage:
 //
-//	go run ./cmd/buildtool verify
-//	go run ./cmd/buildtool layer-matrix
-//	go run ./cmd/buildtool coverage-tier
+//	go run ./cmd/gate verify
+//	go run ./cmd/gate layer-matrix
+//	go run ./cmd/gate coverage-tier
 //
 // Each exits 0 when the rule holds and non-zero when it does not, printing the
 // offending packages, so a caller can trust the status.
@@ -61,7 +61,7 @@ import (
 )
 
 // usage is the command's own help text.
-const usage = `usage: buildtool <command>
+const usage = `usage: gate <command>
 
 commands:
   verify               run the gate: formatting, module drift, build, vet, the static
@@ -156,15 +156,15 @@ func main() {
 	var status statusError
 	switch {
 	case errors.As(err, &usage):
-		fmt.Fprintf(os.Stderr, "buildtool: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gate: %v\n", err)
 		os.Exit(2)
 	case errors.As(err, &status):
 		if status.message != "" {
-			fmt.Fprintf(os.Stderr, "buildtool: %v\n", err)
+			fmt.Fprintf(os.Stderr, "gate: %v\n", err)
 		}
 		os.Exit(status.code)
 	default:
-		fmt.Fprintf(os.Stderr, "buildtool: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gate: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -414,7 +414,7 @@ func benchBaseline(args []string, out, errOut io.Writer, deps benchDeps) error {
 	table := policy.Benchmarks()
 
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "usage: buildtool bench-baseline [out-file] [--capture-only]\n\n")
+		fmt.Fprintf(w, "usage: gate bench-baseline [out-file] [--capture-only]\n\n")
 		fmt.Fprintf(w, "  out-file        where the raw capture is written; default:\n")
 		fmt.Fprintf(w, "                  %s with the current UTC stamp\n", table.ArchiveDir)
 		fmt.Fprintf(w, "  --capture-only  capture only: the committed %s is left untouched,\n", table.Canonical)
@@ -505,12 +505,12 @@ func benchCompare(args []string, out, errOut io.Writer, deps benchDeps) error {
 	table := policy.Benchmarks()
 
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "usage: buildtool bench-compare [baseline-file] [current-file]\n\n")
+		fmt.Fprintf(w, "usage: gate bench-compare [baseline-file] [current-file]\n\n")
 		fmt.Fprintf(w, "  baseline-file  reference capture; default %s, else the newest\n", table.Canonical)
 		fmt.Fprintf(w, "                 file in %s\n", table.ArchiveDir)
 		fmt.Fprintf(w, "  current-file   fresh capture; default %s\n\n", table.Current)
 		fmt.Fprintf(w, "Never writes %s; capture a new reference with\n", table.Canonical)
-		fmt.Fprintf(w, "`buildtool bench-baseline`.\n")
+		fmt.Fprintf(w, "`gate bench-baseline`.\n")
 	}
 
 	var positional []string
@@ -559,11 +559,11 @@ func benchCompare(args []string, out, errOut io.Writer, deps benchDeps) error {
 	baseline, found := bench.Baseline(explicit, canonical, archived, pathExists)
 	if !found {
 		return fmt.Errorf("no baseline found: %s does not exist and %s holds no captures\n"+
-			"  capture a reference first with: go run ./cmd/buildtool bench-baseline", canonical, table.ArchiveDir)
+			"  capture a reference first with: go run ./cmd/gate bench-baseline", canonical, table.ArchiveDir)
 	}
 	if !pathExists(baseline) {
 		return fmt.Errorf("baseline not found: %s\n"+
-			"  pass an existing capture, or generate one with: go run ./cmd/buildtool bench-baseline", baseline)
+			"  pass an existing capture, or generate one with: go run ./cmd/gate bench-baseline", baseline)
 	}
 	if worktree.SamePath(baseline, current) {
 		return fmt.Errorf("baseline and current are the same file: %s\n"+
@@ -916,7 +916,7 @@ func runDepGraph(args []string, out, errOut io.Writer) error {
 			return nil
 		}
 		return fmt.Errorf("%s is stale: the module's local package graph changed since it was generated\n"+
-			"  regenerate it with: go run ./cmd/buildtool dep-graph --write", policy.GraphDocPath)
+			"  regenerate it with: go run ./cmd/gate dep-graph --write", policy.GraphDocPath)
 	}
 
 	if exists && depgraph.Document(policy.GraphDoc(), graph, version) == string(committed) {

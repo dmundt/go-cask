@@ -8,7 +8,7 @@ package policy
 type TaskTable struct {
 	// Base is the ref a branch is measured against, and the one that decides whether its
 	// commits are landed. It is the same remote-tracking ref the task worktrees are created
-	// from, so the report and `buildtool worktree add` cannot disagree about what "ahead of
+	// from, so the report and `gate worktree add` cannot disagree about what "ahead of
 	// the base" means.
 	Base string
 	// PullRequestLimit is how many pull requests one listing may carry. A branch whose pull

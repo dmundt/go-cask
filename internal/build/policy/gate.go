@@ -4,7 +4,7 @@ package policy
 //
 // Two entry points, one contract: a developer runs the gate before a landing, and the
 // pre-push hook refuses a commit the gate did not verify. Both are shims over
-// `cmd/buildtool`, which is where the rules live.
+// `cmd/gate`, which is where the rules live.
 type GateTable struct {
 	// Verify is the entry point a developer runs, and the one CI runs.
 	Verify string

@@ -14,7 +14,7 @@ const (
 	// FooterVerifyPath is the gate's step list, which has to keep evaluating the footer.
 	// It moved out of scripts/verify.sh into the command when the step list did; the
 	// entry point that starts the command is pinned by the gate table's own test.
-	FooterVerifyPath = "cmd/buildtool/verify.go"
+	FooterVerifyPath = "cmd/gate/verify.go"
 	// FooterWorkflowPath builds and publishes the site.
 	FooterWorkflowPath = ".github/workflows/website.yml"
 	// FooterStylesPath is the site's one stylesheet.

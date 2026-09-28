@@ -40,7 +40,7 @@ branch refs/heads/main
 
 worktree D:/src/go-cask/.worktrees/wt-438
 HEAD 1111aaaa2222bbbb3333cccc4444dddd5555eeee
-branch refs/heads/chore/438-buildtool-board
+branch refs/heads/chore/438-gate-board
 
 worktree D:/src/mirror.git
 HEAD 0000000000000000000000000000000000000000
@@ -158,7 +158,7 @@ func TestParseWorktrees(t *testing.T) {
 	if entries[0].Path != "D:/src/go-cask" || entries[0].Branch != "main" {
 		t.Errorf("primary = %+v, want the main checkout", entries[0])
 	}
-	if entries[1].Branch != "chore/438-buildtool-board" {
+	if entries[1].Branch != "chore/438-gate-board" {
 		t.Errorf("lane worktree branch = %q, want the lane's branch", entries[1].Branch)
 	}
 	if !entries[2].Bare || entries[2].Branch != "" {

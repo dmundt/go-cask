@@ -2,7 +2,7 @@
 type: Specification
 title: Performance — go-cask
 description: Performance requirements and workflow for CASK — lock-free reads via atomic rename, one-pass streaming hashing, bounded allocations, scaling and object-count limits, the optional packfile backend, performance-test requirements, benchmarks and profiling.
-version: v29
+version: v30
 ---
 
 # Performance — go-cask
@@ -79,8 +79,8 @@ Benchmarks live in `benchmarks/`. Suite: `BenchmarkStorePut` (steady-state + col
 
 | Manual command | Effect |
 | --- | --- |
-| `go run ./cmd/buildtool bench-baseline` | re-captures the suite (`-count=1`), archives the raw output as `benchmarks/data/archive/baseline-<UTC-stamp>.txt`, refreshes the canonical copy unless `--capture-only` is given |
-| `go run ./cmd/buildtool bench-compare` | picks the baseline first, captures into `benchmarks/data/current.txt`, never writes the canonical reference itself, prints a `benchstat` diff when `benchstat` is installed (exit code 2 when it is not) |
+| `go run ./cmd/gate bench-baseline` | re-captures the suite (`-count=1`), archives the raw output as `benchmarks/data/archive/baseline-<UTC-stamp>.txt`, refreshes the canonical copy unless `--capture-only` is given |
+| `go run ./cmd/gate bench-compare` | picks the baseline first, captures into `benchmarks/data/current.txt`, never writes the canonical reference itself, prints a `benchstat` diff when `benchstat` is installed (exit code 2 when it is not) |
 | `go test ./benchmarks/ -bench=. -benchmem -count=5` | runs the suite on demand |
 
 - `benchmarks/data/baseline.txt` is the only committed reference — machine-specific, refreshed by hand on a quiet machine, never on a schedule, never per PR. A comparison point, not a threshold.

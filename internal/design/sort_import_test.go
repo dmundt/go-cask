@@ -29,10 +29,10 @@ const (
 // file that stops importing "sort" must be removed from the list, so an
 // exemption cannot rot into blanket permission.
 var sortAllowed = map[string]string{
-	"cmd/buildtool/buildtool.go":                  sortBuildToolReason,
-	"cmd/buildtool/prlane.go":                     sortBuildToolReason,
-	"cmd/buildtool/taskstatus.go":                 sortBuildToolReason,
-	"cmd/buildtool/worktree.go":                   sortBuildToolReason,
+	"cmd/gate/main.go":                            sortBuildToolReason,
+	"cmd/gate/prlane.go":                          sortBuildToolReason,
+	"cmd/gate/taskstatus.go":                      sortBuildToolReason,
+	"cmd/gate/worktree.go":                        sortBuildToolReason,
 	"internal/build/coverage/coverage.go":         sortBuildCheckReason,
 	"internal/build/depgraph/depgraph.go":         sortBuildCheckReason,
 	"internal/build/deps/deps.go":                 sortBuildCheckReason,

@@ -20,7 +20,7 @@ jobs:
   # on the verdict instead of on each other.
   #
   # It installs Go because the decision is Go: which of the jobs a change can
-  # affect is one table (internal/build/policy), read by `buildtool scope`, and
+  # affect is one table (internal/build/policy), read by `gate scope`, and
   # the gate asks the same command for its own scope, so the two cannot hold two
   # copies of the pattern list. It checks out full history because the decision is
   # a diff.
@@ -59,7 +59,7 @@ jobs:
             exit 0
           fi
 
-          go run ./cmd/buildtool scope --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          go run ./cmd/gate scope --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   # The gate itself, and the required `verify` context. It reads its verdicts from
   # `scope` and runs beside `security` and the platform matrix.
@@ -105,7 +105,7 @@ jobs:
           # refs/gate/* usually does not exist for a first push or a fork; that is
           # the ordinary case, not a failure.
           git fetch --no-tags --quiet origin '+refs/gate/*:refs/gate/*' || true
-          go run ./cmd/buildtool gate-receipt verify \
+          go run ./cmd/gate gate-receipt verify \
             --sha "$HEAD_SHA" \
             --tree "$(git rev-parse 'HEAD^{tree}')" \
             --base "$BASE_SHA" \
@@ -155,7 +155,7 @@ jobs:
           cache: true
 
       - name: Run govulncheck
-        run: go run ./cmd/buildtool security
+        run: go run ./cmd/gate security
 
   # Every target is cross-compiled on the one Linux runner, so the matrix spends
   # no Windows and no macOS runner. That buys the compilation gate and nothing
@@ -232,7 +232,7 @@ jobs:
 # The gate itself is not repeated when it does not have to be. `scripts/verify.sh`
 # already ran it on this host before the branch was pushed, and `.githooks/pre-push`
 # published that run as a signed receipt under `refs/gate/<head-sha>`
-# (`go run ./cmd/buildtool gate-receipt`, trust anchored in `.github/gate-signers`). The
+# (`go run ./cmd/gate gate-receipt`, trust anchored in `.github/gate-signers`). The
 # `verify` job checks that receipt against the commit it is really testing — the
 # signature, the head commit, the tree of the checked-out merge result, the base
 # and the diff hash recomputed here, the scope, and the list of checks the gate

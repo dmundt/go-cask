@@ -282,7 +282,7 @@ func Outside(files, scope []string) []string {
 // ScopeIn reads the paths an issue's body declares, in the sections a go-cask issue uses to
 // say where its change belongs: `Home`, `Scope` or `Files`. A line that is prose rather than
 // a path is skipped, so an issue that says "Home: internal/build/board" and an issue that
-// says "Scope: `cmd/buildtool/`, `docs/index.md`" both yield their paths.
+// says "Scope: `cmd/gate/`, `docs/index.md`" both yield their paths.
 //
 // Deliberately conservative: an issue whose scope cannot be read yields none, and the check
 // says so rather than passing.

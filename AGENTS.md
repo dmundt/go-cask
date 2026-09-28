@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: Repo-root router for AI agents — the session rules, plus the pointer to the owning spec (docs/index.md → cas-core, coding-guidelines, api-design, rest). Restates no rule. Auto-read by any agent honoring AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v53
+version: v54
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -22,7 +22,7 @@ Router, not manual. Read `docs/index.md` first: path → owning spec, longest ma
 
 ## Rules — this file
 
-Ceiling 6 KiB, enforced: `go run ./cmd/buildtool markdown-integrity` (`docs/AGENT.md` §2.1).
+Ceiling 6 KiB, enforced: `go run ./cmd/gate markdown-integrity` (`docs/AGENT.md` §2.1).
 
 Telegram style: fragments, tables, backticked paths. No prose, rationale, restated rule, duplicated diagram, example or inventory; a path-derived rule belongs in its owner, reached through `docs/index.md`.
 

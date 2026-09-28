@@ -1,4 +1,4 @@
-# buildtool
+# gate
 
 The entry point for the repository's build decisions: developer tooling, not the product
 CLI. It reads the repository, calls the engine in
@@ -39,12 +39,12 @@ an exit status a gate step can act on.
 | `release` | the same note, and with `--publish` the GitHub release, after the tag/tree/main guards pass |
 
 ```bash
-go run ./cmd/buildtool layer-matrix
-go run ./cmd/buildtool dep-graph --write
-go run ./cmd/buildtool release --tag v1.3.0 --dry-run
-go run ./cmd/buildtool board
-go run ./cmd/buildtool collisions
-go run ./cmd/buildtool verify-landing 438
+go run ./cmd/gate layer-matrix
+go run ./cmd/gate dep-graph --write
+go run ./cmd/gate release --tag v1.3.0 --dry-run
+go run ./cmd/gate board
+go run ./cmd/gate collisions
+go run ./cmd/gate verify-landing 438
 ```
 
 ## Exit status
@@ -85,5 +85,5 @@ step is one entry in `gateSteps`.
 
 ## Testing
 
-`go test ./cmd/buildtool/` — the target-list format the gate measures from, the invocation
+`go test ./cmd/gate/` — the target-list format the gate measures from, the invocation
 errors, help, and the `go list` output parsing.

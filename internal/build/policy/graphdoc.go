@@ -99,8 +99,8 @@ Packages that import no local package are drawn as leaves.
 ## Regenerating
 
 ` + "```bash" + `
-go run ./cmd/buildtool dep-graph --write   # rewrite this file from go list
-go run ./cmd/buildtool dep-graph           # report staleness; writes nothing
+go run ./cmd/gate dep-graph --write   # rewrite this file from go list
+go run ./cmd/gate dep-graph           # report staleness; writes nothing
 ` + "```" + `
 
 ` + "`scripts/verify.sh`" + ` runs the checking form, so a change that adds, removes or

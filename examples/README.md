@@ -25,6 +25,6 @@ read-heavy workloads justify it.
 - `cas` stays algorithm- and format-agnostic; the examples are teaching patterns, not the core.
 - Secure defaults for new work: `SHA-256` identity, JSON formats, `fs` persistence.
 
-Run all from the repo root: `go run ./cmd/buildtool run-examples`; one at a time:
+Run all from the repo root: `go run ./cmd/gate run-examples`; one at a time:
 `go run ./examples/...`, or the per-example `go run ./examples/<name>` path in its README,
 which also carries a "What it demonstrates" section.
