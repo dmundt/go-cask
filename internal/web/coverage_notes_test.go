@@ -80,17 +80,6 @@ package web
 //	snapshot, and every refusal requires a token this session already spent or
 //	a slot another operation holds — both of which mean a walk already
 //	published one.
-//
-// objects.go: prepareObjectRow's `TypeLabel = "unreadable"`
-//
-//	The row's Unreadable flag is set only by a snapshot entry whose metadata
-//	read failed. internal/index.Header reports a store's ordinary unreadable
-//	answer — cas.ErrCorrupt — as "no header" rather than as an error, and the
-//	fs backend's List skips directories, so a listed entry that reaches the
-//	row builder with the flag set does not exist for any store the viewer can
-//	be pointed at. The rendering of an unreadable row is covered separately
-//	(TestUnreadableObjectRowSaysSo builds the row directly); what is uncovered
-//	is only the path that would populate the flag.
 
 // --- Branches whose input cannot occur ---
 

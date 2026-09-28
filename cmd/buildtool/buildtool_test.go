@@ -2,12 +2,150 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/dmundt/go-cask/internal/build/policy"
 )
+
+// sourceFixture is a throwaway repository the version and Markdown-list tests ask their
+// questions of: one commit holding a versioned Markdown file at the root, a second one in a
+// subdirectory, and a file the version rule does not apply to.
+//
+// It is a real repository because the answers under test come from Git — `ls-files` and the
+// three diffs that are a change — and a fake would pin the test's idea of Git rather than
+// Git's.
+type sourceFixture struct {
+	root  string
+	git   func(args ...string) string
+	write func(rel, content string)
+}
+
+// versionedDocument renders a Markdown document carrying the frontmatter version the rule
+// reads, so a test can edit one and leave its version where it was.
+func versionedDocument(body string) string {
+	return "---\ntype: Guide\ntitle: x\ndescription: y\nversion: v1\n---\n\n# " + body + "\n"
+}
+
+func newSourceFixture(t *testing.T) *sourceFixture {
+	t.Helper()
+	root := t.TempDir()
+
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), root, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(rel, content string) {
+		t.Helper()
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("creating %s: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", rel, err)
+		}
+	}
+
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "test")
+	write("README.md", versionedDocument("the root document"))
+	write("sub/inner.md", versionedDocument("a document in a subdirectory"))
+	write("main.go", "package main\n")
+	run("add", "README.md", "sub/inner.md", "main.go")
+	run("commit", "-qm", "seed")
+
+	return &sourceFixture{root: root, git: run, write: write}
+}
+
+// TestMarkdownFilesAnswersForTheRepositoryRoot pins the scope of the tracked Markdown list: it
+// is the repository's, not the directory the caller stands in. Asked from a subdirectory the
+// listing held that directory's files alone — a confident empty answer for a consumer that
+// then checked nothing (go-cask#495).
+func TestMarkdownFilesAnswersForTheRepositoryRoot(t *testing.T) {
+	fixture := newSourceFixture(t)
+	want := []string{"README.md", "sub/inner.md"}
+
+	fromRoot, err := markdownFiles(fixture.root)
+	if err != nil {
+		t.Fatalf("markdownFiles from the root: %v", err)
+	}
+	if strings.Join(fromRoot, ",") != strings.Join(want, ",") {
+		t.Fatalf("markdownFiles from the root = %q, want %q", fromRoot, want)
+	}
+
+	t.Chdir(filepath.Join(fixture.root, "sub"))
+	fromSub, err := markdownFiles(fixture.root)
+	if err != nil {
+		t.Fatalf("markdownFiles from a subdirectory: %v", err)
+	}
+	if strings.Join(fromSub, ",") != strings.Join(want, ",") {
+		t.Errorf("markdownFiles from a subdirectory = %q, want the whole repository %q", fromSub, want)
+	}
+}
+
+// TestVersionFieldsFromASubdirectorySeesTheWholeChange pins the symptom #495 was reported for:
+// run from a subdirectory the command answered with that directory's files, so a change that
+// broke the rule at the repository root was reported as clean, exit 0.
+func TestVersionFieldsFromASubdirectorySeesTheWholeChange(t *testing.T) {
+	fixture := newSourceFixture(t)
+	base := fixture.git("rev-parse", "HEAD")
+	fixture.write("README.md", versionedDocument("the root document, edited with no bump"))
+	t.Chdir(filepath.Join(fixture.root, "sub"))
+
+	var out, errOut bytes.Buffer
+	if err := run([]string{"version-fields", "--base", base, "--all"}, &out, &errOut); err == nil {
+		t.Fatal("a versioned file edited with no bump was accepted when the caller stood in a subdirectory")
+	}
+	if !strings.Contains(out.String(), "README.md") {
+		t.Errorf("the finding printed %q, want the root document named", out.String())
+	}
+}
+
+// TestVersionFieldsAllJudgesOnlyWhatTheChangeTouched pins --all's meaning: the tracked
+// versioned files the change against --base touched. It used to mean every tracked file, so a
+// change that touched no versioned file failed on files byte-identical to the base, which is
+// not a rule any of them broke (go-cask#496).
+func TestVersionFieldsAllJudgesOnlyWhatTheChangeTouched(t *testing.T) {
+	fixture := newSourceFixture(t)
+	base := fixture.git("rev-parse", "HEAD")
+	t.Chdir(fixture.root)
+
+	// A committed change touching no versioned file: nothing to report, and no failure.
+	fixture.write("main.go", "package main\n\nfunc main() {}\n")
+	fixture.git("add", "main.go")
+	fixture.git("commit", "-qm", "touch only the Go file")
+
+	var out, errOut bytes.Buffer
+	if err := run([]string{"version-fields", "--base", base, "--all"}, &out, &errOut); err != nil {
+		t.Fatalf("--all over a change that touched no versioned file = %v, want no finding\n%s", err, errOut.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("--all over a change that touched no versioned file printed %q, want nothing", out.String())
+	}
+
+	// The same change with a versioned file edited and its version left where it was: the
+	// mode still judges it, so narrowed is not the same as blind.
+	fixture.write("sub/inner.md", versionedDocument("edited with no bump"))
+	out.Reset()
+	errOut.Reset()
+	if err := run([]string{"version-fields", "--base", base, "--all"}, &out, &errOut); err == nil {
+		t.Fatal("--all accepted an edited versioned file that did not move its version")
+	}
+	if !strings.Contains(out.String(), "sub/inner.md") {
+		t.Errorf("the finding printed %q, want the edited file named", out.String())
+	}
+}
 
 // TestWriteTargetList pins the form of the table the gate measures from, because
 // getting it wrong fails silently rather than loudly: a package without the "./"
