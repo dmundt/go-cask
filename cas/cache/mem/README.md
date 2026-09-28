@@ -1,21 +1,14 @@
 # mem — cached store wrapper
 
-Package `mem` provides the in-memory cached-store implementation used by the generic `cas` core.
+Package `mem` provides the in-memory cached store of the generic `cas` core.
 
-Its clause is `memory`, which `cas/backend/mem` also declares, so this repository imports it as `cachemem` and the backend as `backmem` (`cas/AGENT.md`); no file imports either one unaliased.
+Clause is `memory`, which `cas/backend/mem` also declares, so this repository imports it as
+`cachemem` and the backend as `backmem` (`cas/AGENT.md`); no file imports either one unaliased.
 
-It adds lazy loading and caching semantics on top of a typed store so repeated reads can reuse already-loaded values without re-decoding the object. This is a read-performance optimization, not a change to object identity.
-
-## Policy
-
-- Caches may evict or reload values without affecting the underlying store.
-- The core keeps the same content-addressed semantics regardless of cache policy.
-- The caller chooses the hash algorithm and codec; the cache does not define either.
-
-## Typical use
+Adds lazy loading and caching semantics on top of a typed store, so repeated reads reuse
+already-loaded values without re-decoding the object. Read-performance optimization, not a change to
+object identity.
 
 ```go
 cached := cachemem.New(store)
 ```
-
-This is the simplest cache wrapper and a good base for other cache policies or prefetch strategies.

@@ -2,22 +2,20 @@
 type: Guide
 title: layers (build engine) — go-cask
 description: Dependency-layer rule — which packages of a module may import which.
-version: v3
+version: v4
 ---
 
 # layers
 
 Dependency-layer rule: which packages of a module may import which.
 
-Caller states layers as a table of arms. Arm **owns** a package set; lists the module-local
-prefixes its members may import. Module-local import not allowed = violation. Import from
-outside the module (stdlib, dependency) → outside the rule, never reported.
+Caller states layers as a table of arms. An arm **owns** a package set and lists the
+module-local prefixes its members may import. Module-local import not allowed = violation.
+Import from outside the module (stdlib, dependency) → outside the rule, never reported.
 
 ## Table is the caller's
 
-No shipped table. Build one from `Layer` + the three ownership constructors, which own the
-matching semantics — the separator rule keeping a root like `…/cas` from claiming
-`…/casket`:
+No shipped table. Build one from `Layer` + the three ownership constructors:
 
 ```go
 matrix := []layers.Layer{
@@ -32,7 +30,8 @@ for _, violation := range layers.Check(module, matrix, packages) {
 ```
 
 `OwnsTree` = package + everything beneath; `OwnsExact` = one package; `OwnsAnyTree` =
-several trees. First arm claiming a package owns it → order matters when trees nest.
+several trees. First arm claiming a package owns it → order matters when trees nest. A
+constructor's separator rule keeps a root like `…/cas` from claiming `…/casket`.
 
 ## Input
 
@@ -42,7 +41,7 @@ its package may not.
 
 ## Output
 
-`Check` → `Violation` values sorted by package then import → two runs log identically. Each
+`Check` → `Violation` values sorted by package then import → two runs log identically; each
 names the offending package, its layer, the breaking import. `Owner` → the arm claiming a
 package; caller checks its table for exhaustiveness over the module's trees.
 

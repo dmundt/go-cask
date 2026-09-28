@@ -1,10 +1,10 @@
 # buildtool
 
-The entry point for the repository's build decisions: developer tooling, not the
-product CLI. It reads the repository, calls the engine in
-[`internal/build`](../../internal/build/README.md), applies go-cask's
-tables from [`internal/build/policy`](../../internal/build/policy/README.md), and
-prints a verdict with an exit status a gate step can act on.
+The entry point for the repository's build decisions: developer tooling, not the product
+CLI. It reads the repository, calls the engine in
+[`internal/build`](../../internal/build/README.md), applies go-cask's tables from
+[`internal/build/policy`](../../internal/build/policy/README.md), and prints a verdict with
+an exit status a gate step can act on.
 
 ## Commands
 
@@ -46,38 +46,37 @@ go run ./cmd/buildtool release --tag v1.3.0 --dry-run
 - `0` — the rule holds.
 - `1` — the rule failed, or a command could not run. The offending packages, paths or
   file:line positions are on stderr.
-- `2` — the invocation was wrong (a missing `--base` or `--tag`, an unknown command,
-  a stray argument), or a step cannot run at all for a reason the command documents —
-  `bench-compare` exits 2 when `benchstat` is not installed, which the helper it
-  replaced also did. The distinction matters: `2` is never a verdict on the tree.
+- `2` — the invocation was wrong (a missing `--base` or `--tag`, an unknown command, a stray
+  argument), or a step cannot run at all for a reason the command documents: `bench-compare`
+  exits 2 when `benchstat` is not installed. The distinction matters — `2` is never a verdict
+  on the tree.
 - `3` — a destructive verb did not do what it was asked: `worktree remove` refused a name
-  that is registered nowhere, a worktree with uncommitted changes, or one it could not
-  remove. The invocation was well formed and no rule failed — the removal simply did not
-  happen — so the command says so with its own status instead of a success line, and a
-  caller that scripts it can tell "nothing to remove" from "removed".
+  registered nowhere, a worktree with uncommitted changes, or one it could not remove. The
+  invocation was well formed and no rule failed, so the command says so with its own status
+  instead of a success line, and a caller that scripts it can tell "nothing to remove" from
+  "removed".
 
-A command that prints a list prints only the list on stdout, so a gate can capture it
-in a command substitution — `version-fields`, `coverage-tier --list` and
-`scope --rule` are the three that do.
+A command that prints a list prints only the list on stdout, so a gate can capture it in a
+command substitution — `version-fields`, `coverage-tier --list` and `scope --rule` are the
+three that do.
 
 ## Shape
 
-Each command is thin: it obtains what only the tool can (a `go list`, the tracked file
-list, a `git` call, the repository root), calls the engine, and reports. No rule is
-implemented here. When a command needs to decide something, that decision belongs in
-`internal/build` with a test, and go-cask's answer to it belongs in
-`internal/build/policy`.
+Each command is thin: it obtains what only the tool can (a `go list`, the tracked file list,
+a `git` call, the repository root), calls the engine, and reports. No rule is implemented
+here: a command that needs to decide something puts that decision in `internal/build` with a
+test, and go-cask's answer to it in `internal/build/policy`.
 
-`run(args, out, errOut)` is separate from `main` so the command surface can be driven
-from a test without a process.
+`run(args, out, errOut)` is separate from `main` so the command surface can be driven from a
+test without a process.
 
 `verify` is the one command that orchestrates rather than decides: it runs the steps in
-order, streams their output, and writes the gate stamp. The decisions stay out of it —
-which steps a scope runs, whether an escape hatch dropped one, and how many packages may be
-built at once are `internal/build/verify`'s — so the step list is the only thing here
-that can go stale, and a step is one entry in `gateSteps`.
+order, streams their output, and writes the gate stamp. Which steps a scope runs, whether an
+escape hatch dropped one, and how many packages may be built at once are
+`internal/build/verify`'s — so the step list is the only thing here that can go stale, and a
+step is one entry in `gateSteps`.
 
 ## Testing
 
-`go test ./cmd/buildtool/` — the target-list format the gate measures from, the
-invocation errors, help, and the `go list` output parsing.
+`go test ./cmd/buildtool/` — the target-list format the gate measures from, the invocation
+errors, help, and the `go list` output parsing.

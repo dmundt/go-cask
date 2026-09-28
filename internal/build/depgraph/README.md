@@ -2,38 +2,34 @@
 type: Guide
 title: depgraph (build engine) — go-cask
 description: Local package dependency graph; the committed Mermaid document showing it.
-version: v2
+version: v3
 ---
 
 # depgraph
 
-Derives a module's local package dependency graph; renders the committed Mermaid
-document that displays it.
-
 ## The graph
 
-`Derive` takes the module path + the package list `go list` reports; returns three
-sorted sets:
+`Derive` takes the module path + the package list `go list` reports; returns three sorted
+sets:
 
 - **nodes** — module-relative package paths;
 - **edges** — `from>to` pairs, one per local import;
-- **leaves** — packages importing no local package; filled style, so a reader need not
-  trace every arrow to find the bottom.
+- **leaves** — packages importing no local package; filled style, so a reader need not trace
+  every arrow to find the bottom.
 
-Local edges only: an import outside the module is not a node. An import target is a node
-even when its own package was not listed → an edge always has both ends. Everything
-ordered by byte value → the document is reproducible on any host.
+Local edges only: an import outside the module is not a node. An import target is a node even
+when its own package was not listed → an edge always has both ends. Everything ordered by
+byte value → the document is reproducible on any host.
 
 ## The document
 
-`Document` renders the frontmatter, the caller's introduction, the diagram and the
-caller's closing sections. Repository-specific parts = the caller's: title, description,
-generator name, **subgraphs**, prose; this package ships none of it.
+`Document` renders the frontmatter, the caller's introduction, the diagram and the caller's
+closing sections. Title, description, generator name, **subgraphs** and prose are the
+caller's; this package ships none of it.
 
-`Subgraph` = id + title + `Claims` predicate. **The first subgraph that claims a package
-owns it** → the order is the rule; trees nest (`cas/backend/fs` inside `cas`), so a table
-must test the narrower tree first and make each claim exclusive, else a package is drawn
-twice.
+`Subgraph` = id + title + `Claims` predicate. **The first subgraph that claims a package owns
+it** → the order is the rule; trees nest (`cas/backend/fs` inside `cas`), so a table must test
+the narrower tree first and make each claim exclusive, else a package is drawn twice.
 
 ```go
 doc := depgraph.Doc{Title: "Graph", Generator: "…", Subgraphs: []depgraph.Subgraph{

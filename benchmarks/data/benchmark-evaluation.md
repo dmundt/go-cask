@@ -13,8 +13,6 @@
 - [Observed deltas](#observed-deltas)
 - [Recommendation](#recommendation)
 
-This note summarizes the canonical benchmark matrix in [`store-codec-hash-roundtrip.json`](./store-codec-hash-roundtrip.json). It is intentionally concise, table-driven, and graph-friendly so it can be reviewed quickly and kept aligned with the source-of-truth JSON.
-
 ## Scope and source
 
 | Item | Value |
@@ -27,20 +25,27 @@ This note summarizes the canonical benchmark matrix in [`store-codec-hash-roundt
 | Statistic | median of 1 local run |
 | Runner note | Fresh single-run snapshot from the current local machine; not a portable cross-machine claim |
 
-The benchmark is the canonical comparison for codec + hasher performance across the same object lifecycle. The result file records the winning combination per payload size plus the full per-row matrix. The same suite also includes the maintenance verification helper family (`BenchmarkVerifyMaintenanceChecks`), which compares the cost of stronger object-address validation (`sha256`) against auxiliary checks (`crc32`, `crc64`, `adler32`) without changing the underlying storage model.
+Canonical codec + hasher comparison across one object lifecycle. Result file records the winning
+combination per payload size plus the full per-row matrix. Same suite carries the maintenance
+verification helper family (`BenchmarkVerifyMaintenanceChecks`): cost of stronger object-address
+validation (`sha256`) against auxiliary checks (`crc32`, `crc64`, `adler32`), storage model
+unchanged.
 
 ## Executive summary
 
-- Small payloads are dominated by fixed overhead. The fastest path is usually `binary` or a compact wire format, with the `sha512_256` hasher winning at the very smallest sizes.
-- Medium payloads transition to `cbor` as the best encoder; the win is strong at 1KiB–4KiB and remains consistent at 16KiB and above.
-- Large payloads saturate on a steady throughput band near ~430–480 MB/s once the dataset is large enough to amortize setup work.
-- The `gzip`/`zlib`/`flate` family remains dramatically slower because compression cost dominates the object lifecycle, especially for tiny payloads.
-- The best absolute end-to-end result in this snapshot is `cbor + sha256` at 256KiB and 1MiB, with 483.14 MB/s and 476.54 MB/s respectively.
+- Small payloads: fixed overhead dominates. Fastest path usually `binary` or a compact wire format;
+  `sha512_256` wins at the very smallest sizes.
+- Medium payloads: `cbor` best encoder. Strong at 1KiB–4KiB, consistent at 16KiB and above.
+- Large payloads: steady throughput band near ~430–480 MB/s once the dataset amortizes setup work.
+- `gzip`/`zlib`/`flate` family: dramatically slower, compression cost dominating the lifecycle,
+  especially for tiny payloads.
+- Best absolute end-to-end result: `cbor + sha256` at 256KiB and 1MiB — 483.14 MB/s and
+  476.54 MB/s.
 
 ## Winner by payload size
 
 | Payload | Winner | Codec | Hasher | Throughput | ns/op | B/op | allocs/op |
-|---|---|---|---|---:|---:|---:|---:|
+|---|---|---|---:|---:|---:|---:|---:|
 | 64B | fastest | `binary` | `sha512_256` | 30.79 MB/s | 2,079 | 2,136 | 27 |
 | 256B | fastest | `binary` | `sha512_256` | 88.96 MB/s | 2,878 | 3,528 | 32 |
 | 1KiB | fastest | `cbor` | `sha512_256` | 114.88 MB/s | 8,914 | 12,208 | 43 |
@@ -108,7 +113,7 @@ allocs/op
 
 ## Codec and hasher pattern
 
-The dominant pattern is not a single winner across all sizes; the winner shifts with payload size.
+No single winner across all sizes; the winner shifts with payload size.
 
 | Payload band | Dominant winner | Why it matters |
 |---|---|---|
@@ -117,8 +122,6 @@ The dominant pattern is not a single winner across all sizes; the winner shifts 
 | 16KiB–1MiB | `cbor + sha256` | Throughput saturates at a strong steady band; `sha256` remains the most balanced choice for the larger payload range. |
 
 ## Observed deltas
-
-These numbers are derived from the winner table and show how much the pool changes as payloads grow.
 
 | Comparison | Result |
 |---|---|
@@ -129,16 +132,15 @@ These numbers are derived from the winner table and show how much the pool chang
 | 64KiB to 256KiB increase | 1.1x throughput lift (`428.6` to `483.1` MB/s) |
 | 256KiB to 1MiB drop | 1.4% decline (`483.1` to `476.5` MB/s) |
 
-Interpretation:
-
-- Performance climbs steeply as the fixed-overhead cost is absorbed by real payload work.
-- The curve flattens after ~64KiB, which is the expected point where the hot loop becomes throughput-limited by memory and CPU rather than allocation churn.
-- The 1MiB case shows the system is already in a stable band; the difference from 256KiB is within normal noise for a local single-run measurement.
+Performance climbs steeply while fixed-overhead cost is absorbed by real payload work; flattens
+after ~64KiB, where the hot loop becomes throughput-limited by memory and CPU rather than
+allocation churn. 1MiB is already in a stable band; the difference from 256KiB is within normal
+noise for a local single-run measurement.
 
 ## Cost and allocation health
 
 | Payload | Best winner | allocs/op | bytes/op | Interpretation |
-|---|---|---:|---:|---|
+|---|---|---|---:|---:|---|
 | 64B | `binary` + `sha512_256` | 27 | 2,136 | Very low allocation churn but still with fixed setup overhead |
 | 256B | `binary` + `sha512_256` | 32 | 3,528 | Still tiny; binary remains efficient |
 | 1KiB | `cbor` + `sha512_256` | 43 | 12,208 | Allocation cost is still modest and almost flat relative to throughput |
@@ -148,7 +150,8 @@ Interpretation:
 | 256KiB | `cbor` + `sha256` | 75 | 2,751,524 | Peak bandwidth in this snapshot |
 | 1MiB | `cbor` + `sha256` | 83 | 10,511,204 | Very large dataset; still near the performance ceiling |
 
-The allocation profile grows gradually with payload size, which is the expected pattern for a codec + digest path. The major story is not a spike in allocations but the fact that `cbor` and `sha256` keep the hot path efficient across larger object sizes.
+Allocation profile grows gradually with payload size — no spike; `cbor` and `sha256` keep the hot
+path efficient across larger object sizes.
 
 ## Compression codecs: the outlier group
 
@@ -158,14 +161,18 @@ The allocation profile grows gradually with payload size, which is the expected 
 | `zlib` | worst | Similar to gzip, with slightly different cost geometry |
 | `flate` | worst | Compression still dominates total cost |
 
-The compression codecs are not useful for the canonical round-trip winner table when the goal is throughput. They are best thought of as compatibility or storage-optimization modes, not as the default high-throughput choice in this benchmark set.
+Not useful for the winner table when the goal is throughput: compatibility or
+storage-optimization modes, not the default high-throughput choice in this benchmark set.
 
 ## Recommendation
 
 1. Use `cbor + sha256` as the default comparison benchmark for larger object sizes on this repo.
-2. Use `binary + sha512_256` for tiny payloads when reducing fixed overhead matters more than cross-language compatibility.
-3. Keep compression codecs out of the default decision path unless the application explicitly values size reduction over throughput.
-4. Treat this as a local benchmark snapshot. Re-run with `-count=5` before using it as a release-quality performance claim.
+2. Use `binary + sha512_256` for tiny payloads when reducing fixed overhead matters more than
+   cross-language compatibility.
+3. Keep compression codecs out of the default decision path unless the application explicitly
+   values size reduction over throughput.
+4. Treat this as a local benchmark snapshot. Re-run with `-count=5` before using it as a
+   release-quality performance claim.
 
 ## Best-fit summary bar
 
@@ -175,4 +182,5 @@ Best end-to-end default for this local snapshot:
 - 1KiB–1MiB: cbor + sha256
 ```
 
-This is a practical rule of thumb rather than a universal law. The real benchmark source remains the JSON matrix, which is the source of truth for any future comparison.
+Rule of thumb, not a universal law. `store-codec-hash-roundtrip.json` stays the source of truth for
+any future comparison.

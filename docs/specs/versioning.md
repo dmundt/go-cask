@@ -2,123 +2,155 @@
 type: Specification
 title: Versioning — go-cask
 description: How the go-cask library is versioned with Git — semantic versioning, Go module version rules (v2+ path suffix), tags, branches, changelog, release notes, and the release process; clearly distinct from HTTP API versioning and instruction-document versions.
-version: v21
+version: v22
 ---
 
 # Versioning — go-cask
 
-How the `cas` library (and the `gitlike/` reference library) is versioned and released through Git. The stable surface is frozen at `v1.0.0`; the current line is **`v1.3.0`** (pre-release tags `v0.1.0-alpha.1` … `v0.3.0` and `v1.0.0`–`v1.2.0` all shipped). Related: `library-design.md` §5 (the compatibility policy this implements), `defaults.md` §7 (Go baseline), `AGENT.md` §3 (document versions — a different thing, §6).
+Semver Git tags for `cas` and the `gitlike/` reference library. Stable surface frozen at `v1.0.0`;
+current line **`v1.3.0`**; shipped `v0.1.0-alpha.1` … `v0.3.0`, `v1.0.0`–`v1.2.0`. Related:
+`library-design.md` §1/§5 (compatibility policy), `defaults.md` §7 (Go baseline), `AGENT.md` §3 (doc
+versions — different, §6).
+
 ## 1. Model (semantic versioning)
 
-Library versions are `MAJOR.MINOR.PATCH` (semver), applied as Git tags.
+`MAJOR.MINOR.PATCH` (semver) as Git tags.
 
 | Bump | Trigger |
 |---|---|
-| MAJOR | Any breaking change to the stable surface (cas-core §7.1) — removed/renamed identifiers, changed semantics, breaking default changes |
-| MINOR | Additive features (new identifiers, new options, new backends) — backward compatible |
-| PATCH | Bug fixes and behavior corrections within the same contract |
+| MAJOR | breaking change to the stable surface (cas-core §7.1): removed/renamed identifiers, changed semantics/defaults |
+| MINOR | additive features (identifiers, options, backends); backward compatible |
+| PATCH | bug fixes and behavior corrections, same contract |
 
-- The stable surface and compatibility rules come from `library-design.md` §1/§5 — this doc only turns them into Git mechanics.
-- **Ratified exception (v1.2.0):** one breaking change shipped inside the `v1` line — `cas.Hash` went from an interface to a concrete value type, deleting `cas.HashRef`/`NewHashRef`/`Ref` before any of them were released, and hash JSON rendering moved out of the core into the JSON codec (`cas/codec/json`'s `jsoncodec.Hash` field type — itself removed again in the `v1.3.0` cycle, below), so `cas` no longer imports `encoding/json`. Accepted because the surface was weeks old with negligible adoption, the break is compile-time only (`h == nil` → `h.IsZero()`, custom `Hash` implementations, `jsoncodec.Hash` reference fields), and the on-disk format is unchanged. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). First of the three recorded first-cycle exceptions; beyond them, every breaking change needs a MAJOR with the `/v2` mechanics in §2.
-- **Ratified exception (v1.3.0; unreleased when ratified): the digest change.** The address type is now `cas.Digest` — raw digest bytes whose zero value is the absent reference, rendered as one lowercase-hex string — and the core names no hash algorithm: the client injects a `cas.Hasher` (`cas/hash/sha256` ships go-cask's default). `cas.Hash`, `HashBytes`, `ParseHash`, `NewHash`, `CheckHash`, the core constructor `cas.NewHasher`, `cas.SHA256` and the JSON codec's `jsoncodec.Hash` field type are gone (the client-side `sha256.NewHasher()` still ships); `cas.New`/`gitlike.NewRepository` take the hasher. Accepted on the same first-cycle grounds, but unlike the earlier one it **changes stored bytes and the on-disk layout**: object type names stay `@1`, yet reference payloads went from `"sha256:hexdigest"` to bare hex, and `<base>/sha256/…` became `<base>/…`. A reference-bearing object written by the previous build (every tree, commit and tag) therefore cannot be read by the new one: `Get`/`Verify` return `ErrNotFound` for the old digests (the path moved) while `List`/`Stats` still report them (cas-core §4.4), and one copied to its canonical path fails to decode with `ErrCorrupt`: strict hex parsing rejects the legacy prefix. An object with no reference fields — a blob — still decodes (cas-core §4.12). A deliberate loud break (operations §5) with no migration tool and no `@2` type. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core). The same exception covers the runtime algorithm registry removed immediately before it in this cycle (`RegisterHash`/`LookupHash`/`LookupStreamHash`/`HashFunc`, the `algo` parameter of `cas.New`/`HashBytes`/`NewHasher`/`NewHash`/`gitlike.NewRepository`, and the CLI/API algorithm selectors): a compile-time-only break on the same seam, accepted on the same grounds. Together with the `v1.2.0` concrete-`Hash` change these are the library's recorded breaking changes.
-- **Ratified exception (v1.3.0; unreleased when ratified): the gitlike codec/invariant change.** `gitlike.NewRepository(raw, hasher, codecs)` now takes the caller's `gitlike.Codecs` set (`Blob`/`Tree`/`Commit`/`Tag`), so the reference model names no wire format and `package gitlike` imports no codec package; `gitlike.Commit.MarshalJSON`/`UnmarshalJSON` are gone, their required-tree rule now expressed as `Commit.Validate()` and enforced by the core (`cas.Validator`, cas-core §4.7/§4.8). Accepted because the break is **confined to the `gitlike` reference layer**, explicitly NOT part of the stable `cas` surface (library-design §1) — `cas` itself only gains an optional contract (`Validator`) plus stricter behavior on paths that were previously undefined (a nil object, an invariant-violating object written unchecked) — and because the rule it fixes was a latent codec-coupling bug (a gob-backed repository accepted and returned a tree-less commit). Stored JSON payloads are unchanged, so addresses are stable within this model. It MUST carry a `BREAKING CHANGE:` footer and a migration note (CHANGELOG + cas-core §4.12). This is the third and final recorded first-cycle exception: **any further breaking change follows the ordinary rule again** — a MAJOR with the `/v2` mechanics in §2.
-- **Release of this cycle: `v1.3.0`.** Three breaking changes ship together as one MINOR that carries the ratified exceptions above — the registry removal, the digest change and the gitlike codec/invariant change — each with the `BREAKING CHANGE` footer and migration note §1 requires. The registry exception folds into the digest bullet above.
-- **Pre-release policy:** breaking changes are allowed in `v0.x.y` minor bumps (Go convention). The project may start at `v0.1.0` and reach `v1.0.0` once the stable surface freezes, or go straight to `v1.0.0`. **Decision: start at `v0.1.0`** — first public tag is the pre-release `v0.1.0-alpha.1`, then further pre-releases (`-alpha.N`, `-beta.N`, `-rc.N`) and `v0.1.0`, then `v1.0.0` when cas-core §7.1 is frozen. Pre-release tags sort below their final release (`v0.1.0-alpha.1` < `v0.1.0`) and use the same annotated-tag mechanics (§3, §5).
+**Ratified exceptions — the only `v1`-line breaking changes.**
+
+| Ver | Change | Ratified because | Breaks |
+|---|---|---|---|
+| `v1.2.0` | `cas.Hash` interface → concrete value; `cas.HashRef`/`NewHashRef`/`Ref` deleted pre-release; JSON rendering → `cas/codec/json` (`jsoncodec.Hash` field type, gone again in `v1.3.0`); `cas` drops `encoding/json` | Weeks-old surface, negligible adoption; compile-time-only; format unchanged | `h == nil` → `h.IsZero()`, custom `Hash` implementations, `jsoncodec.Hash` reference fields |
+| `v1.3.0` (unreleased when ratified) | **Digest change.** Address `cas.Digest`: raw digest bytes, zero = absent, lowercase-hex string; no core algorithm — client injects `cas.Hasher` (`cas/hash/sha256` = default). Gone: `cas.Hash`, `HashBytes`, `ParseHash`, `NewHash`, `CheckHash`, `cas.NewHasher`, `cas.SHA256`, `jsoncodec.Hash` field type (`sha256.NewHasher()` ships); `cas.New`/`gitlike.NewRepository` take the hasher. Same exception, runtime registry removed earlier this cycle (`RegisterHash`/`LookupHash`/`LookupStreamHash`/`HashFunc`, `algo` parameter of `cas.New`/`HashBytes`/`NewHasher`/`NewHash`/`gitlike.NewRepository`, CLI/API selectors) — compile-time-only, same seam | First-cycle grounds | **Stored bytes, on-disk layout:** type names stay `@1`; payloads `"sha256:hexdigest"` → bare hex; `<base>/sha256/…` → `<base>/…`. Prior-build reference object (tree, commit, tag) unreadable: `Get`/`Verify` → `ErrNotFound` (path moved), `List`/`Stats` still report it (cas-core §4.4); canonical-path copy → `ErrCorrupt` (strict hex rejects legacy prefix). Blob (no reference fields) decodes (cas-core §4.12). Deliberate loud break (operations §5): no migration tool, no `@2` type |
+| `v1.3.0` (unreleased when ratified) | **gitlike codec/invariant change.** `gitlike.NewRepository(raw, hasher, codecs)` takes the caller's `gitlike.Codecs` (`Blob`/`Tree`/`Commit`/`Tag`): model names no wire format, `package gitlike` imports no codec; `gitlike.Commit.MarshalJSON`/`UnmarshalJSON` gone, required-tree rule now `Commit.Validate()`, core-enforced (`cas.Validator`, cas-core §4.7/§4.8) | Confined to the `gitlike` layer, NOT the stable `cas` surface (library-design §1); `cas` gains an optional contract (`Validator`) and stricter behavior on previously undefined paths (nil object, invariant-violating object written unchecked); fixes a latent codec-coupling bug (gob-backed repo accepted a tree-less commit) | `gitlike` callers; stored JSON unchanged, addresses stable |
+
+- All three MUST carry a `BREAKING CHANGE:` footer and migration note (CHANGELOG + cas-core; gitlike cites §4.12).
+- Three first-cycle exceptions, no more: further breaks need a MAJOR (`/v2` mechanics, §2).
+- **Release of this cycle: `v1.3.0`** — one MINOR carrying all three.
+- **Pre-release policy:** breaking changes allowed in `v0.x.y` minor bumps (Go convention). **Decision: `v0.1.0` first** — public tag `v0.1.0-alpha.1`, then `-alpha.N`/`-beta.N`/`-rc.N` and `v0.1.0`, then `v1.0.0` once cas-core §7.1 freezes. Pre-releases sort below their final release (`v0.1.0-alpha.1` < `v0.1.0`); annotated-tag mechanics (§3, §5).
 
 ## 2. Go module versioning rules
 
-- Module path: `github.com/dmundt/go-cask`; core in `cas/` subpackage (`.../go-cask/cas`); the `gitlike/` reference library (`.../go-cask/gitlike`).
-- **v0/v1:** no path suffix. Tags `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, …
-- **v2+:** Go REQUIRES the major in the module path — `github.com/dmundt/go-cask/v2` (tags become `v2.0.0`, …). Layout: keep both majors in one repo by mirroring the library under `cas/v2/` (its `go.mod` declares the `/v2` path), so v1 and v2 consumers coexist without a fork. `gitlike` follows the core's major.
-- **Untagged commits:** consumers get a Go **pseudo-version** (`v1.2.3-0.<timestamp>-<commit>`) automatically — no action needed; tags are still the contract.
-- `go.mod`: `go 1.27` toolchain; library baseline Go 1.24+ (the `omitzero` JSON tag floor).
-- Tags MUST be on the module root commit (a wrong-commit tag breaks resolution).
+| Topic | Rule |
+|---|---|
+| Module path | `github.com/dmundt/go-cask`; core `cas/` (`.../go-cask/cas`); `gitlike/` (`.../go-cask/gitlike`) |
+| v0/v1 | no path suffix; tags `v0.1.0-alpha.1`, `v0.1.0`, `v1.0.0`, … |
+| v2+ | Go REQUIRES the major in the module path — `github.com/dmundt/go-cask/v2` (`v2.0.0`, …) |
+| Both majors, one repo | mirror under `cas/v2/` (`go.mod` declares `/v2`); v1 and v2 consumers coexist, no fork; `gitlike` follows the core major |
+| Untagged commits | Go **pseudo-version** `v1.2.3-0.<timestamp>-<commit>`, automatic; tags still the contract |
+| `go.mod` | `go 1.27` toolchain; baseline Go 1.24+ (`omitzero` JSON tag floor) |
+| Tag placement | tags MUST be on the module root commit (wrong-commit tag breaks resolution) |
 
 ## 3. Git mechanics
 
-- **Tags:** annotated (`git tag -a v0.1.0-alpha.1 -m "v0.1.0-alpha.1"`), pushed with `git push --tags`. Immutable — never move, delete, or re-release a version with different content; if a release is broken, ship `vX.Y.Z+1` (PATCH), never re-tag.
-- **Branches:** full rules in `branch-naming.md`; essentials: `main` = default dev branch, version tags land here; `release/vX.Y` = created when a minor ships and still needs maintenance, PATCH releases tagged there; `hotfix/…` = short-lived, merged to `main` and the open release branch.
-- No mutable `latest` tags (a Docker pattern, not a library pattern).
+| Topic | Rule |
+|---|---|
+| Tags | annotated (`git tag -a v0.1.0-alpha.1 -m "v0.1.0-alpha.1"`), pushed with `git push --tags` |
+| Immutability | never move, delete, or re-release a version with different content; broken release ships `vX.Y.Z+1` (PATCH), never a re-tag |
+| Branches | `branch-naming.md` owns the rules; `main` = default dev branch, version tags land here; `release/vX.Y` = created when a minor ships and needs maintenance, PATCH releases tagged there; `hotfix/…` = short-lived, merged to `main` and the release branch |
+| `latest` tags | none (a Docker pattern, not a library pattern) |
 
 ## 4. Commit and changelog conventions
 
-- **Commits:** Conventional Commits — `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `chore:`. A breaking change MUST add a `BREAKING CHANGE:` footer → MAJOR. These types drive the bump decision (§5).
-- **CHANGELOG.md** (keep-a-changelog, repo root): `## [Unreleased]` collects changes between releases; on release it becomes `## [vX.Y.Z] - <date>` and a new empty `Unreleased` is opened; note breaking changes prominently.
-- **The changelog is a lean, user-facing record, not a development diary.** One `Unreleased` section and one section per tagged release; record only notable changes that affect library consumers, CLI users, operators, or the viewer's behavior and security.
-  - Group by `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`, and only where the group holds a notable entry — never create an empty heading.
-  - Combine related changes into one clear bullet when they form one user-facing capability.
-  - Describe outcome and user impact, not implementation history, review discussion, or individual commits.
-  - Omit test-only work, coverage changes, routine CI or dependency maintenance, internal refactors with no observable behavior change, formatting, release preparation, and temporary fixes.
-  - Update `CHANGELOG.md` before the commit for every notable user-visible change; add no entry for a change that is purely internal or temporary.
-  - Before a release, move that release's finalized entries from `Unreleased` into the versioned section and preserve the existing compare-link format.
-- **GitHub release notes mirror the changelog.** They MUST reproduce the corresponding user-facing `CHANGELOG.md` section with the same concise scope, ignore what the changelog ignored, and end with a `Full Changelog:` link to the tag comparison; correct older published notes that still carry temporary or trivial material. Render them with `go run ./cmd/buildtool release` rather than by hand (`scripts/AGENT.md`, "Releasing").
+- **Commits:** Conventional Commits — `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `chore:`; a breaking change MUST add a `BREAKING CHANGE:` footer → MAJOR; types drive the bump (§5).
+
+**CHANGELOG.md** (keep-a-changelog, root):
+
+| Rule | Detail |
+|---|---|
+| Scope | User-facing, not a development diary; notable changes only — consumers, CLI users, operators, viewer behavior/security |
+| `## [Unreleased]` | One `Unreleased` section plus one per tagged release; collects changes between releases, becomes `## [vX.Y.Z] - <date>` on release, new empty `Unreleased` opens; breaking changes prominent |
+| Grouping | `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`, only where notable — no empty heading |
+| Combining | Related changes forming one capability → one bullet |
+| Wording | Outcome and user impact, not implementation history or commit list |
+| Omit | Test-only work, coverage, routine CI or dependency maintenance, no-behavior-change refactors, formatting, release prep, temporary fixes |
+| Timing | Update `CHANGELOG.md` before the commit for notable user-visible changes; none for internal/temporary ones |
+| Release move | Before a release, move finalized entries from `Unreleased` into the versioned section; keep the compare-link format |
+
+**GitHub release notes** mirror the changelog:
+
+| Rule | Detail |
+|---|---|
+| Mirror | MUST reproduce the corresponding user-facing `CHANGELOG.md` section, same concise scope |
+| Ignore | What the changelog ignored |
+| Ending | A `Full Changelog:` link to the tag comparison |
+| Older notes | Correct published notes still carrying temporary or trivial material |
+| Tool | Render with `go run ./cmd/buildtool release`, not by hand (`scripts/AGENT.md`, "Releasing") |
 
 ## 5. Release process
 
-1. Decide the bump from commits since the last tag (§4): any `BREAKING CHANGE` → MAJOR; new features → MINOR; fixes only → PATCH. Pre-releases use the version of the release they precede (`v0.1.0-alpha.1`, `v0.1.0-beta.1`, …).
-2. Verify on `main`: `gofmt -l .` clean, `go vet ./...`, `go test -race ./...`, and the benchmark suite reviewed against performance §5/§11 (deliberately **no** CI gate and no `benchstat` gate — performance §5; `benchmarks/data/baseline.txt` is a committed, machine-specific reference dump refreshed by hand, not a threshold).
-3. Update CHANGELOG.md (move `Unreleased` → the new version).
-4. Tag `git tag -a vX.Y.Z -m "vX.Y.Z"` on the module root commit; push branch + tag.
-5. (v2+ only) update the module path to `…/v2`, publish the `cas/v2/` subtree, tag `v2.X.Y`.
-6. Create `release/vX.Y` only if the minor needs future maintenance.
+| # | Step |
+|---|---|
+| 1 | Bump from commits since the last tag (§4): `BREAKING CHANGE` → MAJOR; features → MINOR; fixes → PATCH. Pre-releases use the version they precede (`v0.1.0-alpha.1`, `v0.1.0-beta.1`, …) |
+| 2 | Verify on `main`: `gofmt -l .` clean, `go vet ./...`, `go test -race ./...`; benchmarks reviewed against performance §5/§11 (deliberately **no** CI or `benchstat` gate — performance §5; `benchmarks/data/baseline.txt` a committed, machine-specific dump refreshed by hand, not a threshold) |
+| 3 | Update CHANGELOG.md (move `Unreleased` → the new version) |
+| 4 | Tag `git tag -a vX.Y.Z -m "vX.Y.Z"` on the module root commit; push branch + tag |
+| 5 | (v2+ only) module path → `…/v2`, publish `cas/v2/`, tag `v2.X.Y` |
+| 6 | Create `release/vX.Y` only if the minor needs future maintenance |
 
-Pre-release tags (alpha/beta/rc) follow the same process — annotated, immutable, on the module root commit — each with its own CHANGELOG section. The process runs per tag, not per final version only.
+- Pre-release tags (alpha/beta/rc): same process per tag, own CHANGELOG section.
 
 ## 6. v1.0.0 Definition of Done
 
 Every item MUST be satisfied before the first stable release.
 
 ### 6.1 Stable surface freeze
-- [x] cas-core §7.1 stable surface enumerated; renames/breaking changes closed
-- [x] Address naming: `cas.Digest` — raw digest bytes, one lowercase-hex text form; the earlier `Hash` (`algo:hexdigest`) name is gone
-- [x] Fan-out file-name style: full-hash names only; Git-remainder option rejected
-- [x] Hash algorithm: none named by the core — the client injects a `cas.Hasher`, and go-cask's own clients wire `sha256` (`cas/hash/sha256`); the runtime registry was dropped earlier
-- [x] GC concurrency: writers lock-free, maintenance sweeps exclusive + grace-gated (`--min-age 1h` default)
+- [x] cas-core §7.1 surface enumerated; renames/breaks closed
+- [x] Address `cas.Digest`: raw digest bytes, one lowercase-hex text form; `Hash` (`algo:hexdigest`) gone
+- [x] Fan-out file names: full-hash only; Git-remainder rejected
+- [x] Hash algorithm: none in the core; clients inject a `cas.Hasher`, go-cask wire `sha256` (`cas/hash/sha256`); registry dropped earlier
+- [x] GC concurrency: writers lock-free; sweeps exclusive + grace-gated (`--min-age 1h` default)
 - [x] Lean-core export budget re-baselined to ~40 (library-design v10)
-- [x] Library baseline declared Go 1.24 (toolchain 1.27; `omitzero` JSON tags)
+- [x] Library baseline Go 1.24 (toolchain 1.27; `omitzero` JSON tags)
 
 ### 6.2 Release mechanics
-- [x] `v0.1.0-alpha.1` and `v0.1.0-alpha.2` tags exist
-- [x] `v0.1.0` (first non-prerelease) tagged before `v1.0.0`
-- [x] CHANGELOG captures all changes since the last tag
+- [x] `v0.1.0-alpha.1`, `v0.1.0-alpha.2` tags exist
+- [x] `v0.1.0` (first non-prerelease) before `v1.0.0`
+- [x] CHANGELOG covers all changes since the last tag
 - [x] `gofmt -l .` clean, `go vet ./...`, `go test -race ./...` green
 - [x] Doc-integrity gate passes (mermaid balance, `.md` refs)
 
 ### 6.3 Spec compliance
-- [x] All 20 instruction specs' acceptance checklists triaged (audit items triaged 2026-09); every unimplemented item is unticked and catalogued in extensions §3 with what exists and what does not
-- [x] All recorded decisions have provenance in their owning specs with version bumps
+- [x] All 20 instruction specs' acceptance checklists triaged (2026-09 audit); unimplemented items unticked, catalogued in extensions §3 (what exists, what does not)
+- [x] Recorded decisions have provenance in owning specs, with version bumps
 
 ### 6.4 Examples
-- [x] Four runnable examples exist (`files`, `artifacts`, `notes`, `api`) plus `gitlike`; `examples/viewer` covered by the product viewer in `internal/web/`
-- [x] Each example has a README.md with `cas core parts used`, code walkthrough, and mermaid diagram
+- [x] Four runnable examples (`files`, `artifacts`, `notes`, `api`) plus `gitlike`; `examples/viewer` = product viewer in `internal/web/`
+- [x] Each example README.md: `cas core parts used`, code walkthrough, mermaid diagram
 
 ### 6.5 Viewer
-- [x] Viewer is a byte-layer tool, never imports `examples/` (coding-guidelines §9)
-- [x] Sessions, CSRF, role checks, rate limiting, audit logging implemented (viewer-security checklist)
+- [x] Viewer is byte-layer, never imports `examples/` (coding-guidelines §9)
+- [x] Sessions, CSRF, roles, rate limiting, audit logging implemented (viewer-security checklist)
 - [x] `cask web` starts the viewer, prints URL + token, auto-opens browser (`--no-open` suppresses)
-- [ ] GC template exists (`gc.html`): no `gc.html` and no GC route — the viewer's templates are `login.html`, `objects.html`, and `partials.html`, and object removal is CLI-only (consistency §9, viewer-design §5, extensions §3)
+- [ ] GC template (`gc.html`) absent — no `gc.html`, no GC route; templates `login.html`, `objects.html`, `partials.html`; removal CLI-only (consistency §9, viewer-design §5, extensions §3)
 - [x] raw-HTML fragments converted to templates
 
 ### 6.6 Extensions
-- [x] Extension catalog (extensions.md §3) records deferral decisions with triggers
-- [x] Cache/recipe helpers (`SmartCache`, `CacheMonitor`) stay inlined as per-example teaching code — shared home only when a second consumer exists
+- [x] Extension catalog (extensions.md §3) records deferrals with triggers
+- [x] Cache/recipe helpers (`SmartCache`, `CacheMonitor`) stay inlined as per-example teaching code — shared home at second consumer
 
 ## 7. What is NOT library versioning
 
 | Versioned thing | Scheme | Who bumps |
 |---|---|---|
 | The Go library (`cas`/`gitlike`) | semver Git tags (`v1.2.3`) | maintainers per §5 |
-| An example JSON surface (`examples/api` pattern) | URL prefix majors (`/api/cas/v1` → `/api/cas/v2`) | independent of library semver (api-design §12) |
-| Instruction documents (frontmatter `version: vN`) | `v1`, `v2`, … document revisions | per AGENT.md §3, on material doc changes |
+| An example JSON surface (`examples/api` pattern) | URL majors (`/api/cas/v1` → `/api/cas/v2`) | independent of library semver (api-design §12) |
+| Instruction documents (frontmatter `version: vN`) | `v1`, `v2`, … revisions | per AGENT.md §3, on material doc changes |
 
-These three MUST NOT be conflated: an example JSON `v2` does not imply a `v2` library; a doc at `version: v3` says nothing about the library release.
+- The three MUST NOT be conflated: an example JSON `v2` implies no `v2` library; `version: v3` says nothing about the library.
 
 ## 8. Checklist
 
-- [x] First public tag is the pre-release `v0.1.0-alpha.1` on the module root commit; `v1.0.0` follows once the stable surface is frozen
-- [x] Tags are annotated, immutable, never re-tagged
-- [x] Bump decided from commits (breaking → MAJOR, feature → MINOR, fix → PATCH) with `BREAKING CHANGE` footers
+- [x] First public tag: pre-release `v0.1.0-alpha.1` on the module root commit; `v1.0.0` once the surface freezes
+- [x] Tags annotated, immutable, never re-tagged
+- [x] Bump decided from commits (`BREAKING CHANGE` → MAJOR, feature → MINOR, fix → PATCH)
 - [x] `gofmt`/`go vet`/`go test -race`/benchmark gate green before tagging
 - [x] CHANGELOG.md updated on every release; `Unreleased` maintained
-- [x] v2+ uses the `/v2` module path suffix and the `cas/v2/` layout
-- [x] Example-surface majors and doc versions never conflated with library versions
+- [x] v2+: `/v2` module path suffix, `cas/v2/` layout
+- [x] Example-surface majors, doc versions never conflated with library versions

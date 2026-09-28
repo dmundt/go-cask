@@ -1,19 +1,12 @@
 # binary — compact custom payload codec
 
-Package `binary` provides a generic `Codec[T]` for compact, caller-defined binary payloads in the `cas` core.
+Package `binary` provides a generic `Codec[T]` for compact, caller-defined binary payloads in the
+`cas` core. Intentionally object-agnostic: it encodes no `Blob`, `Tree`, or other app object model.
+The caller supplies the exact `encode` and `decode` functions for the value type and the package
+applies them as a standard `Codec[T]`.
 
-This package is intentionally object-agnostic. It does not encode `Blob`, `Tree`, or any other app-specific object model. Instead, the caller supplies the exact `encode` and `decode` functions for the value type they want to store, and the package applies them as a standard `Codec[T]`.
-
-## Policy
-
-- The `cas` core stays format-agnostic.
-- This codec is for compact binary payloads when JSON would be too verbose.
-- It is intended for explicit, versioned binary layouts chosen by the application, not for a single universal binary format.
-- The object-specific schema stays in the app or gitlike layer; the generic codec does not know about object types.
-
-## Typical use
-
-The package follows the repo's single codec-stack model: a wrapper codec keeps an optional inner codec and transforms the serialized bytes without changing the `cas` object model.
+The package follows the repo's single codec-stack model: a wrapper codec keeps an optional inner
+codec and transforms the serialized bytes without changing the `cas` object model.
 
 ```go
 codec := binary.New(
@@ -24,7 +17,7 @@ codec := binary.New(
 store := cas.New(raw, codec, sha256.New())
 ```
 
-For a direct custom binary payload without an inner codec, use `binary.NewRaw`:
+Direct custom binary payload without an inner codec, via `binary.NewRaw`:
 
 ```go
 codec := binary.NewRaw(
@@ -34,11 +27,13 @@ codec := binary.NewRaw(
 store := cas.New(raw, codec, sha256.New())
 ```
 
-Use this when you need compact binary payloads and are comfortable defining a stable per-type binary schema and versioning strategy.
+Use it for explicit, versioned binary layouts the application chooses — compact payloads with a
+stable per-type schema and versioning strategy, not a single universal binary format. The
+object-specific schema stays in the app or gitlike layer.
 
 ## Object-graph examples
 
-This codec is designed for application-defined object graphs such as `Blob` and `Tree`.
+Designed for application-defined object graphs such as `Blob` and `Tree`.
 
 ```go
 // Blob: version + mode + length-prefixed payload.
@@ -59,7 +54,8 @@ type Tree struct {
 }
 ```
 
-The important rule is simple: the `cas` core stays agnostic, while the application chooses the binary wire format for each type and passes the encode/decode functions to `binary.New[T]`.
+The `cas` core stays agnostic; the application chooses the binary wire format per type and passes
+the encode/decode functions to `binary.New[T]`.
 
 ```go
 codec := binary.New[Blob](encodeBlob, decodeBlob)
@@ -106,5 +102,3 @@ func decodeTree(data []byte) (Tree, error) {
     return Tree{Entries: out}, nil
 }
 ```
-
-This pattern is the intended usage for compact, stable, versioned binary payloads without forcing object-specific logic into the `cas` core.

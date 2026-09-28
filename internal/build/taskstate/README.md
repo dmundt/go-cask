@@ -2,7 +2,7 @@
 type: Guide
 title: taskstate — build core
 description: Which branches carry work no pull request tracks — the record the report is built from, and the two findings worth acting on.
-version: v2
+version: v3
 ---
 
 # taskstate
@@ -19,8 +19,8 @@ Two states, and nothing else:
 - **pull request finished, branch still here** — the pull request merged, so its content is on
   the base ref and the local branch is debris.
 
-A branch with an **open** pull request is never a finding: the pull request is the lease, and it
-is what makes the work visible. A branch with **nothing ahead** of the base ref is not one
+A branch with an **open** pull request is never a finding: the pull request is the lease, and
+it is what makes the work visible. A branch with **nothing ahead** of the base ref is not one
 either. A pull request in a state this build does not know is reported as unlanded rather than
 as finished — a report that stays quiet about work it does not understand is the failure the
 package exists to prevent.
@@ -31,10 +31,10 @@ Rule only; the caller reads the world.
 
 ```go
 type Branch struct {
-	Name, Head          string
-	Ahead, Behind       int
-	Dirty, Worktree     bool
-	PullRequest         *PullRequest // nil when no pull request names the branch
+	Name, Head      string
+	Ahead, Behind   int
+	Dirty, Worktree bool
+	PullRequest     *PullRequest // nil when no pull request names the branch
 }
 
 func Findings(branches []Branch) []Finding

@@ -1,6 +1,10 @@
 # notes — a document graph with its own object types
 
-**What it demonstrates.** An application with its **own** object model (`Note`, `Tag`, `Attachment`) built directly on the generic cas core and resolved through the supported `cas/repo` registry — proving the "apps build their own object model on the core APIs" pattern without `gitlike` (examples spec §3.3). Shows cross-type resolution, the cross-type reachable set, lazy loading of large attachments, `SmartCache` prefetch, broken-reference detection, and the generic `Walker[T]`.
+**What it demonstrates.** An app with its **own** object model (`Note`, `Tag`, `Attachment`)
+on the generic cas core, resolved through the supported `cas/repo` registry — the "own object
+model on the core APIs" pattern without `gitlike` (examples spec §3.3). Cross-type resolution,
+the cross-type reachable set, lazy attachment loading, `SmartCache` prefetch, broken-reference
+detection, `Walker[T]`.
 
 ## `cas` core parts used
 
@@ -17,16 +21,28 @@
 
 ## What it extends
 
-- **Own object types** — `Note` (references tags, attachments, and related notes), `Tag`, `Attachment`; reference fields are `[]cas.Digest`, which render as one lowercase-hex string each (and validate as they decode) with no JSON code here, and the example injects `sha256.New()` at `cas.New` (cas-core §4.2/§4.6).
-- **Own `Repository` + typed `Resolver` over the core registry** — the app's three stores registered with `cas/repo.RegisterStore`, so `Resolve` discovers the type from the stored envelope and the app's `ResolvedObject` union is built from the result. No header parsing and no dispatch table live in the example: both are core APIs now (cas-core §4.12).
-- **`cas` and `gitlike` are untouched.**
+- **Own types** — `Note` (references tags, attachments, related notes), `Tag`, `Attachment`;
+  reference fields are `[]cas.Digest`, one lowercase-hex string each, validated as they decode,
+  with no JSON here; `sha256.New()` injected at `cas.New` (cas-core §4.2/§4.6).
+- **Own `Repository` + typed `Resolver` over the core registry** — the three stores registered
+  with `cas/repo.RegisterStore`, so `Resolve` discovers the type from the stored envelope and
+  `ResolveAny` builds the app's `ResolvedObject` union. No header parsing, no dispatch table:
+  both are core APIs (cas-core §4.12).
+- **`cas` and `gitlike` untouched.**
 
 ## Code walkthrough
 
-- `types.go` — the three `Object[T]` types and `bareType` (versioned name → union name). `Note.References()` = tags + attachments + related (single source of truth for traversal and prefetch).
-- `repo.go` — `Repository` bundles `Store[*Note]`/`*Tag`/`*Attachment` (each built with `sha256.New()`) and the `cas/repo.Registry` they are registered with; `Resolver.Resolve` delegates to `registry.Resolve`, and `ResolveAny` maps the resolved object onto the typed union.
-- `main.go` — the demo: creates tags/attachments/notes, resolves a note cross-type, expands the cross-type reachable set with `cas/repo.Reachable`, shows the attachment is **not** loaded until accessed (`CachedObject.IsLoaded`), prefetches a related-only note via `SmartCache`, detects a dangling reference, and walks a related chain with `Walker[T]`.
-- `main_test.go` — cross-type resolution, lazy load, prefetch warms the cache, broken ref → `ErrNotFound`, walker chain.
+- `types.go` — the three `Object[T]` types and `bareType` (versioned → union name);
+  `Note.References()` = tags + attachments + related (one traversal source).
+- `repo.go` — `Repository` bundles `Store[*Note]`/`*Tag`/`*Attachment` (each with
+  `sha256.New()`) and their `cas/repo.Registry`; `Resolver.Resolve` delegates to
+  `registry.Resolve`, `ResolveAny` maps onto the typed union.
+- `main.go` — creates tags/attachments/notes, resolves a note cross-type, expands the
+  cross-type reachable set with `cas/repo.Reachable`, shows the attachment is **not** loaded
+  until accessed (`CachedObject.IsLoaded`), prefetches a related-only note via `SmartCache`,
+  detects a dangling reference, walks a related chain with `Walker[T]`.
+- `main_test.go` — cross-type resolution, lazy load, prefetch warms the cache, broken ref →
+  `ErrNotFound`, walker chain.
 
 ```mermaid
 flowchart TB
@@ -48,4 +64,6 @@ go run ./examples/notes
 go test ./examples/notes/...
 ```
 
-The demo prints the resolved note (with its tags), the lazy-load transition (`attachment loaded before/after access`), the cache size after prefetch, the detected broken reference, and the walker's visited notes.
+Prints the resolved note (with its tags), the lazy-load transition
+(`attachment loaded before/after access`), the cache size after prefetch, the broken
+reference, and the walker's visited notes.

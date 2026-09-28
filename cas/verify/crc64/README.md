@@ -1,5 +1,3 @@
 # crc64
 
-`crc64` is a CRC-64/ECMA-182 checksum helper for go-cask. It implements `cas.Hasher`, so it can be the hasher a store is addressed with — and then verifies those same objects; it cannot validate an object addressed by another algorithm ([the constraint](../README.md#the-constraint-these-helpers-live-under)). It can also be the checksum a [`sidecar`](../sidecar/README.md) record stores beside a strongly-addressed object, which is the cheap-check path.
-
-Its 8-byte digest is twice the width of `crc32` and `adler32`, so it is the one to choose when the checksum is a large or long-lived store's only integrity signal; use `crc32` when interoperability matters and `adler32` when computation cost does ([selection rule](../README.md#choosing-among-the-three)). The same rule decides a sidecar record's algorithm.
+CRC-64/ECMA-182 `cas.Hasher` helper. Its 8-byte digest is twice the width of `crc32` and `adler32`, so choose it when the checksum is a large or long-lived store's only integrity signal; `crc32` when interoperability matters, `adler32` when computation cost does ([selection rule](../README.md#choosing-among-the-three)), which also decides a sidecar record's algorithm.
