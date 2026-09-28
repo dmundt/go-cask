@@ -24,10 +24,33 @@ linters:
   enable:
     - depguard
     - errorlint
+    - errcheck
     - ineffassign
     - staticcheck
     - unused
   settings:
+    errcheck:
+      # The accepted set, one entry per reason, is written out here rather than taken
+      # from a shipped preset. golangci-lint's own std-error-handling preset ignores
+      # every `.Close`, `os.Remove` and `fmt.Fprint*` in the module — it would have
+      # hidden the unchecked write-path closes go-cask#489 exists to find, with the
+      # finding invisible in this file. What is accepted instead:
+      #
+      #   - fmt.Fprint/Printf/Println write one line to the CLI's stdout or stderr, or
+      #     to the buffer inside a test. The writer cannot fail on a pipe or a file the
+      #     process is about to exit on, and where it can (a closed stdout) there is no
+      #     error path to take. 221 of go-cask#489's production findings were these.
+      #   - (*os.File).Write repeats that for the tool output the subcommands stream.
+      #
+      # Test files are judged by default (240 of the 477 findings the linter reported
+      # when go-cask#489 enabled it were in them) and excluded whole by the rule below: a test's failure is the assertion
+      # it writes, not the error a fixture's Close returns, and the repository's tests
+      # do assert the closes that matter (they call Close and check it).
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Write
     depguard:
       rules:
         cas:
@@ -81,3 +104,73 @@ linters:
         - all
         - -ST*
         - -QF*
+  # exclusions narrows errcheck site by site. Nothing here is a general form — a pattern
+  # over whole directories or whole receiver types — because each one below stands for a
+  # site that was read and accepted, with the reason and the tracking issue written down.
+  # go-cask#489 handled the production sites inside its own scope and recorded the rest as
+  # debt: the files it may not carry (another lane owns them, or the site is outside the
+  # issue's five) keep their finding ignored, visible here, until their own issue closes.
+  exclusions:
+    rules:
+      # A test's subject is the behaviour under test; its fixtures return close errors
+      # nobody asserts. The tests that do assert a close call it and check the result
+      # (TestSetAndDeleteReportReflogFailures, packfs's close tests), so this rule hides no
+      # failure a test was watching for.
+      - path: '.*_test\.go'
+        linters:
+          - errcheck
+
+      # --- accepted debt, one rule per site (go-cask#489) ---
+
+      # A read-only startup-token handle, already read in full when the deferred close runs
+      # (cmd/cask/web.go). The same is true of the demo client's upload file and of the two
+      # response bodies the demo and the example server hold for a consumed response.
+      - path: 'cmd/cask/web\.go'
+        text: 'f\.Close'
+        linters:
+          - errcheck
+      - path: 'examples/api/demo/main\.go'
+        text: '\.Close'
+        linters:
+          - errcheck
+      - path: 'examples/api/server/server\.go'
+        text: 'rc\.Close'
+        linters:
+          - errcheck
+
+      # The shared test helper closes a read-only handle (internal/test/helpers.go), and the
+      # viewer's preview read does the same (internal/web/web.go). Both are package files,
+      # so the _test.go rule above does not reach them.
+      - path: 'internal/test/helpers\.go'
+        text: 'rc\.Close'
+        linters:
+          - errcheck
+      - path: 'internal/web/web\.go'
+        text: 'rc\.Close'
+        linters:
+          - errcheck
+
+      # Three write-path closes outside go-cask#489's five, in files this change must not
+      # carry: the lane record's append (cmd/buildtool/prlane.go) and the slot record's
+      # published claim (cmd/buildtool/landlane.go, where the close beside the write's own
+      # error return is the one ignored). Each wants an issue of its own.
+      - path: 'cmd/buildtool/prlane\.go'
+        text: 'file\.Close'
+        linters:
+          - errcheck
+      - path: 'cmd/buildtool/landlane\.go'
+        text: 'file\.Close'
+        linters:
+          - errcheck
+
+      # Removals whose failure is already reported by the step that follows them: the gate's
+      # scratch cleanup (cmd/buildtool/verify.go) and the CLI's lock-file release
+      # (cmd/cask/lock.go).
+      - path: 'cmd/buildtool/verify\.go'
+        text: 'os\.Remove'
+        linters:
+          - errcheck
+      - path: 'cmd/cask/lock\.go'
+        text: 'os\.Remove'
+        linters:
+          - errcheck
