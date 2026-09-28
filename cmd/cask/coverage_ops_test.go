@@ -49,7 +49,6 @@ type erroringBackend struct {
 	existsErr error
 	putErr    error
 	sizeErr   error
-	statsErr  error
 }
 
 // The CLI's metadata path type-asserts its backend to cas.Statter (store.Store
@@ -78,8 +77,6 @@ func newErroringBackendAt(healthy cas.Backend, fault string, err error, callAt i
 		b.putErr = err
 	case "size":
 		b.sizeErr = err
-	case "stats":
-		b.statsErr = err
 	default:
 		panic("unknown fault " + fault)
 	}
@@ -125,11 +122,11 @@ func (b *erroringBackend) Delete(ctx context.Context, d cas.Digest) error {
 	return b.healthy.Delete(ctx, d)
 }
 
-// Stats returns the injected error, or the healthy backend's totals.
+// Stats passes through to the healthy backend. No CLI read reports from it any
+// more — `stats` takes its totals from the snapshot walk (go-cask#372) — so it
+// carries no fault of its own; the wrapper keeps the method only because a
+// cas.Backend must have it.
 func (b *erroringBackend) Stats(ctx context.Context) (*cas.Stats, error) {
-	if b.statsErr != nil {
-		return nil, b.statsErr
-	}
 	return b.healthy.Stats(ctx)
 }
 
@@ -531,12 +528,9 @@ func TestListSkipsAStrayDigestNamedFile(t *testing.T) {
 
 // TestListReportsStoreWalkFailure pins the listing's runtime error: a store
 // whose listing fails is reported instead of being printed as an empty store.
-// The filtered path walks the store twice — opList lists once up front and
-// filteredItems lists again through the snapshot — so its fault is armed for the
-// second listing, the one that path owns. The census is driven with the fault on
-// its first listing, because its backend totals report sizes rather than a
-// listing and its snapshot is the only walk it makes (TestStatsTotalsDoNotList
-// pins that split).
+// Each path makes exactly one walk of its own — the unfiltered path lists, the
+// filtered path takes its entries from the snapshot — so the fault is armed for
+// that one walk, not for an earlier one that no longer happens (go-cask#372).
 func TestListReportsStoreWalkFailure(t *testing.T) {
 	mf := localMF(t)
 	if _, code := run(t, mf, "put", writeTemp(t, "listed")); code != 0 {
@@ -553,8 +547,7 @@ func TestListReportsStoreWalkFailure(t *testing.T) {
 
 	t.Run("filtered list, the snapshot listing", func(t *testing.T) {
 		opened := openStore(t, mf.store)
-		st := opened.faultyAt("list", want, 2)
-		if err := opList(context.Background(), st, []string{"-type", "blob@1"}); !errors.Is(err, want) {
+		if err := opList(context.Background(), opened.faulty("list", want), []string{"-type", "blob@1"}); !errors.Is(err, want) {
 			t.Fatalf("filtered opList = %v, want %v", err, want)
 		}
 	})
@@ -574,33 +567,149 @@ func TestListReportsStoreWalkFailure(t *testing.T) {
 	})
 }
 
-// TestStatsTotalsDoNotList pins the split the census relies on: `stats` reads
-// its object and byte totals from the backend's own Stats (which walks for
-// physical metadata) and builds its header census from a separate listing walk,
-// so a backend whose listing fails still reports the totals half. The listing
-// count is asserted, not assumed: it is what tells the two walks apart.
-func TestStatsTotalsDoNotList(t *testing.T) {
+// TestStatsAndFilteredListWalkTheStoreOnce pins the walk count go-cask#372 was
+// filed for: `stats` and a filtered `list` each report from one walk of the
+// store, never two. The counting backend asserts the count itself, because a
+// fast local fixture cannot show the redundant walk — only the call count can.
+//
+// The object and byte totals are the reason the count matters: they now come
+// from the snapshot walk (snapshot.Total, snapshot.Bytes) instead of a second
+// Store.Stats sweep, and internal/index agrees with Store.Stats on an object
+// whose metadata cannot be read, so the printed numbers are unchanged.
+func TestStatsAndFilteredListWalkTheStoreOnce(t *testing.T) {
 	mf := localMF(t)
-	if _, code := run(t, mf, "put", writeTemp(t, "totals")); code != 0 {
+	if _, code := run(t, mf, "seed-preview", "-count", "8"); code != 0 {
+		t.Fatalf("seed-preview exit = %d, want 0", code)
+	}
+	if _, code := run(t, mf, "put", writeTemp(t, "a raw object beside the frames")); code != 0 {
 		t.Fatal("put failed")
 	}
 	opened := openStore(t, mf.store)
-	want := errors.New("listing failed")
-	faulty := newErroringBackend(opened.backend, "list", want)
-	st := &store.Store{Backend: faulty, Capabilities: opened.store.Capabilities, Kind: opened.store.Kind}
 
-	if _, err := st.Stats(context.Background()); err != nil {
-		t.Fatalf("Stats with a failing listing = %v, want the totals reported", err)
+	t.Run("stats", func(t *testing.T) {
+		counter := newCountingBackend(opened.backend)
+		st := &store.Store{Backend: counter, Capabilities: opened.store.Capabilities, Kind: opened.store.Kind}
+
+		out := runCountedOp(t, func() error { return opStats(context.Background(), st, nil) })
+		if counter.listCalls != 1 {
+			t.Fatalf("stats walked the store %d times, want exactly 1 (go-cask#372)", counter.listCalls)
+		}
+		// The summary still carries the count and the bytes the one walk
+		// produced, so dropping the second walk did not drop a number.
+		if !strings.Contains(out, "9 objects,") {
+			t.Fatalf("stats = %q, want the 9-object summary from the snapshot walk", out)
+		}
+		if strings.Contains(out, "0 bytes") {
+			t.Fatalf("stats = %q, want a non-zero byte total from the snapshot walk", out)
+		}
+	})
+
+	for _, filter := range [][]string{{"-type", "blob@1"}, {"-codec", "preview"}} {
+		t.Run("filtered list "+strings.Join(filter, " "), func(t *testing.T) {
+			// opList's filtered branch is filteredItems and nothing else, so the
+			// count is taken where the walk is: this is the same call opList
+			// makes, over the same counter.
+			counter := newCountingBackend(opened.backend)
+			want := listArgs{typeFilter: filter[1]}
+			if filter[0] == "-codec" {
+				want = listArgs{codecFilter: filter[1]}
+			}
+			runCountedOp(t, func() error {
+				_, _, err := filteredItems(context.Background(), counter, want)
+				return err
+			})
+			if counter.listCalls != 1 {
+				t.Fatalf("list %v walked the store %d times, want exactly 1 (go-cask#372)", filter, counter.listCalls)
+			}
+		})
 	}
-	if faulty.listCalls != 0 {
-		t.Fatalf("Stats listed the store %d times, want the physical walk only", faulty.listCalls)
+
+	t.Run("unfiltered list still walks once", func(t *testing.T) {
+		counter := newCountingBackend(opened.backend)
+		st := &store.Store{Backend: counter, Capabilities: opened.store.Capabilities, Kind: opened.store.Kind}
+		runCountedOp(t, func() error { return opList(context.Background(), st, nil) })
+		if counter.listCalls != 1 {
+			t.Fatalf("unfiltered list walked the store %d times, want exactly 1", counter.listCalls)
+		}
+	})
+}
+
+// countingBackend decorates a healthy backend and counts its listing walks. It
+// spells every delegated method out rather than embedding the interface —
+// embedding cas.Backend would drop the Statter capability the snapshot needs —
+// and the compile-time binding below keeps that list complete.
+type countingBackend struct {
+	healthy   cas.Backend
+	listCalls int
+}
+
+var _ metadataStore = (*countingBackend)(nil)
+
+// newCountingBackend decorates healthy with the walk counter.
+func newCountingBackend(healthy cas.Backend) *countingBackend {
+	return &countingBackend{healthy: healthy}
+}
+
+// List counts the walk before delegating.
+func (b *countingBackend) List(ctx context.Context) ([]cas.Digest, error) {
+	b.listCalls++
+	return b.healthy.List(ctx)
+}
+
+// Get passes through to the healthy backend.
+func (b *countingBackend) Get(ctx context.Context, d cas.Digest) (io.ReadCloser, error) {
+	return b.healthy.Get(ctx, d)
+}
+
+// Exists passes through to the healthy backend.
+func (b *countingBackend) Exists(ctx context.Context, d cas.Digest) (bool, error) {
+	return b.healthy.Exists(ctx, d)
+}
+
+// Put passes through to the healthy backend.
+func (b *countingBackend) Put(ctx context.Context, d cas.Digest, r io.Reader) error {
+	return b.healthy.Put(ctx, d, r)
+}
+
+// Delete passes through to the healthy backend.
+func (b *countingBackend) Delete(ctx context.Context, d cas.Digest) error {
+	return b.healthy.Delete(ctx, d)
+}
+
+// Stats passes through to the healthy backend.
+func (b *countingBackend) Stats(ctx context.Context) (*cas.Stats, error) {
+	return b.healthy.Stats(ctx)
+}
+
+// Size passes through to the healthy backend's physical metadata.
+func (b *countingBackend) Size(ctx context.Context, d cas.Digest) (int64, error) {
+	statter, ok := b.healthy.(cas.Statter)
+	if !ok {
+		return 0, cas.ErrUnsupported
 	}
-	if err := opStats(context.Background(), st, nil); !errors.Is(err, want) {
-		t.Fatalf("opStats = %v, want %v from the census listing", err, want)
+	return statter.Size(ctx, d)
+}
+
+// ModTime passes through to the healthy backend's physical metadata.
+func (b *countingBackend) ModTime(ctx context.Context, d cas.Digest) (time.Time, error) {
+	statter, ok := b.healthy.(cas.Statter)
+	if !ok {
+		return time.Time{}, cas.ErrUnsupported
 	}
-	if faulty.listCalls != 1 {
-		t.Fatalf("the census listed the store %d times, want exactly its one snapshot walk", faulty.listCalls)
-	}
+	return statter.ModTime(ctx, d)
+}
+
+// runCountedOp runs one read operation with stdout captured and fails the test
+// when the operation reports an error, so a test that is really about a
+// decorator's call count does not have to restate that plumbing.
+func runCountedOp(t *testing.T, op func() error) string {
+	t.Helper()
+	return captureStdout(t, func() {
+		t.Helper()
+		if err := op(); err != nil {
+			t.Errorf("operation = %v, want success", err)
+		}
+	})
 }
 
 // TestListSkipsAnUnreadableObject pins both listing paths' skip: a digest-named
@@ -1120,9 +1229,9 @@ func TestVersionCommandWithoutArguments(t *testing.T) {
 
 // TestSweepsAndCensusReportBackendFailures pins the runtime error of the
 // commands that read the whole store at once (cli.md §3): `gc` (through
-// cas.Sweep) and `stats` (through the backend's own totals) both report the
-// backend's error, so a failed sweep can never be printed as "deleted 0
-// objects".
+// cas.Sweep) and `stats` (through the snapshot walk its totals now come from)
+// both report the backend's error, so a failed sweep can never be printed as
+// "deleted 0 objects" and a failed census never as "0 objects" (go-cask#372).
 func TestSweepsAndCensusReportBackendFailures(t *testing.T) {
 	mf := localMF(t)
 	if _, code := run(t, mf, "put", writeTemp(t, "sweep and census")); code != 0 {
@@ -1142,9 +1251,9 @@ func TestSweepsAndCensusReportBackendFailures(t *testing.T) {
 	t.Run("stats", func(t *testing.T) {
 		opened := openStore(t, mf.store)
 		want := errors.New("stats failed")
-		st := opened.faulty("stats", want)
+		st := opened.faulty("list", want)
 		if err := opStats(context.Background(), st, nil); !errors.Is(err, want) {
-			t.Fatalf("opStats with failing totals = %v, want %v", err, want)
+			t.Fatalf("opStats with a failing census walk = %v, want %v", err, want)
 		}
 	})
 }

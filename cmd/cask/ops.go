@@ -271,12 +271,7 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 	if a.offset < 0 {
 		return usagef("offset must be >= 0, got %d", a.offset)
 	}
-	digests, err := t.List(ctx)
-	if err != nil {
-		return err
-	}
-	total := len(digests)
-	skipped := 0
+	var total, skipped int
 	var items []listItem
 	if a.typeFilter != "" || a.codecFilter != "" {
 		// A filter needs every object's header, so the walk is the whole store:
@@ -292,6 +287,14 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 		total = len(matched)
 		items = index.Paginate(matched, a.offset, a.limit)
 	} else {
+		// The unfiltered path is the only one that needs the listing itself, so
+		// it is the only one that reads it — exactly one walk for one report
+		// (go-cask#372).
+		digests, err := t.List(ctx)
+		if err != nil {
+			return err
+		}
+		total = len(digests)
 		// Size the result from the page that is actually reported, not from the
 		// whole store: the page is bounded by -limit (cli.md §2).
 		page := index.Paginate(digests, a.offset, a.limit)
@@ -328,10 +331,20 @@ func opList(ctx context.Context, t *store.Store, args []string) error {
 	return nil
 }
 
+// metadataStore is what the CLI's read commands need of a store: the byte
+// contract a listing comes from, plus the physical per-object metadata the
+// shared snapshot reads. store.Store satisfies it through its embedded backend,
+// and a decorator with the same method set satisfies it too — which is how a
+// test counts the walks a report costs (go-cask#372).
+type metadataStore interface {
+	cas.Backend
+	cas.Statter
+}
+
 // listItemFor reads one object's reported metadata. It reports ok=false for a
 // digest-named file that is not an addressable object, which the caller skips
 // with a warning.
-func listItemFor(ctx context.Context, t *store.Store, h cas.Digest) (listItem, bool, error) {
+func listItemFor(ctx context.Context, t metadataStore, h cas.Digest) (listItem, bool, error) {
 	size, err := t.Size(ctx, h)
 	if err != nil {
 		if errors.Is(err, cas.ErrNotFound) || errors.Is(err, cas.ErrInvalidDigest) {
@@ -359,7 +372,7 @@ func listItemFor(ctx context.Context, t *store.Store, h cas.Digest) (listItem, b
 // filteredItems walks the store once and returns the objects a -type/-codec
 // filter matches, in the store's listing order. It uses the shared metadata
 // snapshot, so the CLI and the viewer agree on what an object's header says.
-func filteredItems(ctx context.Context, t *store.Store, a listArgs) ([]listItem, int, error) {
+func filteredItems(ctx context.Context, t metadataStore, a listArgs) ([]listItem, int, error) {
 	snapshot, err := index.BuildSnapshot(ctx, t)
 	if err != nil {
 		return nil, 0, err
@@ -438,8 +451,11 @@ func opMeta(ctx context.Context, t *store.Store, args []string) error {
 			"type": typ, "version": version, "codec": index.CodecLabel(codec),
 		})
 	}
+	// type and codec are stored bytes: the type is quoted and the codec is
+	// sanitized, so neither can carry a control sequence into the operator's
+	// terminal (go-cask#354, cli.md §4).
 	fmt.Printf("%s %s size=%d type=%q version=%d codec=%s\n",
-		sha256.Format(h), sha256.Name, size, typ, version, index.CodecLabel(codec))
+		sha256.Format(h), sha256.Name, size, typ, version, safeField(index.CodecLabel(codec)))
 	return nil
 }
 
@@ -467,10 +483,6 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 	if flags.NArg() != 0 {
 		return usagef("stats takes no arguments")
 	}
-	st, err := t.Stats(ctx)
-	if err != nil {
-		return err
-	}
 	// The census walks the store once and counts the three header fields. An
 	// object whose header cannot be read is counted in no axis, so each axis
 	// sums to the readable object count and `unreadable` names the rest
@@ -487,8 +499,8 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 	census := newHeaderCensus(snapshot)
 	if a.jsonOut {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"objects":    st.ObjectCount,
-			"bytes":      st.TotalSize,
+			"objects":    snapshot.Total,
+			"bytes":      snapshot.Bytes,
 			"unreadable": census.unreadable,
 			"headerless": census.headerless,
 			"types":      census.types,
@@ -496,9 +508,48 @@ func opStats(ctx context.Context, t *store.Store, args []string) error {
 			"codecs":     census.codecs,
 		})
 	}
-	fmt.Println(st)
+	// The summary is rendered by cas.Stats.String, so the CLI's line and the
+	// library's summary cannot drift apart while the numbers now come from the
+	// census walk instead of a second one (go-cask#372).
+	fmt.Println(cas.Stats{TotalSize: snapshot.Bytes, ObjectCount: int64(snapshot.Total)})
 	census.print(os.Stdout)
 	return nil
+}
+
+// safeField renders a string that came from stored bytes — an envelope type
+// name or a codec identity tag — for a human-use stream. It replaces every C0
+// and C1 control character (and DEL) with "?", so bytes an object's author
+// chose cannot drive the operator's terminal: no escape sequence, no forged
+// census line from an embedded newline or carriage return, no BEL.
+//
+// It is deliberately not %q or strconv.Quote: the rule is about control
+// characters, not about quoting, so an ordinary name (blob@1, json,
+// unspecified) renders byte-identically and stays copy-pasteable (go-cask#354,
+// cli.md §4). The -json paths do not use it — encoding/json escapes control
+// bytes itself, and their output must not change.
+func safeField(s string) string {
+	// Fast path: the overwhelmingly common case is a name with no control
+	// character at all, and this helper runs once per census key.
+	if !strings.ContainsFunc(s, isControlRune) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isControlRune(r) {
+			b.WriteByte('?')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// isControlRune reports whether r is a terminal control character: the C0 range
+// (including ESC, LF, CR and BEL), DEL, and the C1 range that 8-bit terminals
+// read as control sequences.
+func isControlRune(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
 }
 
 // headerCensus is the per-type, per-version and per-codec tally a `stats`
@@ -567,7 +618,9 @@ func (c headerCensus) print(w io.Writer) {
 		slices.Sort(keys)
 		parts := make([]string, 0, len(keys))
 		for _, key := range keys {
-			parts = append(parts, fmt.Sprintf("%s=%d", key, axis.count[key]))
+			// A census key is stored bytes (the envelope type or the codec tag),
+			// so it is sanitized before it reaches the terminal (go-cask#354).
+			parts = append(parts, fmt.Sprintf("%s=%d", safeField(key), axis.count[key]))
 		}
 		// The rendered parts are sorted, not the raw keys: sanitizing can map
 		// two different stored names onto one rendering, and ordering by the
