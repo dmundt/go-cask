@@ -425,12 +425,21 @@ func (s *Store) appendLog(name string, old, next cas.Digest) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// The close is the write path's last step — an Append-mode handle can hold
+	// the line in the kernel until it — so its failure is reported below rather
+	// than dropped. Here it only has the failure already being returned.
+	defer func() { _ = f.Close() }()
 	line := fmt.Sprintf("%d\t%s\t%s\n", s.now().UnixNano(), next.String(), old.String())
 	if _, err := f.Write([]byte(line)); err != nil {
 		return err
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("refs: append log %s: %w", path, err)
+	}
+	return nil
 }
 
 // parseLog parses appendLog's line format, oldest first, silently dropping

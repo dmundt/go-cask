@@ -20,6 +20,17 @@ package refs
 //     write branch needs an open handle that rejects a write, which this
 //     package exposes no seam for.
 //
+//   - refs.go appendLog's `return fmt.Errorf(...)` when closing the reflog
+//     handle fails (go-cask#489). A failed Close is a failure the kernel
+//     reports on the last buffered write, and a regular file's Close cannot be
+//     made to fail portably: the shapes that do fail at close time — ENOSPC on
+//     a device with no free blocks, EIO on a dead block device — are host
+//     states a test cannot stage through this package's API. The branch is
+//     kept because a lost reflog line is exactly what must not be silent, and
+//     Set/Delete's wrapping of it is covered by the two reachable failures
+//     above. It joins the lower tier with this reason rather than a
+//     line-executing test that asserts nothing.
+//
 //   - refs.go writeFileAtomic's own body has no branch left to reach: it is one
 //     call to atomicfile.Publish since go-cask#339, and the publish's temp-file
 //     write, fsync and close failures are covered by that package's injectable

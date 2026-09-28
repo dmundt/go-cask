@@ -112,7 +112,10 @@ func opPut(ctx context.Context, t *store.Store, args []string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		// A read-only handle, fully consumed by localPut below, so its close
+		// failure cannot change the outcome — the reason it is discarded here
+		// rather than reported.
+		defer func() { _ = f.Close() }()
 		r = f
 	}
 	h, dedup, err := localPut(ctx, t, r)
@@ -177,7 +180,10 @@ func opGet(ctx context.Context, t *store.Store, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	// A backend read handle holds no buffered writes, so its close is dropped:
+	// once the copy below has taken every byte, nothing it could report is left
+	// to change the outcome.
+	defer func() { _ = rc.Close() }()
 
 	w := io.Writer(os.Stdout)
 	if a.out != "" {
@@ -185,8 +191,17 @@ func opGet(ctx context.Context, t *store.Store, args []string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		// io.Copy writes straight to the handle, so the close is where the
+		// output file's last write surfaces; that failure is reported below.
+		// Here it only has the failure being returned: the copy's own, or the
+		// create's.
+		defer func() { _ = f.Close() }()
 		w = f
+		_, err = io.Copy(w, rc)
+		if cerr := f.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("writing %s: %w", a.out, cerr)
+		}
+		return err
 	}
 	_, err = io.Copy(w, rc)
 	return err
