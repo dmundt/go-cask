@@ -1,8 +1,8 @@
 ---
 type: Agent Instructions
 title: AGENT — go-cask (docs/ folder)
-description: Meta-guide for the docs/ folder — OKF format, file naming, versioning, trimming rules, the per-file instruction budget, and the maintenance checklist. This file governs docs/index.md, docs/specs/, docs/design/, and any future subdirectories. (The benchmark guide lives at benchmarks/README.md.) The root AGENTS.md is the entry point for AI agents; this file governs the docs subtree after that.
-version: v23
+description: Meta-guide for docs/ — OKF format, naming, versioning, trimming, the instruction-file budget, the maintenance checklist. Governs docs/index.md, docs/specs/, docs/design/ and any later subdirectory; the benchmark guide lives at benchmarks/README.md; root AGENTS.md is the agent entry point before it.
+version: v24
 ---
 
 # AGENT — go-cask (docs/ folder)
@@ -39,12 +39,11 @@ Every `.md` file in `docs/` MUST be a valid OKF v0.2 concept document.
 `verified`, `stale_after`, `tags`, `status`) optional, MUST be used when
 applicable.
 
-Every `AGENT.md` in repository carries same four keys, not only ones under
-`docs/`: package-local guide such as `cas/AGENT.md`, `scripts/AGENT.md`
-or `benchmarks/data/AGENT.md` gets own `type`, `title` (identical to its
-H1), one-line `description` and `version` for exactly the reason a spec does —
-so a reader can tell how current the instructions are. Keys = ones the
-table above lists; no package-local guide adds a key of its own.
+Every `AGENT.md` in the repository carries the same four keys, not only those under
+`docs/`: a package-local guide (`cas/AGENT.md`, `scripts/AGENT.md`, `benchmarks/data/AGENT.md`)
+gets its own `type`, `title` (identical to its H1), one-line `description` and `version` for
+the same reason a spec does — a reader can tell how current the instructions are. Keys = the
+table above; no package-local guide adds one.
 
 ### 1.2 Type values and locations
 
@@ -71,13 +70,29 @@ viewer mockup; it MUST NOT be copied into a `.md` file.
 
 ### 2.1 Instruction files are routers, and they have a budget
 
-An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into context while an agent works in the tree it governs, so its bytes are a recurring cost. It routes; it does not specify.
+An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md` — is read into
+context while an agent works in the tree it governs, so its bytes recur. It routes; it does not
+specify.
 
-- **Every instruction file has a byte ceiling**, in `internal/build/policy`'s `InstructionBudgets` table: `internal/build/docs` measures each file against it and `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just above the file's size when the ceiling was added — room for a rule or two, none to grow into a specification. Raising one is a deliberate policy change in the change that needs it, never the fix for a failure.
-- Root `AGENTS.md` MUST stay **≤ 6 KiB**: read at the start of every session whatever the change, it is a router and MUST sit far below its ceiling — a ceiling, never a target to fill.
-- A rule belongs to exactly one owning file; the router names that file and section. An instruction file carries no prose, no rationale, no restated rule, no duplicated diagram, table row or code example — moving a block out means moving its content to the owner, never deleting it. Narration that states no rule (a past port, a dated incident, a status aside) is removed, and a rule its owner already states becomes a pointer.
-- The facts that make a file discoverable stay routed, not restated: the path→spec mapping is [`index.md`](index.md) and the tree list is [`../README.md`](../README.md) "Repository layout". Route through those instead of growing either into a second inventory.
-- Telegraphic style, in every instruction file: fragments over sentences, tables over paragraphs, backticked paths over descriptions. Telegraphic is not terser rules — every rule, fact, path, command, identifier, number, link and code block survives the rewrite.
+- **Every instruction file has a byte ceiling**, in `internal/build/policy`'s
+  `InstructionBudgets` table: `internal/build/docs` measures each file against it and
+  `go run ./cmd/buildtool markdown-integrity` fails above it. Each number is a ratchet set just
+  above the file's size when the ceiling was added — room for a rule or two, none to grow into a
+  specification. Raising one is a deliberate policy change in the change that needs it, never the
+  fix for a failure.
+- Root `AGENTS.md` MUST stay **≤ 6 KiB**: read at the start of every session whatever the change,
+  it is a router and MUST sit far below its ceiling — a ceiling, never a target to fill.
+- A rule belongs to exactly one owning file; the router names that file and section. An
+  instruction file carries no prose, rationale, restated rule, duplicated diagram, table row or
+  code example — moving a block out means moving its content to the owner, never deleting it.
+  Narration stating no rule (a past port, a dated incident, a status aside) is removed; a rule its
+  owner already states becomes a pointer.
+- Discoverability stays routed, not restated: the path→spec map is [`index.md`](index.md), the
+  tree list is [`../README.md`](../README.md) "Repository layout". Route through those rather than
+  growing either into a second inventory.
+- Telegraphic style in every instruction file: fragments over sentences, tables over paragraphs,
+  backticked paths over descriptions. Telegraphic is not terser rules — every rule, fact, path,
+  command, identifier, number, link and code block survives.
 
 ## 3. Adding a file
 
@@ -93,7 +108,7 @@ An agent instruction file — root `AGENTS.md` and every package-local `AGENT.md
 
 ## 6. Constructor naming (in example code)
 
-Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when package exposes one primary type (`fs.New`, `backmem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `cas.New`), with `prefetch.NewSmartCache` the frozen-surface exception that keeps its name (cas-core §7.1). When code and example diverge code wins — update the example (a non-compiling doc example is a defect).
+Go examples in these docs MUST name constructors per `coding-guidelines.md` §1: plain `New()` when a package exposes one primary type (`fs.New`, `backmem.New`, `json.New[T]`, `gob.NewRaw[T]`, `lru.New`); `NewType()`/`NewXyz()` for multiple important types or a non-primary constructed type (`cas.NewDigest`, `cas.NewWalker`, `cas.New`). `prefetch.NewSmartCache` is the frozen-surface exception keeping its name (cas-core §7.1). Code wins over example — update the example (a non-compiling doc example is a defect).
 
 ## 7. Diagram and formatting rules
 
@@ -123,8 +138,4 @@ its two-key frontmatter, its size budget, its provenance requirement.
 
 ## 9. Signed pull-request workflow
 
-Repository policy requires signed commits: rebuild PR branches locally from
-current `main`; never use GitHub's server-side rebase or update-branch operation.
-Apply changes with `git cherry-pick -S`, verify every head commit with
-`git verify-commit`, push with `git push --force-with-lease`. Enable
-auto-merge only after signature verification and required checks pass.
+Signed commits, no server-side rebase or update-branch: owner [`docs/specs/landing.md`](specs/landing.md) §4–§5.
