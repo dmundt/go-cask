@@ -163,6 +163,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `-store` is resolved once when the store is opened, so a symbolic link in the path is followed
+  deliberately instead of silently. `clean`, `gc` and `prune` print the resolved base they acted on
+  (`clean: store <dir>`) and `cask web` logs it; the maintenance lock is taken in the resolved store.
+  An intentional symlinked store keeps working (go-cask#353).
 - The viewer names a frame's version **Envelope** rather than "Envelope version" or
   "Version" — in the object table's column header, in the inspector's Identity block, and
   in `docs/specs/viewer-design.md` — and renders the value as `vN` (`v1`, `v2`). The
@@ -548,6 +552,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- The backend write path no longer follows a symbolic link planted inside a store base. `fs.Backend.Put`
+  refuses a link on the way to an object (or a non-directory where a fan-out directory belongs),
+  `packfs` refuses one at `<base>/packs`, `<base>/loose` or `<base>/packs/current.pack` before it
+  appends — an append through a link is a write primitive, not only a redirection — and a pack index
+  record behind a symlinked subdirectory is invalid instead of served. Each refusal is the named
+  `fs.ErrUnsafeTarget` and leaves the link's target byte-identical (go-cask#352).
+- The pack index scratch file is no longer the fixed `index.json.tmp`: every rewrite creates an
+  exclusive, random `index-*.tmp` in the pack directory and writes through the handle it returns, so
+  two writers cannot interleave into one manifest and a link planted at the old name cannot receive
+  the truncating write (go-cask#352).
 - An authenticated viewer session can no longer monopolize the server by
   refreshing: the two routes whose work is proportional to the *store* rather
   than to the request are bounded. `POST /viewer/objects/verify` runs one sweep

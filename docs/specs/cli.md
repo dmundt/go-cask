@@ -2,7 +2,7 @@
 type: Specification
 title: CLI — go-cask
 description: The contract for cmd/cask — the single entry point: a thin command-line client over the cas library, plus the embedded viewer via the web subcommand; subcommands, flags, output format, auth, and exit codes.
-version: v39
+version: v40
 ---
 
 # CLI — go-cask
@@ -69,6 +69,11 @@ Only entry point; no separate server binary. Every operation calls the library i
 - **Store lock:** sweeps (`gc`/`prune`/`clean`) take the exclusive cross-process lock (`.cask.lock`
   at the store root, holding the PID); a second holder → exit 1 naming its PID and the
   stale-lock-file remedy.
+- **`-store` is resolved once, where the store is opened.** A symbolic link in the path is followed
+  deliberately — an intentional symlinked store keeps working — and the resolved directory is what
+  every operation acts on: an unresolved path would let a link silently redirect `clean`/`gc`/`prune`
+  onto a tree the operator did not name. The three destructive sweeps print it (`clean: store <dir>`
+  on stdout before their summary) and `web` logs it, so a followed link is visible rather than silent.
 - Writers (`put`) and the viewer (`web`) never lock; reads (`get`/`list`/`meta`/`stats`/`verify`)
   never lock.
 - **Backend-agnostic maintenance:** `verify` via `cas.Verify`/`cas.VerifyAll`; `gc`/`prune` use the
