@@ -1,5 +1,5 @@
 {
-  "name": "Go Cask Development",
+  "name": "go-cask Dev",
   "image": "mcr.microsoft.com/devcontainers/base:debian13",
   "features": {
     "ghcr.io/devcontainers/features/go:1.4.0": {
@@ -24,7 +24,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "GitHub.vscode-pull-request-github"
+        "github.vscode-pull-request-github"
       ]
     }
   },
