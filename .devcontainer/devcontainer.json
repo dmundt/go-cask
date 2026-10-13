@@ -24,11 +24,12 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "golang.go"
+        "GitHub.vscode-pull-request-github"
       ]
     }
   },
   "forwardPorts": [
-    8080 // cask tool web server port
+    // Maintenance tool's default web server port.
+    8080
   ]
 }
