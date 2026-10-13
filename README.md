@@ -55,6 +55,7 @@ A **single-host content-addressable store**. Each named spec is the normative co
 - [website/](website/) — public site sources, built with MkDocs Material ([website/AGENT.md](website/AGENT.md)).
 - [scripts/](scripts/) — gate, landing and release tooling ([scripts/README.md](scripts/README.md), [scripts/AGENT.md](scripts/AGENT.md)).
 - [AGENTS.md](AGENTS.md) — repo-root agent router: the rules a session must obey, and the pointer to the spec that owns the path you are editing.
+- Development workflow — issue → branch → commit → push → PR → merge; keep each task on a short-lived branch cut from the freshly fetched `origin/main` and keep worktrees isolated.
 - [.agents/skills/](.agents/skills/) — agent skills discovered at the project root, one directory bundle per skill (`cask-change`, the change playbook; `coordinate`, the multi-lane playbook).
 - [.github/](.github/) — CI configuration and automation only; no product code.
 
