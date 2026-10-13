@@ -2,7 +2,7 @@
 okf_version: "0.2"
 title: go-cask Rules Index
 description: Path-first rule lookup. Match file path -> spec file -> detailed rules. Short enough for starting instructions.
-version: v60
+version: v61
 ---
 
 # go-cask Rules Index
@@ -46,6 +46,7 @@ version: v60
 | `examples/*` | [`examples.md`](specs/examples.md) §2 + [`library-design.md`](specs/library-design.md) §1.1 |
 | `examples/files/`, `examples/artifacts/`, `examples/notes/`, `examples/api/`, `examples/bloom/`, `examples/pack/` | [`examples.md`](specs/examples.md) §3.1–3.4 + [`api-design.md`](specs/api-design.md) (`api`) + [`performance.md`](specs/performance.md) §5.1 (`bloom`) |
 | `scripts/` | [`scripts/README.md`](../scripts/README.md) + [`scripts/AGENT.md`](../scripts/AGENT.md) |
+| `docs/wsl-vscode.md` | [`docs/AGENT.md`](AGENT.md) §1–8 + [`landing.md`](specs/landing.md) §4 |
 | `benchmarks/` | [`benchmarks/AGENT.md`](../benchmarks/AGENT.md) + [`performance.md`](specs/performance.md) + [`benchmarks/README.md`](../benchmarks/README.md) |
 | `docs/specs/*.md` | [`docs/specs/AGENT.md`](specs/AGENT.md) |
 | `.github/workflows/ci.yml` | [`docs/specs/AGENT.md`](specs/AGENT.md) §9 + [`testing-strategy.md`](specs/testing-strategy.md) §5 |

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent instructions — `scripts/`
 description: Operational guardrails for the repo automation layer; keep script behavior consistent with local checks, CI, and release docs.
-version: v30
+version: v33
 ---
 
 # Agent instructions — `scripts/`
@@ -190,64 +190,17 @@ go run ./cmd/gate release-notes --tag v1.3.0 --from v1.2.0 # just the body
 - A script change to user-visible behavior updates [`README.md`](./README.md) and any relevant
   workflow or spec references in the same change.
 
-## Running the scripts on Windows
+## Windows and WSLC
 
-- Every wrapper here MUST run under WSL (`bash`), never the Windows Go toolchain: `-race` needs
-  cgo and a C compiler the Windows toolchain cannot take from WSL's `gcc` (a Linux binary) → the
-  race/coverage gate fails or does not run, and a Windows coverage number does not predict the
-  gate.
-- Never re-implement the gate's steps by hand in PowerShell; run the script. Owner:
+- First-time WSL, WSLC and VS Code setup: [`../docs/wsl-vscode.md`](../docs/wsl-vscode.md).
+- On Windows, use the Debian 13 dev container through VS Code Dev Containers with WSLC; run
+  `./scripts/verify.sh` from its Linux `pwsh` terminal, not from Windows PowerShell.
+- Never duplicate the gate's steps in PowerShell; run the script. Owner:
   [`../docs/specs/landing.md`](../docs/specs/landing.md) §4.
-- WSL needs a Linux Go toolchain and a C compiler. `gcc` is usually present; Go installs without
-  `sudo`:
+- Keep Git signing configured on the Windows host that commits and pushes. The container's Git
+  may not share the host's signing key; without a signed gate receipt CI runs the full gate.
 
-```bash
-# Linux Go into $HOME (the go.exe under /mnt/c cannot drive cgo builds in WSL)
-mkdir -p "$HOME/opt" && cd "$HOME/opt"
-curl -fsSL -o go.tgz "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz"
-tar xzf go.tgz
-```
-
-- `python3` is needed only for the website footer self-test (`website/macros.py`, run by the
-  gate's `== website footer ==` step through `go run ./cmd/gate website-footer`, and by
-  `internal/build/policy`'s footer tests); absent, the gate's footer step fails. Shim below:
-
-```bash
-# python3 shim: forward to the Windows interpreter and translate the path
-mkdir -p "$HOME/bin"
-cat > "$HOME/bin/python3" <<'SH'
-#!/bin/sh
-if [ "$1" = "-" ] && [ -n "${2:-}" ]; then
-  shift
-  exec "/mnt/c/Users/<you>/AppData/Local/Programs/Python/Python312/python.exe" - "$(wslpath -w "$1")"
-fi
-exec "/mnt/c/Users/<you>/AppData/Local/Programs/Python/Python312/python.exe" "$@"
-SH
-chmod +x "$HOME/bin/python3"
-```
-
-- Run the gate from the repository root with both directories on `PATH`:
-
-```bash
-bash -c 'cd /mnt/d/Sources/Github/dmundt/go-cask && PATH="$HOME/opt/go/bin:$HOME/bin:$PATH" ./scripts/verify.sh'
-```
-
-- Green only when the run ends with `verification passed`; an earlier stop is a failure, even with
-  nothing echoed. Judge by the script's own output and exit status, not a wrapper's echoed status.
-- A green WSL run writes the gate receipt CI can reuse. Publishing it is signing → the toolchain
-  holding the key: this host the Windows git (`gpg.format=ssh` plus `user.signingkey` under
-  `%USERPROFILE%\.ssh`); the WSL git has no key.
-- `.githooks/pre-push` runs in the toolchain that pushes → it publishes the receipt after its
-  stamp check; a push from WSL git warns that CI will run the whole gate.
-- To publish from WSL as well, configure signing there (signing needs no `allowed_signers` file;
-  verification does):
-
-```bash
-git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/id_ed25519_github_signing
-```
-
-### Worktrees created from WSL
+### Worktrees created from a WSL distribution
 
 - `git worktree add` from WSL writes an absolute WSL path into the new worktree's `.git` file
   (`gitdir: /mnt/d/.../.git/worktrees/<name>`).
