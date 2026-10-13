@@ -2,7 +2,14 @@
   "name": "Go Cask Development",
   "image": "mcr.microsoft.com/devcontainers/go:2-1.27-trixie",
   "features": {
-    "ghcr.io/devcontainers/features/powershell:2.0.3": {}
+    "ghcr.io/devcontainers/features/github-cli:1.1.3": {
+      "version": "2.102.0"
+    },
+    "ghcr.io/devcontainers/features/powershell:2.0.3": {},
+    "ghcr.io/devcontainers/features/python:1.8.0": {
+      "version": "os-provided",
+      "installTools": false
+    }
   },
   "customizations": {
     "vscode": {
@@ -10,5 +17,6 @@
         "golang.go"
       ]
     }
-  }
+  },
+  "forwardPorts": [8080]
 }
