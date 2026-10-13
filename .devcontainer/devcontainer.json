@@ -8,6 +8,7 @@
     "ghcr.io/devcontainers/features/powershell:2.0.3": {},
     "ghcr.io/devcontainers/features/python:1.8.0": {
       "version": "os-provided",
+      // Use Python from the base image; do not install the feature's extra tools.
       "installTools": false
     }
   },
