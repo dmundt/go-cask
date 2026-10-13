@@ -1,5 +1,5 @@
 {
-  "name": "go-cask Dev",
+  "name": "go-cask",
   "image": "mcr.microsoft.com/devcontainers/base:debian13",
   "features": {
     "ghcr.io/devcontainers/features/go:1.4.0": {
