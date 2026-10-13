@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: Agent Instructions — go-cask
 description: Repo-root router for AI agents — the session rules, plus the pointer to the owning spec (docs/index.md → cas-core, coding-guidelines, api-design, rest). Restates no rule. Auto-read by any agent honoring AGENTS.md (GitHub Copilot, OpenAI Codex, Cursor, …).
-version: v54
+version: v55
 ---
 
 # Agent Instructions — go-cask (CASK: Content-Addressable Store Kit)
@@ -13,7 +13,7 @@ Router, not manual. Read `docs/index.md` first: path → owning spec, longest ma
 
 | Rule | Owner |
 | --- | --- |
-| Worktree, lane claim, gate, signed commits, squash auto-merge | `docs/specs/landing.md` |
+| Worktree, lane claim, gate, shell/environment, signed commits, squash auto-merge | `docs/specs/landing.md` |
 | Branch type, issue number, base, lifecycle | `docs/specs/branch-naming.md` |
 | Changelog entry, GitHub release notes | `docs/specs/versioning.md` §4 |
 | Markdown: no raw HTML, tagged fences, balanced mermaid | `docs/specs/AGENT.md` §9, `docs/AGENT.md` §1.4 |

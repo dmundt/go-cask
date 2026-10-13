@@ -2,14 +2,14 @@
 type: Specification
 title: Landing — go-cask
 description: The landing procedure for one task — the task worktree, the server-side lane whose record is the open pull request, the gate run that authorises a push, and the merge that lands it; the coordination rules every session MUST obey.
-version: v11
+version: v14
 ---
 
 # Landing — go-cask
 
 - One task = one worktree, one lane, one gated branch, one merged pull request.
 - Normative for every session, human or agent, that changes this repository.
-- Related: `branch-naming.md` §2 (branch name), `versioning.md` §4 (commit and changelog conventions), `docs/specs/AGENT.md` §11 (signed-commit workflow), `scripts/AGENT.md` ("Running the scripts on Windows", "Releasing"), `.github/AGENT.md` (branch protection, required checks, gate receipts).
+- Related: `branch-naming.md` §2 (branch name), `versioning.md` §4 (commit and changelog conventions), `docs/specs/AGENT.md` §11 (signed-commit workflow), `scripts/AGENT.md` ("Windows and WSLC", "Releasing"), `.github/AGENT.md` (branch protection, required checks, gate receipts).
 
 ## 1. Why the lane exists
 
@@ -78,9 +78,10 @@ version: v11
 - **Signed commits, local rebuild only** (§5): `git cherry-pick -S`, `git verify-commit` every head commit, `git push --force-with-lease`.
 - **Before every PR creation or update**, run `./scripts/verify.sh` and confirm every configured coverage threshold passes. The gate re-runs after each change to the tree, not once per commit. A required operational step for all follow-up work, not optional cleanup.
 - **At push time the workspace is clean and the branch is current** — the base rule `branch-naming.md` §1 states for the day a branch is cut, held for every later push: commit or stash in-flight work, then bring the branch up to date with a freshly fetched `origin/main` merged **locally**, and re-gate the merged tree. A branch behind `main` is rebuilt locally, re-verified and re-stamped (§5). Never GitHub's server-side "Update branch"/rebase: it rewrites the branch outside the local signature and gate chain.
-- **On Windows, run the gate under WSL with a Linux Go toolchain**: the race and coverage gate needs cgo and a C compiler, which the Windows toolchain cannot take from WSL's `gcc`, and coverage measured on Windows does not predict the gate.
-- Never duplicate the gate's steps in PowerShell; never look for a faster path. `./scripts/verify.sh` on `/mnt/d` is the one supported route.
-- Rootless WSL setup and the exact command: `scripts/AGENT.md`, "Running the scripts on Windows".
+- **In the Debian 13 dev container** (`.devcontainer/devcontainer.json`), run commands locally in the container, not through WSL or the Windows host; use its Linux PowerShell via `pwsh`.
+- **On a Windows host, use WSLC with VS Code Dev Containers to enter the Debian dev container**; do not run the Linux race/coverage gate using the Windows Go toolchain.
+- Never duplicate the gate's steps in PowerShell; run `./scripts/verify.sh` from the dev container. Never look for a faster path.
+- First-time WSL, WSLC and VS Code setup: [`docs/wsl-vscode.md`](../wsl-vscode.md); exact gate command: `scripts/AGENT.md`, "Windows and WSLC".
 
 ## 5. Landing
 
@@ -97,7 +98,7 @@ version: v11
 - [x] Task worktree created by `gate worktree add`, based on the freshly fetched `origin/main`
 - [x] Lane claimed with `pr-lane claim <issue>`; no `git add -A`, no `git commit -a`
 - [x] Draft PR opened early; the PR is the lease; `pr-lane release <issue>` after the merge
-- [x] Gate run at the right scope, green only at `verification passed`, under WSL on Windows
+- [x] Gate run at the right scope, green only at `verification passed`, in the environment required by §4
 - [x] At push time: clean workspace, branch merged locally with the freshly fetched `origin/main`, gate re-run on the merged tree — never a server-side update-branch
 - [x] `.githooks` installed; every head commit signed and verified with `git verify-commit`
 - [x] Landing through `gh pr merge` (the merge queue) or `gh pr merge --auto --squash` while the queue is off; no server-side update-branch

@@ -2,7 +2,7 @@
 type: Agent Instructions
 title: GitHub repository operations
 description: The rules for .github/ — branch protection and required checks, merge and secret-scanning settings, workflow least-privilege and action-pinning policy, local gate receipts, code scanning, and how to validate a settings change with the gh API.
-version: v13
+version: v14
 ---
 
 # GitHub repository operations
@@ -66,7 +66,7 @@ Viewer backlog: `gh issue list --state all --search 'label:viewer'`.
 
 ## Signed pull-request workflow
 
-Rebuild PR branches locally, sign and verify each head commit (`git cherry-pick -S`, `git verify-commit`), re-gate, push with `git push --force-with-lease`. Signed-commit workflow, WSL gate command and coverage thresholds: [`docs/specs/landing.md`](/docs/specs/landing.md) §4, [`scripts/AGENT.md`](/scripts/AGENT.md) "Running the scripts on Windows".
+Rebuild PR branches locally, sign and verify each head commit (`git cherry-pick -S`, `git verify-commit`), re-gate, push with `git push --force-with-lease`. Signed-commit workflow, WSLC dev-container gate command and coverage thresholds: [`docs/specs/landing.md`](/docs/specs/landing.md) §4, [`scripts/AGENT.md`](/scripts/AGENT.md) "Windows and WSLC".
 
 ## Merge and security settings
 

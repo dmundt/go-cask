@@ -15,6 +15,9 @@ repository.
 - `git` — the repo uses the branch and tag conventions in
   `docs/specs/branch-naming.md` and
   `docs/specs/versioning.md`.
+- Windows host: follow
+  [Windows development with WSL, WSLC and VS Code](docs/wsl-vscode.md) before
+  running the gate.
 
 ### Where things live
 
