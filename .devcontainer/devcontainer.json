@@ -4,7 +4,7 @@
   "features": {
     "ghcr.io/devcontainers/features/go:1.4.0": {
       // Match the repository toolchain and lint gate pins.
-      "version": "1.27.1",
+      "version": "1.27.2",
       "golangciLintVersion": "2.14.0",
       "installGoTools": true
     },
