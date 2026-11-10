@@ -2,7 +2,7 @@
   "name": "go-cask",
   "image": "mcr.microsoft.com/devcontainers/base:debian13",
   "features": {
-    "ghcr.io/devcontainers/features/go:1.4.0": {
+    "ghcr.io/devcontainers/features/go:1.4.1": {
       // Match the repository toolchain and lint gate pins.
       "version": "1.27.2",
       "golangciLintVersion": "2.14.0",
