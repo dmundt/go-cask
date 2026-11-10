@@ -15,7 +15,7 @@
       // Pin the latest LTS release; update deliberately.
       "version": "7.6.6"
     },
-    "ghcr.io/devcontainers/features/python:1.8.0": {
+    "ghcr.io/devcontainers/features/python:1.8.1": {
       "version": "os-provided",
       // Use Python from the base image; do not install the feature's extra tools.
       "installTools": false
