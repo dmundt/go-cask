@@ -11,7 +11,7 @@
     "ghcr.io/devcontainers/features/github-cli:1.1.3": {
       "version": "2.102.0"
     },
-    "ghcr.io/devcontainers/features/powershell:2.0.3": {
+    "ghcr.io/devcontainers/features/powershell:2.0.4": {
       // Pin the latest LTS release; update deliberately.
       "version": "7.6.6"
     },
